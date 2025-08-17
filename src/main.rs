@@ -278,6 +278,11 @@ fn format_value(value: &lyra::vm::Value) -> String {
         }
         lyra::vm::Value::Function(name) => format!("Function[{}]", name),
         lyra::vm::Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
+        lyra::vm::Value::Tensor(tensor) => {
+            format!("Tensor[shape: {:?}, elements: {}]", 
+                    tensor.shape(), 
+                    tensor.len())
+        }
     }
 }
 

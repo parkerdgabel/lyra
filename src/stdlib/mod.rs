@@ -14,6 +14,7 @@ pub mod list;
 pub mod math;
 pub mod rules;
 pub mod string;
+pub mod tensor;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -36,6 +37,7 @@ impl StandardLibrary {
         stdlib.register_string_functions();
         stdlib.register_math_functions();
         stdlib.register_rule_functions();
+        stdlib.register_tensor_functions();
 
         stdlib
     }
@@ -88,6 +90,14 @@ impl StandardLibrary {
         self.register("Rule", rules::rule);
         self.register("RuleDelayed", rules::rule_delayed);
     }
+
+    fn register_tensor_functions(&mut self) {
+        self.register("Array", tensor::array);
+        self.register("ArrayDimensions", tensor::array_dimensions);
+        self.register("ArrayRank", tensor::array_rank);
+        self.register("ArrayReshape", tensor::array_reshape);
+        self.register("ArrayFlatten", tensor::array_flatten);
+    }
 }
 
 impl Default for StandardLibrary {
@@ -110,6 +120,8 @@ mod tests {
         assert!(stdlib.get_function("StringJoin").is_some());
         assert!(stdlib.get_function("Sin").is_some());
         assert!(stdlib.get_function("ReplaceAll").is_some());
+        assert!(stdlib.get_function("Array").is_some());
+        assert!(stdlib.get_function("ArrayDimensions").is_some());
     }
 
     #[test]
@@ -118,7 +130,7 @@ mod tests {
         let function_count = stdlib.function_names().count();
 
         // Should have at least the core functions we're implementing
-        assert!(function_count >= 16); // 7 list + 4 string + 6 math + 3 rules = 20 minimum
+        assert!(function_count >= 21); // 7 list + 4 string + 6 math + 3 rules + 5 tensor = 25 minimum
     }
 
     #[test]

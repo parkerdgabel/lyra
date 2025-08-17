@@ -1,7 +1,9 @@
 use crate::bytecode::{Instruction, OpCode};
 use crate::stdlib::StandardLibrary;
+use crate::stdlib::tensor::{tensor_add, tensor_sub, tensor_mul, tensor_div, tensor_pow};
 use std::collections::HashMap;
 use thiserror::Error;
+use ndarray::ArrayD;
 
 #[derive(Error, Debug)]
 pub enum VmError {
@@ -26,7 +28,7 @@ pub enum VmError {
 pub type VmResult<T> = std::result::Result<T, VmError>;
 
 /// A value that can be stored on the VM stack
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Integer(i64),
     Real(f64),
@@ -35,6 +37,26 @@ pub enum Value {
     List(Vec<Value>),
     Function(String), // Built-in function name for now
     Boolean(bool),
+    Tensor(ArrayD<f64>), // N-dimensional tensor with floating point values
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => a == b,
+            (Value::Real(a), Value::Real(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
+            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Function(a), Value::Function(b)) => a == b,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::Tensor(a), Value::Tensor(b)) => {
+                // Compare tensors element-wise
+                a.shape() == b.shape() && a.iter().zip(b.iter()).all(|(x, y)| x == y)
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Call frame for function calls
@@ -288,13 +310,31 @@ impl VirtualMachine {
 
     /// Add two values
     fn add_values(&self, a: Value, b: Value) -> VmResult<Value> {
-        match (a, b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
-            (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a + b)),
-            (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 + b)),
-            (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a + b as f64)),
-            (a, b) => Err(VmError::TypeError {
-                expected: "numeric".to_string(),
+        // Check if either operand is a tensor
+        match (&a, &b) {
+            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
+                // Use tensor arithmetic
+                tensor_add(&a, &b)
+            }
+            // Original scalar arithmetic
+            (Value::Integer(_), Value::Integer(_)) => match (a, b) {
+                (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Real(_)) => match (a, b) {
+                (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a + b)),
+                _ => unreachable!(),
+            },
+            (Value::Integer(_), Value::Real(_)) => match (a, b) {
+                (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 + b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Integer(_)) => match (a, b) {
+                (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a + b as f64)),
+                _ => unreachable!(),
+            },
+            _ => Err(VmError::TypeError {
+                expected: "numeric or tensor".to_string(),
                 actual: format!("{:?} and {:?}", a, b),
             }),
         }
@@ -302,13 +342,31 @@ impl VirtualMachine {
 
     /// Subtract two values
     fn sub_values(&self, a: Value, b: Value) -> VmResult<Value> {
-        match (a, b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
-            (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a - b)),
-            (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 - b)),
-            (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a - b as f64)),
-            (a, b) => Err(VmError::TypeError {
-                expected: "numeric".to_string(),
+        // Check if either operand is a tensor
+        match (&a, &b) {
+            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
+                // Use tensor arithmetic
+                tensor_sub(&a, &b)
+            }
+            // Original scalar arithmetic
+            (Value::Integer(_), Value::Integer(_)) => match (a, b) {
+                (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Real(_)) => match (a, b) {
+                (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a - b)),
+                _ => unreachable!(),
+            },
+            (Value::Integer(_), Value::Real(_)) => match (a, b) {
+                (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 - b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Integer(_)) => match (a, b) {
+                (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a - b as f64)),
+                _ => unreachable!(),
+            },
+            _ => Err(VmError::TypeError {
+                expected: "numeric or tensor".to_string(),
                 actual: format!("{:?} and {:?}", a, b),
             }),
         }
@@ -316,13 +374,31 @@ impl VirtualMachine {
 
     /// Multiply two values
     fn mul_values(&self, a: Value, b: Value) -> VmResult<Value> {
-        match (a, b) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
-            (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a * b)),
-            (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 * b)),
-            (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a * b as f64)),
-            (a, b) => Err(VmError::TypeError {
-                expected: "numeric".to_string(),
+        // Check if either operand is a tensor
+        match (&a, &b) {
+            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
+                // Use tensor arithmetic
+                tensor_mul(&a, &b)
+            }
+            // Original scalar arithmetic
+            (Value::Integer(_), Value::Integer(_)) => match (a, b) {
+                (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Real(_)) => match (a, b) {
+                (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a * b)),
+                _ => unreachable!(),
+            },
+            (Value::Integer(_), Value::Real(_)) => match (a, b) {
+                (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 * b)),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Integer(_)) => match (a, b) {
+                (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a * b as f64)),
+                _ => unreachable!(),
+            },
+            _ => Err(VmError::TypeError {
+                expected: "numeric or tensor".to_string(),
                 actual: format!("{:?} and {:?}", a, b),
             }),
         }
@@ -330,37 +406,55 @@ impl VirtualMachine {
 
     /// Divide two values
     fn div_values(&self, a: Value, b: Value) -> VmResult<Value> {
-        match (a, b) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                if b == 0 {
-                    Err(VmError::DivisionByZero)
-                } else {
-                    Ok(Value::Real(a as f64 / b as f64))
-                }
+        // Check if either operand is a tensor
+        match (&a, &b) {
+            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
+                // Use tensor arithmetic
+                tensor_div(&a, &b)
             }
-            (Value::Real(a), Value::Real(b)) => {
-                if b == 0.0 {
-                    Err(VmError::DivisionByZero)
-                } else {
-                    Ok(Value::Real(a / b))
+            // Original scalar arithmetic
+            (Value::Integer(_), Value::Integer(_)) => match (a, b) {
+                (Value::Integer(a), Value::Integer(b)) => {
+                    if b == 0 {
+                        Err(VmError::DivisionByZero)
+                    } else {
+                        Ok(Value::Real(a as f64 / b as f64))
+                    }
                 }
-            }
-            (Value::Integer(a), Value::Real(b)) => {
-                if b == 0.0 {
-                    Err(VmError::DivisionByZero)
-                } else {
-                    Ok(Value::Real(a as f64 / b))
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Real(_)) => match (a, b) {
+                (Value::Real(a), Value::Real(b)) => {
+                    if b == 0.0 {
+                        Err(VmError::DivisionByZero)
+                    } else {
+                        Ok(Value::Real(a / b))
+                    }
                 }
-            }
-            (Value::Real(a), Value::Integer(b)) => {
-                if b == 0 {
-                    Err(VmError::DivisionByZero)
-                } else {
-                    Ok(Value::Real(a / b as f64))
+                _ => unreachable!(),
+            },
+            (Value::Integer(_), Value::Real(_)) => match (a, b) {
+                (Value::Integer(a), Value::Real(b)) => {
+                    if b == 0.0 {
+                        Err(VmError::DivisionByZero)
+                    } else {
+                        Ok(Value::Real(a as f64 / b))
+                    }
                 }
-            }
-            (a, b) => Err(VmError::TypeError {
-                expected: "numeric".to_string(),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Integer(_)) => match (a, b) {
+                (Value::Real(a), Value::Integer(b)) => {
+                    if b == 0 {
+                        Err(VmError::DivisionByZero)
+                    } else {
+                        Ok(Value::Real(a / b as f64))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            _ => Err(VmError::TypeError {
+                expected: "numeric or tensor".to_string(),
                 actual: format!("{:?} and {:?}", a, b),
             }),
         }
@@ -368,19 +462,37 @@ impl VirtualMachine {
 
     /// Raise a to the power of b
     fn power_values(&self, a: Value, b: Value) -> VmResult<Value> {
-        match (a, b) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                if b >= 0 {
-                    Ok(Value::Integer(a.pow(b as u32)))
-                } else {
-                    Ok(Value::Real((a as f64).powf(b as f64)))
-                }
+        // Check if either operand is a tensor
+        match (&a, &b) {
+            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
+                // Use tensor arithmetic
+                tensor_pow(&a, &b)
             }
-            (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a.powf(b))),
-            (Value::Integer(a), Value::Real(b)) => Ok(Value::Real((a as f64).powf(b))),
-            (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a.powf(b as f64))),
-            (a, b) => Err(VmError::TypeError {
-                expected: "numeric".to_string(),
+            // Original scalar arithmetic
+            (Value::Integer(_), Value::Integer(_)) => match (a, b) {
+                (Value::Integer(a), Value::Integer(b)) => {
+                    if b >= 0 {
+                        Ok(Value::Integer(a.pow(b as u32)))
+                    } else {
+                        Ok(Value::Real((a as f64).powf(b as f64)))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Real(_)) => match (a, b) {
+                (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a.powf(b))),
+                _ => unreachable!(),
+            },
+            (Value::Integer(_), Value::Real(_)) => match (a, b) {
+                (Value::Integer(a), Value::Real(b)) => Ok(Value::Real((a as f64).powf(b))),
+                _ => unreachable!(),
+            },
+            (Value::Real(_), Value::Integer(_)) => match (a, b) {
+                (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a.powf(b as f64))),
+                _ => unreachable!(),
+            },
+            _ => Err(VmError::TypeError {
+                expected: "numeric or tensor".to_string(),
                 actual: format!("{:?} and {:?}", a, b),
             }),
         }
@@ -756,5 +868,177 @@ mod tests {
             VmError::TypeError { .. } => {}
             _ => panic!("Expected TypeError"),
         }
+    }
+
+    // ===== TENSOR ARITHMETIC INTEGRATION TESTS =====
+
+    #[test]
+    fn test_tensor_scalar_addition_vm() {
+        let vm = VirtualMachine::new();
+        
+        // Create a test tensor
+        let tensor = ArrayD::from_shape_vec(ndarray::IxDyn(&[3]), vec![1.0, 2.0, 3.0]).unwrap();
+        let tensor_value = Value::Tensor(tensor);
+        let scalar_value = Value::Integer(10);
+        
+        // Test tensor + scalar through VM
+        let result = vm.add_values(tensor_value, scalar_value).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                assert_eq!(result_tensor[[0]], 11.0); // 1 + 10
+                assert_eq!(result_tensor[[1]], 12.0); // 2 + 10
+                assert_eq!(result_tensor[[2]], 13.0); // 3 + 10
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_tensor_addition_vm() {
+        let vm = VirtualMachine::new();
+        
+        // Create two test tensors
+        let tensor_a = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![1.0, 2.0]).unwrap();
+        let tensor_b = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![3.0, 4.0]).unwrap();
+        
+        let value_a = Value::Tensor(tensor_a);
+        let value_b = Value::Tensor(tensor_b);
+        
+        // Test tensor + tensor through VM
+        let result = vm.add_values(value_a, value_b).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                assert_eq!(result_tensor[[0]], 4.0); // 1 + 3
+                assert_eq!(result_tensor[[1]], 6.0); // 2 + 4
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_subtraction_vm() {
+        let vm = VirtualMachine::new();
+        
+        let tensor = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![10.0, 8.0]).unwrap();
+        let tensor_value = Value::Tensor(tensor);
+        let scalar_value = Value::Real(3.0);
+        
+        let result = vm.sub_values(tensor_value, scalar_value).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor[[0]], 7.0);  // 10 - 3
+                assert_eq!(result_tensor[[1]], 5.0);  // 8 - 3
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_multiplication_vm() {
+        let vm = VirtualMachine::new();
+        
+        let tensor = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![2.0, 3.0]).unwrap();
+        let tensor_value = Value::Tensor(tensor);
+        let scalar_value = Value::Integer(4);
+        
+        let result = vm.mul_values(tensor_value, scalar_value).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor[[0]], 8.0);  // 2 * 4
+                assert_eq!(result_tensor[[1]], 12.0); // 3 * 4
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_division_vm() {
+        let vm = VirtualMachine::new();
+        
+        let tensor = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![12.0, 20.0]).unwrap();
+        let tensor_value = Value::Tensor(tensor);
+        let scalar_value = Value::Integer(4);
+        
+        let result = vm.div_values(tensor_value, scalar_value).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor[[0]], 3.0); // 12 / 4
+                assert_eq!(result_tensor[[1]], 5.0); // 20 / 4
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_power_vm() {
+        let vm = VirtualMachine::new();
+        
+        let tensor = ArrayD::from_shape_vec(ndarray::IxDyn(&[2]), vec![2.0, 3.0]).unwrap();
+        let tensor_value = Value::Tensor(tensor);
+        let scalar_value = Value::Integer(2);
+        
+        let result = vm.power_values(tensor_value, scalar_value).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor[[0]], 4.0);  // 2^2
+                assert_eq!(result_tensor[[1]], 9.0);  // 3^2
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_tensor_broadcasting_vm() {
+        let vm = VirtualMachine::new();
+        
+        // Test broadcasting: [2, 3] + [3] -> [2, 3]
+        let tensor_a = ArrayD::from_shape_vec(ndarray::IxDyn(&[2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        let tensor_b = ArrayD::from_shape_vec(ndarray::IxDyn(&[3]), vec![10.0, 20.0, 30.0]).unwrap();
+        
+        let value_a = Value::Tensor(tensor_a);
+        let value_b = Value::Tensor(tensor_b);
+        
+        let result = vm.add_values(value_a, value_b).unwrap();
+        
+        match result {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 3]);
+                // First row: [1,2,3] + [10,20,30] = [11,22,33]
+                assert_eq!(result_tensor[[0, 0]], 11.0);
+                assert_eq!(result_tensor[[0, 1]], 22.0);
+                assert_eq!(result_tensor[[0, 2]], 33.0);
+                // Second row: [4,5,6] + [10,20,30] = [14,25,36]
+                assert_eq!(result_tensor[[1, 0]], 14.0);
+                assert_eq!(result_tensor[[1, 1]], 25.0);
+                assert_eq!(result_tensor[[1, 2]], 36.0);
+            }
+            _ => panic!("Expected tensor result"),
+        }
+    }
+
+    #[test]
+    fn test_scalar_arithmetic_still_works() {
+        // Verify that the tensor integration doesn't break existing scalar arithmetic
+        let vm = VirtualMachine::new();
+        
+        // Test integer + integer
+        let result = vm.add_values(Value::Integer(2), Value::Integer(3)).unwrap();
+        assert_eq!(result, Value::Integer(5));
+        
+        // Test real + real  
+        let result = vm.add_values(Value::Real(2.5), Value::Real(3.5)).unwrap();
+        assert_eq!(result, Value::Real(6.0));
+        
+        // Test mixed types
+        let result = vm.mul_values(Value::Integer(4), Value::Real(2.5)).unwrap();
+        assert_eq!(result, Value::Real(10.0));
     }
 }
