@@ -1,6 +1,12 @@
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum InterpolationPart {
+    Text(String),
+    Expression(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub position: usize,
@@ -12,8 +18,15 @@ pub enum TokenKind {
     // Literals
     Integer(i64),
     Real(f64),
+    Rational(i64, i64),  // numerator, denominator
+    Complex(f64, f64),   // real, imaginary
+    BigInt(String),      // 123n
+    BigDecimal(String),  // 1.23d100
+    HexInteger(String),  // 16^^FF
     String(String),
+    InterpolatedString(Vec<InterpolationPart>),
     Symbol(String),
+    ContextSymbol(String), // std`net`http`Get
     
     // Operators
     Plus,
@@ -42,6 +55,15 @@ pub enum TokenKind {
     RuleDelayed,   // :>
     ReplaceAll,    // /.
     
+    // Modern operators
+    Pipeline,      // |>
+    Postfix,       // //
+    Prefix,        // @
+    Arrow,         // =>
+    Range,         // ;;
+    Condition,     // /;
+    Alternative,   // |
+    
     // Grouping
     LeftParen,     // (
     RightParen,    // )
@@ -50,6 +72,10 @@ pub enum TokenKind {
     LeftBrace,     // {
     RightBrace,    // }
     
+    // Associations
+    LeftAssoc,     // <|
+    RightAssoc,    // |>
+    
     // Part access
     LeftDoubleBracket,  // [[
     RightDoubleBracket, // ]]
@@ -57,6 +83,9 @@ pub enum TokenKind {
     // Separators
     Comma,
     Semicolon,
+    Dot,           // .
+    Colon,         // :
+    Question,      // ?
     
     // Patterns
     Blank,              // _
@@ -65,6 +94,7 @@ pub enum TokenKind {
     
     // Special
     StringJoin,    // <>
+    Backtick,      // ` (for contexts)
     
     // Whitespace and comments (usually ignored)
     Whitespace,
@@ -166,6 +196,20 @@ impl<'a> Lexer<'a> {
                                 position: start_pos,
                                 length: 2,
                             })
+                        } else if self.current_char == Some('/') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::Postfix,
+                                position: start_pos,
+                                length: 2,
+                            })
+                        } else if self.current_char == Some(';') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::Condition,
+                                position: start_pos,
+                                length: 2,
+                            })
                         } else {
                             Ok(Token {
                                 kind: TokenKind::Divide,
@@ -240,8 +284,41 @@ impl<'a> Lexer<'a> {
                     }
                     ';' => {
                         self.advance();
+                        if self.current_char == Some(';') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::Range,
+                                position: start_pos,
+                                length: 2,
+                            })
+                        } else {
+                            Ok(Token {
+                                kind: TokenKind::Semicolon,
+                                position: start_pos,
+                                length: 1,
+                            })
+                        }
+                    }
+                    '.' => {
+                        self.advance();
                         Ok(Token {
-                            kind: TokenKind::Semicolon,
+                            kind: TokenKind::Dot,
+                            position: start_pos,
+                            length: 1,
+                        })
+                    }
+                    '?' => {
+                        self.advance();
+                        Ok(Token {
+                            kind: TokenKind::Question,
+                            position: start_pos,
+                            length: 1,
+                        })
+                    }
+                    '`' => {
+                        self.advance();
+                        Ok(Token {
+                            kind: TokenKind::Backtick,
                             position: start_pos,
                             length: 1,
                         })
@@ -255,6 +332,13 @@ impl<'a> Lexer<'a> {
                                 position: start_pos,
                                 length: 2,
                             })
+                        } else if self.current_char == Some('>') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::Arrow,
+                                position: start_pos,
+                                length: 2,
+                            })
                         } else {
                             Ok(Token {
                                 kind: TokenKind::Set,
@@ -262,6 +346,14 @@ impl<'a> Lexer<'a> {
                                 length: 1,
                             })
                         }
+                    }
+                    '@' => {
+                        self.advance();
+                        Ok(Token {
+                            kind: TokenKind::Prefix,
+                            position: start_pos,
+                            length: 1,
+                        })
                     }
                     '!' => {
                         self.advance();
@@ -293,6 +385,13 @@ impl<'a> Lexer<'a> {
                             self.advance();
                             Ok(Token {
                                 kind: TokenKind::StringJoin,
+                                position: start_pos,
+                                length: 2,
+                            })
+                        } else if self.current_char == Some('|') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::LeftAssoc,
                                 position: start_pos,
                                 length: 2,
                             })
@@ -346,10 +445,18 @@ impl<'a> Lexer<'a> {
                                 position: start_pos,
                                 length: 2,
                             })
-                        } else {
-                            Err(Error::Lexer {
-                                message: "Unexpected character '|'".to_string(),
+                        } else if self.current_char == Some('>') {
+                            self.advance();
+                            Ok(Token {
+                                kind: TokenKind::Pipeline,
                                 position: start_pos,
+                                length: 2,
+                            })
+                        } else {
+                            Ok(Token {
+                                kind: TokenKind::Alternative,
+                                position: start_pos,
+                                length: 1,
                             })
                         }
                     }
@@ -370,9 +477,10 @@ impl<'a> Lexer<'a> {
                                 length: 2,
                             })
                         } else {
-                            Err(Error::Lexer {
-                                message: "Unexpected character ':'".to_string(),
+                            Ok(Token {
+                                kind: TokenKind::Colon,
                                 position: start_pos,
+                                length: 1,
                             })
                         }
                     }
@@ -403,7 +511,14 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     '"' => self.read_string(start_pos),
-                    c if c.is_ascii_digit() => self.read_number(start_pos),
+                    c if c.is_ascii_digit() => {
+                        // Check for hex notation (e.g., 16^^FF)
+                        if self.peek_hex_notation() {
+                            self.read_hex_number(start_pos)
+                        } else {
+                            self.read_number(start_pos)
+                        }
+                    }
                     c if c.is_alphabetic() || c == '$' => self.read_symbol(start_pos),
                     _ => Err(Error::Lexer {
                         message: format!("Unexpected character '{}'", ch),
@@ -491,6 +606,45 @@ impl<'a> Lexer<'a> {
         })
     }
     
+    fn peek_hex_notation(&self) -> bool {
+        // Look for pattern like 16^^FF
+        let chars: Vec<char> = self.input[self.position..].chars().collect();
+        if chars.len() < 4 {
+            return false;
+        }
+        
+        // Find the ^^
+        for i in 1..chars.len()-1 {
+            if chars[i] == '^' && chars.get(i+1) == Some(&'^') {
+                // Check if everything before ^^ is digits (base)
+                if chars[..i].iter().all(|c| c.is_ascii_digit()) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
+    fn read_hex_number(&mut self, start_pos: usize) -> Result<Token> {
+        let mut number_str = String::new();
+        
+        // Read the entire hex notation
+        while let Some(ch) = self.current_char {
+            if ch.is_alphanumeric() || ch == '^' {
+                number_str.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        Ok(Token {
+            kind: TokenKind::HexInteger(number_str),
+            position: start_pos,
+            length: self.position - start_pos,
+        })
+    }
+
     fn read_number(&mut self, start_pos: usize) -> Result<Token> {
         let mut number_str = String::new();
         let mut is_real = false;
@@ -503,6 +657,16 @@ impl<'a> Lexer<'a> {
             } else {
                 break;
             }
+        }
+        
+        // Check for BigInt suffix 'n'
+        if self.current_char == Some('n') {
+            self.advance();
+            return Ok(Token {
+                kind: TokenKind::BigInt(number_str),
+                position: start_pos,
+                length: self.position - start_pos,
+            });
         }
         
         // Check for decimal point
@@ -546,6 +710,58 @@ impl<'a> Lexer<'a> {
             }
         }
         
+        // Check for BigDecimal suffix (e.g., 1.23d100)
+        if self.current_char == Some('d') {
+            self.advance();
+            let mut precision = String::new();
+            while let Some(ch) = self.current_char {
+                if ch.is_ascii_digit() {
+                    precision.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            return Ok(Token {
+                kind: TokenKind::BigDecimal(format!("{}d{}", number_str, precision)),
+                position: start_pos,
+                length: self.position - start_pos,
+            });
+        }
+        
+        // Check for rational division (e.g., 3/4 when both are integers)
+        if self.current_char == Some('/') && !is_real {
+            // Look ahead to see if there's another integer
+            let saved_pos = self.position;
+            let saved_char = self.current_char;
+            self.advance(); // skip '/'
+            
+            if self.current_char.map_or(false, |c| c.is_ascii_digit()) {
+                let mut denom_str = String::new();
+                while let Some(ch) = self.current_char {
+                    if ch.is_ascii_digit() {
+                        denom_str.push(ch);
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Parse both parts as integers for rational
+                if let (Ok(num), Ok(denom)) = (number_str.parse::<i64>(), denom_str.parse::<i64>()) {
+                    return Ok(Token {
+                        kind: TokenKind::Rational(num, denom),
+                        position: start_pos,
+                        length: self.position - start_pos,
+                    });
+                }
+            }
+            
+            // Restore position if not a rational
+            self.position = saved_pos;
+            self.current_char = saved_char;
+        }
+        
         let token_kind = if is_real {
             match number_str.parse::<f64>() {
                 Ok(value) => TokenKind::Real(value),
@@ -573,18 +789,39 @@ impl<'a> Lexer<'a> {
     
     fn read_symbol(&mut self, start_pos: usize) -> Result<Token> {
         let mut symbol_name = String::new();
+        let mut is_context = false;
         
         while let Some(ch) = self.current_char {
             if ch.is_alphanumeric() || ch == '$' {
                 symbol_name.push(ch);
+                self.advance();
+            } else if ch == '_' {
+                // Only include underscore if it's in the middle of a word AND
+                // the next character is not uppercase (to handle x_Integer pattern)
+                let next_char = self.input.chars().nth(self.char_position() + 1);
+                if next_char.map_or(false, |c| (c.is_alphanumeric() || c == '$') && !c.is_uppercase()) {
+                    symbol_name.push(ch);
+                    self.advance();
+                } else {
+                    break; // Stop here, let _ be handled as a separate token
+                }
+            } else if ch == '`' {
+                symbol_name.push(ch);
+                is_context = true;
                 self.advance();
             } else {
                 break;
             }
         }
         
+        let token_kind = if is_context {
+            TokenKind::ContextSymbol(symbol_name)
+        } else {
+            TokenKind::Symbol(symbol_name)
+        };
+        
         Ok(Token {
-            kind: TokenKind::Symbol(symbol_name),
+            kind: token_kind,
             position: start_pos,
             length: self.position - start_pos,
         })
@@ -725,6 +962,111 @@ mod tests {
     }
 
     #[test]
+    fn test_modern_operators() {
+        let result = tokenize_string("|> // @ => ;; /;").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Pipeline,
+            TokenKind::Postfix,
+            TokenKind::Prefix,
+            TokenKind::Arrow,
+            TokenKind::Range,
+            TokenKind::Condition,
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_association_brackets() {
+        let result = tokenize_string("<| |>").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::LeftAssoc,
+            TokenKind::Pipeline, // Note: |> is parsed as pipeline, need to handle in parser
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_new_separators() {
+        let result = tokenize_string(". : ? `").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Dot,
+            TokenKind::Colon,
+            TokenKind::Question,
+            TokenKind::Backtick,
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_alternative_pattern() {
+        let result = tokenize_string("x | y").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Symbol("x".to_string()),
+            TokenKind::Alternative,
+            TokenKind::Symbol("y".to_string()),
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_extended_numbers() {
+        // BigInt
+        let result = tokenize_string("123n").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::BigInt("123".to_string()),
+            TokenKind::Eof
+        ]);
+
+        // BigDecimal  
+        let result = tokenize_string("1.23d100").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::BigDecimal("1.23d100".to_string()),
+            TokenKind::Eof
+        ]);
+
+        // Hex notation
+        let result = tokenize_string("16^^FF").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::HexInteger("16^^FF".to_string()),
+            TokenKind::Eof
+        ]);
+
+        // Rational
+        let result = tokenize_string("3/4").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Rational(3, 4),
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_context_symbols() {
+        let result = tokenize_string("std`net`http`Get").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::ContextSymbol("std`net`http`Get".to_string()),
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
+    fn test_underscore_in_symbols() {
+        // Underscore in middle should be included
+        let result = tokenize_string("price_usd").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Symbol("price_usd".to_string()),
+            TokenKind::Eof
+        ]);
+
+        // Underscore at end should be separate
+        let result = tokenize_string("x_").unwrap();
+        assert_eq!(result, vec![
+            TokenKind::Symbol("x".to_string()),
+            TokenKind::Blank,
+            TokenKind::Eof
+        ]);
+    }
+
+    #[test]
     fn test_function_call() {
         let result = tokenize_string("f[x, y]").unwrap();
         assert_eq!(result, vec![
@@ -787,7 +1129,7 @@ mod tests {
 
     #[test]
     fn test_error_invalid_character() {
-        let result = tokenize_string("@");
+        let result = tokenize_string("#");
         assert!(result.is_err());
         match result.unwrap_err() {
             Error::Lexer { message, .. } => {
