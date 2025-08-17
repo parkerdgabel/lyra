@@ -1217,6 +1217,366 @@ fn broadcast_scalar_to_tensor(scalar: f64, tensor: &ArrayD<f64>) -> ArrayD<f64> 
     ArrayD::from_elem(tensor.shape(), scalar)
 }
 
+/// Sigmoid activation function for neural networks.
+///
+/// This function applies the sigmoid activation function element-wise to tensor inputs.
+/// The sigmoid function is defined as: σ(x) = 1 / (1 + e^(-x))
+/// It maps any real value to a value between 0 and 1, making it useful for binary
+/// classification and as an activation function in neural networks.
+///
+/// # Numerical Stability
+/// 
+/// The implementation uses numerically stable computation to avoid overflow:
+/// - For x > 0: σ(x) = 1 / (1 + e^(-x))
+/// - For x ≤ 0: σ(x) = e^x / (1 + e^x)
+/// This prevents overflow when computing e^x for large positive or negative values.
+///
+/// # Arguments
+/// * `args[0]` - Input tensor (any shape)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - Tensor with sigmoid applied element-wise
+/// * `Err(VmError)` - If argument is not a tensor or wrong number of arguments
+///
+/// # Examples
+/// ```wolfram
+/// (* Basic sigmoid operations *)
+/// Sigmoid[{0}]                              (* → {0.5} *)
+/// Sigmoid[{-1, 0, 1}]                       (* → {0.268941, 0.5, 0.731059} *)
+///
+/// (* 2D tensor activation *)
+/// matrix = Array[{{-2, -1}, {1, 2}}]
+/// Sigmoid[matrix]                           (* → {{0.119203, 0.268941}, {0.731059, 0.880797}} *)
+///
+/// (* Neural network layer activation *)
+/// linear_output = Dot[weights, input]       (* Linear layer output *)
+/// activated = Sigmoid[linear_output]        (* Apply sigmoid activation *)
+///
+/// (* Large values (numerical stability) *)
+/// Sigmoid[{-100, 100}]                      (* → {0, 1} safely computed *)
+/// ```
+///
+/// # Neural Network Applications
+/// Essential for:
+/// - Binary classification output layers
+/// - Gate mechanisms in LSTM/GRU networks
+/// - Traditional feedforward network activations
+/// - Probability output interpretation
+pub fn sigmoid(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Extract tensor from arguments
+    let tensor = match &args[0] {
+        Value::Tensor(t) => t,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Tensor".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+
+    // Apply sigmoid function element-wise with numerical stability
+    let result_data: Vec<f64> = tensor
+        .iter()
+        .map(|&x| {
+            // Numerically stable sigmoid computation
+            if x > 0.0 {
+                // For positive x: σ(x) = 1 / (1 + e^(-x))
+                let exp_neg_x = (-x).exp();
+                1.0 / (1.0 + exp_neg_x)
+            } else {
+                // For negative x: σ(x) = e^x / (1 + e^x)
+                let exp_x = x.exp();
+                exp_x / (1.0 + exp_x)
+            }
+        })
+        .collect();
+
+    // Create result tensor with same shape as input
+    let result_tensor = ArrayD::from_shape_vec(tensor.raw_dim(), result_data)
+        .map_err(|e| VmError::TypeError {
+            expected: "valid tensor shape".to_string(),
+            actual: format!("ndarray error: {}", e),
+        })?;
+
+    Ok(Value::Tensor(result_tensor))
+}
+
+/// Hyperbolic tangent activation function for neural networks.
+///
+/// This function applies the hyperbolic tangent activation function element-wise to tensor inputs.
+/// The tanh function is defined as: tanh(x) = (e^x - e^(-x)) / (e^x + e^(-x))
+/// It maps any real value to a value between -1 and 1, making it useful as an activation
+/// function in neural networks where zero-centered outputs are beneficial.
+///
+/// # Properties
+/// 
+/// - **Range**: (-1, 1) - outputs are bounded between -1 and 1
+/// - **Zero-centered**: tanh(0) = 0, making it zero-centered unlike sigmoid
+/// - **Antisymmetric**: tanh(-x) = -tanh(x)
+/// - **Smooth**: Differentiable everywhere with well-behaved gradients
+/// - **Saturating**: Large positive/negative inputs saturate to ±1
+///
+/// # Arguments
+/// * `args[0]` - Input tensor (any shape)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - Tensor with tanh applied element-wise
+/// * `Err(VmError)` - If argument is not a tensor or wrong number of arguments
+///
+/// # Examples
+/// ```wolfram
+/// (* Basic tanh operations *)
+/// Tanh[{0}]                                 (* → {0} *)
+/// Tanh[{-1, 0, 1}]                          (* → {-0.761594, 0, 0.761594} *)
+///
+/// (* 2D tensor activation *)
+/// matrix = Array[{{-2, -1}, {1, 2}}]
+/// Tanh[matrix]                              (* → {{-0.964028, -0.761594}, {0.761594, 0.964028}} *)
+///
+/// (* Neural network hidden layer activation *)
+/// hidden_output = Dot[weights, input]       (* Linear layer output *)
+/// activated = Tanh[hidden_output]           (* Apply tanh activation *)
+///
+/// (* Symmetric property *)
+/// Tanh[{-2, 2}]                            (* → {-0.964028, 0.964028} *)
+/// ```
+///
+/// # Neural Network Applications
+/// Preferred over sigmoid for:
+/// - Hidden layer activations (zero-centered gradients)
+/// - RNN/LSTM gate functions
+/// - Autoencoder bottlenecks
+/// - When gradient flow is important
+pub fn tanh(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Extract tensor from arguments
+    let tensor = match &args[0] {
+        Value::Tensor(t) => t,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Tensor".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+
+    // Apply tanh function element-wise using standard library
+    let result_data: Vec<f64> = tensor
+        .iter()
+        .map(|&x| x.tanh()) // Rust's standard library tanh is numerically stable
+        .collect();
+
+    // Create result tensor with same shape as input
+    let result_tensor = ArrayD::from_shape_vec(tensor.raw_dim(), result_data)
+        .map_err(|e| VmError::TypeError {
+            expected: "valid tensor shape".to_string(),
+            actual: format!("ndarray error: {}", e),
+        })?;
+
+    Ok(Value::Tensor(result_tensor))
+}
+
+/// Softmax activation function for neural networks.
+///
+/// This function applies the softmax activation function to tensor inputs, converting
+/// logits into a probability distribution. The softmax function is defined as:
+/// softmax(x_i) = exp(x_i) / Σ(exp(x_j)) for all j in the same dimension.
+///
+/// # Numerical Stability
+/// 
+/// The implementation uses the numerically stable "max trick":
+/// softmax(x_i) = exp(x_i - max(x)) / Σ(exp(x_j - max(x)))
+/// This prevents overflow when computing exp(x) for large values.
+///
+/// # Dimension Behavior
+/// 
+/// - **1 argument**: Applies softmax along the last dimension (default)
+/// - **2 arguments**: Second argument specifies the dimension to normalize
+/// - For 1D tensors: Always normalizes the entire vector
+/// - For 2D+ tensors: Normalizes along the specified dimension
+///
+/// # Arguments
+/// * `args[0]` - Input tensor (any shape)
+/// * `args[1]` - Optional: dimension to apply softmax (integer)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - Tensor with softmax applied along specified dimension
+/// * `Err(VmError)` - If arguments are invalid or incompatible
+///
+/// # Examples
+/// ```wolfram
+/// (* Basic 1D softmax *)
+/// Softmax[{1, 2, 3}]                        (* → probability distribution summing to 1 *)
+///
+/// (* 2D softmax (default: last dimension) *)
+/// matrix = Array[{{1, 2}, {3, 4}}]
+/// Softmax[matrix]                           (* Each row sums to 1 *)
+///
+/// (* 2D softmax along specific dimension *)
+/// Softmax[matrix, 0]                       (* Each column sums to 1 *)
+/// Softmax[matrix, 1]                       (* Each row sums to 1 - same as default *)
+///
+/// (* Neural network classification *)
+/// logits = Array[{2.1, 1.3, 0.2, 3.5}]    (* Raw network output *)
+/// probabilities = Softmax[logits]           (* Convert to class probabilities *)
+///
+/// (* Batch processing *)
+/// batch_logits = Array[{{1,2,3},{4,5,6}}]  (* Batch of 2 samples, 3 classes each *)
+/// Softmax[batch_logits]                     (* Each sample gets probability distribution *)
+/// ```
+///
+/// # Neural Network Applications
+/// Essential for:
+/// - Multi-class classification output layers
+/// - Attention mechanisms (scaled dot-product attention)
+/// - Policy networks in reinforcement learning
+/// - Any scenario requiring probability distributions
+pub fn softmax(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count (1 or 2 arguments)
+    if args.is_empty() || args.len() > 2 {
+        return Err(VmError::TypeError {
+            expected: "1 or 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Extract tensor from first argument
+    let tensor = match &args[0] {
+        Value::Tensor(t) => t,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Tensor".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+
+    // Determine the dimension to apply softmax
+    let dim = if args.len() == 2 {
+        // Explicit dimension provided
+        match &args[1] {
+            Value::Integer(d) => {
+                let dim_val = *d as usize;
+                if *d < 0 || dim_val >= tensor.ndim() {
+                    return Err(VmError::TypeError {
+                        expected: format!("dimension in range [0, {})", tensor.ndim()),
+                        actual: format!("dimension {}", d),
+                    });
+                }
+                dim_val
+            }
+            _ => {
+                return Err(VmError::TypeError {
+                    expected: "Integer dimension".to_string(),
+                    actual: format!("{:?}", args[1]),
+                });
+            }
+        }
+    } else {
+        // Default: last dimension
+        tensor.ndim() - 1
+    };
+
+    // Apply softmax along the specified dimension
+    let result_tensor = apply_softmax_along_dim(tensor, dim)?;
+    
+    Ok(Value::Tensor(result_tensor))
+}
+
+/// Helper function to apply softmax along a specific dimension
+fn apply_softmax_along_dim(tensor: &ArrayD<f64>, dim: usize) -> VmResult<ArrayD<f64>> {
+    let shape = tensor.shape();
+    let mut result = tensor.clone();
+    
+    // For 1D tensors, apply softmax to the entire vector
+    if tensor.ndim() == 1 {
+        let data: Vec<f64> = tensor.iter().cloned().collect();
+        let softmax_data = compute_softmax_1d(&data);
+        return ArrayD::from_shape_vec(tensor.raw_dim(), softmax_data)
+            .map_err(|e| VmError::TypeError {
+                expected: "valid tensor shape".to_string(),
+                actual: format!("ndarray error: {}", e),
+            });
+    }
+    
+    // For multi-dimensional tensors, iterate over all slices perpendicular to the softmax dimension
+    let mut indices = vec![0; tensor.ndim()];
+    let total_slices: usize = shape.iter().enumerate()
+        .filter(|(i, _)| *i != dim)
+        .map(|(_, &size)| size)
+        .product();
+    
+    for slice_idx in 0..total_slices {
+        // Convert linear slice index to multi-dimensional indices
+        let mut temp_idx = slice_idx;
+        for i in 0..tensor.ndim() {
+            if i == dim {
+                continue;
+            }
+            indices[i] = temp_idx % shape[i];
+            temp_idx /= shape[i];
+        }
+        
+        // Extract values along the softmax dimension
+        let mut values = Vec::with_capacity(shape[dim]);
+        for k in 0..shape[dim] {
+            indices[dim] = k;
+            values.push(tensor[indices.as_slice()]);
+        }
+        
+        // Compute softmax for this slice
+        let softmax_values = compute_softmax_1d(&values);
+        
+        // Store results back
+        for k in 0..shape[dim] {
+            indices[dim] = k;
+            result[indices.as_slice()] = softmax_values[k];
+        }
+    }
+    
+    Ok(result)
+}
+
+/// Compute softmax for a 1D vector with numerical stability
+fn compute_softmax_1d(values: &[f64]) -> Vec<f64> {
+    if values.is_empty() {
+        return Vec::new();
+    }
+    
+    // Numerical stability: subtract max value to prevent overflow
+    let max_val = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+    
+    // Compute exp(x - max) for all values
+    let exp_values: Vec<f64> = values
+        .iter()
+        .map(|&x| (x - max_val).exp())
+        .collect();
+    
+    // Compute sum of exponentials
+    let sum_exp: f64 = exp_values.iter().sum();
+    
+    // Normalize to get probabilities
+    exp_values
+        .iter()
+        .map(|&exp_val| exp_val / sum_exp)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2332,5 +2692,701 @@ mod tests {
         
         let result = maximum(&[tensor_a, tensor_b]);
         assert!(result.is_err()); // Should fail due to incompatible shapes
+    }
+
+    // ===== SIGMOID ACTIVATION FUNCTION TESTS (Phase 3B-1) =====
+    // TDD Tests for Sigmoid[] function
+
+    #[test]
+    fn test_sigmoid_single_element() {
+        // RED: Test sigmoid on single element tensor - Sigmoid[{0}] -> {0.5}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[1]), 
+            vec![0.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[1]);
+                assert!((result_tensor[[0]] - 0.5).abs() < 1e-10); // sigmoid(0) = 0.5
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_basic_values() {
+        // RED: Test sigmoid on basic values - Sigmoid[{-1, 0, 1}] -> {0.268941, 0.5, 0.731059}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![-1.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // sigmoid(-1) ≈ 0.268941
+                assert!((result_tensor[[0]] - 0.2689414213699951).abs() < 1e-10);
+                // sigmoid(0) = 0.5
+                assert!((result_tensor[[1]] - 0.5).abs() < 1e-10);
+                // sigmoid(1) ≈ 0.731059
+                assert!((result_tensor[[2]] - 0.7310585786300049).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_large_positive_values() {
+        // RED: Test sigmoid with large positive values (numerical stability) - Sigmoid[{10, 100}] -> {~1, ~1}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![10.0, 100.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                // sigmoid(10) should be very close to 1
+                assert!(result_tensor[[0]] > 0.9999);
+                assert!(result_tensor[[0]] <= 1.0);
+                // sigmoid(100) should be 1 (due to numerical stability)
+                assert!(result_tensor[[1]] > 0.9999);
+                assert!(result_tensor[[1]] <= 1.0);
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_large_negative_values() {
+        // RED: Test sigmoid with large negative values (numerical stability) - Sigmoid[{-10, -100}] -> {~0, ~0}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![-10.0, -100.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                // sigmoid(-10) should be very close to 0
+                assert!(result_tensor[[0]] < 0.0001);
+                assert!(result_tensor[[0]] >= 0.0);
+                // sigmoid(-100) should be 0 (due to numerical stability)
+                assert!(result_tensor[[1]] < 0.0001);
+                assert!(result_tensor[[1]] >= 0.0);
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_2d_tensor() {
+        // RED: Test sigmoid on 2D tensor - Sigmoid[{{-1, 0}, {1, 2}}]
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![-1.0, 0.0, 1.0, 2.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                // sigmoid(-1) ≈ 0.268941
+                assert!((result_tensor[[0, 0]] - 0.2689414213699951).abs() < 1e-10);
+                // sigmoid(0) = 0.5
+                assert!((result_tensor[[0, 1]] - 0.5).abs() < 1e-10);
+                // sigmoid(1) ≈ 0.731059
+                assert!((result_tensor[[1, 0]] - 0.7310585786300049).abs() < 1e-10);
+                // sigmoid(2) ≈ 0.880797
+                assert!((result_tensor[[1, 1]] - 0.8807970779778823).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = sigmoid(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = sigmoid(&[tensor.clone(), tensor]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sigmoid_non_tensor_args() {
+        // RED: Test non-tensor arguments should error
+        let result = sigmoid(&[Value::Integer(1)]);
+        assert!(result.is_err());
+        
+        let result = sigmoid(&[Value::String("hello".to_string())]);
+        assert!(result.is_err());
+        
+        let result = sigmoid(&[Value::List(vec![Value::Real(1.0)])]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sigmoid_neural_network_example() {
+        // RED: Test sigmoid in neural network context - typical activation patterns
+        let logits = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![-2.0, -0.5, 0.5, 2.0]
+        ).unwrap());
+        
+        let result = sigmoid(&[logits]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[4]);
+                // All values should be between 0 and 1
+                for i in 0..4 {
+                    assert!(result_tensor[[i]] > 0.0);
+                    assert!(result_tensor[[i]] < 1.0);
+                }
+                // Values should be monotonic increasing
+                assert!(result_tensor[[0]] < result_tensor[[1]]);
+                assert!(result_tensor[[1]] < result_tensor[[2]]);
+                assert!(result_tensor[[2]] < result_tensor[[3]]);
+            }
+            _ => panic!("Expected tensor value from sigmoid operation"),
+        }
+    }
+
+    // ===== TANH ACTIVATION FUNCTION TESTS (Phase 3B-1) =====
+    // TDD Tests for Tanh[] function
+
+    #[test]
+    fn test_tanh_single_element() {
+        // RED: Test tanh on single element tensor - Tanh[{0}] -> {0}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[1]), 
+            vec![0.0]
+        ).unwrap());
+        
+        let result = tanh(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[1]);
+                assert!((result_tensor[[0]] - 0.0).abs() < 1e-10); // tanh(0) = 0
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_basic_values() {
+        // RED: Test tanh on basic values - Tanh[{-1, 0, 1}] -> {-0.761594, 0, 0.761594}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![-1.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = tanh(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // tanh(-1) ≈ -0.761594
+                assert!((result_tensor[[0]] - (-0.7615941559557649)).abs() < 1e-10);
+                // tanh(0) = 0
+                assert!((result_tensor[[1]] - 0.0).abs() < 1e-10);
+                // tanh(1) ≈ 0.761594
+                assert!((result_tensor[[2]] - 0.7615941559557649).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_symmetric_property() {
+        // RED: Test tanh symmetric property - tanh(-x) = -tanh(x)
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![0.5, 1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        let tensor_neg = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![-0.5, -1.0, -2.0, -3.0]
+        ).unwrap());
+        
+        let result_pos = tanh(&[tensor]);
+        let result_neg = tanh(&[tensor_neg]);
+        
+        assert!(result_pos.is_ok());
+        assert!(result_neg.is_ok());
+        
+        match (result_pos.unwrap(), result_neg.unwrap()) {
+            (Value::Tensor(pos_tensor), Value::Tensor(neg_tensor)) => {
+                assert_eq!(pos_tensor.shape(), neg_tensor.shape());
+                for i in 0..4 {
+                    // tanh(-x) should equal -tanh(x)
+                    assert!((neg_tensor[[i]] + pos_tensor[[i]]).abs() < 1e-10);
+                }
+            }
+            _ => panic!("Expected tensor values from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_large_values() {
+        // RED: Test tanh with large values (should saturate to ±1)
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![-10.0, -5.0, 5.0, 10.0]
+        ).unwrap());
+        
+        let result = tanh(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[4]);
+                // tanh(-10) should be very close to -1
+                assert!(result_tensor[[0]] < -0.9999);
+                assert!(result_tensor[[0]] >= -1.0);
+                // tanh(-5) should be close to -1
+                assert!(result_tensor[[1]] < -0.999);
+                assert!(result_tensor[[1]] >= -1.0);
+                // tanh(5) should be close to 1
+                assert!(result_tensor[[2]] > 0.999);
+                assert!(result_tensor[[2]] <= 1.0);
+                // tanh(10) should be very close to 1
+                assert!(result_tensor[[3]] > 0.9999);
+                assert!(result_tensor[[3]] <= 1.0);
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_2d_tensor() {
+        // RED: Test tanh on 2D tensor - Tanh[{{-2, -1}, {1, 2}}]
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![-2.0, -1.0, 1.0, 2.0]
+        ).unwrap());
+        
+        let result = tanh(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                // tanh(-2) ≈ -0.964028
+                assert!((result_tensor[[0, 0]] - (-0.9640275800758169)).abs() < 1e-10);
+                // tanh(-1) ≈ -0.761594
+                assert!((result_tensor[[0, 1]] - (-0.7615941559557649)).abs() < 1e-10);
+                // tanh(1) ≈ 0.761594
+                assert!((result_tensor[[1, 0]] - 0.7615941559557649).abs() < 1e-10);
+                // tanh(2) ≈ 0.964028
+                assert!((result_tensor[[1, 1]] - 0.9640275800758169).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_range_property() {
+        // RED: Test tanh range property - all outputs should be in [-1, 1] (inclusive due to floating point precision)
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[7]), 
+            vec![-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0]
+        ).unwrap());
+        
+        let result = tanh(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[7]);
+                // All values should be in range [-1, 1] (inclusive due to floating point limits)
+                for i in 0..7 {
+                    assert!(result_tensor[[i]] >= -1.0);
+                    assert!(result_tensor[[i]] <= 1.0);
+                }
+                // For very large negative values, should be very close to -1
+                assert!(result_tensor[[0]] < -0.999); // tanh(-100)
+                assert!(result_tensor[[1]] < -0.999); // tanh(-10)
+                // For very large positive values, should be very close to 1
+                assert!(result_tensor[[5]] > 0.999);  // tanh(10)
+                assert!(result_tensor[[6]] > 0.999);  // tanh(100)
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    #[test]
+    fn test_tanh_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = tanh(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = tanh(&[tensor.clone(), tensor]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tanh_non_tensor_args() {
+        // RED: Test non-tensor arguments should error
+        let result = tanh(&[Value::Integer(1)]);
+        assert!(result.is_err());
+        
+        let result = tanh(&[Value::String("hello".to_string())]);
+        assert!(result.is_err());
+        
+        let result = tanh(&[Value::List(vec![Value::Real(1.0)])]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tanh_neural_network_context() {
+        // RED: Test tanh in neural network context - centered activation around 0
+        let hidden_layer_output = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![-1.5, -0.5, 0.5, 1.5]
+        ).unwrap());
+        
+        let result = tanh(&[hidden_layer_output]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[4]);
+                // All values should be in range (-1, 1)
+                for i in 0..4 {
+                    assert!(result_tensor[[i]] > -1.0);
+                    assert!(result_tensor[[i]] < 1.0);
+                }
+                // Values should be monotonic increasing
+                assert!(result_tensor[[0]] < result_tensor[[1]]);
+                assert!(result_tensor[[1]] < result_tensor[[2]]);
+                assert!(result_tensor[[2]] < result_tensor[[3]]);
+                // Should be symmetric around 0
+                assert!((result_tensor[[0]] + result_tensor[[3]]).abs() < 1e-10);
+                assert!((result_tensor[[1]] + result_tensor[[2]]).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from tanh operation"),
+        }
+    }
+
+    // ===== SOFTMAX ACTIVATION FUNCTION TESTS (Phase 3B-1) =====
+    // TDD Tests for Softmax[] function
+
+    #[test]
+    fn test_softmax_1d_basic() {
+        // RED: Test softmax on 1D tensor - Softmax[{1, 2, 3}] -> probabilities that sum to 1
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        let result = softmax(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // All values should be positive
+                for i in 0..3 {
+                    assert!(result_tensor[[i]] > 0.0);
+                    assert!(result_tensor[[i]] < 1.0);
+                }
+                // Values should sum to 1 (probability distribution)
+                let sum: f64 = (0..3).map(|i| result_tensor[[i]]).sum();
+                assert!((sum - 1.0).abs() < 1e-10);
+                // Values should be monotonic increasing (since input is increasing)
+                assert!(result_tensor[[0]] < result_tensor[[1]]);
+                assert!(result_tensor[[1]] < result_tensor[[2]]);
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_1d_uniform() {
+        // RED: Test softmax on uniform inputs - Softmax[{2, 2, 2}] -> {1/3, 1/3, 1/3}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![2.0, 2.0, 2.0]
+        ).unwrap());
+        
+        let result = softmax(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // All values should be equal (uniform distribution)
+                let expected = 1.0 / 3.0;
+                for i in 0..3 {
+                    assert!((result_tensor[[i]] - expected).abs() < 1e-10);
+                }
+                // Sum should be 1
+                let sum: f64 = (0..3).map(|i| result_tensor[[i]]).sum();
+                assert!((sum - 1.0).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_numerical_stability() {
+        // RED: Test softmax with large values (numerical stability) - Softmax[{100, 200, 300}]
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![100.0, 200.0, 300.0]
+        ).unwrap());
+        
+        let result = softmax(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // Should not have NaN or infinity
+                for i in 0..3 {
+                    assert!(result_tensor[[i]].is_finite());
+                    assert!(result_tensor[[i]] >= 0.0);
+                    assert!(result_tensor[[i]] <= 1.0);
+                }
+                // Sum should be 1
+                let sum: f64 = (0..3).map(|i| result_tensor[[i]]).sum();
+                assert!((sum - 1.0).abs() < 1e-10);
+                // Largest input should have probability close to 1
+                assert!(result_tensor[[2]] > 0.99); // softmax(300) should dominate
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_2d_default_dim() {
+        // RED: Test softmax on 2D tensor (default: last dimension) - Softmax[{{1,2},{3,4}}]
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        
+        let result = softmax(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                // Each row should sum to 1 (applying softmax along last dimension)
+                let row0_sum = result_tensor[[0, 0]] + result_tensor[[0, 1]];
+                let row1_sum = result_tensor[[1, 0]] + result_tensor[[1, 1]];
+                assert!((row0_sum - 1.0).abs() < 1e-10);
+                assert!((row1_sum - 1.0).abs() < 1e-10);
+                // All values should be positive
+                for i in 0..2 {
+                    for j in 0..2 {
+                        assert!(result_tensor[[i, j]] > 0.0);
+                        assert!(result_tensor[[i, j]] < 1.0);
+                    }
+                }
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_2d_with_dim_parameter() {
+        // RED: Test softmax on 2D tensor with specified dimension - Softmax[{{1,2},{3,4}}, 0]
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        let dim = Value::Integer(0);
+        
+        let result = softmax(&[matrix, dim]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                // Each column should sum to 1 (applying softmax along dimension 0)
+                let col0_sum = result_tensor[[0, 0]] + result_tensor[[1, 0]];
+                let col1_sum = result_tensor[[0, 1]] + result_tensor[[1, 1]];
+                assert!((col0_sum - 1.0).abs() < 1e-10);
+                assert!((col1_sum - 1.0).abs() < 1e-10);
+                // All values should be positive
+                for i in 0..2 {
+                    for j in 0..2 {
+                        assert!(result_tensor[[i, j]] > 0.0);
+                        assert!(result_tensor[[i, j]] < 1.0);
+                    }
+                }
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_zero_inputs() {
+        // RED: Test softmax with zero inputs - Softmax[{0, 0, 0}] -> {1/3, 1/3, 1/3}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![0.0, 0.0, 0.0]
+        ).unwrap());
+        
+        let result = softmax(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                // All values should be equal (uniform distribution)
+                let expected = 1.0 / 3.0;
+                for i in 0..3 {
+                    assert!((result_tensor[[i]] - expected).abs() < 1e-10);
+                }
+                // Sum should be 1
+                let sum: f64 = (0..3).map(|i| result_tensor[[i]]).sum();
+                assert!((sum - 1.0).abs() < 1e-10);
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_single_element() {
+        // RED: Test softmax on single element - Softmax[{5}] -> {1}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[1]), 
+            vec![5.0]
+        ).unwrap());
+        
+        let result = softmax(&[tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[1]);
+                assert!((result_tensor[[0]] - 1.0).abs() < 1e-10); // Only element should be 1
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
+    }
+
+    #[test]
+    fn test_softmax_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = softmax(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = softmax(&[tensor.clone(), Value::Integer(0), tensor]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_softmax_non_tensor_first_arg() {
+        // RED: Test non-tensor first argument should error
+        let result = softmax(&[Value::Integer(1)]);
+        assert!(result.is_err());
+        
+        let result = softmax(&[Value::String("hello".to_string())]);
+        assert!(result.is_err());
+        
+        let result = softmax(&[Value::List(vec![Value::Real(1.0)])]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_softmax_invalid_dim_parameter() {
+        // RED: Test invalid dimension parameter should error
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        // Dimension out of range
+        let result = softmax(&[tensor.clone(), Value::Integer(2)]);
+        assert!(result.is_err());
+        
+        // Negative dimension
+        let result = softmax(&[tensor.clone(), Value::Integer(-1)]);
+        assert!(result.is_err());
+        
+        // Non-integer dimension
+        let result = softmax(&[tensor.clone(), Value::Real(1.5)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_softmax_neural_network_classification() {
+        // RED: Test softmax in neural network classification context - typical logits
+        let logits = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[4]), 
+            vec![2.0, 1.0, 0.1, 3.0]
+        ).unwrap());
+        
+        let result = softmax(&[logits]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[4]);
+                // Should form a valid probability distribution
+                let sum: f64 = (0..4).map(|i| result_tensor[[i]]).sum();
+                assert!((sum - 1.0).abs() < 1e-10);
+                
+                // All probabilities should be positive
+                for i in 0..4 {
+                    assert!(result_tensor[[i]] > 0.0);
+                    assert!(result_tensor[[i]] < 1.0);
+                }
+                
+                // Largest logit (3.0) should have highest probability
+                let max_prob_idx = (0..4)
+                    .max_by(|&i, &j| result_tensor[[i]].partial_cmp(&result_tensor[[j]]).unwrap())
+                    .unwrap();
+                assert_eq!(max_prob_idx, 3); // Index of logit 3.0
+            }
+            _ => panic!("Expected tensor value from softmax operation"),
+        }
     }
 }

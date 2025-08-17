@@ -103,6 +103,11 @@ impl StandardLibrary {
         self.register("Dot", tensor::dot);
         self.register("Transpose", tensor::transpose);
         self.register("Maximum", tensor::maximum);
+        
+        // Neural network activation functions
+        self.register("Sigmoid", tensor::sigmoid);
+        self.register("Tanh", tensor::tanh);
+        self.register("Softmax", tensor::softmax);
     }
 }
 
@@ -133,6 +138,11 @@ mod tests {
         assert!(stdlib.get_function("Dot").is_some());
         assert!(stdlib.get_function("Transpose").is_some());
         assert!(stdlib.get_function("Maximum").is_some());
+        
+        // Verify activation functions are registered
+        assert!(stdlib.get_function("Sigmoid").is_some());
+        assert!(stdlib.get_function("Tanh").is_some());
+        assert!(stdlib.get_function("Softmax").is_some());
     }
 
     #[test]
@@ -141,7 +151,7 @@ mod tests {
         let function_count = stdlib.function_names().count();
 
         // Should have at least the core functions we're implementing
-        assert!(function_count >= 24); // 7 list + 4 string + 6 math + 3 rules + 8 tensor = 28 minimum
+        assert!(function_count >= 31); // 7 list + 4 string + 6 math + 3 rules + 11 tensor = 31 minimum
     }
 
     #[test]
