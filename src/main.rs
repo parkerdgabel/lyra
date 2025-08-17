@@ -283,6 +283,19 @@ fn format_value(value: &lyra::vm::Value) -> String {
                     tensor.shape(), 
                     tensor.len())
         }
+        lyra::vm::Value::Missing => "Missing[]".to_string(),
+        lyra::vm::Value::Series(series) => {
+            format!("Series[length: {}, dtype: {:?}]", series.length, series.dtype)
+        }
+        lyra::vm::Value::Table(table) => {
+            format!("Table[rows: {}, columns: {}]", table.length, table.columns.len())
+        }
+        lyra::vm::Value::Dataset(dataset) => {
+            format!("Dataset[{}]", format_value(&dataset.value))
+        }
+        lyra::vm::Value::Schema(schema) => {
+            format!("Schema[{:?}]", schema.schema_type)
+        }
     }
 }
 

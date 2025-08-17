@@ -14,6 +14,7 @@ pub mod list;
 pub mod math;
 pub mod rules;
 pub mod string;
+pub mod table;
 pub mod tensor;
 
 /// Standard library function signature
@@ -37,6 +38,7 @@ impl StandardLibrary {
         stdlib.register_string_functions();
         stdlib.register_math_functions();
         stdlib.register_rule_functions();
+        stdlib.register_table_functions();
         stdlib.register_tensor_functions();
 
         stdlib
@@ -89,6 +91,12 @@ impl StandardLibrary {
         self.register("ReplaceAll", rules::replace_all);
         self.register("Rule", rules::rule);
         self.register("RuleDelayed", rules::rule_delayed);
+    }
+
+    fn register_table_functions(&mut self) {
+        self.register("GroupBy", table::group_by);
+        self.register("Aggregate", table::aggregate);
+        self.register("Count", table::count);
     }
 
     fn register_tensor_functions(&mut self) {
