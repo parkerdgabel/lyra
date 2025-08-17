@@ -1322,8 +1322,10 @@ pub fn table(args: &[Value]) -> VmResult<Value> {
         };
         
         // Infer column type from data
-        let dtype = ForeignSeries::infer_type(&column_values);
-        let foreign_series = ForeignSeries::new(column_values, dtype);
+        let foreign_series = ForeignSeries::infer(column_values).map_err(|_| VmError::TypeError {
+            expected: "valid series data".to_string(),
+            actual: "invalid column data".to_string(),
+        })?;
         foreign_columns.insert(column_name, foreign_series);
     }
     
@@ -1391,4 +1393,143 @@ pub fn empty_table(args: &[Value]) -> VmResult<Value> {
     
     let foreign_table = ForeignTable::new();
     Ok(Value::LyObj(LyObj::new(Box::new(foreign_table))))
+}
+
+// ============================================================================
+// Foreign Series Constructor Functions
+// ============================================================================
+
+/// Create a Foreign Series from a list of values
+/// Usage: Series[{1, 2, 3, 4}]
+pub fn series(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (data_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let data = match &args[0] {
+        Value::List(values) => values.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "list for series data".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_series = ForeignSeries::infer(data)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
+}
+
+/// Create a range series from start to end (exclusive)
+/// Usage: Range[start, end]
+pub fn range(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (start, end)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let (start, end) = match (&args[0], &args[1]) {
+        (Value::Integer(s), Value::Integer(e)) => (*s, *e),
+        _ => return Err(VmError::TypeError {
+            expected: "two integers (start, end)".to_string(),
+            actual: format!("arguments of types: {:?}, {:?}", args[0], args[1]),
+        }),
+    };
+    
+    let foreign_series = ForeignSeries::range(start, end)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
+}
+
+/// Create a series filled with zeros
+/// Usage: Zeros[n]
+pub fn zeros(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (length)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let length = match &args[0] {
+        Value::Integer(n) => {
+            if *n < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer".to_string(),
+                    actual: format!("negative integer: {}", n),
+                });
+            }
+            *n as usize
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "integer for series length".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_series = ForeignSeries::zeros(length)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
+}
+
+/// Create a series filled with ones
+/// Usage: Ones[n]
+pub fn ones(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (length)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let length = match &args[0] {
+        Value::Integer(n) => {
+            if *n < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer".to_string(),
+                    actual: format!("negative integer: {}", n),
+                });
+            }
+            *n as usize
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "integer for series length".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_series = ForeignSeries::ones(length)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
+}
+
+/// Create a series filled with a constant value
+/// Usage: ConstantSeries[value, n]
+pub fn constant_series(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (value, length)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let value = args[0].clone();
+    let length = match &args[1] {
+        Value::Integer(n) => {
+            if *n < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer".to_string(),
+                    actual: format!("negative integer: {}", n),
+                });
+            }
+            *n as usize
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "integer for series length".to_string(),
+            actual: format!("second argument of type: {:?}", args[1]),
+        }),
+    };
+    
+    let foreign_series = ForeignSeries::filled(value, length)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
 }

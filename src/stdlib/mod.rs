@@ -104,6 +104,13 @@ impl StandardLibrary {
         self.register("Table", table::table);
         self.register("TableFromRows", table::table_from_rows);
         self.register("EmptyTable", table::empty_table);
+        
+        // Foreign series constructors
+        self.register("Series", table::series);
+        self.register("Range", table::range);
+        self.register("Zeros", table::zeros);
+        self.register("Ones", table::ones);
+        self.register("ConstantSeries", table::constant_series);
     }
 
     fn register_tensor_functions(&mut self) {

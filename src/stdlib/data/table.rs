@@ -1,108 +1,10 @@
 use crate::{
     foreign::{Foreign, ForeignError, LyObj},
+    stdlib::data::ForeignSeries,
     vm::{Value, Series, SeriesType, VmError, VmResult},
 };
 use std::any::Any;
 use std::collections::HashMap;
-use std::sync::Arc;
-
-/// Thread-safe series wrapper for Foreign objects
-/// Uses Arc instead of Rc to be Send + Sync
-#[derive(Debug, Clone, PartialEq)]
-pub struct ForeignSeries {
-    pub data: Arc<Vec<Value>>,
-    pub dtype: SeriesType,
-    pub length: usize,
-}
-
-impl ForeignSeries {
-    /// Create a new ForeignSeries from a Vec<Value>
-    pub fn new(data: Vec<Value>, dtype: SeriesType) -> Self {
-        let length = data.len();
-        ForeignSeries {
-            data: Arc::new(data),
-            dtype,
-            length,
-        }
-    }
-    
-    /// Infer the series type from a vector of values
-    pub fn infer_type(values: &[Value]) -> SeriesType {
-        if values.is_empty() {
-            return SeriesType::String; // Default to string for empty
-        }
-        
-        // Check if all values are the same type
-        let first_type = match &values[0] {
-            Value::Integer(_) => SeriesType::Int64,
-            Value::Real(_) => SeriesType::Float64,
-            Value::String(_) => SeriesType::String,
-            Value::Boolean(_) => SeriesType::Boolean,
-            _ => SeriesType::String, // Default for complex types
-        };
-        
-        // Verify all values match the inferred type
-        for value in values {
-            let value_type = match value {
-                Value::Integer(_) => SeriesType::Int64,
-                Value::Real(_) => SeriesType::Float64,
-                Value::String(_) => SeriesType::String,
-                Value::Boolean(_) => SeriesType::Boolean,
-                _ => SeriesType::String,
-            };
-            
-            if value_type != first_type {
-                return SeriesType::String; // Fall back to string for mixed types
-            }
-        }
-        
-        first_type
-    }
-    
-    /// Create ForeignSeries from existing Series (converts Rc to Arc)
-    pub fn from_series(series: &Series) -> Self {
-        ForeignSeries {
-            data: Arc::new((*series.data).clone()),
-            dtype: series.dtype.clone(),
-            length: series.length,
-        }
-    }
-    
-    /// Convert back to regular Series (Arc to Rc)
-    pub fn to_series(&self) -> Series {
-        use std::rc::Rc;
-        Series {
-            data: Rc::new((*self.data).clone()),
-            dtype: self.dtype.clone(),
-            length: self.length,
-        }
-    }
-    
-    /// Get a value at index
-    pub fn get(&self, index: usize) -> VmResult<&Value> {
-        if index >= self.length {
-            return Err(VmError::IndexError {
-                index: index as i64,
-                length: self.length,
-            });
-        }
-        Ok(&self.data[index])
-    }
-    
-    /// Slice the series
-    pub fn slice(&self, start: usize, end: usize) -> VmResult<Self> {
-        if start > end || end > self.length {
-            return Err(VmError::IndexError {
-                index: end as i64,
-                length: self.length,
-            });
-        }
-        Ok(ForeignSeries::new(
-            self.data[start..end].to_vec(),
-            self.dtype.clone(),
-        ))
-    }
-}
 
 /// Foreign Table implementation that replaces Value::Table
 /// This struct mirrors the existing Table but is Send + Sync for Foreign objects
@@ -176,8 +78,10 @@ impl ForeignTable {
             }
             
             // Infer column type from data
-            let dtype = ForeignSeries::infer_type(&column_data);
-            let series = ForeignSeries::new(column_data, dtype);
+            let series = ForeignSeries::infer(column_data).map_err(|_| VmError::TypeError {
+                expected: "valid series data".to_string(),
+                actual: "invalid column data".to_string(),
+            })?;
             columns.insert(column_name, series);
         }
         
