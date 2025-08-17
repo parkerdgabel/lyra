@@ -1,4 +1,5 @@
 use crate::bytecode::{Instruction, OpCode};
+use crate::stdlib::StandardLibrary;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -61,6 +62,8 @@ pub struct VirtualMachine {
     pub code: Vec<Instruction>,
     /// Maximum call stack depth
     pub max_call_depth: usize,
+    /// Standard library functions
+    pub stdlib: StandardLibrary,
 }
 
 impl VirtualMachine {
@@ -74,6 +77,7 @@ impl VirtualMachine {
             symbols: HashMap::new(),
             code: Vec::new(),
             max_call_depth: 1000,
+            stdlib: StandardLibrary::new(),
         }
     }
 
@@ -231,8 +235,37 @@ impl VirtualMachine {
                 }
             }
             OpCode::Call => {
-                // For now, just a placeholder
-                return Err(VmError::NotCallable);
+                let arg_count = instruction.operand as usize;
+                
+                // Pop function name from stack
+                let function_name = match self.pop()? {
+                    Value::Function(name) => name,
+                    Value::Symbol(name) => name,
+                    other => return Err(VmError::TypeError {
+                        expected: "Function or Symbol".to_string(),
+                        actual: format!("{:?}", other),
+                    }),
+                };
+                
+                // Pop arguments from stack (in reverse order)
+                let mut args = Vec::with_capacity(arg_count);
+                for _ in 0..arg_count {
+                    args.push(self.pop()?);
+                }
+                args.reverse(); // Arguments were pushed in reverse order
+                
+                // Try to call stdlib function
+                if let Some(func) = self.stdlib.get_function(&function_name) {
+                    let result = func(&args)?;
+                    self.push(result);
+                } else {
+                    return Err(VmError::TypeError {
+                        expected: format!("known function, got: {}", function_name),
+                        actual: "unknown function".to_string(),
+                    });
+                }
+                
+                self.ip += 1;
             }
             OpCode::Return => {
                 if let Some(frame) = self.call_stack.pop() {

@@ -1,6 +1,7 @@
 use crate::{
     ast::{Expr, Number},
     bytecode::{Instruction, OpCode},
+    stdlib::StandardLibrary,
     vm::{Value, VirtualMachine},
 };
 use std::collections::HashMap;
@@ -95,6 +96,7 @@ impl Default for CompilerContext {
 #[derive(Debug)]
 pub struct Compiler {
     pub context: CompilerContext,
+    pub stdlib: StandardLibrary,
 }
 
 impl Compiler {
@@ -102,6 +104,7 @@ impl Compiler {
     pub fn new() -> Self {
         Compiler {
             context: CompilerContext::new(),
+            stdlib: StandardLibrary::new(),
         }
     }
 
@@ -129,6 +132,37 @@ impl Compiler {
             Expr::Symbol(sym) => {
                 let symbol_index = self.context.add_symbol(sym.name.clone());
                 self.context.emit(OpCode::LoadSymbol, symbol_index as u32)?;
+            }
+            Expr::List(elements) => {
+                // Compile each element and create a list
+                let mut list_values = Vec::new();
+                for element in elements {
+                    // For now, we'll evaluate each element and add to list
+                    // This is a simplified approach - a full implementation would 
+                    // handle this more efficiently at runtime
+                    match element {
+                        Expr::Number(Number::Integer(n)) => {
+                            list_values.push(Value::Integer(*n));
+                        }
+                        Expr::Number(Number::Real(f)) => {
+                            list_values.push(Value::Real(*f));
+                        }
+                        Expr::String(s) => {
+                            list_values.push(Value::String(s.clone()));
+                        }
+                        _ => {
+                            // For complex expressions, we'd need to compile them and evaluate at runtime
+                            // For now, just put the list in the constant pool
+                            return Err(CompilerError::UnsupportedExpression(
+                                format!("Complex list element: {:?}", element)
+                            ));
+                        }
+                    }
+                }
+                
+                // Add the list to the constant pool
+                let const_index = self.context.add_constant(Value::List(list_values))?;
+                self.context.emit(OpCode::LoadConst, const_index as u32)?;
             }
             Expr::Function { head, args } => {
                 self.compile_function_call(head, args)?;
@@ -214,12 +248,27 @@ impl Compiler {
                     }
                 }
                 _ => {
-                    // For unknown functions, fall through to generic call
+                    // Check if this is a stdlib function
+                    if self.stdlib.get_function(&sym.name).is_some() {
+                        // Compile arguments first
+                        for arg in args {
+                            self.compile_expr(arg)?;
+                        }
+                        
+                        // Push function name
+                        let func_index = self.context.add_constant(Value::Function(sym.name.clone()))?;
+                        self.context.emit(OpCode::LoadConst, func_index as u32)?;
+                        
+                        // Call the function with argument count
+                        self.context.emit(OpCode::Call, args.len() as u32)?;
+                        return Ok(());
+                    }
+                    // For unknown functions, fall through to error
                 }
             }
         }
 
-        // Generic function call (not yet implemented)
+        // Unknown function
         Err(CompilerError::UnknownFunction(format!("{:?}", head)))
     }
 

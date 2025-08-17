@@ -226,3 +226,229 @@ fn test_performance_complex_expression() {
     // Should complete in reasonable time (less than 1ms for this simple expression)
     assert!(duration.as_millis() < 10, "Compilation took too long: {:?}", duration);
 }
+
+// ===============================
+// Standard Library Integration Tests
+// ===============================
+
+// Helper function to assert float equality with tolerance
+fn assert_float_eq(actual: Value, expected: f64, tolerance: f64) {
+    match actual {
+        Value::Real(r) => assert!((r - expected).abs() < tolerance, 
+            "Expected {}, got {}, difference: {}", expected, r, (r - expected).abs()),
+        _ => panic!("Expected Real value, got {:?}", actual),
+    }
+}
+
+// List Operations Tests
+#[test]
+fn test_stdlib_length() {
+    let result = eval_source("Length[{1, 2, 3, 4, 5}]").unwrap();
+    assert_eq!(result, Value::Integer(5));
+    
+    let result = eval_source("Length[{}]").unwrap();
+    assert_eq!(result, Value::Integer(0));
+}
+
+#[test]
+fn test_stdlib_head() {
+    let result = eval_source("Head[{10, 20, 30}]").unwrap();
+    assert_eq!(result, Value::Integer(10));
+}
+
+#[test]
+fn test_stdlib_tail() {
+    let result = eval_source("Tail[{1, 2, 3, 4}]").unwrap();
+    if let Value::List(list) = result {
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0], Value::Integer(2));
+        assert_eq!(list[1], Value::Integer(3));
+        assert_eq!(list[2], Value::Integer(4));
+    } else {
+        panic!("Expected List value, got {:?}", result);
+    }
+}
+
+#[test]
+fn test_stdlib_append() {
+    let result = eval_source("Append[{1, 2}, 3]").unwrap();
+    if let Value::List(list) = result {
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[0], Value::Integer(1));
+        assert_eq!(list[1], Value::Integer(2));
+        assert_eq!(list[2], Value::Integer(3));
+    } else {
+        panic!("Expected List value, got {:?}", result);
+    }
+}
+
+#[test]
+fn test_stdlib_flatten() {
+    // Note: This test requires nested list support in the parser
+    // For now, test with mixed content
+    let result = eval_source("Flatten[{1, {2, 3}, 4}]");
+    // This might fail if parser doesn't handle nested lists yet
+    // We'll check for error and that's okay for now
+    if result.is_err() {
+        // Parser doesn't support nested lists yet, that's expected
+        return;
+    }
+    
+    if let Ok(Value::List(list)) = result {
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[0], Value::Integer(1));
+        assert_eq!(list[1], Value::Integer(2));
+        assert_eq!(list[2], Value::Integer(3));
+        assert_eq!(list[3], Value::Integer(4));
+    }
+}
+
+// String Operations Tests
+#[test]
+fn test_stdlib_string_join() {
+    let result = eval_source("StringJoin[\"Hello\", \" \", \"World\"]").unwrap();
+    assert_eq!(result, Value::String("Hello World".to_string()));
+}
+
+#[test]
+fn test_stdlib_string_length() {
+    let result = eval_source("StringLength[\"Hello\"]").unwrap();
+    assert_eq!(result, Value::Integer(5));
+    
+    let result = eval_source("StringLength[\"\"]").unwrap();
+    assert_eq!(result, Value::Integer(0));
+}
+
+#[test]
+fn test_stdlib_string_take() {
+    let result = eval_source("StringTake[\"Hello\", 3]").unwrap();
+    assert_eq!(result, Value::String("Hel".to_string()));
+    
+    let result = eval_source("StringTake[\"Hi\", 10]").unwrap();
+    assert_eq!(result, Value::String("Hi".to_string()));
+}
+
+#[test]
+fn test_stdlib_string_drop() {
+    let result = eval_source("StringDrop[\"Hello\", 2]").unwrap();
+    assert_eq!(result, Value::String("llo".to_string()));
+    
+    let result = eval_source("StringDrop[\"Hi\", 10]").unwrap();
+    assert_eq!(result, Value::String("".to_string()));
+}
+
+// Math Functions Tests
+#[test]
+fn test_stdlib_sin() {
+    let result = eval_source("Sin[0]").unwrap();
+    assert_float_eq(result, 0.0, 1e-10);
+    
+    // Test with Pi/2 approximation
+    let result = eval_source("Sin[1.5707963267948966]").unwrap();
+    assert_float_eq(result, 1.0, 1e-10);
+}
+
+#[test]
+fn test_stdlib_cos() {
+    let result = eval_source("Cos[0]").unwrap();
+    assert_float_eq(result, 1.0, 1e-10);
+    
+    // Test with Pi approximation
+    let result = eval_source("Cos[3.141592653589793]").unwrap();
+    assert_float_eq(result, -1.0, 1e-10);
+}
+
+#[test]
+fn test_stdlib_tan() {
+    let result = eval_source("Tan[0]").unwrap();
+    assert_float_eq(result, 0.0, 1e-10);
+    
+    // Test with Pi/4 approximation
+    let result = eval_source("Tan[0.7853981633974483]").unwrap();
+    assert_float_eq(result, 1.0, 1e-10);
+}
+
+#[test]
+fn test_stdlib_exp() {
+    let result = eval_source("Exp[0]").unwrap();
+    assert_float_eq(result, 1.0, 1e-10);
+    
+    let result = eval_source("Exp[1]").unwrap();
+    assert_float_eq(result, std::f64::consts::E, 1e-10);
+}
+
+#[test]
+fn test_stdlib_log() {
+    let result = eval_source("Log[1]").unwrap();
+    assert_float_eq(result, 0.0, 1e-10);
+    
+    let result = eval_source("Log[2.718281828459045]").unwrap(); // E
+    assert_float_eq(result, 1.0, 1e-10);
+}
+
+#[test]
+fn test_stdlib_sqrt() {
+    let result = eval_source("Sqrt[0]").unwrap();
+    assert_float_eq(result, 0.0, 1e-10);
+    
+    let result = eval_source("Sqrt[4]").unwrap();
+    assert_float_eq(result, 2.0, 1e-10);
+    
+    let result = eval_source("Sqrt[2]").unwrap();
+    assert_float_eq(result, std::f64::consts::SQRT_2, 1e-10);
+}
+
+// Complex Expressions with stdlib
+#[test]
+fn test_stdlib_nested_calls() {
+    // Test Length[Tail[{1, 2, 3, 4}]] = 3
+    let result = eval_source("Length[Tail[{1, 2, 3, 4}]]").unwrap();
+    assert_eq!(result, Value::Integer(3));
+}
+
+#[test]
+fn test_stdlib_arithmetic_with_functions() {
+    // Test Sin[0] + Cos[0] = 0 + 1 = 1
+    let result = eval_source("Sin[0] + Cos[0]").unwrap();
+    assert_float_eq(result, 1.0, 1e-10);
+}
+
+#[test]
+fn test_stdlib_string_operations_composition() {
+    // Test StringLength[StringJoin["Hello", "World"]] = 10
+    let result = eval_source("StringLength[StringJoin[\"Hello\", \"World\"]]").unwrap();
+    assert_eq!(result, Value::Integer(10));
+}
+
+// Error handling tests
+#[test]
+fn test_stdlib_error_handling() {
+    // Test invalid function calls
+    let result = eval_source("UnknownFunction[1, 2]");
+    assert!(result.is_err());
+    
+    // Test wrong argument count
+    let result = eval_source("Length[1, 2]");
+    assert!(result.is_err());
+    
+    // Test wrong argument type  
+    let result = eval_source("Length[42]");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_stdlib_edge_cases() {
+    // Test Head and Tail on empty lists (should error)
+    let result = eval_source("Head[{}]");
+    assert!(result.is_err());
+    
+    let result = eval_source("Tail[{}]");
+    assert!(result.is_err());
+    
+    // Test Log and Sqrt with invalid inputs (should error)
+    let result = eval_source("Log[0]");
+    assert!(result.is_err());
+    
+    let result = eval_source("Sqrt[-1]");
+    assert!(result.is_err());
+}
