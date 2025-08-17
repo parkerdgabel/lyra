@@ -263,7 +263,31 @@ impl Compiler {
                         self.context.emit(OpCode::CALL, args.len() as u32)?;
                         return Ok(());
                     }
-                    // For unknown functions, fall through to error
+                    
+                    // For unknown functions, emit a method dispatch call
+                    // This allows the VM to decide at runtime whether to:
+                    // 1. Call obj.call_method(name, args) if first arg is LyObj
+                    // 2. Return UnknownFunction error otherwise
+                    if !args.is_empty() {
+                        // Compile all arguments
+                        for arg in args {
+                            self.compile_expr(arg)?;
+                        }
+
+                        // Push method name as Symbol for method dispatch
+                        let method_index = self
+                            .context
+                            .add_constant(Value::Symbol(sym.name.clone()))?;
+                        self.context.emit(OpCode::LDC, method_index as u32)?;
+
+                        // Use a special encoding for method dispatch calls
+                        // High bit set indicates potential method dispatch
+                        let method_dispatch_flag = 0x80000000;
+                        let call_operand = method_dispatch_flag | (args.len() as u32);
+                        self.context.emit(OpCode::CALL, call_operand)?;
+                        return Ok(());
+                    }
+                    // For unknown functions with no args, fall through to error
                 }
             }
         }

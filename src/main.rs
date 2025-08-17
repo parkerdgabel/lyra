@@ -296,6 +296,9 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::Schema(schema) => {
             format!("Schema[{:?}]", schema.schema_type)
         }
+        lyra::vm::Value::LyObj(obj) => {
+            format!("{}[...]", obj.type_name())
+        }
     }
 }
 

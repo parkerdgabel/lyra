@@ -1,4 +1,5 @@
 use crate::bytecode::{Instruction, OpCode};
+use crate::foreign::LyObj;
 use crate::stdlib::StandardLibrary;
 use crate::stdlib::tensor::{tensor_add, tensor_sub, tensor_mul, tensor_div, tensor_pow};
 use std::collections::HashMap;
@@ -1155,6 +1156,7 @@ pub enum Value {
     Table(Table),       // Columnar data structure
     Dataset(Dataset),   // Hierarchical data structure
     Schema(Schema),     // Type schema for validation
+    LyObj(LyObj),       // Foreign object wrapper for complex types
 }
 
 impl Eq for Value {}
@@ -1228,6 +1230,13 @@ impl std::hash::Hash for Value {
                 12u8.hash(state);
                 schema.schema_type.hash(state);
             },
+            Value::LyObj(obj) => {
+                13u8.hash(state);
+                // Hash type name and debug representation for now
+                // Foreign objects could implement custom hashing
+                obj.type_name().hash(state);
+                format!("{:?}", obj).hash(state);
+            },
         }
     }
 }
@@ -1251,6 +1260,7 @@ impl PartialEq for Value {
             (Value::Table(a), Value::Table(b)) => a == b,
             (Value::Dataset(a), Value::Dataset(b)) => a == b,
             (Value::Schema(a), Value::Schema(b)) => a == b,
+            (Value::LyObj(a), Value::LyObj(b)) => a == b,
             _ => false,
         }
     }
@@ -1441,9 +1451,12 @@ impl VirtualMachine {
                 }
             }
             OpCode::CALL => {
-                let arg_count = instruction.operand as usize;
+                let operand = instruction.operand;
+                let method_dispatch_flag = 0x80000000;
+                let is_method_dispatch = (operand & method_dispatch_flag) != 0;
+                let arg_count = (operand & 0x7FFFFFFF) as usize; // Clear the flag bit
 
-                // Pop function name from stack
+                // Pop function/method name from stack
                 let function_name = match self.pop()? {
                     Value::Function(name) => name,
                     Value::Symbol(name) => name,
@@ -1462,7 +1475,31 @@ impl VirtualMachine {
                 }
                 args.reverse(); // Arguments were pushed in reverse order
 
-                // Try to call stdlib function
+                // Handle method dispatch if flag is set and first argument is LyObj
+                if is_method_dispatch && !args.is_empty() {
+                    if let Value::LyObj(obj) = &args[0] {
+                        // This is a method call: method_name[obj, arg1, arg2, ...]
+                        // Call obj.call_method(method_name, &[arg1, arg2, ...])
+                        let method_args = &args[1..]; // Skip the object itself
+                        
+                        match obj.call_method(&function_name, method_args) {
+                            Ok(result) => {
+                                self.push(result);
+                            }
+                            Err(foreign_err) => {
+                                return Err(VmError::TypeError {
+                                    expected: "valid method call".to_string(),
+                                    actual: format!("Foreign method error: {}", foreign_err),
+                                });
+                            }
+                        }
+                        
+                        self.ip += 1;
+                        return Ok(());
+                    }
+                }
+
+                // Regular function call (stdlib or built-in)
                 if let Some(func) = self.stdlib.get_function(&function_name) {
                     let result = func(&args)?;
                     self.push(result);
