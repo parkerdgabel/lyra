@@ -1,6 +1,6 @@
 use crate::{
     foreign::LyObj,
-    stdlib::data::{ForeignTable, ForeignSeries},
+    stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor},
     vm::{Value, Table, Series, SeriesType, VmError, VmResult},
 };
 use std::collections::HashMap;
@@ -1532,4 +1532,206 @@ pub fn constant_series(args: &[Value]) -> VmResult<Value> {
     
     let foreign_series = ForeignSeries::filled(value, length)?;
     Ok(Value::LyObj(LyObj::new(Box::new(foreign_series))))
+}
+
+// ============================================================================
+// Foreign Tensor Constructor Functions
+// ============================================================================
+
+/// Create a Foreign Tensor from nested lists
+/// Usage: Tensor[{{1, 2}, {3, 4}}] or Tensor[{1, 2, 3}]
+pub fn tensor(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (data_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let data = args[0].clone();
+    let foreign_tensor = ForeignTensor::from_nested_list(data)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
+}
+
+/// Create a zero-filled tensor with given shape
+/// Usage: ZerosTensor[{2, 3}] or ZerosTensor[{5}]
+pub fn zeros_tensor(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (shape_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let shape = match &args[0] {
+        Value::List(shape_values) => {
+            let mut shape = Vec::new();
+            for val in shape_values {
+                match val {
+                    Value::Integer(dim) => {
+                        if *dim < 0 {
+                            return Err(VmError::TypeError {
+                                expected: "non-negative integer dimensions".to_string(),
+                                actual: format!("negative dimension: {}", dim),
+                            });
+                        }
+                        shape.push(*dim as usize);
+                    }
+                    _ => return Err(VmError::TypeError {
+                        expected: "list of integers for tensor shape".to_string(),
+                        actual: format!("non-integer in shape: {:?}", val),
+                    }),
+                }
+            }
+            shape
+        }
+        Value::Integer(single_dim) => {
+            if *single_dim < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer dimension".to_string(),
+                    actual: format!("negative dimension: {}", single_dim),
+                });
+            }
+            vec![*single_dim as usize]
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "list or integer for tensor shape".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_tensor = ForeignTensor::zeros(shape)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
+}
+
+/// Create a ones-filled tensor with given shape
+/// Usage: OnesTensor[{2, 3}] or OnesTensor[{5}]
+pub fn ones_tensor(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (shape_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let shape = match &args[0] {
+        Value::List(shape_values) => {
+            let mut shape = Vec::new();
+            for val in shape_values {
+                match val {
+                    Value::Integer(dim) => {
+                        if *dim < 0 {
+                            return Err(VmError::TypeError {
+                                expected: "non-negative integer dimensions".to_string(),
+                                actual: format!("negative dimension: {}", dim),
+                            });
+                        }
+                        shape.push(*dim as usize);
+                    }
+                    _ => return Err(VmError::TypeError {
+                        expected: "list of integers for tensor shape".to_string(),
+                        actual: format!("non-integer in shape: {:?}", val),
+                    }),
+                }
+            }
+            shape
+        }
+        Value::Integer(single_dim) => {
+            if *single_dim < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer dimension".to_string(),
+                    actual: format!("negative dimension: {}", single_dim),
+                });
+            }
+            vec![*single_dim as usize]
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "list or integer for tensor shape".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_tensor = ForeignTensor::ones(shape)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
+}
+
+/// Create an identity tensor (2D square matrix)
+/// Usage: EyeTensor[3]
+pub fn eye_tensor(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (size)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let size = match &args[0] {
+        Value::Integer(n) => {
+            if *n < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer".to_string(),
+                    actual: format!("negative integer: {}", n),
+                });
+            }
+            *n as usize
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "integer for identity matrix size".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_tensor = ForeignTensor::eye(size)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
+}
+
+/// Create a random tensor with given shape (uniform [0,1])
+/// Usage: RandomTensor[{2, 3}] or RandomTensor[{5}]
+pub fn random_tensor(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (shape_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let shape = match &args[0] {
+        Value::List(shape_values) => {
+            let mut shape = Vec::new();
+            for val in shape_values {
+                match val {
+                    Value::Integer(dim) => {
+                        if *dim < 0 {
+                            return Err(VmError::TypeError {
+                                expected: "non-negative integer dimensions".to_string(),
+                                actual: format!("negative dimension: {}", dim),
+                            });
+                        }
+                        shape.push(*dim as usize);
+                    }
+                    _ => return Err(VmError::TypeError {
+                        expected: "list of integers for tensor shape".to_string(),
+                        actual: format!("non-integer in shape: {:?}", val),
+                    }),
+                }
+            }
+            shape
+        }
+        Value::Integer(single_dim) => {
+            if *single_dim < 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-negative integer dimension".to_string(),
+                    actual: format!("negative dimension: {}", single_dim),
+                });
+            }
+            vec![*single_dim as usize]
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "list or integer for tensor shape".to_string(),
+            actual: format!("argument of type: {:?}", args[0]),
+        }),
+    };
+    
+    let foreign_tensor = ForeignTensor::random(shape)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
 }

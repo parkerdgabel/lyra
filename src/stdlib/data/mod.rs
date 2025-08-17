@@ -6,6 +6,8 @@
 
 pub mod series;
 pub mod table;
+pub mod tensor;
 
 pub use series::ForeignSeries;
 pub use table::ForeignTable;
+pub use tensor::ForeignTensor;

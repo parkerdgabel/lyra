@@ -111,6 +111,13 @@ impl StandardLibrary {
         self.register("Zeros", table::zeros);
         self.register("Ones", table::ones);
         self.register("ConstantSeries", table::constant_series);
+        
+        // Foreign tensor constructors
+        self.register("Tensor", table::tensor);
+        self.register("ZerosTensor", table::zeros_tensor);
+        self.register("OnesTensor", table::ones_tensor);
+        self.register("EyeTensor", table::eye_tensor);
+        self.register("RandomTensor", table::random_tensor);
     }
 
     fn register_tensor_functions(&mut self) {
