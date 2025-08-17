@@ -10,6 +10,7 @@
 use crate::vm::{Value, VmResult};
 use std::collections::HashMap;
 
+pub mod data;
 pub mod list;
 pub mod math;
 pub mod rules;
@@ -94,9 +95,15 @@ impl StandardLibrary {
     }
 
     fn register_table_functions(&mut self) {
+        // Legacy table functions  
         self.register("GroupBy", table::group_by);
         self.register("Aggregate", table::aggregate);
         self.register("Count", table::count);
+        
+        // Foreign table constructors
+        self.register("Table", table::table);
+        self.register("TableFromRows", table::table_from_rows);
+        self.register("EmptyTable", table::empty_table);
     }
 
     fn register_tensor_functions(&mut self) {

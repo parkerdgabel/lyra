@@ -1,4 +1,8 @@
-use crate::vm::{Value, Table, Series, VmError, VmResult};
+use crate::{
+    foreign::LyObj,
+    stdlib::data::{ForeignTable, ForeignSeries},
+    vm::{Value, Table, Series, SeriesType, VmError, VmResult},
+};
 use std::collections::HashMap;
 
 /// GroupBy - handles grouped operations on tables
@@ -1267,4 +1271,124 @@ mod tests {
         let result = inner_join(left_table, right_table, vec![("nonexistent".to_string(), "id".to_string())]);
         assert!(result.is_err());
     }
+}
+
+// ============================================================================
+// Foreign Table Constructor Functions
+// ============================================================================
+
+/// Create a Foreign Table from column vectors
+/// Usage: Table[{col1, col2, ...}, {name1, name2, ...}]
+pub fn table(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (column_data_list, column_names_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let (column_data, column_names) = match (&args[0], &args[1]) {
+        (Value::List(data_list), Value::List(names_list)) => (data_list, names_list),
+        _ => return Err(VmError::TypeError {
+            expected: "two lists (column data and column names)".to_string(),
+            actual: format!("arguments of types: {:?}, {:?}", args[0], args[1]),
+        }),
+    };
+    
+    if column_data.len() != column_names.len() {
+        return Err(VmError::TypeError {
+            expected: format!("{} column names for {} columns", column_data.len(), column_data.len()),
+            actual: format!("{} column names provided", column_names.len()),
+        });
+    }
+    
+    let mut foreign_columns = HashMap::new();
+    
+    for (data, name) in column_data.iter().zip(column_names.iter()) {
+        let column_name = match name {
+            Value::String(s) | Value::Symbol(s) => s.clone(),
+            _ => return Err(VmError::TypeError {
+                expected: "string or symbol for column name".to_string(),
+                actual: format!("column name of type: {:?}", name),
+            }),
+        };
+        
+        let column_values = match data {
+            Value::List(values) => values.clone(),
+            _ => return Err(VmError::TypeError {
+                expected: "list for column data".to_string(),
+                actual: format!("column data of type: {:?}", data),
+            }),
+        };
+        
+        // Infer column type from data
+        let dtype = ForeignSeries::infer_type(&column_values);
+        let foreign_series = ForeignSeries::new(column_values, dtype);
+        foreign_columns.insert(column_name, foreign_series);
+    }
+    
+    let foreign_table = ForeignTable::from_columns(foreign_columns)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_table))))
+}
+
+/// Create a Foreign Table from rows
+/// Usage: TableFromRows[{row1, row2, ...}, {col1, col2, ...}]
+pub fn table_from_rows(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (rows_list, column_names_list)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let (rows_list, column_names) = match (&args[0], &args[1]) {
+        (Value::List(rows), Value::List(names)) => (rows, names),
+        _ => return Err(VmError::TypeError {
+            expected: "two lists (rows and column names)".to_string(),
+            actual: format!("arguments of types: {:?}, {:?}", args[0], args[1]),
+        }),
+    };
+    
+    // Extract column names
+    let mut column_names_vec = Vec::new();
+    for name in column_names {
+        let column_name = match name {
+            Value::String(s) | Value::Symbol(s) => s.clone(),
+            _ => return Err(VmError::TypeError {
+                expected: "string or symbol for column name".to_string(),
+                actual: format!("column name of type: {:?}", name),
+            }),
+        };
+        column_names_vec.push(column_name);
+    }
+    
+    // Extract rows
+    let mut rows_vec = Vec::new();
+    for row in rows_list {
+        let row_values = match row {
+            Value::List(values) => values.clone(),
+            _ => return Err(VmError::TypeError {
+                expected: "list for row data".to_string(),
+                actual: format!("row data of type: {:?}", row),
+            }),
+        };
+        rows_vec.push(row_values);
+    }
+    
+    let foreign_table = ForeignTable::from_rows(column_names_vec, rows_vec)?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_table))))
+}
+
+/// Create an empty Foreign Table
+/// Usage: EmptyTable[]
+pub fn empty_table(args: &[Value]) -> VmResult<Value> {
+    if !args.is_empty() {
+        return Err(VmError::TypeError {
+            expected: "0 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let foreign_table = ForeignTable::new();
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_table))))
 }
