@@ -156,7 +156,7 @@ impl ForeignSeries {
             (Value::Integer(_), SeriesType::Int64) => true,
             (Value::Real(_), SeriesType::Float64) => true,
             (Value::String(_), SeriesType::String) => true,
-            (Value::Boolean(_), SeriesType::Boolean) => true,
+            (Value::Boolean(_), SeriesType::Bool) => true,
             (Value::Missing, _) => true, // Missing is compatible with all types
             _ => false,
         }
@@ -168,7 +168,7 @@ impl ForeignSeries {
             Value::Integer(_) => SeriesType::Int64,
             Value::Real(_) => SeriesType::Float64,
             Value::String(_) => SeriesType::String,
-            Value::Boolean(_) => SeriesType::Boolean,
+            Value::Boolean(_) => SeriesType::Bool,
             Value::Missing => SeriesType::String, // Default for Missing
             _ => SeriesType::String, // Default for complex types
         }
@@ -241,7 +241,7 @@ impl Foreign for ForeignSeries {
                     SeriesType::Int64 => "Integer",
                     SeriesType::Float64 => "Real",
                     SeriesType::String => "String",
-                    SeriesType::Boolean => "Boolean",
+                    SeriesType::Bool => "Boolean",
                 };
                 Ok(Value::String(type_name.to_string()))
             }

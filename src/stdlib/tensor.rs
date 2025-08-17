@@ -89,9 +89,31 @@
 //! - Division by zero protection
 //! - Clear, actionable error messages
 
-use crate::vm::{Value, VmError, VmResult};
+use crate::{
+    foreign::{Foreign, LyObj},
+    stdlib::data::ForeignTensor,
+    vm::{Value, VmError, VmResult},
+};
 use ndarray::{ArrayD, IxDyn};
-use rand::Rng;
+
+/// Helper function to broadcast a scalar to match a tensor's shape
+fn broadcast_scalar_to_tensor(scalar: f64, tensor: &ArrayD<f64>) -> ArrayD<f64> {
+    ArrayD::from_elem(tensor.raw_dim(), scalar)
+}
+
+/// Helper function to broadcast two tensors to compatible shapes for element-wise operations
+fn broadcast_tensors(a: &ArrayD<f64>, b: &ArrayD<f64>) -> VmResult<(ArrayD<f64>, ArrayD<f64>)> {
+    // For now, we'll require exact shape matching
+    // TODO: Implement full NumPy-style broadcasting rules
+    if a.shape() == b.shape() {
+        Ok((a.clone(), b.clone()))
+    } else {
+        Err(VmError::TypeError {
+            expected: format!("Tensors with compatible shapes for broadcasting"),
+            actual: format!("shapes {:?} and {:?}", a.shape(), b.shape()),
+        })
+    }
+}
 
 /// Create an array (tensor) from nested lists with automatic shape inference.
 ///
@@ -125,85 +147,9 @@ pub fn array(args: &[Value]) -> VmResult<Value> {
         });
     }
 
-    match &args[0] {
-        Value::List(list) => {
-            // Convert nested list structure to tensor
-            let (shape, data) = extract_shape_and_data(list)?;
-            let tensor = ArrayD::from_shape_vec(IxDyn(&shape), data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            Ok(Value::Tensor(tensor))
-        }
-        _ => Err(VmError::TypeError {
-            expected: "List".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
-    }
-}
-
-/// Helper function to extract shape and flattened data from nested lists
-fn extract_shape_and_data(list: &[Value]) -> VmResult<(Vec<usize>, Vec<f64>)> {
-    if list.is_empty() {
-        return Ok((vec![0], vec![]));
-    }
-
-    // Determine if this is a flat list of numbers or nested lists
-    let first_element = &list[0];
-    match first_element {
-        Value::Integer(_) | Value::Real(_) => {
-            // Flat list of numbers -> 1D tensor
-            let mut data = Vec::new();
-            for value in list {
-                match value {
-                    Value::Integer(n) => data.push(*n as f64),
-                    Value::Real(r) => data.push(*r),
-                    _ => return Err(VmError::TypeError {
-                        expected: "numeric values".to_string(),
-                        actual: format!("mixed types in list: {:?}", value),
-                    }),
-                }
-            }
-            Ok((vec![list.len()], data))
-        }
-        Value::List(inner_list) => {
-            // Nested lists -> multi-dimensional tensor
-            let mut all_data = Vec::new();
-            let inner_len = inner_list.len();
-            
-            // Verify all sublists have the same length
-            for value in list {
-                match value {
-                    Value::List(sublist) => {
-                        if sublist.len() != inner_len {
-                            return Err(VmError::TypeError {
-                                expected: "consistent sublist lengths".to_string(),
-                                actual: format!("inconsistent lengths: {} vs {}", inner_len, sublist.len()),
-                            });
-                        }
-                        let (_, mut subdata) = extract_shape_and_data(sublist)?;
-                        all_data.append(&mut subdata);
-                    }
-                    _ => return Err(VmError::TypeError {
-                        expected: "nested lists".to_string(),
-                        actual: format!("mixed types: {:?}", value),
-                    }),
-                }
-            }
-            
-            // Build shape: outer length + inner shape
-            let (inner_shape, _) = extract_shape_and_data(inner_list)?;
-            let mut shape = vec![list.len()];
-            shape.extend(inner_shape);
-            
-            Ok((shape, all_data))
-        }
-        _ => Err(VmError::TypeError {
-            expected: "numeric values or nested lists".to_string(),
-            actual: format!("unsupported type: {:?}", first_element),
-        }),
-    }
+    // Use ForeignTensor::from_nested_list for tensor creation
+    let foreign_tensor = ForeignTensor::from_nested_list(args[0].clone())?;
+    Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
 }
 
 /// Get the dimensions (shape) of a tensor.
@@ -237,12 +183,20 @@ pub fn array_dimensions(args: &[Value]) -> VmResult<Value> {
     }
 
     match &args[0] {
-        Value::Tensor(tensor) => {
-            let dims: Vec<Value> = tensor.shape()
-                .iter()
-                .map(|&dim| Value::Integer(dim as i64))
-                .collect();
-            Ok(Value::List(dims))
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                // Use Foreign method dispatch for Dimensions
+                tensor.call_method("Dimensions", &[])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor dimensions".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
         }
         _ => Err(VmError::TypeError {
             expected: "Tensor".to_string(),
@@ -262,7 +216,21 @@ pub fn array_rank(args: &[Value]) -> VmResult<Value> {
     }
 
     match &args[0] {
-        Value::Tensor(tensor) => Ok(Value::Integer(tensor.ndim() as i64)),
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                // Use Foreign method dispatch for Rank
+                tensor.call_method("Rank", &[])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor rank".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
+        }
         _ => Err(VmError::TypeError {
             expected: "Tensor".to_string(),
             actual: format!("{:?}", args[0]),
@@ -280,59 +248,27 @@ pub fn array_reshape(args: &[Value]) -> VmResult<Value> {
         });
     }
 
-    let tensor = match &args[0] {
-        Value::Tensor(t) => t,
-        _ => return Err(VmError::TypeError {
+    match &args[0] {
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                // Use Foreign method dispatch for Reshape
+                tensor.call_method("Reshape", &[args[1].clone()])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor reshape".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
+        }
+        _ => Err(VmError::TypeError {
             expected: "Tensor".to_string(),
             actual: format!("{:?}", args[0]),
         }),
-    };
-
-    let new_shape = match &args[1] {
-        Value::List(dims) => {
-            let mut shape = Vec::new();
-            for dim in dims {
-                match dim {
-                    Value::Integer(n) => {
-                        if *n < 0 {
-                            return Err(VmError::TypeError {
-                                expected: "positive dimension".to_string(),
-                                actual: format!("negative dimension: {}", n),
-                            });
-                        }
-                        shape.push(*n as usize);
-                    }
-                    _ => return Err(VmError::TypeError {
-                        expected: "integer dimensions".to_string(),
-                        actual: format!("non-integer dimension: {:?}", dim),
-                    }),
-                }
-            }
-            shape
-        }
-        _ => return Err(VmError::TypeError {
-            expected: "List of dimensions".to_string(),
-            actual: format!("{:?}", args[1]),
-        }),
-    };
-
-    // Verify the total number of elements matches
-    let old_size = tensor.len();
-    let new_size: usize = new_shape.iter().product();
-    if old_size != new_size {
-        return Err(VmError::TypeError {
-            expected: format!("shape with {} elements", old_size),
-            actual: format!("shape with {} elements", new_size),
-        });
     }
-
-    let reshaped = tensor.clone().into_shape_with_order(IxDyn(&new_shape))
-        .map_err(|e| VmError::TypeError {
-            expected: "valid reshape operation".to_string(),
-            actual: format!("ndarray error: {}", e),
-        })?;
-
-    Ok(Value::Tensor(reshaped))
 }
 
 /// Flatten a tensor to a 1D array
@@ -346,13 +282,20 @@ pub fn array_flatten(args: &[Value]) -> VmResult<Value> {
     }
 
     match &args[0] {
-        Value::Tensor(tensor) => {
-            let flattened = tensor.clone().into_shape_with_order(IxDyn(&[tensor.len()]))
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid flatten operation".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            Ok(Value::Tensor(flattened))
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                // Use Foreign method dispatch for Flatten
+                tensor.call_method("Flatten", &[])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor flatten".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
         }
         _ => Err(VmError::TypeError {
             expected: "Tensor".to_string(),
@@ -693,145 +636,26 @@ pub fn dot(args: &[Value]) -> VmResult<Value> {
         });
     }
     
-    // Extract tensor arguments
-    let (tensor_a, tensor_b) = match (&args[0], &args[1]) {
-        (Value::Tensor(a), Value::Tensor(b)) => (a, b),
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Tensor and Tensor".to_string(),
-                actual: format!("{:?} and {:?}", args[0], args[1]),
-            });
+    // Use Foreign method dispatch for Dot operation
+    match &args[0] {
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                tensor.call_method("Dot", &[args[1].clone()])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor dot product".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
         }
-    };
-    
-    match (tensor_a.ndim(), tensor_b.ndim()) {
-        // Case 1: Vector-Vector dot product (1D x 1D -> scalar)
-        (1, 1) => {
-            if tensor_a.shape() != tensor_b.shape() {
-                return Err(VmError::TypeError {
-                    expected: format!("compatible shapes"),
-                    actual: format!("shapes {:?} vs {:?}", tensor_a.shape(), tensor_b.shape()),
-                });
-            }
-            
-            let mut result = 0.0;
-            for i in 0..tensor_a.len() {
-                result += tensor_a[[i]] * tensor_b[[i]];
-            }
-            Ok(Value::Real(result))
-        },
-        
-        // Case 2: Matrix-Vector multiplication (2D x 1D -> 1D)
-        (2, 1) => {
-            let a_shape = tensor_a.shape();
-            let b_shape = tensor_b.shape();
-            
-            // Check compatible shapes: matrix columns must match vector length
-            if a_shape[1] != b_shape[0] {
-                return Err(VmError::TypeError {
-                    expected: format!("matrix columns ({}) to match vector length ({})", a_shape[1], b_shape[0]),
-                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
-                });
-            }
-            
-            let rows = a_shape[0];
-            let cols = a_shape[1];
-            let mut result_data = vec![0.0; rows];
-            
-            // Compute matrix-vector multiplication: result[i] = sum(matrix[i,j] * vector[j])
-            for i in 0..rows {
-                for j in 0..cols {
-                    result_data[i] += tensor_a[[i, j]] * tensor_b[[j]];
-                }
-            }
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[rows]), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-                
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 3: Vector-Matrix multiplication (1D x 2D -> 1D)
-        (1, 2) => {
-            let a_shape = tensor_a.shape();
-            let b_shape = tensor_b.shape();
-            
-            // Check compatible shapes: vector length must match matrix rows
-            if a_shape[0] != b_shape[0] {
-                return Err(VmError::TypeError {
-                    expected: format!("vector length ({}) to match matrix rows ({})", a_shape[0], b_shape[0]),
-                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
-                });
-            }
-            
-            let rows = b_shape[0];
-            let cols = b_shape[1];
-            let mut result_data = vec![0.0; cols];
-            
-            // Compute vector-matrix multiplication: result[j] = sum(vector[i] * matrix[i,j])
-            for j in 0..cols {
-                for i in 0..rows {
-                    result_data[j] += tensor_a[[i]] * tensor_b[[i, j]];
-                }
-            }
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[cols]), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-                
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 4: Matrix-Matrix multiplication (2D x 2D -> 2D)
-        (2, 2) => {
-            let a_shape = tensor_a.shape();
-            let b_shape = tensor_b.shape();
-            
-            // Check compatible shapes: matrix A columns must match matrix B rows
-            if a_shape[1] != b_shape[0] {
-                return Err(VmError::TypeError {
-                    expected: format!("matrix A columns ({}) to match matrix B rows ({})", a_shape[1], b_shape[0]),
-                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
-                });
-            }
-            
-            let m = a_shape[0]; // result rows
-            let n = b_shape[1]; // result columns  
-            let k = a_shape[1]; // shared dimension
-            let mut result_data = vec![0.0; m * n];
-            
-            // Compute matrix-matrix multiplication: C[i,j] = sum(A[i,k] * B[k,j])
-            for i in 0..m {
-                for j in 0..n {
-                    let mut sum = 0.0;
-                    for kk in 0..k {
-                        sum += tensor_a[[i, kk]] * tensor_b[[kk, j]];
-                    }
-                    result_data[i * n + j] = sum;
-                }
-            }
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[m, n]), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-                
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Unsupported cases
-        _ => {
-            Err(VmError::TypeError {
-                expected: "vector-vector, matrix-vector, vector-matrix, or matrix-matrix multiplication".to_string(),
-                actual: format!("{}D and {}D tensors", tensor_a.ndim(), tensor_b.ndim()),
-            })
-        }
+        _ => Err(VmError::TypeError {
+            expected: "Tensor".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
     }
 }
 
@@ -894,63 +718,26 @@ pub fn transpose(args: &[Value]) -> VmResult<Value> {
         });
     }
     
-    // Extract tensor argument
-    let tensor = match &args[0] {
-        Value::Tensor(t) => t,
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Tensor".to_string(),
-                actual: format!("{:?}", args[0]),
-            });
-        }
-    };
-    
-    match tensor.ndim() {
-        // Case 1: 1D vector -> convert to column vector [n] -> [n, 1]
-        1 => {
-            let len = tensor.shape()[0];
-            let data = tensor.as_slice().unwrap().to_vec();
-            
-            let column_vector = ArrayD::from_shape_vec(IxDyn(&[len, 1]), data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(column_vector))
-        },
-        
-        // Case 2: 2D matrix -> standard transpose [m, n] -> [n, m]
-        2 => {
-            let shape = tensor.shape();
-            let rows = shape[0];
-            let cols = shape[1];
-            
-            // Create transposed data: new[j, i] = original[i, j]
-            let mut transposed_data = vec![0.0; rows * cols];
-            for i in 0..rows {
-                for j in 0..cols {
-                    transposed_data[j * rows + i] = tensor[[i, j]];
-                }
+    // Use Foreign method dispatch for Transpose
+    match &args[0] {
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                tensor.call_method("Transpose", &[])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor transpose".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
             }
-            
-            // Create transposed tensor with swapped dimensions
-            let transposed_tensor = ArrayD::from_shape_vec(IxDyn(&[cols, rows]), transposed_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(transposed_tensor))
-        },
-        
-        // Unsupported cases (3D+ tensors)
-        _ => {
-            Err(VmError::TypeError {
-                expected: "1D vector or 2D matrix".to_string(),
-                actual: format!("{}D tensor", tensor.ndim()),
-            })
         }
+        _ => Err(VmError::TypeError {
+            expected: "Tensor".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
     }
 }
 
@@ -1025,197 +812,27 @@ pub fn maximum(args: &[Value]) -> VmResult<Value> {
         });
     }
     
-    match (&args[0], &args[1]) {
-        // Case 1: Tensor and Real
-        (Value::Tensor(tensor), Value::Real(scalar)) => {
-            // Apply element-wise maximum with scalar
-            let result_data: Vec<f64> = tensor
-                .as_slice()
-                .unwrap()
-                .iter()
-                .map(|&x| x.max(*scalar))
-                .collect();
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 2: Tensor and Integer
-        (Value::Tensor(tensor), Value::Integer(int_scalar)) => {
-            let scalar_val = *int_scalar as f64;
-            
-            // Apply element-wise maximum with scalar
-            let result_data: Vec<f64> = tensor
-                .as_slice()
-                .unwrap()
-                .iter()
-                .map(|&x| x.max(scalar_val))
-                .collect();
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 3: Real and Tensor (commutative)
-        (Value::Real(scalar), Value::Tensor(tensor)) => {
-            // Apply element-wise maximum with scalar
-            let result_data: Vec<f64> = tensor
-                .as_slice()
-                .unwrap()
-                .iter()
-                .map(|&x| scalar.max(x))
-                .collect();
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 4: Integer and Tensor (commutative)
-        (Value::Integer(int_scalar), Value::Tensor(tensor)) => {
-            let scalar_val = *int_scalar as f64;
-            
-            // Apply element-wise maximum with scalar
-            let result_data: Vec<f64> = tensor
-                .as_slice()
-                .unwrap()
-                .iter()
-                .map(|&x| scalar_val.max(x))
-                .collect();
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Case 5: Tensor and Tensor (with broadcasting)
-        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
-            // Use existing broadcasting logic
-            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
-            
-            // Apply element-wise maximum
-            let result_data: Vec<f64> = broadcast_a
-                .as_slice()
-                .unwrap()
-                .iter()
-                .zip(broadcast_b.as_slice().unwrap().iter())
-                .map(|(&a, &b)| a.max(b))
-                .collect();
-            
-            let result_tensor = ArrayD::from_shape_vec(IxDyn(broadcast_a.shape()), result_data)
-                .map_err(|e| VmError::TypeError {
-                    expected: "valid tensor shape".to_string(),
-                    actual: format!("ndarray error: {}", e),
-                })?;
-            
-            Ok(Value::Tensor(result_tensor))
-        },
-        
-        // Unsupported cases
-        _ => {
-            Err(VmError::TypeError {
-                expected: "Tensor and Scalar, or Tensor and Tensor".to_string(),
-                actual: format!("{:?} and {:?}", args[0], args[1]),
-            })
+    // Use Foreign method dispatch for Maximum
+    match &args[0] {
+        Value::LyObj(obj) => {
+            if let Some(tensor) = obj.downcast_ref::<ForeignTensor>() {
+                tensor.call_method("Maximum", &[args[1].clone()])
+                    .map_err(|e| VmError::TypeError {
+                        expected: "valid tensor maximum operation".to_string(),
+                        actual: format!("Foreign method error: {:?}", e),
+                    })
+            } else {
+                Err(VmError::TypeError {
+                    expected: "Tensor".to_string(),
+                    actual: "Non-tensor Foreign object".to_string(),
+                })
+            }
         }
+        _ => Err(VmError::TypeError {
+            expected: "Tensor".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
     }
-}
-
-/// Helper function to broadcast two tensors to compatible shapes
-/// Returns (broadcasted_a, broadcasted_b) or error if incompatible
-fn broadcast_tensors(a: &ArrayD<f64>, b: &ArrayD<f64>) -> VmResult<(ArrayD<f64>, ArrayD<f64>)> {
-    let a_shape = a.shape();
-    let b_shape = b.shape();
-    
-    // If shapes are identical, no broadcasting needed
-    if a_shape == b_shape {
-        return Ok((a.clone(), b.clone()));
-    }
-    
-    // Determine the output shape using numpy broadcasting rules
-    let max_ndim = a_shape.len().max(b_shape.len());
-    let mut output_shape = vec![1; max_ndim];
-    
-    // Work backwards from the trailing dimensions
-    for i in 0..max_ndim {
-        let a_dim = if i < a_shape.len() {
-            a_shape[a_shape.len() - 1 - i]
-        } else {
-            1
-        };
-        
-        let b_dim = if i < b_shape.len() {
-            b_shape[b_shape.len() - 1 - i]
-        } else {
-            1
-        };
-        
-        // Check if dimensions are compatible
-        if a_dim == b_dim {
-            output_shape[max_ndim - 1 - i] = a_dim;
-        } else if a_dim == 1 {
-            output_shape[max_ndim - 1 - i] = b_dim;
-        } else if b_dim == 1 {
-            output_shape[max_ndim - 1 - i] = a_dim;
-        } else {
-            return Err(VmError::TypeError {
-                expected: "broadcastable shapes".to_string(),
-                actual: format!("cannot broadcast shapes {:?} and {:?}", a_shape, b_shape),
-            });
-        }
-    }
-    
-    // Broadcast both tensors to the output shape
-    let a_broadcast = broadcast_tensor_to_shape(a, &output_shape)?;
-    let b_broadcast = broadcast_tensor_to_shape(b, &output_shape)?;
-    
-    Ok((a_broadcast, b_broadcast))
-}
-
-/// Helper function to broadcast a tensor to a specific shape
-fn broadcast_tensor_to_shape(tensor: &ArrayD<f64>, target_shape: &[usize]) -> VmResult<ArrayD<f64>> {
-    let current_shape = tensor.shape();
-    
-    // If already the right shape, return a clone
-    if current_shape == target_shape {
-        return Ok(tensor.clone());
-    }
-    
-    // Use ndarray's broadcast method
-    match tensor.broadcast(IxDyn(target_shape)) {
-        Some(broadcasted) => {
-            // Convert broadcasted view to owned array
-            Ok(broadcasted.to_owned())
-        }
-        None => Err(VmError::TypeError {
-            expected: "valid broadcasting operation".to_string(),
-            actual: format!("cannot broadcast shape {:?} to {:?}", current_shape, target_shape),
-        })
-    }
-}
-
-/// Helper function to broadcast a scalar to a tensor shape
-fn broadcast_scalar_to_tensor(scalar: f64, tensor: &ArrayD<f64>) -> ArrayD<f64> {
-    // Create a new tensor with the same shape as the input tensor, filled with the scalar value
-    ArrayD::from_elem(tensor.shape(), scalar)
 }
 
 /// Sigmoid activation function for neural networks.
