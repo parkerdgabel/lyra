@@ -25,3 +25,11 @@ pub enum Error {
     #[error("Type error: expected {expected}, got {actual}")]
     Type { expected: String, actual: String },
 }
+
+impl From<crate::compiler::CompilerError> for Error {
+    fn from(err: crate::compiler::CompilerError) -> Self {
+        Error::Compilation {
+            message: err.to_string(),
+        }
+    }
+}
