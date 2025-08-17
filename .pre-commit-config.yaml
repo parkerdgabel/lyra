@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.22.7
+    hooks:
+      - id: typos
+  - repo: local
+    hooks:
+      - id: lyra-fmt
+        name: lyra fmt
+        entry: cargo run -- fmt --all
+        language: system
+        pass_filenames: false
+      - id: lyra-lint
+        name: lyra lint
+        entry: cargo run -- lint
+        language: system
+        pass_filenames: false

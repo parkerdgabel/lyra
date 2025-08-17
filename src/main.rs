@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
 use lyra::{compiler::Compiler, parser::Parser as LyraParser, Result};
 use rustyline::{error::ReadlineError, DefaultEditor};
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, process::{Command, Stdio}};
+use walkdir::WalkDir;
 
 #[derive(Parser)]
 #[command(name = "lyra")]
@@ -22,6 +23,35 @@ enum Commands {
     Build { file: PathBuf },
     /// Dump intermediate representation
     DumpIr { file: PathBuf },
+
+    /// Format Lyra source files and Rust (optional)
+    Fmt {
+        /// Check mode: exit non-zero if any file would be reformatted
+        #[arg(long)]
+        check: bool,
+        /// Format Rust and common docs/configs too
+        #[arg(long)]
+        all: bool,
+        /// Limit to a path or file (defaults to repo root)
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
+
+    /// Run linters (clippy; extend later)
+    Lint {
+        /// Emit JSON report (placeholder wiring)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Run format check + lint (no writes)
+    Check,
+
+    /// Attempt autofixes where possible (clippy --fix)
+    Fix,
+
+    /// CI entrypoint: fmt --check, lint, tests
+    Ci,
 }
 
 fn main() -> Result<()> {
@@ -32,6 +62,14 @@ fn main() -> Result<()> {
         Commands::Run { file } => run_file(&file),
         Commands::Build { file } => build_file(&file),
         Commands::DumpIr { file } => dump_ir(&file),
+        Commands::Fmt { check, all, path } => fmt_cmd(check, all, path),
+        Commands::Lint { json } => lint_cmd(json),
+        Commands::Check => {
+            fmt_cmd(true, true, None)?;
+            lint_cmd(false)
+        }
+        Commands::Fix => fix_cmd(),
+        Commands::Ci => ci_cmd(),
     }
 }
 
@@ -324,4 +362,120 @@ fn show_examples() {
     println!("  Sin[Pi/4] + Cos[Pi/4]");
     println!("  Flatten[{{{{1, 2}}, 3}}, 4}}]");
     println!();
+}
+
+/// Helper function to run subprocesses
+fn run_cmd(name: &str, mut cmd: Command) -> Result<()> {
+    let status = cmd
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| lyra::Error::Runtime {
+            message: format!("failed to spawn {name}: {e}"),
+        })?;
+    if !status.success() {
+        return Err(lyra::Error::Runtime {
+            message: format!("{name} failed with {status}"),
+        });
+    }
+    Ok(())
+}
+
+/// Format Lyra source files and optionally Rust files
+fn fmt_cmd(check: bool, all: bool, path: Option<PathBuf>) -> Result<()> {
+    use std::io::Read;
+
+    // 1) Lyra files formatting (.ly, .lyra) — recurse from path or repo root
+    let root = path.unwrap_or_else(|| PathBuf::from("."));
+    let mut changed = 0usize;
+
+    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let p = entry.path();
+        let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if matches!(ext, "ly" | "lyra") {
+            let mut src = String::new();
+            fs::File::open(p)
+                .and_then(|mut f| f.read_to_string(&mut src))
+                .map_err(|e| lyra::Error::Runtime {
+                    message: format!("read {}: {e}", p.display()),
+                })?;
+            let out = lyra::format::format_str(&src, &lyra::format::FormatterConfig::default())
+                .map_err(|e| lyra::Error::Runtime {
+                    message: format!("format {}: {e}", p.display()),
+                })?;
+
+            if check {
+                if normalize_newlines(&out) != normalize_newlines(&src) {
+                    eprintln!("would reformat: {}", p.display());
+                    changed += 1;
+                }
+            } else if out != src {
+                fs::write(p, out).map_err(|e| lyra::Error::Runtime {
+                    message: format!("write {}: {e}", p.display()),
+                })?;
+            }
+        }
+    }
+
+    if check && changed > 0 {
+        return Err(lyra::Error::Runtime {
+            message: format!("{} file(s) would be reformatted", changed),
+        });
+    }
+
+    // 2) cargo fmt for Rust sources
+    let mut c = Command::new("cargo");
+    c.arg("fmt");
+    if check {
+        c.arg("--").arg("--check");
+    }
+    run_cmd("cargo fmt", c)?;
+
+    // 3) Optional doc/config formatters when --all (placeholder; wire later)
+    if all {
+        // e.g., taplo fmt, markdownlint, shfmt, prettier/biome, etc.
+    }
+
+    Ok(())
+}
+
+/// Run linters (clippy)
+fn lint_cmd(_json: bool) -> Result<()> {
+    // clippy over all targets/features, fail on warnings
+    let mut c = Command::new("cargo");
+    c.args(["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]);
+    run_cmd("cargo clippy", c)
+}
+
+/// Attempt autofixes where possible
+fn fix_cmd() -> Result<()> {
+    let mut c = Command::new("cargo");
+    c.args([
+        "clippy",
+        "--fix",
+        "--allow-dirty",
+        "--allow-staged",
+        "--",
+        "-D",
+        "warnings",
+    ]);
+    run_cmd("cargo clippy --fix", c)
+}
+
+/// CI entrypoint: format check, lint, tests
+fn ci_cmd() -> Result<()> {
+    fmt_cmd(true, true, None)?;
+    lint_cmd(false)?;
+    // run tests
+    let mut cmd = Command::new("cargo");
+    cmd.arg("test");
+    run_cmd("cargo test", cmd)
+}
+
+/// Normalize newlines for comparison
+fn normalize_newlines(s: &str) -> String {
+    s.replace("\r\n", "\n")
 }
