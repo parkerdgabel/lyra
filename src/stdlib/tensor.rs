@@ -91,6 +91,7 @@
 
 use crate::vm::{Value, VmError, VmResult};
 use ndarray::{ArrayD, IxDyn};
+use rand::Rng;
 
 /// Create an array (tensor) from nested lists with automatic shape inference.
 ///
@@ -1575,6 +1576,416 @@ fn compute_softmax_1d(values: &[f64]) -> Vec<f64> {
         .iter()
         .map(|&exp_val| exp_val / sum_exp)
         .collect()
+}
+
+/// Random normal weight initialization function for neural networks.
+///
+/// This function creates tensors filled with random values drawn from a normal (Gaussian)
+/// distribution. It's essential for neural network weight initialization to break symmetry
+/// and enable effective learning.
+///
+/// # Arguments
+/// * `args[0]` - Shape list: {rows, cols} or {dim1, dim2, ...}
+/// * `args[1]` - Optional: mean value (default: 0.0)
+/// * `args[2]` - Optional: standard deviation (default: 1.0)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - Tensor filled with random normal values
+/// * `Err(VmError)` - If arguments are invalid or incompatible
+///
+/// # Examples
+/// ```wolfram
+/// (* Basic weight initialization *)
+/// weights = RandomNormal[{784, 128}]        (* Standard normal (mean=0, std=1) *)
+/// bias = RandomNormal[{128}]                (* 1D bias vector *)
+///
+/// (* Custom distribution *)
+/// weights = RandomNormal[{10, 5}, 0.0, 0.1] (* Small weights for stable training *)
+/// 
+/// (* Neural network layer initialization *)
+/// input_weights = RandomNormal[{784, 256}]   (* Input layer weights *)
+/// hidden_weights = RandomNormal[{256, 128}]  (* Hidden layer weights *)
+/// output_weights = RandomNormal[{128, 10}]   (* Output layer weights *)
+/// ```
+///
+/// # Weight Initialization Guidelines
+/// - **Default (std=1.0)**: Good starting point for most networks
+/// - **Small std (0.01-0.1)**: Prevents saturation in deep networks
+/// - **Xavier/Glorot scaling**: Use `std = sqrt(2/(fan_in + fan_out))`
+/// - **He scaling**: Use `std = sqrt(2/fan_in)` for ReLU networks
+pub fn random_normal(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count (1, 2, or 3 arguments)
+    if args.is_empty() || args.len() > 3 {
+        return Err(VmError::TypeError {
+            expected: "1, 2, or 3 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Parse shape from first argument
+    let shape_dims = match &args[0] {
+        Value::List(dims) => {
+            if dims.is_empty() {
+                return Err(VmError::TypeError {
+                    expected: "non-empty shape list".to_string(),
+                    actual: "empty list".to_string(),
+                });
+            }
+            
+            let mut parsed_dims = Vec::new();
+            for dim in dims {
+                match dim {
+                    Value::Integer(d) => {
+                        if *d <= 0 {
+                            return Err(VmError::TypeError {
+                                expected: "positive dimension".to_string(),
+                                actual: format!("dimension {}", d),
+                            });
+                        }
+                        parsed_dims.push(*d as usize);
+                    }
+                    _ => {
+                        return Err(VmError::TypeError {
+                            expected: "integer dimension".to_string(),
+                            actual: format!("{:?}", dim),
+                        });
+                    }
+                }
+            }
+            parsed_dims
+        }
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "shape list".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+
+    // Parse mean (default: 0.0)
+    let mean = if args.len() >= 2 {
+        match &args[1] {
+            Value::Real(m) => *m,
+            Value::Integer(m) => *m as f64,
+            _ => {
+                return Err(VmError::TypeError {
+                    expected: "numeric mean".to_string(),
+                    actual: format!("{:?}", args[1]),
+                });
+            }
+        }
+    } else {
+        0.0
+    };
+
+    // Parse standard deviation (default: 1.0)
+    let std = if args.len() >= 3 {
+        match &args[2] {
+            Value::Real(s) => {
+                if *s <= 0.0 {
+                    return Err(VmError::TypeError {
+                        expected: "positive standard deviation".to_string(),
+                        actual: format!("{}", s),
+                    });
+                }
+                *s
+            }
+            Value::Integer(s) => {
+                if *s <= 0 {
+                    return Err(VmError::TypeError {
+                        expected: "positive standard deviation".to_string(),
+                        actual: format!("{}", s),
+                    });
+                }
+                *s as f64
+            }
+            _ => {
+                return Err(VmError::TypeError {
+                    expected: "numeric standard deviation".to_string(),
+                    actual: format!("{:?}", args[2]),
+                });
+            }
+        }
+    } else {
+        1.0
+    };
+
+    // Calculate total number of elements
+    let total_elements: usize = shape_dims.iter().product();
+    
+    // Generate random normal values using Box-Muller transform
+    let mut random_values = Vec::with_capacity(total_elements);
+    let mut spare_value: Option<f64> = None;
+    
+    for _ in 0..total_elements {
+        let normal_value = if let Some(spare) = spare_value.take() {
+            spare
+        } else {
+            // Box-Muller transform to generate normal distribution from uniform
+            let u1: f64 = rand::random::<f64>();
+            let u2: f64 = rand::random::<f64>();
+            
+            // Ensure u1 is not zero to avoid log(0)
+            let u1 = if u1 == 0.0 { f64::EPSILON } else { u1 };
+            
+            let z0 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+            let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).sin();
+            
+            spare_value = Some(z1);
+            z0
+        };
+        
+        // Scale and shift: N(mean, std²) = mean + std * N(0, 1)
+        random_values.push(mean + std * normal_value);
+    }
+
+    // Create tensor with the specified shape
+    let result_tensor = ArrayD::from_shape_vec(IxDyn(&shape_dims), random_values)
+        .map_err(|e| VmError::TypeError {
+            expected: "valid tensor shape".to_string(),
+            actual: format!("ndarray error: {}", e),
+        })?;
+
+    Ok(Value::Tensor(result_tensor))
+}
+
+/// Xavier/Glorot weight initialization for neural networks.
+///
+/// This function creates tensors filled with random values drawn from a uniform distribution
+/// scaled according to the Xavier/Glorot initialization scheme. It's specifically designed
+/// for layers using Sigmoid or Tanh activation functions to maintain activation variance.
+///
+/// # Xavier Formula
+/// Values are uniformly distributed in the range:
+/// `[-bound, bound]` where `bound = sqrt(6 / (fan_in + fan_out))`
+///
+/// This maintains activation variance across layers and prevents vanishing/exploding gradients.
+///
+/// # Arguments
+/// * `args[0]` - Shape list: {fan_in, fan_out} (exactly 2 dimensions required)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - 2D tensor with Xavier-initialized weights
+/// * `Err(VmError)` - If arguments are invalid or shape is not 2D
+///
+/// # Examples
+/// ```wolfram
+/// (* Basic layer initialization *)
+/// weights = Xavier[{784, 128}]              (* Input layer: 784 → 128 *)
+/// hidden = Xavier[{128, 64}]                (* Hidden layer: 128 → 64 *)
+/// output = Xavier[{64, 10}]                 (* Output layer: 64 → 10 *)
+///
+/// (* Neural network with Sigmoid/Tanh activations *)
+/// layer1_weights = Xavier[{784, 256}]
+/// layer1_output = Sigmoid[Dot[layer1_weights, input]]
+/// 
+/// layer2_weights = Xavier[{256, 128}] 
+/// layer2_output = Tanh[Dot[layer2_weights, layer1_output]]
+/// ```
+///
+/// # When to Use Xavier
+/// - **Sigmoid/Tanh networks**: Optimal for these activation functions
+/// - **Feedforward networks**: Classic choice for fully connected layers
+/// - **Symmetric activations**: Functions centered around zero
+/// - **Gradient flow**: Maintains stable gradients during backpropagation
+///
+/// For ReLU networks, consider using He initialization instead.
+pub fn xavier(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count (exactly 1 argument: the shape)
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Parse shape from first argument - must be exactly 2D
+    let (fan_in, fan_out) = match &args[0] {
+        Value::List(dims) => {
+            if dims.len() != 2 {
+                return Err(VmError::TypeError {
+                    expected: "exactly 2 dimensions for Xavier initialization".to_string(),
+                    actual: format!("{} dimensions", dims.len()),
+                });
+            }
+            
+            let fan_in = match &dims[0] {
+                Value::Integer(d) => {
+                    if *d <= 0 {
+                        return Err(VmError::TypeError {
+                            expected: "positive fan_in dimension".to_string(),
+                            actual: format!("fan_in {}", d),
+                        });
+                    }
+                    *d as usize
+                }
+                _ => {
+                    return Err(VmError::TypeError {
+                        expected: "integer fan_in dimension".to_string(),
+                        actual: format!("{:?}", dims[0]),
+                    });
+                }
+            };
+            
+            let fan_out = match &dims[1] {
+                Value::Integer(d) => {
+                    if *d <= 0 {
+                        return Err(VmError::TypeError {
+                            expected: "positive fan_out dimension".to_string(),
+                            actual: format!("fan_out {}", d),
+                        });
+                    }
+                    *d as usize
+                }
+                _ => {
+                    return Err(VmError::TypeError {
+                        expected: "integer fan_out dimension".to_string(),
+                        actual: format!("{:?}", dims[1]),
+                    });
+                }
+            };
+            
+            (fan_in, fan_out)
+        }
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "shape list".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+
+    // Calculate Xavier bound: sqrt(6 / (fan_in + fan_out))
+    let xavier_bound = (6.0 / (fan_in + fan_out) as f64).sqrt();
+    
+    // Generate random uniform values in [-xavier_bound, xavier_bound]
+    let total_elements = fan_in * fan_out;
+    let mut random_values = Vec::with_capacity(total_elements);
+    
+    for _ in 0..total_elements {
+        // Generate uniform random value in [0, 1] then scale to [-bound, bound]
+        let uniform_val: f64 = rand::random();
+        let scaled_val = xavier_bound * (2.0 * uniform_val - 1.0); // Maps [0,1] to [-bound, bound]
+        random_values.push(scaled_val);
+    }
+
+    // Create tensor with the specified shape
+    let result_tensor = ArrayD::from_shape_vec(IxDyn(&[fan_in, fan_out]), random_values)
+        .map_err(|e| VmError::TypeError {
+            expected: "valid tensor shape".to_string(),
+            actual: format!("ndarray error: {}", e),
+        })?;
+
+    Ok(Value::Tensor(result_tensor))
+}
+
+/// He initialization for ReLU networks: He[{fan_in, fan_out}]
+/// 
+/// He initialization is specifically designed for ReLU activation networks.
+/// It samples from a uniform distribution with bounds determined by:
+/// bound = sqrt(2 / fan_in)
+/// 
+/// This initialization ensures proper gradient flow in deep ReLU networks
+/// by maintaining unit variance in the forward pass.
+/// 
+/// # Arguments
+/// * `args[0]` - List containing two integers: {fan_in, fan_out}
+/// 
+/// # Returns
+/// * `Value::Tensor` - Tensor of shape [fan_in, fan_out] with He-initialized weights
+/// 
+/// # Errors
+/// * Wrong number of arguments
+/// * Invalid shape format (must be list of exactly 2 integers)
+/// * Non-positive dimensions
+/// 
+/// # Examples
+/// ```wolfram
+/// (* Initialize weights for 784->128 ReLU layer *)
+/// weights = He[{784, 128}]
+/// 
+/// (* Initialize smaller layer *)
+/// weights = He[{64, 32}]
+/// ```
+pub fn he(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Extract fan_in and fan_out from the shape list
+    let (fan_in, fan_out) = match &args[0] {
+        Value::List(shape_list) => {
+            if shape_list.len() != 2 {
+                return Err(VmError::TypeError {
+                    expected: "list of two integers {fan_in, fan_out}".to_string(),
+                    actual: format!("list of {} elements", shape_list.len()),
+                });
+            }
+            
+            let fan_in = match &shape_list[0] {
+                Value::Integer(n) => {
+                    if *n <= 0 {
+                        return Err(VmError::TypeError {
+                            expected: "positive integer for fan_in".to_string(),
+                            actual: format!("{}", n),
+                        });
+                    }
+                    *n as usize
+                }
+                _ => return Err(VmError::TypeError {
+                    expected: "integer for fan_in".to_string(),
+                    actual: format!("{:?}", shape_list[0]),
+                })
+            };
+            
+            let fan_out = match &shape_list[1] {
+                Value::Integer(n) => {
+                    if *n <= 0 {
+                        return Err(VmError::TypeError {
+                            expected: "positive integer for fan_out".to_string(),
+                            actual: format!("{}", n),
+                        });
+                    }
+                    *n as usize
+                }
+                _ => return Err(VmError::TypeError {
+                    expected: "integer for fan_out".to_string(),
+                    actual: format!("{:?}", shape_list[1]),
+                })
+            };
+            
+            (fan_in, fan_out)
+        }
+        _ => return Err(VmError::TypeError {
+            expected: "list of two integers {fan_in, fan_out}".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    // He initialization bound: sqrt(2 / fan_in)
+    let he_bound = (2.0_f64 / fan_in as f64).sqrt();
+    
+    // Create tensor using ArrayD like other functions in this file
+    let total_elements = fan_in * fan_out;
+    let mut random_values = Vec::with_capacity(total_elements);
+    
+    for _ in 0..total_elements {
+        // Generate random value in [0, 1] then scale to [-he_bound, he_bound]
+        let random_val: f64 = rand::random();
+        random_values.push((random_val - 0.5) * 2.0 * he_bound);
+    }
+
+    // Create tensor with the specified shape
+    let result_tensor = ArrayD::from_shape_vec(IxDyn(&[fan_in, fan_out]), random_values)
+        .map_err(|e| VmError::TypeError {
+            expected: "valid tensor shape".to_string(),
+            actual: format!("ndarray error: {}", e),
+        })?;
+
+    Ok(Value::Tensor(result_tensor))
 }
 
 #[cfg(test)]
@@ -3388,5 +3799,609 @@ mod tests {
             }
             _ => panic!("Expected tensor value from softmax operation"),
         }
+    }
+
+    // ===== WEIGHT INITIALIZATION FUNCTION TESTS (Phase 3B-2A) =====
+    // TDD Tests for RandomNormal[] function
+
+    #[test]
+    fn test_random_normal_basic_shape() {
+        // RED: Test RandomNormal creates tensor with correct shape - RandomNormal[{2, 3}]
+        let shape = Value::List(vec![Value::Integer(2), Value::Integer(3)]);
+        
+        let result = random_normal(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 3]);
+                assert_eq!(result_tensor.len(), 6);
+                // Values should be different (very unlikely to be all the same)
+                let values: Vec<f64> = result_tensor.iter().cloned().collect();
+                let all_same = values.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-10);
+                assert!(!all_same, "Random values should not all be identical");
+            }
+            _ => panic!("Expected tensor value from RandomNormal"),
+        }
+    }
+
+    #[test]
+    fn test_random_normal_1d_shape() {
+        // RED: Test RandomNormal with 1D shape - RandomNormal[{5}]
+        let shape = Value::List(vec![Value::Integer(5)]);
+        
+        let result = random_normal(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[5]);
+                assert_eq!(result_tensor.len(), 5);
+            }
+            _ => panic!("Expected tensor value from RandomNormal"),
+        }
+    }
+
+    #[test]
+    fn test_random_normal_with_mean_std() {
+        // RED: Test RandomNormal with custom mean and std - RandomNormal[{3, 3}, 5.0, 2.0]
+        let shape = Value::List(vec![Value::Integer(3), Value::Integer(3)]);
+        let mean = Value::Real(5.0);
+        let std = Value::Real(2.0);
+        
+        let result = random_normal(&[shape, mean, std]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3, 3]);
+                // Check that values are in reasonable range (mean ± 3*std covers ~99.7%)
+                for &value in result_tensor.iter() {
+                    assert!(value > 5.0 - 6.0); // mean - 3*std
+                    assert!(value < 5.0 + 6.0); // mean + 3*std
+                }
+            }
+            _ => panic!("Expected tensor value from RandomNormal"),
+        }
+    }
+
+    #[test]
+    fn test_random_normal_default_mean_std() {
+        // RED: Test RandomNormal with default mean=0, std=1 - RandomNormal[{4, 2}]
+        let shape = Value::List(vec![Value::Integer(4), Value::Integer(2)]);
+        
+        let result = random_normal(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[4, 2]);
+                // Values should be roughly centered around 0 with std ~1
+                // Check that most values are within reasonable range
+                let mut in_range_count = 0;
+                for &value in result_tensor.iter() {
+                    if value > -3.0 && value < 3.0 {
+                        in_range_count += 1;
+                    }
+                }
+                // At least 7 out of 8 values should be within 3 standard deviations
+                assert!(in_range_count >= 7);
+            }
+            _ => panic!("Expected tensor value from RandomNormal"),
+        }
+    }
+
+    #[test]
+    fn test_random_normal_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let shape = Value::List(vec![Value::Integer(2), Value::Integer(2)]);
+        let mean = Value::Real(0.0);
+        let std = Value::Real(1.0);
+        
+        // Too few arguments
+        let result = random_normal(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = random_normal(&[shape.clone(), mean, std, Value::Real(1.0)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_random_normal_invalid_shape() {
+        // RED: Test invalid shape arguments should error
+        
+        // Non-list shape
+        let result = random_normal(&[Value::Integer(5)]);
+        assert!(result.is_err());
+        
+        // Empty shape list
+        let empty_shape = Value::List(vec![]);
+        let result = random_normal(&[empty_shape]);
+        assert!(result.is_err());
+        
+        // Non-integer in shape
+        let invalid_shape = Value::List(vec![Value::Real(2.5), Value::Integer(3)]);
+        let result = random_normal(&[invalid_shape]);
+        assert!(result.is_err());
+        
+        // Negative dimension
+        let negative_shape = Value::List(vec![Value::Integer(-1), Value::Integer(3)]);
+        let result = random_normal(&[negative_shape]);
+        assert!(result.is_err());
+        
+        // Zero dimension
+        let zero_shape = Value::List(vec![Value::Integer(0), Value::Integer(3)]);
+        let result = random_normal(&[zero_shape]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_random_normal_invalid_mean_std() {
+        // RED: Test invalid mean/std arguments should error
+        let shape = Value::List(vec![Value::Integer(2), Value::Integer(2)]);
+        
+        // Non-numeric mean
+        let result = random_normal(&[shape.clone(), Value::String("invalid".to_string())]);
+        assert!(result.is_err());
+        
+        // Non-numeric std
+        let result = random_normal(&[shape.clone(), Value::Real(0.0), Value::String("invalid".to_string())]);
+        assert!(result.is_err());
+        
+        // Negative std
+        let result = random_normal(&[shape.clone(), Value::Real(0.0), Value::Real(-1.0)]);
+        assert!(result.is_err());
+        
+        // Zero std
+        let result = random_normal(&[shape.clone(), Value::Real(0.0), Value::Real(0.0)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_random_normal_deterministic_with_seed() {
+        // RED: Test that same operations with same seed produce same results
+        let shape = Value::List(vec![Value::Integer(2), Value::Integer(3)]);
+        
+        // Note: This test will need to be updated when we implement seeding
+        // For now, just verify that multiple calls produce different results
+        let result1 = random_normal(&[shape.clone()]);
+        let result2 = random_normal(&[shape.clone()]);
+        
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+        
+        match (result1.unwrap(), result2.unwrap()) {
+            (Value::Tensor(tensor1), Value::Tensor(tensor2)) => {
+                assert_eq!(tensor1.shape(), tensor2.shape());
+                // Very unlikely that all values are identical
+                let all_same = tensor1.iter().zip(tensor2.iter())
+                    .all(|(&a, &b)| (a - b).abs() < 1e-10);
+                assert!(!all_same, "Different calls should produce different random values");
+            }
+            _ => panic!("Expected tensor values from RandomNormal"),
+        }
+    }
+
+    #[test]
+    fn test_random_normal_neural_network_context() {
+        // RED: Test RandomNormal in neural network context - weight initialization
+        let weight_shape = Value::List(vec![Value::Integer(784), Value::Integer(128)]); // MNIST input to hidden
+        let bias_shape = Value::List(vec![Value::Integer(128)]);
+        
+        let weights = random_normal(&[weight_shape]);
+        let biases = random_normal(&[bias_shape, Value::Real(0.0), Value::Real(0.1)]); // Small std for biases
+        
+        assert!(weights.is_ok());
+        assert!(biases.is_ok());
+        
+        match (weights.unwrap(), biases.unwrap()) {
+            (Value::Tensor(w_tensor), Value::Tensor(b_tensor)) => {
+                assert_eq!(w_tensor.shape(), &[784, 128]);
+                assert_eq!(b_tensor.shape(), &[128]);
+                
+                // Weights should be roughly centered around 0
+                let weight_values: Vec<f64> = w_tensor.iter().cloned().collect();
+                let weight_mean = weight_values.iter().sum::<f64>() / weight_values.len() as f64;
+                assert!(weight_mean.abs() < 0.5); // Should be close to 0
+                
+                // Biases should be small (close to 0 with small std)
+                for &bias in b_tensor.iter() {
+                    assert!(bias.abs() < 1.0); // Within reasonable range for small std
+                }
+            }
+            _ => panic!("Expected tensor values for neural network initialization"),
+        }
+    }
+
+    // ===== XAVIER INITIALIZATION FUNCTION TESTS (Phase 3B-2A) =====
+    // TDD Tests for Xavier[] function
+
+    #[test]
+    fn test_xavier_basic_shape() {
+        // RED: Test Xavier creates tensor with correct shape - Xavier[{10, 5}]
+        let shape = Value::List(vec![Value::Integer(10), Value::Integer(5)]);
+        
+        let result = xavier(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[10, 5]);
+                assert_eq!(result_tensor.len(), 50);
+                // Values should be different (very unlikely to be all the same)
+                let values: Vec<f64> = result_tensor.iter().cloned().collect();
+                let all_same = values.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-10);
+                assert!(!all_same, "Xavier values should not all be identical");
+            }
+            _ => panic!("Expected tensor value from Xavier"),
+        }
+    }
+
+    #[test]
+    fn test_xavier_variance_scaling() {
+        // RED: Test Xavier initialization has correct variance scaling
+        let fan_in = 100;
+        let fan_out = 50;
+        let shape = Value::List(vec![Value::Integer(fan_in), Value::Integer(fan_out)]);
+        
+        let result = xavier(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[fan_in as usize, fan_out as usize]);
+                
+                // Calculate theoretical Xavier bound: sqrt(6 / (fan_in + fan_out))
+                let xavier_bound = (6.0 / (fan_in + fan_out) as f64).sqrt();
+                
+                // All values should be within the Xavier bounds
+                for &value in result_tensor.iter() {
+                    assert!(value >= -xavier_bound);
+                    assert!(value <= xavier_bound);
+                }
+                
+                // Check that values span a reasonable range (not all tiny)
+                let max_val = result_tensor.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+                let min_val = result_tensor.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+                assert!(max_val - min_val > 0.1); // Should have reasonable spread
+            }
+            _ => panic!("Expected tensor value from Xavier"),
+        }
+    }
+
+    #[test]
+    fn test_xavier_square_matrix() {
+        // RED: Test Xavier with square matrix - Xavier[{64, 64}]
+        let shape = Value::List(vec![Value::Integer(64), Value::Integer(64)]);
+        
+        let result = xavier(&[shape]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[64, 64]);
+                
+                // Xavier bound for square matrix: sqrt(6 / (64 + 64)) = sqrt(6/128)
+                let xavier_bound = (6.0_f64 / 128.0_f64).sqrt();
+                
+                for &value in result_tensor.iter() {
+                    assert!(value >= -xavier_bound);
+                    assert!(value <= xavier_bound);
+                }
+            }
+            _ => panic!("Expected tensor value from Xavier"),
+        }
+    }
+
+    #[test]
+    fn test_xavier_asymmetric_layers() {
+        // RED: Test Xavier with different layer sizes
+        let test_cases = vec![
+            (784, 256), // MNIST input to hidden
+            (256, 128), // Hidden to hidden
+            (128, 10),  // Hidden to output
+            (1, 1000),  // Extreme case: 1 input to many outputs
+            (1000, 1),  // Extreme case: many inputs to 1 output
+        ];
+        
+        for (fan_in, fan_out) in test_cases {
+            let shape = Value::List(vec![Value::Integer(fan_in), Value::Integer(fan_out)]);
+            let result = xavier(&[shape]);
+            assert!(result.is_ok());
+            
+            match result.unwrap() {
+                Value::Tensor(result_tensor) => {
+                    assert_eq!(result_tensor.shape(), &[fan_in as usize, fan_out as usize]);
+                    
+                    let xavier_bound = (6.0 / (fan_in + fan_out) as f64).sqrt();
+                    
+                    // Check bounds
+                    for &value in result_tensor.iter() {
+                        assert!(value >= -xavier_bound, 
+                            "Value {} exceeds lower bound {} for shape [{}, {}]", 
+                            value, -xavier_bound, fan_in, fan_out);
+                        assert!(value <= xavier_bound,
+                            "Value {} exceeds upper bound {} for shape [{}, {}]", 
+                            value, xavier_bound, fan_in, fan_out);
+                    }
+                }
+                _ => panic!("Expected tensor value from Xavier for shape [{}, {}]", fan_in, fan_out),
+            }
+        }
+    }
+
+    #[test]
+    fn test_xavier_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let shape = Value::List(vec![Value::Integer(10), Value::Integer(5)]);
+        
+        // Too few arguments
+        let result = xavier(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = xavier(&[shape.clone(), Value::Real(1.0)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_xavier_invalid_shape() {
+        // RED: Test invalid shape arguments should error
+        
+        // Non-list shape
+        let result = xavier(&[Value::Integer(5)]);
+        assert!(result.is_err());
+        
+        // Wrong number of dimensions (Xavier requires exactly 2D: [fan_in, fan_out])
+        let shape_1d = Value::List(vec![Value::Integer(10)]);
+        let result = xavier(&[shape_1d]);
+        assert!(result.is_err());
+        
+        let shape_3d = Value::List(vec![Value::Integer(10), Value::Integer(5), Value::Integer(3)]);
+        let result = xavier(&[shape_3d]);
+        assert!(result.is_err());
+        
+        // Non-integer in shape
+        let invalid_shape = Value::List(vec![Value::Real(10.5), Value::Integer(5)]);
+        let result = xavier(&[invalid_shape]);
+        assert!(result.is_err());
+        
+        // Negative dimensions
+        let negative_shape = Value::List(vec![Value::Integer(-10), Value::Integer(5)]);
+        let result = xavier(&[negative_shape]);
+        assert!(result.is_err());
+        
+        // Zero dimensions
+        let zero_shape = Value::List(vec![Value::Integer(0), Value::Integer(5)]);
+        let result = xavier(&[zero_shape]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_xavier_neural_network_context() {
+        // RED: Test Xavier in typical neural network layer contexts
+        
+        // MNIST classifier layers
+        let input_layer = Value::List(vec![Value::Integer(784), Value::Integer(256)]);
+        let hidden_layer = Value::List(vec![Value::Integer(256), Value::Integer(128)]);
+        let output_layer = Value::List(vec![Value::Integer(128), Value::Integer(10)]);
+        
+        let input_weights = xavier(&[input_layer]);
+        let hidden_weights = xavier(&[hidden_layer]);
+        let output_weights = xavier(&[output_layer]);
+        
+        assert!(input_weights.is_ok());
+        assert!(hidden_weights.is_ok());
+        assert!(output_weights.is_ok());
+        
+        // Verify each layer has appropriate initialization
+        match (input_weights.unwrap(), hidden_weights.unwrap(), output_weights.unwrap()) {
+            (Value::Tensor(input_w), Value::Tensor(hidden_w), Value::Tensor(output_w)) => {
+                assert_eq!(input_w.shape(), &[784, 256]);
+                assert_eq!(hidden_w.shape(), &[256, 128]);
+                assert_eq!(output_w.shape(), &[128, 10]);
+                
+                // Input layer should have smallest weights (largest fan_in + fan_out)
+                let input_bound = (6.0_f64 / (784.0_f64 + 256.0_f64)).sqrt();
+                let output_bound = (6.0_f64 / (128.0_f64 + 10.0_f64)).sqrt();
+                
+                // Output layer should have larger bounds than input layer
+                assert!(output_bound > input_bound);
+                
+                // Verify bounds are respected
+                for &w in input_w.iter() {
+                    assert!(w.abs() <= input_bound);
+                }
+                for &w in output_w.iter() {
+                    assert!(w.abs() <= output_bound);
+                }
+            }
+            _ => panic!("Expected tensor values for neural network Xavier initialization"),
+        }
+    }
+
+    #[test]
+    fn test_xavier_vs_random_normal() {
+        // RED: Test that Xavier gives different distribution than standard normal
+        let shape = Value::List(vec![Value::Integer(100), Value::Integer(50)]);
+        
+        let xavier_result = xavier(&[shape.clone()]);
+        let normal_result = random_normal(&[shape.clone()]);
+        
+        assert!(xavier_result.is_ok());
+        assert!(normal_result.is_ok());
+        
+        match (xavier_result.unwrap(), normal_result.unwrap()) {
+            (Value::Tensor(xavier_tensor), Value::Tensor(normal_tensor)) => {
+                // Both should have same shape
+                assert_eq!(xavier_tensor.shape(), normal_tensor.shape());
+                
+                // Xavier should have smaller variance than standard normal
+                let xavier_values: Vec<f64> = xavier_tensor.iter().cloned().collect();
+                let normal_values: Vec<f64> = normal_tensor.iter().cloned().collect();
+                
+                let xavier_max = xavier_values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b.abs()));
+                let normal_max = normal_values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b.abs()));
+                
+                // Xavier bound for this case: sqrt(6/(100+50)) ≈ 0.2
+                let expected_xavier_bound = (6.0_f64 / 150.0_f64).sqrt();
+                assert!(xavier_max <= expected_xavier_bound);
+                
+                // Standard normal can have much larger values
+                // Very likely that normal_max > xavier_max
+                // (This is probabilistic but should pass almost always)
+            }
+            _ => panic!("Expected tensor values from initialization comparison"),
+        }
+    }
+
+    // Test He[] weight initialization function - for ReLU networks
+    #[test]
+    fn test_he_basic_2d_weight_matrix() {
+        // RED phase: Test He initialization for a 2D weight matrix
+        // He initialization uses sqrt(2 / fan_in) for ReLU networks
+        let result = he(&[Value::List(vec![Value::Integer(784), Value::Integer(128)])]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(tensor) => {
+                assert_eq!(tensor.shape(), &[784, 128]);
+                // Check that values are within He initialization bounds
+                // He bound = sqrt(2 / 784) ≈ 0.0506
+                let he_bound = (2.0_f64 / 784.0_f64).sqrt();
+                for &val in tensor.iter() {
+                    assert!(val >= -he_bound && val <= he_bound);
+                }
+            }
+            _ => panic!("Expected tensor value"),
+        }
+    }
+
+    #[test]
+    fn test_he_single_neuron() {
+        // Test He initialization for single neuron (fan_in = 1)
+        // He bound = sqrt(2 / 1) = sqrt(2) ≈ 1.414
+        let result = he(&[Value::List(vec![Value::Integer(1), Value::Integer(1)])]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(tensor) => {
+                assert_eq!(tensor.shape(), &[1, 1]);
+                let he_bound = (2.0_f64 / 1.0_f64).sqrt();
+                let val = tensor[[0, 0]];
+                assert!(val >= -he_bound && val <= he_bound);
+            }
+            _ => panic!("Expected tensor value"),
+        }
+    }
+
+    #[test]
+    fn test_he_large_fan_in() {
+        // Test He initialization with large fan_in (small weights)
+        // fan_in = 10000, He bound = sqrt(2 / 10000) ≈ 0.0141
+        let result = he(&[Value::List(vec![Value::Integer(10000), Value::Integer(10)])]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(tensor) => {
+                assert_eq!(tensor.shape(), &[10000, 10]);
+                let he_bound = (2.0_f64 / 10000.0_f64).sqrt();
+                // Check a few random samples
+                for i in 0..10 {
+                    for j in 0..10 {
+                        let val = tensor[[i, j]];
+                        assert!(val >= -he_bound && val <= he_bound);
+                    }
+                }
+            }
+            _ => panic!("Expected tensor value"),
+        }
+    }
+
+    #[test]
+    fn test_he_neural_network_context() {
+        // Test He initialization in realistic neural network context
+        // Hidden layer: 256 -> 128 neurons
+        let result = he(&[Value::List(vec![Value::Integer(256), Value::Integer(128)])]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(tensor) => {
+                assert_eq!(tensor.shape(), &[256, 128]);
+                // He bound = sqrt(2 / 256) ≈ 0.0884
+                let he_bound = (2.0_f64 / 256.0_f64).sqrt();
+                
+                // Verify statistical properties
+                let values: Vec<f64> = tensor.iter().copied().collect();
+                let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
+                let variance: f64 = values.iter()
+                    .map(|&x| (x - mean).powi(2))
+                    .sum::<f64>() / values.len() as f64;
+                
+                // He initialization should have mean ≈ 0 and variance ≈ 2/fan_in
+                assert!(mean.abs() < 0.1, "Mean should be close to 0, got {}", mean);
+                assert!((variance - 2.0_f64/256.0_f64).abs() < 0.01, 
+                       "Variance should be close to 2/fan_in, got {}", variance);
+            }
+            _ => panic!("Expected tensor value"),
+        }
+    }
+
+    #[test]
+    fn test_he_error_wrong_argument_count() {
+        // Test error with wrong number of arguments
+        let result = he(&[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected exactly 1 argument"));
+        
+        let result = he(&[Value::Integer(784), Value::Integer(128)]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected exactly 1 argument"));
+    }
+
+    #[test]
+    fn test_he_error_invalid_shape_format() {
+        // Test error with non-list argument
+        let result = he(&[Value::Integer(784)]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected list of two integers"));
+        
+        // Test error with wrong list length
+        let result = he(&[Value::List(vec![Value::Integer(784)])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected list of two integers"));
+        
+        let result = he(&[Value::List(vec![
+            Value::Integer(784), 
+            Value::Integer(128), 
+            Value::Integer(64)
+        ])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected list of two integers"));
+    }
+
+    #[test]
+    fn test_he_error_non_integer_dimensions() {
+        // Test error with non-integer dimensions
+        let result = he(&[Value::List(vec![Value::Real(784.5), Value::Integer(128)])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("integer for fan_in"));
+        
+        let result = he(&[Value::List(vec![Value::Integer(784), Value::String("128".to_string())])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("integer for fan_out"));
+    }
+
+    #[test]
+    fn test_he_error_negative_dimensions() {
+        // Test error with negative or zero dimensions
+        let result = he(&[Value::List(vec![Value::Integer(-784), Value::Integer(128)])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("positive integer for fan_in"));
+        
+        let result = he(&[Value::List(vec![Value::Integer(784), Value::Integer(0)])]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("positive integer for fan_out"));
     }
 }
