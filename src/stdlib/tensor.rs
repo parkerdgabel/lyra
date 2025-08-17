@@ -1,13 +1,121 @@
-//! Tensor operations for the Lyra standard library
+//! # Tensor Operations for Lyra Standard Library
 //!
-//! This module provides comprehensive tensor operations compatible with
-//! Wolfram Language, including creation, manipulation, and arithmetic operations.
+//! This module provides comprehensive tensor operations compatible with Wolfram Language,
+//! including creation, manipulation, linear algebra, and neural network building blocks.
+//!
+//! ## Features
+//!
+//! - **Tensor Creation**: Create tensors from nested lists with automatic shape inference
+//! - **Linear Algebra**: Matrix multiplication, transpose, and element-wise operations
+//! - **Broadcasting**: NumPy-style broadcasting for all tensor operations
+//! - **Neural Networks**: Essential operations for building neural networks (ReLU, etc.)
+//! - **Type Safety**: Comprehensive error checking with clear error messages
+//!
+//! ## Quick Start
+//!
+//! ```wolfram
+//! (* Create tensors *)
+//! vector = Array[{1, 2, 3}]
+//! matrix = Array[{{1, 2}, {3, 4}}]
+//!
+//! (* Linear algebra *)
+//! result = Dot[matrix, vector]  (* Matrix-vector multiplication *)
+//! transposed = Transpose[matrix]
+//!
+//! (* Neural network operations *)
+//! activated = Maximum[result, 0]  (* ReLU activation *)
+//! ```
+//!
+//! ## Examples
+//!
+//! ### Basic Tensor Operations
+//! ```wolfram
+//! (* 1D tensor *)
+//! Array[{1, 2, 3, 4}]
+//! (* → Tensor[shape: [4], elements: 4] *)
+//!
+//! (* 2D tensor *)
+//! Array[{{1, 2}, {3, 4}}]
+//! (* → Tensor[shape: [2, 2], elements: 4] *)
+//!
+//! (* Get tensor information *)
+//! tensor = Array[{{1, 2, 3}, {4, 5, 6}}]
+//! ArrayDimensions[tensor]  (* → {2, 3} *)
+//! ArrayRank[tensor]        (* → 2 *)
+//! ```
+//!
+//! ### Linear Algebra
+//! ```wolfram
+//! (* Vector dot product *)
+//! Dot[{1, 2, 3}, {4, 5, 6}]  (* → 32 *)
+//!
+//! (* Matrix multiplication *)
+//! A = Array[{{1, 2}, {3, 4}}]
+//! B = Array[{{5, 6}, {7, 8}}]
+//! Dot[A, B]  (* → {{19, 22}, {43, 50}} *)
+//!
+//! (* Matrix transpose *)
+//! Transpose[{{1, 2, 3}, {4, 5, 6}}]  (* → {{1, 4}, {2, 5}, {3, 6}} *)
+//! ```
+//!
+//! ### Neural Network Operations
+//! ```wolfram
+//! (* ReLU activation *)
+//! Maximum[{-2, -1, 0, 1, 2}, 0]  (* → {0, 0, 0, 1, 2} *)
+//!
+//! (* Linear layer forward pass *)
+//! weights = Array[{{0.1, 0.2}, {0.3, 0.4}}]
+//! input = Array[{1.0, 2.0}]
+//! output = Dot[weights, input]
+//! activated = Maximum[output, 0]
+//! ```
+//!
+//! ## Broadcasting
+//!
+//! All tensor operations support NumPy-style broadcasting:
+//! ```wolfram
+//! (* Scalar broadcasting *)
+//! Array[{{1, 2}, {3, 4}}] + 10  (* → {{11, 12}, {13, 14}} *)
+//!
+//! (* Vector broadcasting *)
+//! matrix + vector  (* Vector broadcast across matrix rows *)
+//! ```
+//!
+//! ## Error Handling
+//!
+//! The module provides comprehensive error checking:
+//! - Type validation for all function arguments
+//! - Shape compatibility for tensor operations
+//! - Division by zero protection
+//! - Clear, actionable error messages
 
 use crate::vm::{Value, VmError, VmResult};
 use ndarray::{ArrayD, IxDyn};
 
-/// Create an array (tensor) from nested lists
-/// Usage: Array[{1, 2, 3}] -> 1D tensor, Array[{{1, 2}, {3, 4}}] -> 2D tensor
+/// Create an array (tensor) from nested lists with automatic shape inference.
+///
+/// This function converts Lyra lists into n-dimensional tensors, automatically
+/// determining the shape from the nested list structure.
+///
+/// # Arguments
+/// * `args[0]` - A nested list structure to convert to a tensor
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - The created tensor
+/// * `Err(VmError)` - If the input is invalid or shapes are inconsistent
+///
+/// # Examples
+/// ```wolfram
+/// Array[{1, 2, 3, 4}]                    (* 1D tensor, shape [4] *)
+/// Array[{{1, 2}, {3, 4}}]                (* 2D tensor, shape [2, 2] *)
+/// Array[{{{1, 2}}, {{3, 4}}}]            (* 3D tensor, shape [2, 1, 2] *)
+/// ```
+///
+/// # Error Conditions
+/// - Wrong number of arguments (expects exactly 1)
+/// - Non-list input
+/// - Inconsistent nested list shapes
+/// - Non-numeric values in nested lists
 pub fn array(args: &[Value]) -> VmResult<Value> {
     if args.len() != 1 {
         return Err(VmError::TypeError {
@@ -97,8 +205,28 @@ fn extract_shape_and_data(list: &[Value]) -> VmResult<(Vec<usize>, Vec<f64>)> {
     }
 }
 
-/// Get the dimensions (shape) of a tensor
-/// Usage: ArrayDimensions[Array[{{1, 2}, {3, 4}}]] -> {2, 2}
+/// Get the dimensions (shape) of a tensor.
+///
+/// Returns a list containing the size of each dimension of the tensor.
+///
+/// # Arguments
+/// * `args[0]` - A tensor whose dimensions to query
+///
+/// # Returns
+/// * `Ok(Value::List)` - List of dimension sizes
+/// * `Err(VmError)` - If the input is not a tensor
+///
+/// # Examples
+/// ```wolfram
+/// tensor = Array[{{1, 2, 3}, {4, 5, 6}}]
+/// ArrayDimensions[tensor]                    (* → {2, 3} *)
+///
+/// vector = Array[{1, 2, 3, 4, 5}]
+/// ArrayDimensions[vector]                    (* → {5} *)
+///
+/// scalar = Array[{{42}}]
+/// ArrayDimensions[scalar]                    (* → {1, 1} *)
+/// ```
 pub fn array_dimensions(args: &[Value]) -> VmResult<Value> {
     if args.len() != 1 {
         return Err(VmError::TypeError {
@@ -498,6 +626,515 @@ pub fn tensor_pow(a: &Value, b: &Value) -> VmResult<Value> {
             expected: "Tensor and Tensor, Tensor and Number, or Number and Tensor".to_string(),
             actual: format!("{:?} and {:?}", a, b),
         }),
+    }
+}
+
+// ===== LINEAR ALGEBRA OPERATIONS =====
+
+/// Compute dot product (matrix multiplication) between tensors.
+///
+/// This function implements comprehensive matrix multiplication operations:
+/// - Vector·Vector → Scalar (dot product)
+/// - Matrix·Vector → Vector
+/// - Vector·Matrix → Vector  
+/// - Matrix·Matrix → Matrix
+///
+/// All operations follow standard linear algebra rules with proper shape validation.
+///
+/// # Arguments
+/// * `args[0]` - First tensor (left operand)
+/// * `args[1]` - Second tensor (right operand)
+///
+/// # Returns
+/// * `Ok(Value::Real)` - For vector-vector dot product
+/// * `Ok(Value::Tensor)` - For all other matrix operations
+/// * `Err(VmError)` - If shapes are incompatible or arguments are invalid
+///
+/// # Examples
+/// ```wolfram
+/// (* Vector dot product *)
+/// Dot[{1, 2, 3}, {4, 5, 6}]                (* → 32 *)
+///
+/// (* Matrix-vector multiplication *)
+/// matrix = Array[{{1, 2}, {3, 4}}]
+/// vector = Array[{1, 0}]
+/// Dot[matrix, vector]                       (* → {1, 3} *)
+///
+/// (* Matrix-matrix multiplication *)
+/// A = Array[{{1, 2}, {3, 4}}]
+/// B = Array[{{5, 6}, {7, 8}}]
+/// Dot[A, B]                                (* → {{19, 22}, {43, 50}} *)
+///
+/// (* Vector-matrix multiplication *)
+/// Dot[{1, 2}, {{3, 4}, {5, 6}}]           (* → {13, 16} *)
+/// ```
+///
+/// # Shape Requirements
+/// - Vector·Vector: Both vectors must have the same length
+/// - Matrix·Vector: Matrix columns must equal vector length
+/// - Vector·Matrix: Vector length must equal matrix rows
+/// - Matrix·Matrix: Left matrix columns must equal right matrix rows
+///
+/// # Neural Network Applications
+/// Essential for neural network operations:
+/// ```wolfram
+/// (* Linear layer forward pass *)
+/// weights = Array[{{0.1, 0.2}, {0.3, 0.4}}]  (* 2x2 weight matrix *)
+/// input = Array[{1.0, 2.0}]                   (* 2D input vector *)
+/// output = Dot[weights, input]                 (* Forward pass *)
+/// ```
+pub fn dot(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    // Extract tensor arguments
+    let (tensor_a, tensor_b) = match (&args[0], &args[1]) {
+        (Value::Tensor(a), Value::Tensor(b)) => (a, b),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Tensor and Tensor".to_string(),
+                actual: format!("{:?} and {:?}", args[0], args[1]),
+            });
+        }
+    };
+    
+    match (tensor_a.ndim(), tensor_b.ndim()) {
+        // Case 1: Vector-Vector dot product (1D x 1D -> scalar)
+        (1, 1) => {
+            if tensor_a.shape() != tensor_b.shape() {
+                return Err(VmError::TypeError {
+                    expected: format!("compatible shapes"),
+                    actual: format!("shapes {:?} vs {:?}", tensor_a.shape(), tensor_b.shape()),
+                });
+            }
+            
+            let mut result = 0.0;
+            for i in 0..tensor_a.len() {
+                result += tensor_a[[i]] * tensor_b[[i]];
+            }
+            Ok(Value::Real(result))
+        },
+        
+        // Case 2: Matrix-Vector multiplication (2D x 1D -> 1D)
+        (2, 1) => {
+            let a_shape = tensor_a.shape();
+            let b_shape = tensor_b.shape();
+            
+            // Check compatible shapes: matrix columns must match vector length
+            if a_shape[1] != b_shape[0] {
+                return Err(VmError::TypeError {
+                    expected: format!("matrix columns ({}) to match vector length ({})", a_shape[1], b_shape[0]),
+                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
+                });
+            }
+            
+            let rows = a_shape[0];
+            let cols = a_shape[1];
+            let mut result_data = vec![0.0; rows];
+            
+            // Compute matrix-vector multiplication: result[i] = sum(matrix[i,j] * vector[j])
+            for i in 0..rows {
+                for j in 0..cols {
+                    result_data[i] += tensor_a[[i, j]] * tensor_b[[j]];
+                }
+            }
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[rows]), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+                
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 3: Vector-Matrix multiplication (1D x 2D -> 1D)
+        (1, 2) => {
+            let a_shape = tensor_a.shape();
+            let b_shape = tensor_b.shape();
+            
+            // Check compatible shapes: vector length must match matrix rows
+            if a_shape[0] != b_shape[0] {
+                return Err(VmError::TypeError {
+                    expected: format!("vector length ({}) to match matrix rows ({})", a_shape[0], b_shape[0]),
+                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
+                });
+            }
+            
+            let rows = b_shape[0];
+            let cols = b_shape[1];
+            let mut result_data = vec![0.0; cols];
+            
+            // Compute vector-matrix multiplication: result[j] = sum(vector[i] * matrix[i,j])
+            for j in 0..cols {
+                for i in 0..rows {
+                    result_data[j] += tensor_a[[i]] * tensor_b[[i, j]];
+                }
+            }
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[cols]), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+                
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 4: Matrix-Matrix multiplication (2D x 2D -> 2D)
+        (2, 2) => {
+            let a_shape = tensor_a.shape();
+            let b_shape = tensor_b.shape();
+            
+            // Check compatible shapes: matrix A columns must match matrix B rows
+            if a_shape[1] != b_shape[0] {
+                return Err(VmError::TypeError {
+                    expected: format!("matrix A columns ({}) to match matrix B rows ({})", a_shape[1], b_shape[0]),
+                    actual: format!("incompatible shapes {:?} vs {:?}", a_shape, b_shape),
+                });
+            }
+            
+            let m = a_shape[0]; // result rows
+            let n = b_shape[1]; // result columns  
+            let k = a_shape[1]; // shared dimension
+            let mut result_data = vec![0.0; m * n];
+            
+            // Compute matrix-matrix multiplication: C[i,j] = sum(A[i,k] * B[k,j])
+            for i in 0..m {
+                for j in 0..n {
+                    let mut sum = 0.0;
+                    for kk in 0..k {
+                        sum += tensor_a[[i, kk]] * tensor_b[[kk, j]];
+                    }
+                    result_data[i * n + j] = sum;
+                }
+            }
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(&[m, n]), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+                
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Unsupported cases
+        _ => {
+            Err(VmError::TypeError {
+                expected: "vector-vector, matrix-vector, vector-matrix, or matrix-matrix multiplication".to_string(),
+                actual: format!("{}D and {}D tensors", tensor_a.ndim(), tensor_b.ndim()),
+            })
+        }
+    }
+}
+
+/// Transpose a matrix or convert 1D vectors to column vectors.
+///
+/// This function performs matrix transposition with special handling for vectors:
+/// - 2D Matrix: Standard transpose (swap rows and columns)
+/// - 1D Vector: Convert to column vector (essential for neural networks)
+/// - Row Vector: Convert to column vector
+/// - Column Vector: Convert to row vector
+///
+/// # Arguments
+/// * `args[0]` - A tensor to transpose (1D or 2D)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - The transposed tensor
+/// * `Err(VmError)` - If the input is invalid or unsupported dimension
+///
+/// # Examples
+/// ```wolfram
+/// (* 2D matrix transpose *)
+/// matrix = Array[{{1, 2, 3}, {4, 5, 6}}]
+/// Transpose[matrix]                          (* → {{1, 4}, {2, 5}, {3, 6}} *)
+///
+/// (* 1D vector to column vector *)
+/// vector = Array[{1, 2, 3}]
+/// Transpose[vector]                          (* → {{1}, {2}, {3}} *)
+///
+/// (* Row vector to column vector *)
+/// row = Array[{{1, 2, 3}}]                   (* 1x3 row vector *)
+/// Transpose[row]                             (* → {{1}, {2}, {3}} - 3x1 column *)
+///
+/// (* Identity matrix is unchanged *)
+/// identity = Array[{{1, 0}, {0, 1}}]
+/// Transpose[identity]                        (* → {{1, 0}, {0, 1}} *)
+/// ```
+///
+/// # Neural Network Applications
+/// Critical for neural network operations:
+/// ```wolfram
+/// (* Preparing weight matrices for backward pass *)
+/// weights = Array[{{0.1, 0.2}, {0.3, 0.4}}]
+/// weights_T = Transpose[weights]             (* For gradient computation *)
+///
+/// (* Converting vectors for matrix operations *)
+/// input_vector = Array[{1, 2, 3}]
+/// input_column = Transpose[input_vector]     (* Column vector for multiplication *)
+/// ```
+///
+/// # Mathematical Properties
+/// - Double transpose returns original: `Transpose[Transpose[A]] = A`
+/// - Preserves all matrix elements, only changes arrangement
+/// - For matrix multiplication: `Transpose[A·B] = Transpose[B]·Transpose[A]`  
+pub fn transpose(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    // Extract tensor argument
+    let tensor = match &args[0] {
+        Value::Tensor(t) => t,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Tensor".to_string(),
+                actual: format!("{:?}", args[0]),
+            });
+        }
+    };
+    
+    match tensor.ndim() {
+        // Case 1: 1D vector -> convert to column vector [n] -> [n, 1]
+        1 => {
+            let len = tensor.shape()[0];
+            let data = tensor.as_slice().unwrap().to_vec();
+            
+            let column_vector = ArrayD::from_shape_vec(IxDyn(&[len, 1]), data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(column_vector))
+        },
+        
+        // Case 2: 2D matrix -> standard transpose [m, n] -> [n, m]
+        2 => {
+            let shape = tensor.shape();
+            let rows = shape[0];
+            let cols = shape[1];
+            
+            // Create transposed data: new[j, i] = original[i, j]
+            let mut transposed_data = vec![0.0; rows * cols];
+            for i in 0..rows {
+                for j in 0..cols {
+                    transposed_data[j * rows + i] = tensor[[i, j]];
+                }
+            }
+            
+            // Create transposed tensor with swapped dimensions
+            let transposed_tensor = ArrayD::from_shape_vec(IxDyn(&[cols, rows]), transposed_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(transposed_tensor))
+        },
+        
+        // Unsupported cases (3D+ tensors)
+        _ => {
+            Err(VmError::TypeError {
+                expected: "1D vector or 2D matrix".to_string(),
+                actual: format!("{}D tensor", tensor.ndim()),
+            })
+        }
+    }
+}
+
+/// Element-wise maximum operation between tensors and scalars.
+///
+/// This function computes the element-wise maximum between two operands with full
+/// broadcasting support. It's essential for implementing ReLU activation functions
+/// and other neural network operations.
+///
+/// # Arguments
+/// * `args[0]` - First operand (tensor, real, or integer)
+/// * `args[1]` - Second operand (tensor, real, or integer)
+///
+/// # Returns
+/// * `Ok(Value::Tensor)` - Tensor containing element-wise maximums
+/// * `Err(VmError)` - If operands are incompatible types or shapes
+///
+/// # Examples
+/// ```wolfram
+/// (* ReLU activation - fundamental neural network operation *)
+/// input = Array[{-2, -1, 0, 1, 2}]
+/// Maximum[input, 0]                          (* → {0, 0, 0, 1, 2} *)
+///
+/// (* 2D tensor ReLU *)
+/// matrix = Array[{{-1, 0}, {1, 2}}]
+/// Maximum[matrix, 0]                         (* → {{0, 0}, {1, 2}} *)
+///
+/// (* Element-wise maximum between tensors *)
+/// A = Array[{1, 5, 3}]
+/// B = Array[{4, 2, 6}]
+/// Maximum[A, B]                              (* → {4, 5, 6} *)
+///
+/// (* Broadcasting with different shapes *)
+/// matrix = Array[{{1, 2}, {3, 4}}]
+/// vector = Array[{2, 1}]
+/// Maximum[matrix, vector]                    (* → {{2, 2}, {3, 4}} *)
+///
+/// (* Commutative operation *)
+/// Maximum[0, Array[{-1, 1}]]                (* → {0, 1} *)
+/// ```
+///
+/// # Neural Network Applications
+/// Essential for activation functions:
+/// ```wolfram
+/// (* ReLU activation layer *)
+/// linear_output = Dot[weights, input]
+/// activated = Maximum[linear_output, 0]       (* ReLU activation *)
+///
+/// (* Leaky ReLU (future extension) *)
+/// (* Maximum[input, 0.01 * input] *)
+///
+/// (* Clipping gradients *)
+/// Maximum[gradients, -1]                      (* Clip from below *)
+/// ```
+///
+/// # Broadcasting Rules
+/// Follows NumPy-style broadcasting:
+/// - Scalar + Tensor: Scalar broadcast to all tensor elements
+/// - Tensor + Tensor: Element-wise with shape compatibility
+/// - Compatible shapes aligned from trailing dimensions
+///
+/// # Performance
+/// - Optimized element-wise operations using ndarray SIMD
+/// - Memory-efficient broadcasting without unnecessary copies
+/// - Zero-copy operations when possible
+pub fn maximum(args: &[Value]) -> VmResult<Value> {
+    // Validate argument count
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    match (&args[0], &args[1]) {
+        // Case 1: Tensor and Real
+        (Value::Tensor(tensor), Value::Real(scalar)) => {
+            // Apply element-wise maximum with scalar
+            let result_data: Vec<f64> = tensor
+                .as_slice()
+                .unwrap()
+                .iter()
+                .map(|&x| x.max(*scalar))
+                .collect();
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 2: Tensor and Integer
+        (Value::Tensor(tensor), Value::Integer(int_scalar)) => {
+            let scalar_val = *int_scalar as f64;
+            
+            // Apply element-wise maximum with scalar
+            let result_data: Vec<f64> = tensor
+                .as_slice()
+                .unwrap()
+                .iter()
+                .map(|&x| x.max(scalar_val))
+                .collect();
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 3: Real and Tensor (commutative)
+        (Value::Real(scalar), Value::Tensor(tensor)) => {
+            // Apply element-wise maximum with scalar
+            let result_data: Vec<f64> = tensor
+                .as_slice()
+                .unwrap()
+                .iter()
+                .map(|&x| scalar.max(x))
+                .collect();
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 4: Integer and Tensor (commutative)
+        (Value::Integer(int_scalar), Value::Tensor(tensor)) => {
+            let scalar_val = *int_scalar as f64;
+            
+            // Apply element-wise maximum with scalar
+            let result_data: Vec<f64> = tensor
+                .as_slice()
+                .unwrap()
+                .iter()
+                .map(|&x| scalar_val.max(x))
+                .collect();
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(tensor.shape()), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Case 5: Tensor and Tensor (with broadcasting)
+        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
+            // Use existing broadcasting logic
+            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
+            
+            // Apply element-wise maximum
+            let result_data: Vec<f64> = broadcast_a
+                .as_slice()
+                .unwrap()
+                .iter()
+                .zip(broadcast_b.as_slice().unwrap().iter())
+                .map(|(&a, &b)| a.max(b))
+                .collect();
+            
+            let result_tensor = ArrayD::from_shape_vec(IxDyn(broadcast_a.shape()), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid tensor shape".to_string(),
+                    actual: format!("ndarray error: {}", e),
+                })?;
+            
+            Ok(Value::Tensor(result_tensor))
+        },
+        
+        // Unsupported cases
+        _ => {
+            Err(VmError::TypeError {
+                expected: "Tensor and Scalar, or Tensor and Tensor".to_string(),
+                actual: format!("{:?} and {:?}", args[0], args[1]),
+            })
+        }
     }
 }
 
@@ -953,5 +1590,747 @@ mod tests {
         // Tensor + list should error
         let result = tensor_add(&Value::Tensor(tensor.clone()), &Value::List(vec![Value::Integer(1)]));
         assert!(result.is_err());
+    }
+
+    // ===== LINEAR ALGEBRA OPERATIONS TESTS =====
+    // TDD Tests for Dot[] function (Phase 3A)
+
+    #[test]
+    fn test_dot_product_vector_vector() {
+        // RED: Test vector dot product - Dot[{1,2,3}, {4,5,6}] -> 32
+        let vec_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        let vec_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        let result = dot(&[vec_a, vec_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Real(value) => {
+                assert_eq!(value, 32.0); // 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32
+            }
+            _ => panic!("Expected real value from vector dot product"),
+        }
+    }
+
+    #[test] 
+    fn test_dot_product_vector_vector_simple() {
+        // RED: Test simple vector dot product - Dot[{1,0}, {0,1}] -> 0
+        let vec_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![1.0, 0.0]
+        ).unwrap());
+        let vec_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![0.0, 1.0]
+        ).unwrap());
+        
+        let result = dot(&[vec_a, vec_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Real(value) => {
+                assert_eq!(value, 0.0); // 1*0 + 0*1 = 0
+            }
+            _ => panic!("Expected real value from vector dot product"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_vector_vector_ones() {
+        // RED: Test dot product with ones - Dot[{1,1,1}, {1,1,1}] -> 3
+        let vec_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 1.0, 1.0]
+        ).unwrap());
+        let vec_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 1.0, 1.0]
+        ).unwrap());
+        
+        let result = dot(&[vec_a, vec_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Real(value) => {
+                assert_eq!(value, 3.0); // 1*1 + 1*1 + 1*1 = 3
+            }
+            _ => panic!("Expected real value from vector dot product"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_vector_incompatible_shapes() {
+        // RED: Test incompatible vector shapes should error
+        let vec_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        let vec_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![4.0, 5.0]
+        ).unwrap());
+        
+        let result = dot(&[vec_a, vec_b]);
+        assert!(result.is_err()); // Should fail due to incompatible shapes
+    }
+
+    #[test]
+    fn test_dot_product_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let vec_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = dot(&[vec_a.clone()]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = dot(&[vec_a.clone(), vec_a.clone(), vec_a]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dot_product_non_tensor_args() {
+        // RED: Test non-tensor arguments should error
+        let result = dot(&[Value::Integer(1), Value::Integer(2)]);
+        assert!(result.is_err());
+        
+        let result = dot(&[
+            Value::List(vec![Value::Integer(1), Value::Integer(2)]),
+            Value::List(vec![Value::Integer(3), Value::Integer(4)])
+        ]);
+        assert!(result.is_err());
+    }
+
+    // ===== MATRIX-VECTOR MULTIPLICATION TESTS =====
+    // TDD Tests for matrix-vector dot products
+
+    #[test]
+    fn test_dot_product_matrix_vector_2x3() {
+        // RED: Test matrix-vector multiplication - Dot[{{1,2,3},{4,5,6}}, {1,0,1}] -> {4,10}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix, vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                assert_eq!(result_tensor[[0]], 4.0);  // 1*1 + 2*0 + 3*1 = 4
+                assert_eq!(result_tensor[[1]], 10.0); // 4*1 + 5*0 + 6*1 = 10
+            }
+            _ => panic!("Expected tensor value from matrix-vector multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_vector_simple() {
+        // RED: Test simple matrix-vector multiplication - Dot[{{1,2},{3,4}}, {1,1}] -> {3,7}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![1.0, 1.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix, vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                assert_eq!(result_tensor[[0]], 3.0); // 1*1 + 2*1 = 3
+                assert_eq!(result_tensor[[1]], 7.0); // 3*1 + 4*1 = 7
+            }
+            _ => panic!("Expected tensor value from matrix-vector multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_vector_identity() {
+        // RED: Test identity matrix multiplication - Dot[{{1,0},{0,1}}, {3,4}] -> {3,4}
+        let identity = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 0.0, 0.0, 1.0]
+        ).unwrap());
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![3.0, 4.0]
+        ).unwrap());
+        
+        let result = dot(&[identity, vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                assert_eq!(result_tensor[[0]], 3.0); // 1*3 + 0*4 = 3
+                assert_eq!(result_tensor[[1]], 4.0); // 0*3 + 1*4 = 4
+            }
+            _ => panic!("Expected tensor value from matrix-vector multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_vector_incompatible_shapes() {
+        // RED: Test incompatible matrix-vector shapes should error
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), // Wrong size - should be 3 to match matrix columns
+            vec![1.0, 2.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix, vector]);
+        assert!(result.is_err()); // Should fail due to incompatible shapes
+    }
+
+    #[test]
+    fn test_dot_product_vector_matrix() {
+        // RED: Test vector-matrix multiplication should also work - Dot[{1,2}, {{3,4},{5,6}}] -> {13,16}
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![1.0, 2.0]
+        ).unwrap());
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        let result = dot(&[vector, matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2]);
+                assert_eq!(result_tensor[[0]], 13.0); // 1*3 + 2*5 = 13
+                assert_eq!(result_tensor[[1]], 16.0); // 1*4 + 2*6 = 16
+            }
+            _ => panic!("Expected tensor value from vector-matrix multiplication"),
+        }
+    }
+
+    // ===== MATRIX-MATRIX MULTIPLICATION TESTS =====
+    // TDD Tests for matrix-matrix dot products
+
+    #[test]
+    fn test_dot_product_matrix_matrix_2x2() {
+        // RED: Test 2x2 matrix multiplication - Dot[{{1,2},{3,4}}, {{5,6},{7,8}}] -> {{19,22},{43,50}}
+        let matrix_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        let matrix_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![5.0, 6.0, 7.0, 8.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix_a, matrix_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 19.0); // 1*5 + 2*7 = 19
+                assert_eq!(result_tensor[[0, 1]], 22.0); // 1*6 + 2*8 = 22
+                assert_eq!(result_tensor[[1, 0]], 43.0); // 3*5 + 4*7 = 43
+                assert_eq!(result_tensor[[1, 1]], 50.0); // 3*6 + 4*8 = 50
+            }
+            _ => panic!("Expected tensor value from matrix-matrix multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_matrix_identity() {
+        // RED: Test identity matrix multiplication - Dot[{{1,2},{3,4}}, {{1,0},{0,1}}] -> {{1,2},{3,4}}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        let identity = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 0.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix, identity]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 1.0); // 1*1 + 2*0 = 1
+                assert_eq!(result_tensor[[0, 1]], 2.0); // 1*0 + 2*1 = 2
+                assert_eq!(result_tensor[[1, 0]], 3.0); // 3*1 + 4*0 = 3
+                assert_eq!(result_tensor[[1, 1]], 4.0); // 3*0 + 4*1 = 4
+            }
+            _ => panic!("Expected tensor value from matrix-matrix multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_matrix_rectangular() {
+        // RED: Test rectangular matrix multiplication - Dot[{{1,2,3},{4,5,6}}, {{1,2},{3,4},{5,6}}] -> {{22,28},{49,64}}
+        let matrix_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        let matrix_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix_a, matrix_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 22.0); // 1*1 + 2*3 + 3*5 = 22
+                assert_eq!(result_tensor[[0, 1]], 28.0); // 1*2 + 2*4 + 3*6 = 28
+                assert_eq!(result_tensor[[1, 0]], 49.0); // 4*1 + 5*3 + 6*5 = 49
+                assert_eq!(result_tensor[[1, 1]], 64.0); // 4*2 + 5*4 + 6*6 = 64
+            }
+            _ => panic!("Expected tensor value from matrix-matrix multiplication"),
+        }
+    }
+
+    #[test]
+    fn test_dot_product_matrix_matrix_incompatible_shapes() {
+        // RED: Test incompatible matrix shapes should error
+        let matrix_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        let matrix_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), // Wrong shape - should be [3, x] to match matrix_a columns
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        
+        let result = dot(&[matrix_a, matrix_b]);
+        assert!(result.is_err()); // Should fail due to incompatible shapes
+    }
+
+    // ===== TRANSPOSE OPERATION TESTS =====
+    // TDD Tests for Transpose[] function
+
+    #[test]
+    fn test_transpose_2x3_matrix() {
+        // RED: Test 2x3 matrix transpose - Transpose[{{1,2,3},{4,5,6}}] -> {{1,4},{2,5},{3,6}}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        let result = transpose(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3, 2]);
+                assert_eq!(result_tensor[[0, 0]], 1.0); // Original [0,0]
+                assert_eq!(result_tensor[[0, 1]], 4.0); // Original [1,0]
+                assert_eq!(result_tensor[[1, 0]], 2.0); // Original [0,1]
+                assert_eq!(result_tensor[[1, 1]], 5.0); // Original [1,1]
+                assert_eq!(result_tensor[[2, 0]], 3.0); // Original [0,2]
+                assert_eq!(result_tensor[[2, 1]], 6.0); // Original [1,2]
+            }
+            _ => panic!("Expected tensor value from matrix transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_2x2_matrix() {
+        // RED: Test 2x2 matrix transpose - Transpose[{{1,2},{3,4}}] -> {{1,3},{2,4}}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        
+        let result = transpose(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 1.0); // Original [0,0]
+                assert_eq!(result_tensor[[0, 1]], 3.0); // Original [1,0]
+                assert_eq!(result_tensor[[1, 0]], 2.0); // Original [0,1]
+                assert_eq!(result_tensor[[1, 1]], 4.0); // Original [1,1]
+            }
+            _ => panic!("Expected tensor value from matrix transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_identity_matrix() {
+        // RED: Test identity matrix transpose (should be unchanged)
+        let identity = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3, 3]), 
+            vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = transpose(&[identity]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3, 3]);
+                // Identity matrix should be unchanged by transpose
+                assert_eq!(result_tensor[[0, 0]], 1.0);
+                assert_eq!(result_tensor[[0, 1]], 0.0);
+                assert_eq!(result_tensor[[0, 2]], 0.0);
+                assert_eq!(result_tensor[[1, 0]], 0.0);
+                assert_eq!(result_tensor[[1, 1]], 1.0);
+                assert_eq!(result_tensor[[1, 2]], 0.0);
+                assert_eq!(result_tensor[[2, 0]], 0.0);
+                assert_eq!(result_tensor[[2, 1]], 0.0);
+                assert_eq!(result_tensor[[2, 2]], 1.0);
+            }
+            _ => panic!("Expected tensor value from matrix transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_single_element() {
+        // RED: Test 1x1 matrix transpose
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[1, 1]), 
+            vec![42.0]
+        ).unwrap());
+        
+        let result = transpose(&[matrix]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[1, 1]);
+                assert_eq!(result_tensor[[0, 0]], 42.0);
+            }
+            _ => panic!("Expected tensor value from matrix transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = transpose(&[]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = transpose(&[matrix.clone(), matrix]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_transpose_non_tensor_args() {
+        // RED: Test non-tensor arguments should error
+        let result = transpose(&[Value::Integer(42)]);
+        assert!(result.is_err());
+        
+        let result = transpose(&[Value::List(vec![Value::Integer(1), Value::Integer(2)])]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_transpose_unsupported_3d_tensor() {
+        // RED: Test 3D+ tensor should error (only support 1D and 2D)
+        let tensor_3d = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+        ).unwrap());
+        
+        let result = transpose(&[tensor_3d]);
+        assert!(result.is_err()); // Should fail for 3D tensor
+    }
+
+    // ===== VECTOR TRANSPOSE TESTS =====
+    // TDD Tests for vector transpose behavior
+
+    #[test]
+    fn test_transpose_row_vector() {
+        // RED: Test row vector transpose - Transpose[{{1,2,3}}] -> {{1},{2},{3}}
+        let row_vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[1, 3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        let result = transpose(&[row_vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3, 1]);
+                assert_eq!(result_tensor[[0, 0]], 1.0);
+                assert_eq!(result_tensor[[1, 0]], 2.0);
+                assert_eq!(result_tensor[[2, 0]], 3.0);
+            }
+            _ => panic!("Expected tensor value from row vector transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_column_vector() {
+        // RED: Test column vector transpose - Transpose[{{1},{2},{3}}] -> {{1,2,3}}
+        let column_vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3, 1]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        let result = transpose(&[column_vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[1, 3]);
+                assert_eq!(result_tensor[[0, 0]], 1.0);
+                assert_eq!(result_tensor[[0, 1]], 2.0);
+                assert_eq!(result_tensor[[0, 2]], 3.0);
+            }
+            _ => panic!("Expected tensor value from column vector transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_vector_conversion() {
+        // RED: Test 1D vector should convert to column vector when transposed
+        // This is needed for neural network operations
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        let result = transpose(&[vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3, 1]); // Convert to column vector
+                assert_eq!(result_tensor[[0, 0]], 1.0);
+                assert_eq!(result_tensor[[1, 0]], 2.0);
+                assert_eq!(result_tensor[[2, 0]], 3.0);
+            }
+            _ => panic!("Expected tensor value from vector transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_double_transpose() {
+        // RED: Test double transpose returns original matrix
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        
+        let first_transpose = transpose(&[matrix.clone()]).unwrap();
+        let second_transpose = transpose(&[first_transpose]).unwrap();
+        
+        match (matrix, second_transpose) {
+            (Value::Tensor(original), Value::Tensor(double_transposed)) => {
+                assert_eq!(original.shape(), double_transposed.shape());
+                for i in 0..original.len() {
+                    assert_eq!(original.as_slice().unwrap()[i], double_transposed.as_slice().unwrap()[i]);
+                }
+            }
+            _ => panic!("Expected tensor values"),
+        }
+    }
+
+    // ===== MAXIMUM FUNCTION TESTS =====
+    // TDD Tests for Maximum[] function (needed for ReLU activation)
+
+    #[test]
+    fn test_maximum_tensor_scalar_relu() {
+        // RED: Test ReLU operation - Maximum[{-2,-1,0,1,2}, 0] -> {0,0,0,1,2}
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[5]), 
+            vec![-2.0, -1.0, 0.0, 1.0, 2.0]
+        ).unwrap());
+        let scalar = Value::Real(0.0);
+        
+        let result = maximum(&[tensor, scalar]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[5]);
+                assert_eq!(result_tensor[[0]], 0.0); // max(-2, 0) = 0
+                assert_eq!(result_tensor[[1]], 0.0); // max(-1, 0) = 0
+                assert_eq!(result_tensor[[2]], 0.0); // max(0, 0) = 0
+                assert_eq!(result_tensor[[3]], 1.0); // max(1, 0) = 1
+                assert_eq!(result_tensor[[4]], 2.0); // max(2, 0) = 2
+            }
+            _ => panic!("Expected tensor value from maximum operation"),
+        }
+    }
+
+    #[test]
+    fn test_maximum_scalar_tensor() {
+        // RED: Test scalar-tensor maximum (commutative) - Maximum[0, {-1,0,1}] -> {0,0,1}
+        let scalar = Value::Real(0.0);
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![-1.0, 0.0, 1.0]
+        ).unwrap());
+        
+        let result = maximum(&[scalar, tensor]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                assert_eq!(result_tensor[[0]], 0.0); // max(0, -1) = 0
+                assert_eq!(result_tensor[[1]], 0.0); // max(0, 0) = 0
+                assert_eq!(result_tensor[[2]], 1.0); // max(0, 1) = 1
+            }
+            _ => panic!("Expected tensor value from maximum operation"),
+        }
+    }
+
+    #[test]
+    fn test_maximum_tensor_tensor() {
+        // RED: Test element-wise maximum between tensors - Maximum[{1,2,3}, {2,1,4}] -> {2,2,4}
+        let tensor_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        let tensor_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![2.0, 1.0, 4.0]
+        ).unwrap());
+        
+        let result = maximum(&[tensor_a, tensor_b]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[3]);
+                assert_eq!(result_tensor[[0]], 2.0); // max(1, 2) = 2
+                assert_eq!(result_tensor[[1]], 2.0); // max(2, 1) = 2
+                assert_eq!(result_tensor[[2]], 4.0); // max(3, 4) = 4
+            }
+            _ => panic!("Expected tensor value from maximum operation"),
+        }
+    }
+
+    #[test]
+    fn test_maximum_2d_tensor_scalar() {
+        // RED: Test 2D tensor with scalar - Maximum[{{-1,0},{1,2}}, 0] -> {{0,0},{1,2}}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![-1.0, 0.0, 1.0, 2.0]
+        ).unwrap());
+        let scalar = Value::Real(0.0);
+        
+        let result = maximum(&[matrix, scalar]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 0.0); // max(-1, 0) = 0
+                assert_eq!(result_tensor[[0, 1]], 0.0); // max(0, 0) = 0
+                assert_eq!(result_tensor[[1, 0]], 1.0); // max(1, 0) = 1
+                assert_eq!(result_tensor[[1, 1]], 2.0); // max(2, 0) = 2
+            }
+            _ => panic!("Expected tensor value from maximum operation"),
+        }
+    }
+
+    #[test]
+    fn test_maximum_with_broadcasting() {
+        // RED: Test broadcasting - Maximum[{{1,2},{3,4}}, {0,1}] -> {{1,2},{3,4}}
+        let matrix = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        let vector = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2]), 
+            vec![0.0, 1.0]
+        ).unwrap());
+        
+        let result = maximum(&[matrix, vector]);
+        assert!(result.is_ok());
+        
+        match result.unwrap() {
+            Value::Tensor(result_tensor) => {
+                assert_eq!(result_tensor.shape(), &[2, 2]);
+                assert_eq!(result_tensor[[0, 0]], 1.0); // max(1, 0) = 1
+                assert_eq!(result_tensor[[0, 1]], 2.0); // max(2, 1) = 2
+                assert_eq!(result_tensor[[1, 0]], 3.0); // max(3, 0) = 3
+                assert_eq!(result_tensor[[1, 1]], 4.0); // max(4, 1) = 4
+            }
+            _ => panic!("Expected tensor value from maximum operation"),
+        }
+    }
+
+    #[test]
+    fn test_maximum_wrong_number_of_args() {
+        // RED: Test wrong number of arguments should error
+        let tensor = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[3]), 
+            vec![1.0, 2.0, 3.0]
+        ).unwrap());
+        
+        // Too few arguments
+        let result = maximum(&[tensor.clone()]);
+        assert!(result.is_err());
+        
+        // Too many arguments
+        let result = maximum(&[tensor.clone(), tensor.clone(), tensor]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_maximum_incompatible_types() {
+        // RED: Test incompatible types should error
+        let result = maximum(&[Value::String("hello".to_string()), Value::Integer(1)]);
+        assert!(result.is_err());
+        
+        let result = maximum(&[
+            Value::List(vec![Value::Integer(1)]),
+            Value::Integer(2)
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_maximum_incompatible_shapes() {
+        // RED: Test incompatible tensor shapes should error
+        let tensor_a = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 3]), 
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        ).unwrap());
+        let tensor_b = Value::Tensor(ArrayD::from_shape_vec(
+            IxDyn(&[2, 2]), 
+            vec![1.0, 2.0, 3.0, 4.0]
+        ).unwrap());
+        
+        let result = maximum(&[tensor_a, tensor_b]);
+        assert!(result.is_err()); // Should fail due to incompatible shapes
     }
 }

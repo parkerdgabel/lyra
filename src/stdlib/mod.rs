@@ -92,11 +92,17 @@ impl StandardLibrary {
     }
 
     fn register_tensor_functions(&mut self) {
+        // Basic tensor operations
         self.register("Array", tensor::array);
         self.register("ArrayDimensions", tensor::array_dimensions);
         self.register("ArrayRank", tensor::array_rank);
         self.register("ArrayReshape", tensor::array_reshape);
         self.register("ArrayFlatten", tensor::array_flatten);
+        
+        // Linear algebra operations
+        self.register("Dot", tensor::dot);
+        self.register("Transpose", tensor::transpose);
+        self.register("Maximum", tensor::maximum);
     }
 }
 
@@ -122,6 +128,11 @@ mod tests {
         assert!(stdlib.get_function("ReplaceAll").is_some());
         assert!(stdlib.get_function("Array").is_some());
         assert!(stdlib.get_function("ArrayDimensions").is_some());
+        
+        // Verify linear algebra functions are registered
+        assert!(stdlib.get_function("Dot").is_some());
+        assert!(stdlib.get_function("Transpose").is_some());
+        assert!(stdlib.get_function("Maximum").is_some());
     }
 
     #[test]
@@ -130,7 +141,7 @@ mod tests {
         let function_count = stdlib.function_names().count();
 
         // Should have at least the core functions we're implementing
-        assert!(function_count >= 21); // 7 list + 4 string + 6 math + 3 rules + 5 tensor = 25 minimum
+        assert!(function_count >= 24); // 7 list + 4 string + 6 math + 3 rules + 8 tensor = 28 minimum
     }
 
     #[test]
