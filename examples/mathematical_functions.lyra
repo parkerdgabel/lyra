@@ -1,0 +1,18 @@
+Sin[0]
+Sin[3.14159 / 2]
+Cos[0]
+Cos[3.14159]
+Tan[3.14159 / 4]
+Exp[0]
+Exp[1]
+Log[1]
+Log[Exp[1]]
+Sqrt[4]
+Sqrt[16]
+Sqrt[2]
+2^10
+10^3
+Sqrt[Sqrt[16]]
+Sin[3.14159/6] + Cos[3.14159/3]
+Log[Exp[2]]
+Sqrt[Sin[3.14159/2]^2 + Cos[0]^2]

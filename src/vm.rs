@@ -123,7 +123,9 @@ impl VirtualMachine {
 
     /// Get current instruction
     pub fn current_instruction(&self) -> VmResult<&Instruction> {
-        self.code.get(self.ip).ok_or(VmError::InvalidInstructionPointer(self.ip))
+        self.code
+            .get(self.ip)
+            .ok_or(VmError::InvalidInstructionPointer(self.ip))
     }
 
     /// Execute the current program
@@ -132,17 +134,17 @@ impl VirtualMachine {
             if self.ip >= self.code.len() {
                 break;
             }
-            
-            let instruction = self.current_instruction()?.clone();
-            
+
+            let instruction = *self.current_instruction()?;
+
             // Check for halt instruction before executing
             if matches!(instruction.opcode, OpCode::Halt) {
                 break;
             }
-            
+
             self.step()?;
         }
-        
+
         // Return the top value on the stack, or a default if empty
         if self.stack.is_empty() {
             Ok(Value::Integer(0)) // Default return value
@@ -153,8 +155,8 @@ impl VirtualMachine {
 
     /// Execute a single instruction
     pub fn step(&mut self) -> VmResult<()> {
-        let instruction = self.current_instruction()?.clone();
-        
+        let instruction = *self.current_instruction()?;
+
         match instruction.opcode {
             OpCode::LoadConst => {
                 let const_index = instruction.operand as usize;
@@ -236,24 +238,26 @@ impl VirtualMachine {
             }
             OpCode::Call => {
                 let arg_count = instruction.operand as usize;
-                
+
                 // Pop function name from stack
                 let function_name = match self.pop()? {
                     Value::Function(name) => name,
                     Value::Symbol(name) => name,
-                    other => return Err(VmError::TypeError {
-                        expected: "Function or Symbol".to_string(),
-                        actual: format!("{:?}", other),
-                    }),
+                    other => {
+                        return Err(VmError::TypeError {
+                            expected: "Function or Symbol".to_string(),
+                            actual: format!("{:?}", other),
+                        })
+                    }
                 };
-                
+
                 // Pop arguments from stack (in reverse order)
                 let mut args = Vec::with_capacity(arg_count);
                 for _ in 0..arg_count {
                     args.push(self.pop()?);
                 }
                 args.reverse(); // Arguments were pushed in reverse order
-                
+
                 // Try to call stdlib function
                 if let Some(func) = self.stdlib.get_function(&function_name) {
                     let result = func(&args)?;
@@ -264,7 +268,7 @@ impl VirtualMachine {
                         actual: "unknown function".to_string(),
                     });
                 }
-                
+
                 self.ip += 1;
             }
             OpCode::Return => {
@@ -278,7 +282,7 @@ impl VirtualMachine {
                 return Ok(());
             }
         }
-        
+
         Ok(())
     }
 
@@ -418,20 +422,20 @@ mod tests {
     #[test]
     fn test_stack_operations() {
         let mut vm = VirtualMachine::new();
-        
+
         // Test push
         vm.push(Value::Integer(42));
         assert_eq!(vm.stack.len(), 1);
-        
+
         // Test peek
         assert_eq!(vm.peek().unwrap(), &Value::Integer(42));
         assert_eq!(vm.stack.len(), 1); // Peek doesn't remove
-        
+
         // Test pop
         let value = vm.pop().unwrap();
         assert_eq!(value, Value::Integer(42));
         assert!(vm.stack.is_empty());
-        
+
         // Test pop on empty stack
         assert!(vm.pop().is_err());
     }
@@ -439,10 +443,10 @@ mod tests {
     #[test]
     fn test_constant_pool() {
         let mut vm = VirtualMachine::new();
-        
+
         let index1 = vm.add_constant(Value::Integer(42));
         let index2 = vm.add_constant(Value::String("hello".to_string()));
-        
+
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
         assert_eq!(vm.constants[0], Value::Integer(42));
@@ -452,11 +456,11 @@ mod tests {
     #[test]
     fn test_symbol_table() {
         let mut vm = VirtualMachine::new();
-        
+
         let index1 = vm.add_symbol("x".to_string());
         let index2 = vm.add_symbol("y".to_string());
         let index3 = vm.add_symbol("x".to_string()); // Duplicate
-        
+
         assert_eq!(index1, 0);
         assert_eq!(index2, 1);
         assert_eq!(index3, 0); // Should return existing index
@@ -466,12 +470,12 @@ mod tests {
     fn test_load_const_instruction() {
         let mut vm = VirtualMachine::new();
         let const_index = vm.add_constant(Value::Integer(42));
-        
+
         let instruction = Instruction::new(OpCode::LoadConst, const_index as u32).unwrap();
         vm.load(vec![instruction], vm.constants.clone());
-        
+
         vm.step().unwrap();
-        
+
         assert_eq!(vm.ip, 1);
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(42));
@@ -480,12 +484,12 @@ mod tests {
     #[test]
     fn test_push_instruction() {
         let mut vm = VirtualMachine::new();
-        
+
         let instruction = Instruction::new(OpCode::Push, 42).unwrap();
         vm.load(vec![instruction], vec![]);
-        
+
         vm.step().unwrap();
-        
+
         assert_eq!(vm.ip, 1);
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(42));
@@ -494,16 +498,16 @@ mod tests {
     #[test]
     fn test_dup_instruction() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 42).unwrap(),
             Instruction::new(OpCode::Dup, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 42
         vm.step().unwrap(); // Dup
-        
+
         assert_eq!(vm.stack.len(), 2);
         assert_eq!(vm.stack[0], Value::Integer(42));
         assert_eq!(vm.stack[1], Value::Integer(42));
@@ -512,18 +516,18 @@ mod tests {
     #[test]
     fn test_pop_instruction() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 42).unwrap(),
             Instruction::new(OpCode::Push, 24).unwrap(),
             Instruction::new(OpCode::Pop, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 42
         vm.step().unwrap(); // Push 24
         vm.step().unwrap(); // Pop 24
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(42));
     }
@@ -531,18 +535,18 @@ mod tests {
     #[test]
     fn test_arithmetic_add() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 2).unwrap(),
             Instruction::new(OpCode::Push, 3).unwrap(),
             Instruction::new(OpCode::Add, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 2
         vm.step().unwrap(); // Push 3
         vm.step().unwrap(); // Add
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(5));
     }
@@ -550,18 +554,18 @@ mod tests {
     #[test]
     fn test_arithmetic_sub() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 5).unwrap(),
             Instruction::new(OpCode::Push, 3).unwrap(),
             Instruction::new(OpCode::Sub, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 5
         vm.step().unwrap(); // Push 3
         vm.step().unwrap(); // Sub
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(2));
     }
@@ -569,18 +573,18 @@ mod tests {
     #[test]
     fn test_arithmetic_mul() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 3).unwrap(),
             Instruction::new(OpCode::Push, 4).unwrap(),
             Instruction::new(OpCode::Mul, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 3
         vm.step().unwrap(); // Push 4
         vm.step().unwrap(); // Mul
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(12));
     }
@@ -588,18 +592,18 @@ mod tests {
     #[test]
     fn test_arithmetic_div() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 8).unwrap(),
             Instruction::new(OpCode::Push, 2).unwrap(),
             Instruction::new(OpCode::Div, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 8
         vm.step().unwrap(); // Push 2
         vm.step().unwrap(); // Div
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Real(4.0));
     }
@@ -607,18 +611,18 @@ mod tests {
     #[test]
     fn test_arithmetic_power() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 2).unwrap(),
             Instruction::new(OpCode::Push, 3).unwrap(),
             Instruction::new(OpCode::Power, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 2
         vm.step().unwrap(); // Push 3
         vm.step().unwrap(); // Power
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Integer(8));
     }
@@ -626,21 +630,21 @@ mod tests {
     #[test]
     fn test_division_by_zero() {
         let mut vm = VirtualMachine::new();
-        
+
         let program = vec![
             Instruction::new(OpCode::Push, 5).unwrap(),
             Instruction::new(OpCode::Push, 0).unwrap(),
             Instruction::new(OpCode::Div, 0).unwrap(),
         ];
         vm.load(program, vec![]);
-        
+
         vm.step().unwrap(); // Push 5
         vm.step().unwrap(); // Push 0
         let result = vm.step(); // Div
-        
+
         assert!(result.is_err());
         match result.unwrap_err() {
-            VmError::DivisionByZero => {},
+            VmError::DivisionByZero => {}
             _ => panic!("Expected DivisionByZero error"),
         }
     }
@@ -648,12 +652,12 @@ mod tests {
     #[test]
     fn test_jump_instruction() {
         let mut vm = VirtualMachine::new();
-        
+
         let instruction = Instruction::new(OpCode::Jump, 5).unwrap();
         vm.load(vec![instruction], vec![]);
-        
+
         vm.step().unwrap();
-        
+
         assert_eq!(vm.ip, 5);
     }
 
@@ -661,16 +665,16 @@ mod tests {
     fn test_jump_if_false_true_condition() {
         let mut vm = VirtualMachine::new();
         let true_index = vm.add_constant(Value::Boolean(true));
-        
+
         let program = vec![
             Instruction::new(OpCode::LoadConst, true_index as u32).unwrap(),
             Instruction::new(OpCode::JumpIfFalse, 5).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
-        
+
         vm.step().unwrap(); // Load true
         vm.step().unwrap(); // JumpIfFalse
-        
+
         assert_eq!(vm.ip, 2); // Should not jump
     }
 
@@ -678,23 +682,23 @@ mod tests {
     fn test_jump_if_false_false_condition() {
         let mut vm = VirtualMachine::new();
         let false_index = vm.add_constant(Value::Boolean(false));
-        
+
         let program = vec![
             Instruction::new(OpCode::LoadConst, false_index as u32).unwrap(),
             Instruction::new(OpCode::JumpIfFalse, 5).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
-        
+
         vm.step().unwrap(); // Load false
         vm.step().unwrap(); // JumpIfFalse
-        
+
         assert_eq!(vm.ip, 5); // Should jump
     }
 
     #[test]
     fn test_simple_program() {
         let mut vm = VirtualMachine::new();
-        
+
         // Program: push 2, push 3, add, halt
         let program = vec![
             Instruction::new(OpCode::Push, 2).unwrap(),
@@ -702,10 +706,10 @@ mod tests {
             Instruction::new(OpCode::Add, 0).unwrap(),
             Instruction::new(OpCode::Halt, 0).unwrap(),
         ];
-        
+
         vm.load(program, vec![]);
         let result = vm.run().unwrap();
-        
+
         assert_eq!(result, Value::Integer(5));
     }
 
@@ -714,18 +718,18 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let int_index = vm.add_constant(Value::Integer(2));
         let real_index = vm.add_constant(Value::Real(3.5));
-        
+
         let program = vec![
             Instruction::new(OpCode::LoadConst, int_index as u32).unwrap(),
             Instruction::new(OpCode::LoadConst, real_index as u32).unwrap(),
             Instruction::new(OpCode::Add, 0).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
-        
+
         vm.step().unwrap(); // Load 2
         vm.step().unwrap(); // Load 3.5
         vm.step().unwrap(); // Add
-        
+
         assert_eq!(vm.stack.len(), 1);
         assert_eq!(vm.stack[0], Value::Real(5.5));
     }
@@ -735,21 +739,21 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let string_index = vm.add_constant(Value::String("hello".to_string()));
         let int_index = vm.add_constant(Value::Integer(42));
-        
+
         let program = vec![
             Instruction::new(OpCode::LoadConst, string_index as u32).unwrap(),
             Instruction::new(OpCode::LoadConst, int_index as u32).unwrap(),
             Instruction::new(OpCode::Add, 0).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
-        
+
         vm.step().unwrap(); // Load "hello"
         vm.step().unwrap(); // Load 42
         let result = vm.step(); // Add
-        
+
         assert!(result.is_err());
         match result.unwrap_err() {
-            VmError::TypeError { .. } => {},
+            VmError::TypeError { .. } => {}
             _ => panic!("Expected TypeError"),
         }
     }

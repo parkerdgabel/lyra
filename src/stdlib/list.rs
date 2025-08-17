@@ -11,7 +11,7 @@ pub fn length(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     match &args[0] {
         Value::List(list) => Ok(Value::Integer(list.len() as i64)),
         _ => Err(VmError::TypeError {
@@ -30,7 +30,7 @@ pub fn head(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     match &args[0] {
         Value::List(list) => {
             if list.is_empty() {
@@ -58,7 +58,7 @@ pub fn tail(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     match &args[0] {
         Value::List(list) => {
             if list.is_empty() {
@@ -86,7 +86,7 @@ pub fn append(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     match &args[0] {
         Value::List(list) => {
             let mut new_list = list.clone();
@@ -109,7 +109,7 @@ pub fn flatten(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     match &args[0] {
         Value::List(list) => {
             let mut flattened = Vec::new();
@@ -158,36 +158,36 @@ pub fn apply(_args: &[Value]) -> VmResult<Value> {
 mod tests {
     use super::*;
     use crate::vm::Value;
-    
+
     #[test]
     fn test_length_basic() {
         let list = Value::List(vec![
             Value::Integer(1),
-            Value::Integer(2), 
+            Value::Integer(2),
             Value::Integer(3),
         ]);
         let result = length(&[list]).unwrap();
         assert_eq!(result, Value::Integer(3));
     }
-    
+
     #[test]
     fn test_length_empty_list() {
         let list = Value::List(vec![]);
         let result = length(&[list]).unwrap();
         assert_eq!(result, Value::Integer(0));
     }
-    
+
     #[test]
     fn test_length_wrong_args() {
         assert!(length(&[]).is_err());
         assert!(length(&[Value::Integer(1), Value::Integer(2)]).is_err());
     }
-    
+
     #[test]
     fn test_length_wrong_type() {
         assert!(length(&[Value::Integer(42)]).is_err());
     }
-    
+
     #[test]
     fn test_head_basic() {
         let list = Value::List(vec![
@@ -198,19 +198,19 @@ mod tests {
         let result = head(&[list]).unwrap();
         assert_eq!(result, Value::Integer(1));
     }
-    
+
     #[test]
     fn test_head_empty_list() {
         let list = Value::List(vec![]);
         assert!(head(&[list]).is_err());
     }
-    
+
     #[test]
     fn test_head_wrong_args() {
         assert!(head(&[]).is_err());
         assert!(head(&[Value::Integer(1), Value::Integer(2)]).is_err());
     }
-    
+
     #[test]
     fn test_tail_basic() {
         let list = Value::List(vec![
@@ -219,34 +219,40 @@ mod tests {
             Value::Integer(3),
         ]);
         let result = tail(&[list]).unwrap();
-        assert_eq!(result, Value::List(vec![Value::Integer(2), Value::Integer(3)]));
+        assert_eq!(
+            result,
+            Value::List(vec![Value::Integer(2), Value::Integer(3)])
+        );
     }
-    
+
     #[test]
     fn test_tail_single_element() {
         let list = Value::List(vec![Value::Integer(42)]);
         let result = tail(&[list]).unwrap();
         assert_eq!(result, Value::List(vec![]));
     }
-    
+
     #[test]
     fn test_tail_empty_list() {
         let list = Value::List(vec![]);
         assert!(tail(&[list]).is_err());
     }
-    
+
     #[test]
     fn test_append_basic() {
         let list = Value::List(vec![Value::Integer(1), Value::Integer(2)]);
         let elem = Value::Integer(3);
         let result = append(&[list, elem]).unwrap();
-        assert_eq!(result, Value::List(vec![
-            Value::Integer(1),
-            Value::Integer(2),
-            Value::Integer(3),
-        ]));
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+            ])
+        );
     }
-    
+
     #[test]
     fn test_append_to_empty() {
         let list = Value::List(vec![]);
@@ -254,14 +260,14 @@ mod tests {
         let result = append(&[list, elem]).unwrap();
         assert_eq!(result, Value::List(vec![Value::Integer(42)]));
     }
-    
+
     #[test]
     fn test_append_wrong_args() {
         assert!(append(&[]).is_err());
         assert!(append(&[Value::Integer(1)]).is_err());
         assert!(append(&[Value::Integer(1), Value::Integer(2), Value::Integer(3)]).is_err());
     }
-    
+
     #[test]
     fn test_flatten_basic() {
         let list = Value::List(vec![
@@ -269,14 +275,17 @@ mod tests {
             Value::List(vec![Value::Integer(3), Value::Integer(4)]),
         ]);
         let result = flatten(&[list]).unwrap();
-        assert_eq!(result, Value::List(vec![
-            Value::Integer(1),
-            Value::Integer(2),
-            Value::Integer(3),
-            Value::Integer(4),
-        ]));
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(4),
+            ])
+        );
     }
-    
+
     #[test]
     fn test_flatten_mixed() {
         let list = Value::List(vec![
@@ -285,21 +294,24 @@ mod tests {
             Value::Integer(4),
         ]);
         let result = flatten(&[list]).unwrap();
-        assert_eq!(result, Value::List(vec![
-            Value::Integer(1),
-            Value::Integer(2),
-            Value::Integer(3),
-            Value::Integer(4),
-        ]));
+        assert_eq!(
+            result,
+            Value::List(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(4),
+            ])
+        );
     }
-    
+
     #[test]
     fn test_flatten_empty() {
         let list = Value::List(vec![]);
         let result = flatten(&[list]).unwrap();
         assert_eq!(result, Value::List(vec![]));
     }
-    
+
     #[test]
     fn test_map_not_implemented() {
         // Map requires function evaluation, so should return error for now
@@ -307,7 +319,7 @@ mod tests {
         let func = Value::Function("f".to_string());
         assert!(map(&[func, list]).is_err());
     }
-    
+
     #[test]
     fn test_apply_not_implemented() {
         // Apply requires function evaluation, so should return error for now

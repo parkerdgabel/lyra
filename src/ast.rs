@@ -155,7 +155,11 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::DotCall { object, method, args } => {
+            Expr::DotCall {
+                object,
+                method,
+                args,
+            } => {
                 write!(f, "{}.", object)?;
                 write!(f, "{}[", method)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -408,20 +412,13 @@ mod tests {
 
     #[test]
     fn test_list_display() {
-        let list = Expr::list(vec![
-            Expr::integer(1),
-            Expr::integer(2),
-            Expr::integer(3),
-        ]);
+        let list = Expr::list(vec![Expr::integer(1), Expr::integer(2), Expr::integer(3)]);
         assert_eq!(list.to_string(), "{1, 2, 3}");
     }
 
     #[test]
     fn test_function_display() {
-        let func = Expr::function(
-            Expr::symbol("f"),
-            vec![Expr::symbol("x"), Expr::integer(2)],
-        );
+        let func = Expr::function(Expr::symbol("f"), vec![Expr::symbol("x"), Expr::integer(2)]);
         assert_eq!(func.to_string(), "f[x, 2]");
     }
 
@@ -430,7 +427,7 @@ mod tests {
         let blank = Expr::blank(None);
         let typed_blank = Expr::blank(Some("Integer".to_string()));
         let blank_seq = Expr::blank_sequence(Some("String".to_string()));
-        
+
         assert_eq!(blank.to_string(), "_");
         assert_eq!(typed_blank.to_string(), "_Integer");
         assert_eq!(blank_seq.to_string(), "__String");
@@ -440,7 +437,10 @@ mod tests {
     fn test_rule_display() {
         let rule = Expr::rule(
             Expr::symbol("x"),
-            Expr::function(Expr::symbol("Power"), vec![Expr::symbol("x"), Expr::integer(2)]),
+            Expr::function(
+                Expr::symbol("Power"),
+                vec![Expr::symbol("x"), Expr::integer(2)],
+            ),
             false,
         );
         assert_eq!(rule.to_string(), "x -> Power[x, 2]");
@@ -450,7 +450,10 @@ mod tests {
     fn test_assignment_display() {
         let assign = Expr::assignment(
             Expr::function(Expr::symbol("f"), vec![Expr::blank(None)]),
-            Expr::function(Expr::symbol("Power"), vec![Expr::symbol("x"), Expr::integer(2)]),
+            Expr::function(
+                Expr::symbol("Power"),
+                vec![Expr::symbol("x"), Expr::integer(2)],
+            ),
             false,
         );
         assert_eq!(assign.to_string(), "f[_] = Power[x, 2]");
@@ -483,10 +486,7 @@ mod tests {
         let nested = Expr::function(
             Expr::symbol("f"),
             vec![
-                Expr::function(
-                    Expr::symbol("g"),
-                    vec![Expr::symbol("x")],
-                ),
+                Expr::function(Expr::symbol("g"), vec![Expr::symbol("x")]),
                 Expr::list(vec![Expr::integer(1), Expr::integer(2)]),
             ],
         );
@@ -528,11 +528,7 @@ mod tests {
         let range1 = Expr::range(Expr::integer(1), Expr::integer(10), None);
         assert_eq!(range1.to_string(), "1;; 10");
 
-        let range2 = Expr::range(
-            Expr::integer(0),
-            Expr::integer(1),
-            Some(Expr::real(0.1)),
-        );
+        let range2 = Expr::range(Expr::integer(0), Expr::integer(1), Some(Expr::real(0.1)));
         assert_eq!(range2.to_string(), "0;; 1;; 0.1");
     }
 
@@ -575,18 +571,20 @@ mod tests {
 
     #[test]
     fn test_predicate_pattern_display() {
-        let predicate = Expr::predicate_pattern(
-            Pattern::Blank { head: None },
-            Expr::symbol("Positive"),
-        );
+        let predicate =
+            Expr::predicate_pattern(Pattern::Blank { head: None }, Expr::symbol("Positive"));
         assert_eq!(predicate.to_string(), "_?Positive");
     }
 
     #[test]
     fn test_alternative_pattern_display() {
         let alternative = Expr::alternative_pattern(vec![
-            Pattern::Blank { head: Some("Integer".to_string()) },
-            Pattern::Blank { head: Some("Real".to_string()) },
+            Pattern::Blank {
+                head: Some("Integer".to_string()),
+            },
+            Pattern::Blank {
+                head: Some("Real".to_string()),
+            },
         ]);
         assert_eq!(alternative.to_string(), "_Integer | _Real");
     }
@@ -608,12 +606,8 @@ mod tests {
 
     #[test]
     fn test_modern_expressions_equality() {
-        let assoc1 = Expr::association(vec![
-            (Expr::string("key"), Expr::integer(1)),
-        ]);
-        let assoc2 = Expr::association(vec![
-            (Expr::string("key"), Expr::integer(1)),
-        ]);
+        let assoc1 = Expr::association(vec![(Expr::string("key"), Expr::integer(1))]);
+        let assoc2 = Expr::association(vec![(Expr::string("key"), Expr::integer(1))]);
         assert_eq!(assoc1, assoc2);
 
         let pipeline1 = Expr::pipeline(vec![Expr::symbol("x"), Expr::symbol("f")]);
@@ -624,18 +618,21 @@ mod tests {
     #[test]
     fn test_complex_modern_expression() {
         let complex = Expr::pipeline(vec![
-            Expr::association(vec![
-                (Expr::string("data"), Expr::list(vec![Expr::integer(1), Expr::integer(2)])),
-            ]),
-            Expr::dot_call(Expr::symbol("data"), "map", vec![
-                Expr::arrow_function(
+            Expr::association(vec![(
+                Expr::string("data"),
+                Expr::list(vec![Expr::integer(1), Expr::integer(2)]),
+            )]),
+            Expr::dot_call(
+                Expr::symbol("data"),
+                "map",
+                vec![Expr::arrow_function(
                     vec!["x".to_string()],
                     Expr::function(
                         Expr::symbol("Times"),
                         vec![Expr::symbol("x"), Expr::integer(2)],
                     ),
-                ),
-            ]),
+                )],
+            ),
         ]);
         assert_eq!(
             complex.to_string(),

@@ -5,10 +5,10 @@ fn eval_source(source: &str) -> Result<Value, Box<dyn std::error::Error>> {
     // Parse source code to AST
     let mut parser = Parser::from_source(source)?;
     let statements = parser.parse()?;
-    
+
     // Take the last statement as the expression to evaluate
     let expr = statements.last().ok_or("No expressions to evaluate")?;
-    
+
     // Compile AST to bytecode and execute
     let result = Compiler::eval(expr)?;
     Ok(result)
@@ -132,7 +132,7 @@ fn test_literals() {
     // Test various literal types work
     let int_result = eval_source("42").unwrap();
     assert_eq!(int_result, Value::Integer(42));
-    
+
     let real_result = eval_source("3.14159").unwrap();
     assert_eq!(real_result, Value::Real(3.14159));
 }
@@ -141,7 +141,7 @@ fn test_literals() {
 fn test_zero_arithmetic() {
     let result = eval_source("0 + 0").unwrap();
     assert_eq!(result, Value::Integer(0));
-    
+
     let result2 = eval_source("5 * 0").unwrap();
     assert_eq!(result2, Value::Integer(0));
 }
@@ -174,19 +174,22 @@ fn test_compiler_with_parsed_ast() {
     let mut parser = Parser::from_source("2 + 3 * 4").unwrap();
     let statements = parser.parse().unwrap();
     let expr = &statements[0];
-    
+
     // Compile it
     let mut compiler = Compiler::new();
     compiler.compile_expr(expr).unwrap();
-    
+
     // Verify the bytecode looks reasonable
     assert!(!compiler.context.code.is_empty());
-    
+
     // Execute it
-    compiler.context.emit(lyra::bytecode::OpCode::Halt, 0).unwrap();
+    compiler
+        .context
+        .emit(lyra::bytecode::OpCode::Halt, 0)
+        .unwrap();
     let mut vm = compiler.into_vm();
     let result = vm.run().unwrap();
-    
+
     assert_eq!(result, Value::Integer(14));
 }
 
@@ -195,17 +198,17 @@ fn test_compiler_with_parsed_ast() {
 fn test_compile_multiple_statements() {
     let mut parser = Parser::from_source("1 + 1; 2 * 3").unwrap();
     let statements = parser.parse().unwrap();
-    
+
     assert_eq!(statements.len(), 2);
-    
+
     // Compile the program
     let mut compiler = Compiler::new();
     compiler.compile_program(&statements).unwrap();
-    
+
     // Execute and get the result (should be the last statement)
     let mut vm = compiler.into_vm();
     let result = vm.run().unwrap();
-    
+
     // The last statement is 2 * 3 = 6, but our current implementation
     // might have both results on stack. Let's just verify it runs.
     // In a real implementation, we'd want better semantics for multiple statements.
@@ -216,15 +219,19 @@ fn test_compile_multiple_statements() {
 #[test]
 fn test_performance_complex_expression() {
     let source = "((1 + 2) * (3 + 4)) + ((5 + 6) * (7 + 8))"; // = (3*7) + (11*15) = 21 + 165 = 186
-    
+
     let start = std::time::Instant::now();
     let result = eval_source(source).unwrap();
     let duration = start.elapsed();
-    
+
     assert_eq!(result, Value::Integer(186));
-    
+
     // Should complete in reasonable time (less than 1ms for this simple expression)
-    assert!(duration.as_millis() < 10, "Compilation took too long: {:?}", duration);
+    assert!(
+        duration.as_millis() < 10,
+        "Compilation took too long: {:?}",
+        duration
+    );
 }
 
 // ===============================
@@ -234,8 +241,13 @@ fn test_performance_complex_expression() {
 // Helper function to assert float equality with tolerance
 fn assert_float_eq(actual: Value, expected: f64, tolerance: f64) {
     match actual {
-        Value::Real(r) => assert!((r - expected).abs() < tolerance, 
-            "Expected {}, got {}, difference: {}", expected, r, (r - expected).abs()),
+        Value::Real(r) => assert!(
+            (r - expected).abs() < tolerance,
+            "Expected {}, got {}, difference: {}",
+            expected,
+            r,
+            (r - expected).abs()
+        ),
         _ => panic!("Expected Real value, got {:?}", actual),
     }
 }
@@ -245,7 +257,7 @@ fn assert_float_eq(actual: Value, expected: f64, tolerance: f64) {
 fn test_stdlib_length() {
     let result = eval_source("Length[{1, 2, 3, 4, 5}]").unwrap();
     assert_eq!(result, Value::Integer(5));
-    
+
     let result = eval_source("Length[{}]").unwrap();
     assert_eq!(result, Value::Integer(0));
 }
@@ -293,7 +305,7 @@ fn test_stdlib_flatten() {
         // Parser doesn't support nested lists yet, that's expected
         return;
     }
-    
+
     if let Ok(Value::List(list)) = result {
         assert_eq!(list.len(), 4);
         assert_eq!(list[0], Value::Integer(1));
@@ -314,7 +326,7 @@ fn test_stdlib_string_join() {
 fn test_stdlib_string_length() {
     let result = eval_source("StringLength[\"Hello\"]").unwrap();
     assert_eq!(result, Value::Integer(5));
-    
+
     let result = eval_source("StringLength[\"\"]").unwrap();
     assert_eq!(result, Value::Integer(0));
 }
@@ -323,7 +335,7 @@ fn test_stdlib_string_length() {
 fn test_stdlib_string_take() {
     let result = eval_source("StringTake[\"Hello\", 3]").unwrap();
     assert_eq!(result, Value::String("Hel".to_string()));
-    
+
     let result = eval_source("StringTake[\"Hi\", 10]").unwrap();
     assert_eq!(result, Value::String("Hi".to_string()));
 }
@@ -332,7 +344,7 @@ fn test_stdlib_string_take() {
 fn test_stdlib_string_drop() {
     let result = eval_source("StringDrop[\"Hello\", 2]").unwrap();
     assert_eq!(result, Value::String("llo".to_string()));
-    
+
     let result = eval_source("StringDrop[\"Hi\", 10]").unwrap();
     assert_eq!(result, Value::String("".to_string()));
 }
@@ -342,7 +354,7 @@ fn test_stdlib_string_drop() {
 fn test_stdlib_sin() {
     let result = eval_source("Sin[0]").unwrap();
     assert_float_eq(result, 0.0, 1e-10);
-    
+
     // Test with Pi/2 approximation
     let result = eval_source("Sin[1.5707963267948966]").unwrap();
     assert_float_eq(result, 1.0, 1e-10);
@@ -352,7 +364,7 @@ fn test_stdlib_sin() {
 fn test_stdlib_cos() {
     let result = eval_source("Cos[0]").unwrap();
     assert_float_eq(result, 1.0, 1e-10);
-    
+
     // Test with Pi approximation
     let result = eval_source("Cos[3.141592653589793]").unwrap();
     assert_float_eq(result, -1.0, 1e-10);
@@ -362,7 +374,7 @@ fn test_stdlib_cos() {
 fn test_stdlib_tan() {
     let result = eval_source("Tan[0]").unwrap();
     assert_float_eq(result, 0.0, 1e-10);
-    
+
     // Test with Pi/4 approximation
     let result = eval_source("Tan[0.7853981633974483]").unwrap();
     assert_float_eq(result, 1.0, 1e-10);
@@ -372,7 +384,7 @@ fn test_stdlib_tan() {
 fn test_stdlib_exp() {
     let result = eval_source("Exp[0]").unwrap();
     assert_float_eq(result, 1.0, 1e-10);
-    
+
     let result = eval_source("Exp[1]").unwrap();
     assert_float_eq(result, std::f64::consts::E, 1e-10);
 }
@@ -381,7 +393,7 @@ fn test_stdlib_exp() {
 fn test_stdlib_log() {
     let result = eval_source("Log[1]").unwrap();
     assert_float_eq(result, 0.0, 1e-10);
-    
+
     let result = eval_source("Log[2.718281828459045]").unwrap(); // E
     assert_float_eq(result, 1.0, 1e-10);
 }
@@ -390,10 +402,10 @@ fn test_stdlib_log() {
 fn test_stdlib_sqrt() {
     let result = eval_source("Sqrt[0]").unwrap();
     assert_float_eq(result, 0.0, 1e-10);
-    
+
     let result = eval_source("Sqrt[4]").unwrap();
     assert_float_eq(result, 2.0, 1e-10);
-    
+
     let result = eval_source("Sqrt[2]").unwrap();
     assert_float_eq(result, std::f64::consts::SQRT_2, 1e-10);
 }
@@ -426,12 +438,12 @@ fn test_stdlib_error_handling() {
     // Test invalid function calls
     let result = eval_source("UnknownFunction[1, 2]");
     assert!(result.is_err());
-    
+
     // Test wrong argument count
     let result = eval_source("Length[1, 2]");
     assert!(result.is_err());
-    
-    // Test wrong argument type  
+
+    // Test wrong argument type
     let result = eval_source("Length[42]");
     assert!(result.is_err());
 }
@@ -441,14 +453,14 @@ fn test_stdlib_edge_cases() {
     // Test Head and Tail on empty lists (should error)
     let result = eval_source("Head[{}]");
     assert!(result.is_err());
-    
+
     let result = eval_source("Tail[{}]");
     assert!(result.is_err());
-    
+
     // Test Log and Sqrt with invalid inputs (should error)
     let result = eval_source("Log[0]");
     assert!(result.is_err());
-    
+
     let result = eval_source("Sqrt[-1]");
     assert!(result.is_err());
 }

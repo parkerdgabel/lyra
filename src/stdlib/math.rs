@@ -11,16 +11,18 @@ pub fn sin(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => *n as f64,
         Value::Real(r) => *r,
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.sin()))
 }
 
@@ -33,16 +35,18 @@ pub fn cos(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => *n as f64,
         Value::Real(r) => *r,
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.cos()))
 }
 
@@ -55,16 +59,18 @@ pub fn tan(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => *n as f64,
         Value::Real(r) => *r,
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.tan()))
 }
 
@@ -77,16 +83,18 @@ pub fn exp(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => *n as f64,
         Value::Real(r) => *r,
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.exp()))
 }
 
@@ -99,7 +107,7 @@ pub fn log(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => {
             if *n <= 0 {
@@ -119,12 +127,14 @@ pub fn log(args: &[Value]) -> VmResult<Value> {
             }
             *r
         }
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.ln()))
 }
 
@@ -137,7 +147,7 @@ pub fn sqrt(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     let x = match &args[0] {
         Value::Integer(n) => {
             if *n < 0 {
@@ -157,12 +167,14 @@ pub fn sqrt(args: &[Value]) -> VmResult<Value> {
             }
             *r
         }
-        _ => return Err(VmError::TypeError {
-            expected: "Number".to_string(),
-            actual: format!("{:?}", args[0]),
-        }),
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", args[0]),
+            })
+        }
     };
-    
+
     Ok(Value::Real(x.sqrt()))
 }
 
@@ -170,85 +182,89 @@ pub fn sqrt(args: &[Value]) -> VmResult<Value> {
 mod tests {
     use super::*;
     use crate::vm::Value;
-    
+
     const EPSILON: f64 = 1e-10;
-    
+
     fn assert_float_eq(actual: Value, expected: f64) {
         match actual {
-            Value::Real(r) => assert!((r - expected).abs() < EPSILON, 
-                "Expected {}, got {}", expected, r),
+            Value::Real(r) => assert!(
+                (r - expected).abs() < EPSILON,
+                "Expected {}, got {}",
+                expected,
+                r
+            ),
             _ => panic!("Expected Real value, got {:?}", actual),
         }
     }
-    
+
     #[test]
     fn test_sin_basic() {
         let result = sin(&[Value::Integer(0)]).unwrap();
         assert_float_eq(result, 0.0);
-        
+
         let result = sin(&[Value::Real(std::f64::consts::PI / 2.0)]).unwrap();
         assert_float_eq(result, 1.0);
-        
+
         let result = sin(&[Value::Real(std::f64::consts::PI)]).unwrap();
         assert_float_eq(result, 0.0);
     }
-    
+
     #[test]
     fn test_sin_wrong_args() {
         assert!(sin(&[]).is_err());
         assert!(sin(&[Value::Integer(1), Value::Integer(2)]).is_err());
     }
-    
+
     #[test]
     fn test_sin_wrong_type() {
         assert!(sin(&[Value::String("not a number".to_string())]).is_err());
     }
-    
+
     #[test]
     fn test_cos_basic() {
         let result = cos(&[Value::Integer(0)]).unwrap();
         assert_float_eq(result, 1.0);
-        
+
         let result = cos(&[Value::Real(std::f64::consts::PI / 2.0)]).unwrap();
         assert_float_eq(result, 0.0);
-        
+
         let result = cos(&[Value::Real(std::f64::consts::PI)]).unwrap();
         assert_float_eq(result, -1.0);
     }
-    
+
     #[test]
     fn test_tan_basic() {
         let result = tan(&[Value::Integer(0)]).unwrap();
         assert_float_eq(result, 0.0);
-        
+
         let result = tan(&[Value::Real(std::f64::consts::PI / 4.0)]).unwrap();
         assert_float_eq(result, 1.0);
     }
-    
+
     #[test]
     fn test_exp_basic() {
         let result = exp(&[Value::Integer(0)]).unwrap();
         assert_float_eq(result, 1.0);
-        
+
         let result = exp(&[Value::Integer(1)]).unwrap();
         assert_float_eq(result, std::f64::consts::E);
-        
+
         let result = exp(&[Value::Real(2.0)]).unwrap();
         assert_float_eq(result, std::f64::consts::E * std::f64::consts::E);
     }
-    
+
     #[test]
     fn test_log_basic() {
         let result = log(&[Value::Integer(1)]).unwrap();
         assert_float_eq(result, 0.0);
-        
+
         let result = log(&[Value::Real(std::f64::consts::E)]).unwrap();
         assert_float_eq(result, 1.0);
-        
+
         let result = log(&[Value::Real(std::f64::consts::E * std::f64::consts::E)]).unwrap();
         assert_float_eq(result, 2.0);
     }
-    
+
     #[test]
     fn test_log_invalid_input() {
         assert!(log(&[Value::Integer(0)]).is_err());
@@ -256,28 +272,28 @@ mod tests {
         assert!(log(&[Value::Real(0.0)]).is_err());
         assert!(log(&[Value::Real(-1.0)]).is_err());
     }
-    
+
     #[test]
     fn test_sqrt_basic() {
         let result = sqrt(&[Value::Integer(0)]).unwrap();
         assert_float_eq(result, 0.0);
-        
+
         let result = sqrt(&[Value::Integer(1)]).unwrap();
         assert_float_eq(result, 1.0);
-        
+
         let result = sqrt(&[Value::Integer(4)]).unwrap();
         assert_float_eq(result, 2.0);
-        
+
         let result = sqrt(&[Value::Real(2.0)]).unwrap();
         assert_float_eq(result, std::f64::consts::SQRT_2);
     }
-    
+
     #[test]
     fn test_sqrt_invalid_input() {
         assert!(sqrt(&[Value::Integer(-1)]).is_err());
         assert!(sqrt(&[Value::Real(-1.0)]).is_err());
     }
-    
+
     #[test]
     fn test_math_functions_wrong_args() {
         let funcs = [cos, tan, exp, log, sqrt];
@@ -286,7 +302,7 @@ mod tests {
             assert!(func(&[Value::Integer(1), Value::Integer(2)]).is_err());
         }
     }
-    
+
     #[test]
     fn test_math_functions_wrong_type() {
         let funcs = [sin, cos, tan, exp, log, sqrt];

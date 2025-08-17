@@ -113,7 +113,7 @@ impl Compiler {
         match expr {
             Expr::Number(Number::Integer(n)) => {
                 // For small integers, use Push instruction
-                if *n >= 0 && *n <= 0xFFFFFF as i64 {
+                if *n >= 0 && *n <= 0xFFFFFF_i64 {
                     self.context.emit(OpCode::Push, *n as u32)?;
                 } else {
                     // For large integers, use constant pool
@@ -138,7 +138,7 @@ impl Compiler {
                 let mut list_values = Vec::new();
                 for element in elements {
                     // For now, we'll evaluate each element and add to list
-                    // This is a simplified approach - a full implementation would 
+                    // This is a simplified approach - a full implementation would
                     // handle this more efficiently at runtime
                     match element {
                         Expr::Number(Number::Integer(n)) => {
@@ -153,13 +153,14 @@ impl Compiler {
                         _ => {
                             // For complex expressions, we'd need to compile them and evaluate at runtime
                             // For now, just put the list in the constant pool
-                            return Err(CompilerError::UnsupportedExpression(
-                                format!("Complex list element: {:?}", element)
-                            ));
+                            return Err(CompilerError::UnsupportedExpression(format!(
+                                "Complex list element: {:?}",
+                                element
+                            )));
                         }
                     }
                 }
-                
+
                 // Add the list to the constant pool
                 let const_index = self.context.add_constant(Value::List(list_values))?;
                 self.context.emit(OpCode::LoadConst, const_index as u32)?;
@@ -254,11 +255,13 @@ impl Compiler {
                         for arg in args {
                             self.compile_expr(arg)?;
                         }
-                        
+
                         // Push function name
-                        let func_index = self.context.add_constant(Value::Function(sym.name.clone()))?;
+                        let func_index = self
+                            .context
+                            .add_constant(Value::Function(sym.name.clone()))?;
                         self.context.emit(OpCode::LoadConst, func_index as u32)?;
-                        
+
                         // Call the function with argument count
                         self.context.emit(OpCode::Call, args.len() as u32)?;
                         return Ok(());
@@ -288,12 +291,12 @@ impl Compiler {
     pub fn into_vm(self) -> VirtualMachine {
         let mut vm = VirtualMachine::new();
         vm.load(self.context.code, self.context.constants);
-        
+
         // Copy symbol table to VM
         for (name, index) in self.context.symbols {
             vm.symbols.insert(name, index);
         }
-        
+
         vm
     }
 
@@ -302,9 +305,10 @@ impl Compiler {
         let mut compiler = Compiler::new();
         compiler.compile_expr(expr)?;
         compiler.context.emit(OpCode::Halt, 0)?;
-        
+
         let mut vm = compiler.into_vm();
-        vm.run().map_err(|e| CompilerError::UnsupportedExpression(format!("Runtime error: {:?}", e)))
+        vm.run()
+            .map_err(|e| CompilerError::UnsupportedExpression(format!("Runtime error: {:?}", e)))
     }
 }
 
@@ -323,9 +327,9 @@ mod tests {
     fn test_compile_integer_small() {
         let mut compiler = Compiler::new();
         let expr = Expr::Number(Number::Integer(42));
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         assert_eq!(compiler.context.code.len(), 1);
         assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
         assert_eq!(compiler.context.code[0].operand, 42);
@@ -335,9 +339,9 @@ mod tests {
     fn test_compile_integer_large() {
         let mut compiler = Compiler::new();
         let expr = Expr::Number(Number::Integer(0x1000000)); // Larger than 24-bit
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         assert_eq!(compiler.context.code.len(), 1);
         assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
         assert_eq!(compiler.context.constants.len(), 1);
@@ -348,9 +352,9 @@ mod tests {
     fn test_compile_real() {
         let mut compiler = Compiler::new();
         let expr = Expr::Number(Number::Real(3.14));
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         assert_eq!(compiler.context.code.len(), 1);
         assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
         assert_eq!(compiler.context.constants.len(), 1);
@@ -361,22 +365,27 @@ mod tests {
     fn test_compile_string() {
         let mut compiler = Compiler::new();
         let expr = Expr::String("hello".to_string());
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         assert_eq!(compiler.context.code.len(), 1);
         assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
         assert_eq!(compiler.context.constants.len(), 1);
-        assert_eq!(compiler.context.constants[0], Value::String("hello".to_string()));
+        assert_eq!(
+            compiler.context.constants[0],
+            Value::String("hello".to_string())
+        );
     }
 
     #[test]
     fn test_compile_symbol() {
         let mut compiler = Compiler::new();
-        let expr = Expr::Symbol(Symbol { name: "x".to_string() });
-        
+        let expr = Expr::Symbol(Symbol {
+            name: "x".to_string(),
+        });
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         assert_eq!(compiler.context.code.len(), 1);
         assert_eq!(compiler.context.code[0].opcode, OpCode::LoadSymbol);
         assert_eq!(compiler.context.symbols.len(), 1);
@@ -387,15 +396,17 @@ mod tests {
     fn test_compile_plus() {
         let mut compiler = Compiler::new();
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Plus".to_string(),
+            })),
             args: vec![
                 Expr::Number(Number::Integer(2)),
                 Expr::Number(Number::Integer(3)),
             ],
         };
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         // Should generate: Push 2, Push 3, Add
         assert_eq!(compiler.context.code.len(), 3);
         assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
@@ -409,15 +420,17 @@ mod tests {
     fn test_compile_times() {
         let mut compiler = Compiler::new();
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Times".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Times".to_string(),
+            })),
             args: vec![
                 Expr::Number(Number::Integer(4)),
                 Expr::Number(Number::Integer(5)),
             ],
         };
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         // Should generate: Push 4, Push 5, Mul
         assert_eq!(compiler.context.code.len(), 3);
         assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
@@ -432,10 +445,14 @@ mod tests {
         let mut compiler = Compiler::new();
         // (2 + 3) * 4 -> Times[Plus[2, 3], 4]
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Times".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Times".to_string(),
+            })),
             args: vec![
                 Expr::Function {
-                    head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+                    head: Box::new(Expr::Symbol(Symbol {
+                        name: "Plus".to_string(),
+                    })),
                     args: vec![
                         Expr::Number(Number::Integer(2)),
                         Expr::Number(Number::Integer(3)),
@@ -444,9 +461,9 @@ mod tests {
                 Expr::Number(Number::Integer(4)),
             ],
         };
-        
+
         compiler.compile_expr(&expr).unwrap();
-        
+
         // Should generate: Push 2, Push 3, Add, Push 4, Mul
         assert_eq!(compiler.context.code.len(), 5);
         assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
@@ -463,14 +480,20 @@ mod tests {
     fn test_invalid_arity() {
         let mut compiler = Compiler::new();
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Plus".to_string(),
+            })),
             args: vec![Expr::Number(Number::Integer(1))], // Only one argument
         };
-        
+
         let result = compiler.compile_expr(&expr);
         assert!(result.is_err());
         match result.unwrap_err() {
-            CompilerError::InvalidArity { function, expected, actual } => {
+            CompilerError::InvalidArity {
+                function,
+                expected,
+                actual,
+            } => {
                 assert_eq!(function, "Plus");
                 assert_eq!(expected, 2);
                 assert_eq!(actual, 1);
@@ -483,14 +506,16 @@ mod tests {
     fn test_unknown_function() {
         let mut compiler = Compiler::new();
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "UnknownFunc".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "UnknownFunc".to_string(),
+            })),
             args: vec![],
         };
-        
+
         let result = compiler.compile_expr(&expr);
         assert!(result.is_err());
         match result.unwrap_err() {
-            CompilerError::UnknownFunction(_) => {},
+            CompilerError::UnknownFunction(_) => {}
             _ => panic!("Expected UnknownFunction error"),
         }
     }
@@ -498,11 +523,11 @@ mod tests {
     #[test]
     fn test_constant_deduplication() {
         let mut compiler = Compiler::new();
-        
+
         // Add the same constant twice
         let index1 = compiler.context.add_constant(Value::Integer(42)).unwrap();
         let index2 = compiler.context.add_constant(Value::Integer(42)).unwrap();
-        
+
         assert_eq!(index1, index2);
         assert_eq!(compiler.context.constants.len(), 1);
     }
@@ -510,11 +535,11 @@ mod tests {
     #[test]
     fn test_symbol_deduplication() {
         let mut compiler = Compiler::new();
-        
+
         // Add the same symbol twice
         let index1 = compiler.context.add_symbol("x".to_string());
         let index2 = compiler.context.add_symbol("x".to_string());
-        
+
         assert_eq!(index1, index2);
         assert_eq!(compiler.context.symbols.len(), 1);
     }
@@ -523,13 +548,15 @@ mod tests {
     fn test_eval_simple_arithmetic() {
         // Test 2 + 3
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Plus".to_string(),
+            })),
             args: vec![
                 Expr::Number(Number::Integer(2)),
                 Expr::Number(Number::Integer(3)),
             ],
         };
-        
+
         let result = Compiler::eval(&expr).unwrap();
         assert_eq!(result, Value::Integer(5));
     }
@@ -538,10 +565,14 @@ mod tests {
     fn test_eval_nested_arithmetic() {
         // Test (2 + 3) * 4 = 20
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Times".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Times".to_string(),
+            })),
             args: vec![
                 Expr::Function {
-                    head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+                    head: Box::new(Expr::Symbol(Symbol {
+                        name: "Plus".to_string(),
+                    })),
                     args: vec![
                         Expr::Number(Number::Integer(2)),
                         Expr::Number(Number::Integer(3)),
@@ -550,7 +581,7 @@ mod tests {
                 Expr::Number(Number::Integer(4)),
             ],
         };
-        
+
         let result = Compiler::eval(&expr).unwrap();
         assert_eq!(result, Value::Integer(20));
     }
@@ -559,13 +590,15 @@ mod tests {
     fn test_eval_division() {
         // Test 8 / 2 = 4.0
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Divide".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Divide".to_string(),
+            })),
             args: vec![
                 Expr::Number(Number::Integer(8)),
                 Expr::Number(Number::Integer(2)),
             ],
         };
-        
+
         let result = Compiler::eval(&expr).unwrap();
         assert_eq!(result, Value::Real(4.0));
     }
@@ -574,13 +607,15 @@ mod tests {
     fn test_eval_power() {
         // Test 2^3 = 8
         let expr = Expr::Function {
-            head: Box::new(Expr::Symbol(Symbol { name: "Power".to_string() })),
+            head: Box::new(Expr::Symbol(Symbol {
+                name: "Power".to_string(),
+            })),
             args: vec![
                 Expr::Number(Number::Integer(2)),
                 Expr::Number(Number::Integer(3)),
             ],
         };
-        
+
         let result = Compiler::eval(&expr).unwrap();
         assert_eq!(result, Value::Integer(8));
     }
@@ -591,16 +626,18 @@ mod tests {
         let expressions = vec![
             Expr::Number(Number::Integer(42)),
             Expr::Function {
-                head: Box::new(Expr::Symbol(Symbol { name: "Plus".to_string() })),
+                head: Box::new(Expr::Symbol(Symbol {
+                    name: "Plus".to_string(),
+                })),
                 args: vec![
                     Expr::Number(Number::Integer(1)),
                     Expr::Number(Number::Integer(2)),
                 ],
             },
         ];
-        
+
         compiler.compile_program(&expressions).unwrap();
-        
+
         // Should generate: Push 42, Push 1, Push 2, Add, Halt
         assert_eq!(compiler.context.code.len(), 5);
         assert_eq!(compiler.context.code[4].opcode, OpCode::Halt);

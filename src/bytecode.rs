@@ -22,29 +22,29 @@ pub struct Instruction {
 #[repr(u8)]
 pub enum OpCode {
     // Stack operations
-    LoadConst = 0x01,    // Load constant from constant pool
-    LoadSymbol = 0x02,   // Load symbol from symbol table
-    Push = 0x03,         // Push immediate value
-    Pop = 0x04,          // Pop and discard top value
-    Dup = 0x05,          // Duplicate top value
-    
+    LoadConst = 0x01,  // Load constant from constant pool
+    LoadSymbol = 0x02, // Load symbol from symbol table
+    Push = 0x03,       // Push immediate value
+    Pop = 0x04,        // Pop and discard top value
+    Dup = 0x05,        // Duplicate top value
+
     // Arithmetic operations
-    Add = 0x10,          // Pop two values, push sum
-    Sub = 0x11,          // Pop two values, push difference (b - a)
-    Mul = 0x12,          // Pop two values, push product
-    Div = 0x13,          // Pop two values, push quotient (b / a)
-    Power = 0x14,        // Pop two values, push power (b ^ a)
-    
+    Add = 0x10,   // Pop two values, push sum
+    Sub = 0x11,   // Pop two values, push difference (b - a)
+    Mul = 0x12,   // Pop two values, push product
+    Div = 0x13,   // Pop two values, push quotient (b / a)
+    Power = 0x14, // Pop two values, push power (b ^ a)
+
     // Function calls
-    Call = 0x20,         // Call function with n arguments
-    Return = 0x21,       // Return from function
-    
+    Call = 0x20,   // Call function with n arguments
+    Return = 0x21, // Return from function
+
     // Control flow
-    Jump = 0x30,         // Unconditional jump
-    JumpIfFalse = 0x31,  // Jump if top of stack is false
-    
+    Jump = 0x30,        // Unconditional jump
+    JumpIfFalse = 0x31, // Jump if top of stack is false
+
     // Halt
-    Halt = 0xFF,         // Stop execution
+    Halt = 0xFF, // Stop execution
 }
 
 impl Instruction {
@@ -65,7 +65,7 @@ impl Instruction {
     pub fn decode(encoded: u32) -> Result<Self> {
         let opcode_byte = (encoded >> 24) as u8;
         let operand = encoded & 0xFFFFFF;
-        
+
         let opcode = OpCode::from_u8(opcode_byte)?;
         Ok(Instruction { opcode, operand })
     }
@@ -110,7 +110,7 @@ mod tests {
         let result = Instruction::new(OpCode::LoadConst, 0x1000000); // > 24-bit max
         assert!(result.is_err());
         match result.unwrap_err() {
-            BytecodeError::InvalidOperand(0x1000000) => {},
+            BytecodeError::InvalidOperand(0x1000000) => {}
             _ => panic!("Expected InvalidOperand error"),
         }
     }
@@ -119,7 +119,7 @@ mod tests {
     fn test_instruction_encoding() {
         let inst = Instruction::new(OpCode::LoadConst, 42).unwrap();
         let encoded = inst.encode();
-        
+
         // OpCode::LoadConst = 0x01, operand = 42
         // Expected: 0x01 << 24 | 42 = 0x0100002A
         assert_eq!(encoded, 0x0100002A);
@@ -129,7 +129,7 @@ mod tests {
     fn test_instruction_decoding() {
         let encoded = 0x0100002A; // LoadConst with operand 42
         let inst = Instruction::decode(encoded).unwrap();
-        
+
         assert_eq!(inst.opcode, OpCode::LoadConst);
         assert_eq!(inst.operand, 42);
     }
@@ -139,7 +139,7 @@ mod tests {
         let original = Instruction::new(OpCode::Add, 0x123456).unwrap();
         let encoded = original.encode();
         let decoded = Instruction::decode(encoded).unwrap();
-        
+
         assert_eq!(original, decoded);
     }
 
@@ -155,7 +155,7 @@ mod tests {
         let result = OpCode::from_u8(0x99);
         assert!(result.is_err());
         match result.unwrap_err() {
-            BytecodeError::InvalidOpcode(0x99) => {},
+            BytecodeError::InvalidOpcode(0x99) => {}
             _ => panic!("Expected InvalidOpcode error"),
         }
     }
@@ -163,10 +163,20 @@ mod tests {
     #[test]
     fn test_all_opcodes_roundtrip() {
         let opcodes = vec![
-            OpCode::LoadConst, OpCode::LoadSymbol, OpCode::Push, OpCode::Pop, OpCode::Dup,
-            OpCode::Add, OpCode::Sub, OpCode::Mul, OpCode::Div, OpCode::Power,
-            OpCode::Call, OpCode::Return,
-            OpCode::Jump, OpCode::JumpIfFalse,
+            OpCode::LoadConst,
+            OpCode::LoadSymbol,
+            OpCode::Push,
+            OpCode::Pop,
+            OpCode::Dup,
+            OpCode::Add,
+            OpCode::Sub,
+            OpCode::Mul,
+            OpCode::Div,
+            OpCode::Power,
+            OpCode::Call,
+            OpCode::Return,
+            OpCode::Jump,
+            OpCode::JumpIfFalse,
             OpCode::Halt,
         ];
 
@@ -183,7 +193,7 @@ mod tests {
         let max_operand = 0xFFFFFF; // 24-bit max
         let inst = Instruction::new(OpCode::Push, max_operand).unwrap();
         assert_eq!(inst.operand, max_operand);
-        
+
         let encoded = inst.encode();
         let decoded = Instruction::decode(encoded).unwrap();
         assert_eq!(decoded.operand, max_operand);

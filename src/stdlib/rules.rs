@@ -12,10 +12,13 @@ pub fn rule(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     // For now, we just return a special "Rule" function value
     // Full implementation would require pattern compilation and matching
-    Ok(Value::Function(format!("Rule[{:?}, {:?}]", args[0], args[1])))
+    Ok(Value::Function(format!(
+        "Rule[{:?}, {:?}]",
+        args[0], args[1]
+    )))
 }
 
 /// Create a delayed replacement rule
@@ -28,9 +31,12 @@ pub fn rule_delayed(args: &[Value]) -> VmResult<Value> {
             actual: format!("{} arguments", args.len()),
         });
     }
-    
+
     // For now, we just return a special "RuleDelayed" function value
-    Ok(Value::Function(format!("RuleDelayed[{:?}, {:?}]", args[0], args[1])))
+    Ok(Value::Function(format!(
+        "RuleDelayed[{:?}, {:?}]",
+        args[0], args[1]
+    )))
 }
 
 /// Apply replacement rules to an expression
@@ -43,7 +49,7 @@ pub fn replace_all(_args: &[Value]) -> VmResult<Value> {
     // 2. Pattern matching engine that can bind variables
     // 3. Expression evaluation with bindings
     // 4. Integration with the VM for function calls
-    
+
     Err(VmError::TypeError {
         expected: "ReplaceAll not yet implemented".to_string(),
         actual: "pattern matching engine required".to_string(),
@@ -54,13 +60,13 @@ pub fn replace_all(_args: &[Value]) -> VmResult<Value> {
 mod tests {
     use super::*;
     use crate::vm::Value;
-    
+
     #[test]
     fn test_rule_basic() {
         let lhs = Value::Symbol("x_".to_string());
         let rhs = Value::Symbol("x^2".to_string());
         let result = rule(&[lhs, rhs]).unwrap();
-        
+
         // Should return a function representing the rule
         match result {
             Value::Function(rule_str) => {
@@ -71,20 +77,20 @@ mod tests {
             _ => panic!("Expected Function value, got {:?}", result),
         }
     }
-    
+
     #[test]
     fn test_rule_wrong_args() {
         assert!(rule(&[]).is_err());
         assert!(rule(&[Value::Integer(1)]).is_err());
         assert!(rule(&[Value::Integer(1), Value::Integer(2), Value::Integer(3)]).is_err());
     }
-    
+
     #[test]
     fn test_rule_delayed_basic() {
         let lhs = Value::Symbol("x_".to_string());
         let rhs = Value::Symbol("RandomReal[]".to_string());
         let result = rule_delayed(&[lhs, rhs]).unwrap();
-        
+
         // Should return a function representing the delayed rule
         match result {
             Value::Function(rule_str) => {
@@ -95,14 +101,14 @@ mod tests {
             _ => panic!("Expected Function value, got {:?}", result),
         }
     }
-    
+
     #[test]
     fn test_rule_delayed_wrong_args() {
         assert!(rule_delayed(&[]).is_err());
         assert!(rule_delayed(&[Value::Integer(1)]).is_err());
         assert!(rule_delayed(&[Value::Integer(1), Value::Integer(2), Value::Integer(3)]).is_err());
     }
-    
+
     #[test]
     fn test_replace_all_not_implemented() {
         // ReplaceAll requires full pattern matching, so should return error for now
@@ -110,14 +116,14 @@ mod tests {
         let rule = Value::Function("x -> x^2".to_string());
         assert!(replace_all(&[expr, rule]).is_err());
     }
-    
+
     #[test]
     fn test_rule_with_different_types() {
         // Rules should work with any value types
         let lhs = Value::Integer(1);
         let rhs = Value::String("one".to_string());
         let result = rule(&[lhs, rhs]).unwrap();
-        
+
         match result {
             Value::Function(rule_str) => {
                 assert!(rule_str.contains("Rule"));
@@ -125,14 +131,14 @@ mod tests {
             _ => panic!("Expected Function value"),
         }
     }
-    
+
     #[test]
     fn test_rule_delayed_with_lists() {
         // Test with more complex data types
         let lhs = Value::List(vec![Value::Symbol("x_".to_string())]);
         let rhs = Value::List(vec![Value::Integer(1), Value::Integer(2)]);
         let result = rule_delayed(&[lhs, rhs]).unwrap();
-        
+
         match result {
             Value::Function(rule_str) => {
                 assert!(rule_str.contains("RuleDelayed"));

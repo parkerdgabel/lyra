@@ -1,0 +1,9 @@
+{1, 2, 3, 4, 5}
+{"apple", "banana", "cherry"}
+Length[{1, 2, 3, 4, 5}]
+Head[{10, 20, 30}]
+Tail[{10, 20, 30}]
+Append[{1, 2, 3}, 4]
+Append[{"a", "b"}, "c"]
+Length[{}]
+Append[{}, "first"]

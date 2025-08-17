@@ -1,0 +1,9 @@
+---
+source: tests/snapshot_tests.rs
+expression: results
+---
+- "2.000000"
+- "5.0"
+- "4"
+- "10"
+- "3.214286"
