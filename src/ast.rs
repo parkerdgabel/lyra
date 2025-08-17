@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum InterpolationPart {
+    Text(String),
+    Expression(Box<Expr>),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     Symbol(Symbol),
     Number(Number),
@@ -26,6 +32,26 @@ pub enum Expr {
         expr: Box<Expr>,
         rules: Box<Expr>,
     },
+    // Modern syntax extensions
+    Association(Vec<(Expr, Expr)>),
+    Pipeline {
+        stages: Vec<Expr>,
+    },
+    DotCall {
+        object: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        step: Option<Box<Expr>>,
+    },
+    ArrowFunction {
+        params: Vec<String>,
+        body: Box<Expr>,
+    },
+    InterpolatedString(Vec<InterpolationPart>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,6 +79,22 @@ pub enum Pattern {
     Named {
         name: String,
         pattern: Box<Pattern>,
+    },
+    // Modern pattern extensions
+    Typed {
+        name: String,
+        type_pattern: Box<Expr>,
+    },
+    Predicate {
+        pattern: Box<Pattern>,
+        test: Box<Expr>,
+    },
+    Alternative {
+        patterns: Vec<Pattern>,
+    },
+    Conditional {
+        pattern: Box<Pattern>,
+        condition: Box<Expr>,
     },
 }
 
@@ -94,6 +136,63 @@ impl fmt::Display for Expr {
             Expr::Replace { expr, rules } => {
                 write!(f, "{} /. {}", expr, rules)
             }
+            Expr::Association(pairs) => {
+                write!(f, "<|")?;
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} -> {}", key, value)?;
+                }
+                write!(f, "|>")
+            }
+            Expr::Pipeline { stages } => {
+                for (i, stage) in stages.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " |> ")?;
+                    }
+                    write!(f, "{}", stage)?;
+                }
+                Ok(())
+            }
+            Expr::DotCall { object, method, args } => {
+                write!(f, "{}.", object)?;
+                write!(f, "{}[", method)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, "]")
+            }
+            Expr::Range { start, end, step } => {
+                write!(f, "{};; {}", start, end)?;
+                if let Some(s) = step {
+                    write!(f, ";; {}", s)?;
+                }
+                Ok(())
+            }
+            Expr::ArrowFunction { params, body } => {
+                write!(f, "(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") => {}", body)
+            }
+            Expr::InterpolatedString(parts) => {
+                write!(f, "\"")?;
+                for part in parts {
+                    match part {
+                        InterpolationPart::Text(text) => write!(f, "{}", text)?,
+                        InterpolationPart::Expression(expr) => write!(f, "#{{{}}}", expr)?,
+                    }
+                }
+                write!(f, "\"")
+            }
         }
     }
 }
@@ -133,6 +232,24 @@ impl fmt::Display for Pattern {
             }
             Pattern::Named { name, pattern } => {
                 write!(f, "{}{}", name, pattern)
+            }
+            Pattern::Typed { name, type_pattern } => {
+                write!(f, "{}:{}", name, type_pattern)
+            }
+            Pattern::Predicate { pattern, test } => {
+                write!(f, "{}?{}", pattern, test)
+            }
+            Pattern::Alternative { patterns } => {
+                for (i, pattern) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", pattern)?;
+                }
+                Ok(())
+            }
+            Pattern::Conditional { pattern, condition } => {
+                write!(f, "{} /; {}", pattern, condition)
             }
         }
     }
@@ -199,6 +316,68 @@ impl Expr {
 
     pub fn blank_null_sequence(head: Option<String>) -> Self {
         Expr::Pattern(Pattern::BlankNullSequence { head })
+    }
+
+    // Modern expression constructors
+    pub fn association(pairs: Vec<(Expr, Expr)>) -> Self {
+        Expr::Association(pairs)
+    }
+
+    pub fn pipeline(stages: Vec<Expr>) -> Self {
+        Expr::Pipeline { stages }
+    }
+
+    pub fn dot_call(object: Expr, method: impl Into<String>, args: Vec<Expr>) -> Self {
+        Expr::DotCall {
+            object: Box::new(object),
+            method: method.into(),
+            args,
+        }
+    }
+
+    pub fn range(start: Expr, end: Expr, step: Option<Expr>) -> Self {
+        Expr::Range {
+            start: Box::new(start),
+            end: Box::new(end),
+            step: step.map(Box::new),
+        }
+    }
+
+    pub fn arrow_function(params: Vec<String>, body: Expr) -> Self {
+        Expr::ArrowFunction {
+            params,
+            body: Box::new(body),
+        }
+    }
+
+    pub fn interpolated_string(parts: Vec<InterpolationPart>) -> Self {
+        Expr::InterpolatedString(parts)
+    }
+
+    // Modern pattern constructors
+    pub fn typed_pattern(name: impl Into<String>, type_pattern: Expr) -> Self {
+        Expr::Pattern(Pattern::Typed {
+            name: name.into(),
+            type_pattern: Box::new(type_pattern),
+        })
+    }
+
+    pub fn predicate_pattern(pattern: Pattern, test: Expr) -> Self {
+        Expr::Pattern(Pattern::Predicate {
+            pattern: Box::new(pattern),
+            test: Box::new(test),
+        })
+    }
+
+    pub fn alternative_pattern(patterns: Vec<Pattern>) -> Self {
+        Expr::Pattern(Pattern::Alternative { patterns })
+    }
+
+    pub fn conditional_pattern(pattern: Pattern, condition: Expr) -> Self {
+        Expr::Pattern(Pattern::Conditional {
+            pattern: Box::new(pattern),
+            condition: Box::new(condition),
+        })
     }
 }
 
@@ -312,5 +491,155 @@ mod tests {
             ],
         );
         assert_eq!(nested.to_string(), "f[g[x], {1, 2}]");
+    }
+
+    // Modern syntax tests
+    #[test]
+    fn test_association_display() {
+        let assoc = Expr::association(vec![
+            (Expr::string("name"), Expr::string("Ada")),
+            (Expr::string("age"), Expr::integer(37)),
+        ]);
+        assert_eq!(assoc.to_string(), "<|\"name\" -> \"Ada\", \"age\" -> 37|>");
+    }
+
+    #[test]
+    fn test_pipeline_display() {
+        let pipeline = Expr::pipeline(vec![
+            Expr::symbol("x"),
+            Expr::symbol("f"),
+            Expr::function(Expr::symbol("g"), vec![Expr::integer(2)]),
+        ]);
+        assert_eq!(pipeline.to_string(), "x |> f |> g[2]");
+    }
+
+    #[test]
+    fn test_dot_call_display() {
+        let dot_call = Expr::dot_call(
+            Expr::symbol("obj"),
+            "method",
+            vec![Expr::symbol("x"), Expr::integer(1)],
+        );
+        assert_eq!(dot_call.to_string(), "obj.method[x, 1]");
+    }
+
+    #[test]
+    fn test_range_display() {
+        let range1 = Expr::range(Expr::integer(1), Expr::integer(10), None);
+        assert_eq!(range1.to_string(), "1;; 10");
+
+        let range2 = Expr::range(
+            Expr::integer(0),
+            Expr::integer(1),
+            Some(Expr::real(0.1)),
+        );
+        assert_eq!(range2.to_string(), "0;; 1;; 0.1");
+    }
+
+    #[test]
+    fn test_arrow_function_display() {
+        let arrow = Expr::arrow_function(
+            vec!["x".to_string()],
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::symbol("x"), Expr::integer(1)],
+            ),
+        );
+        assert_eq!(arrow.to_string(), "(x) => Plus[x, 1]");
+
+        let multi_param = Expr::arrow_function(
+            vec!["x".to_string(), "y".to_string()],
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::symbol("x"), Expr::symbol("y")],
+            ),
+        );
+        assert_eq!(multi_param.to_string(), "(x, y) => Plus[x, y]");
+    }
+
+    #[test]
+    fn test_interpolated_string_display() {
+        let interpolated = Expr::interpolated_string(vec![
+            InterpolationPart::Text("Hello ".to_string()),
+            InterpolationPart::Expression(Box::new(Expr::symbol("name"))),
+            InterpolationPart::Text("!".to_string()),
+        ]);
+        assert_eq!(interpolated.to_string(), "\"Hello #{name}!\"");
+    }
+
+    #[test]
+    fn test_typed_pattern_display() {
+        let typed = Expr::typed_pattern("x", Expr::symbol("Integer"));
+        assert_eq!(typed.to_string(), "x:Integer");
+    }
+
+    #[test]
+    fn test_predicate_pattern_display() {
+        let predicate = Expr::predicate_pattern(
+            Pattern::Blank { head: None },
+            Expr::symbol("Positive"),
+        );
+        assert_eq!(predicate.to_string(), "_?Positive");
+    }
+
+    #[test]
+    fn test_alternative_pattern_display() {
+        let alternative = Expr::alternative_pattern(vec![
+            Pattern::Blank { head: Some("Integer".to_string()) },
+            Pattern::Blank { head: Some("Real".to_string()) },
+        ]);
+        assert_eq!(alternative.to_string(), "_Integer | _Real");
+    }
+
+    #[test]
+    fn test_conditional_pattern_display() {
+        let conditional = Expr::conditional_pattern(
+            Pattern::Named {
+                name: "x".to_string(),
+                pattern: Box::new(Pattern::Blank { head: None }),
+            },
+            Expr::function(
+                Expr::symbol("Greater"),
+                vec![Expr::symbol("x"), Expr::integer(0)],
+            ),
+        );
+        assert_eq!(conditional.to_string(), "x_ /; Greater[x, 0]");
+    }
+
+    #[test]
+    fn test_modern_expressions_equality() {
+        let assoc1 = Expr::association(vec![
+            (Expr::string("key"), Expr::integer(1)),
+        ]);
+        let assoc2 = Expr::association(vec![
+            (Expr::string("key"), Expr::integer(1)),
+        ]);
+        assert_eq!(assoc1, assoc2);
+
+        let pipeline1 = Expr::pipeline(vec![Expr::symbol("x"), Expr::symbol("f")]);
+        let pipeline2 = Expr::pipeline(vec![Expr::symbol("x"), Expr::symbol("f")]);
+        assert_eq!(pipeline1, pipeline2);
+    }
+
+    #[test]
+    fn test_complex_modern_expression() {
+        let complex = Expr::pipeline(vec![
+            Expr::association(vec![
+                (Expr::string("data"), Expr::list(vec![Expr::integer(1), Expr::integer(2)])),
+            ]),
+            Expr::dot_call(Expr::symbol("data"), "map", vec![
+                Expr::arrow_function(
+                    vec!["x".to_string()],
+                    Expr::function(
+                        Expr::symbol("Times"),
+                        vec![Expr::symbol("x"), Expr::integer(2)],
+                    ),
+                ),
+            ]),
+        ]);
+        assert_eq!(
+            complex.to_string(),
+            "<|\"data\" -> {1, 2}|> |> data.map[(x) => Times[x, 2]]"
+        );
     }
 }

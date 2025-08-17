@@ -519,7 +519,7 @@ impl<'a> Lexer<'a> {
                             self.read_number(start_pos)
                         }
                     }
-                    c if c.is_alphabetic() || c == '$' => self.read_symbol(start_pos),
+                    c if c.is_alphabetic() || c == '$' || c == '#' => self.read_symbol(start_pos),
                     _ => Err(Error::Lexer {
                         message: format!("Unexpected character '{}'", ch),
                         position: start_pos,
@@ -792,14 +792,14 @@ impl<'a> Lexer<'a> {
         let mut is_context = false;
         
         while let Some(ch) = self.current_char {
-            if ch.is_alphanumeric() || ch == '$' {
+            if ch.is_alphanumeric() || ch == '$' || ch == '#' {
                 symbol_name.push(ch);
                 self.advance();
             } else if ch == '_' {
                 // Only include underscore if it's in the middle of a word AND
                 // the next character is not uppercase (to handle x_Integer pattern)
                 let next_char = self.input.chars().nth(self.char_position() + 1);
-                if next_char.map_or(false, |c| (c.is_alphanumeric() || c == '$') && !c.is_uppercase()) {
+                if next_char.map_or(false, |c| (c.is_alphanumeric() || c == '$' || c == '#') && !c.is_uppercase()) {
                     symbol_name.push(ch);
                     self.advance();
                 } else {
@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn test_error_invalid_character() {
-        let result = tokenize_string("#");
+        let result = tokenize_string("%");
         assert!(result.is_err());
         match result.unwrap_err() {
             Error::Lexer { message, .. } => {

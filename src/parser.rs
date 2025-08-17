@@ -41,7 +41,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr> {
-        let expr = self.replacement()?;
+        let expr = self.arrow_function()?;
 
         if self.match_token(&TokenKind::Set) {
             let rhs = self.assignment()?;
@@ -56,6 +56,67 @@ impl Parser {
         Ok(expr)
     }
 
+    fn arrow_function(&mut self) -> Result<Expr> {
+        // Check for parenthesized parameter list at the start
+        if self.check(&TokenKind::LeftParen) {
+            let saved_pos = self.current;
+            
+            // Try to parse as arrow function
+            if let Ok(params) = self.try_parse_arrow_params() {
+                if self.match_token(&TokenKind::Arrow) {
+                    let body = self.arrow_function()?;  // Recursive call for nested arrow functions
+                    return Ok(Expr::arrow_function(params, body));
+                }
+            }
+            
+            // If not an arrow function, restore position and parse normally
+            self.current = saved_pos;
+        }
+        
+        self.pipeline()
+    }
+
+    fn try_parse_arrow_params(&mut self) -> Result<Vec<String>> {
+        self.consume(&TokenKind::LeftParen, "Expected '(' for arrow function parameters")?;
+        
+        let mut params = Vec::new();
+        
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if let Some(TokenKind::Symbol(param_name)) = self.peek().map(|t| &t.kind) {
+                    params.push(param_name.clone());
+                    self.advance();
+                } else {
+                    return Err(Error::Parse {
+                        message: "Expected parameter name in arrow function".to_string(),
+                        position: self.current_position(),
+                    });
+                }
+                
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(&TokenKind::RightParen, "Expected ')' after arrow function parameters")?;
+        Ok(params)
+    }
+
+    fn pipeline(&mut self) -> Result<Expr> {
+        let mut stages = vec![self.replacement()?];
+
+        while self.match_token(&TokenKind::Pipeline) {
+            stages.push(self.replacement()?);
+        }
+
+        if stages.len() == 1 {
+            Ok(stages.into_iter().next().unwrap())
+        } else {
+            Ok(Expr::pipeline(stages))
+        }
+    }
+
     fn replacement(&mut self) -> Result<Expr> {
         let mut expr = self.rule()?;
 
@@ -68,7 +129,7 @@ impl Parser {
     }
 
     fn rule(&mut self) -> Result<Expr> {
-        let expr = self.or()?;
+        let expr = self.range_expr()?;
 
         if self.match_token(&TokenKind::Rule) {
             let rhs = self.rule()?;
@@ -78,6 +139,28 @@ impl Parser {
         if self.match_token(&TokenKind::RuleDelayed) {
             let rhs = self.rule()?;
             return Ok(Expr::rule(expr, rhs, true));
+        }
+
+        Ok(expr)
+    }
+
+    fn range_expr(&mut self) -> Result<Expr> {
+        let mut expr = self.or()?;
+
+        // Check for range syntax: expr ;; end [;; step]
+        if self.check(&TokenKind::Range) {
+            self.advance(); // consume ";;"
+            let end = self.or()?;
+            
+            // Check for optional step
+            let step = if self.check(&TokenKind::Range) {
+                self.advance(); // consume second ";;"
+                Some(self.or()?)
+            } else {
+                None
+            };
+            
+            expr = Expr::range(expr, end, step);
         }
 
         Ok(expr)
@@ -227,6 +310,24 @@ impl Parser {
                     self.consume(&TokenKind::RightBracket, "Expected ']' after function arguments")?;
                     expr = Expr::function(expr, args);
                 }
+            } else if self.match_token(&TokenKind::Dot) {
+                // This is a dot-call obj.method[args]
+                if let Some(TokenKind::Symbol(method_name)) = self.peek().map(|t| &t.kind) {
+                    let method_name = method_name.clone();
+                    self.advance(); // consume the method name
+                    
+                    // Expect '[' for arguments
+                    self.consume(&TokenKind::LeftBracket, "Expected '[' after method name in dot-call")?;
+                    let args = self.argument_list()?;
+                    self.consume(&TokenKind::RightBracket, "Expected ']' after dot-call arguments")?;
+                    
+                    expr = Expr::dot_call(expr, method_name, args);
+                } else {
+                    return Err(Error::Parse {
+                        message: "Expected method name after '.' in dot-call".to_string(),
+                        position: self.current_position(),
+                    });
+                }
             } else {
                 break;
             }
@@ -242,11 +343,38 @@ impl Parser {
                 TokenKind::Real(n) => Ok(Expr::real(n)),
                 TokenKind::String(s) => Ok(Expr::string(s)),
                 TokenKind::Symbol(name) => {
-                    // Check for pattern suffix
-                    if self.check(&TokenKind::Blank) 
+                    // Check for modern typed pattern x:_Integer
+                    if self.check(&TokenKind::Colon) {
+                        self.advance(); // consume ':'
+                        let type_pattern = self.or()?; // Parse type expression
+                        Ok(Expr::typed_pattern(name, type_pattern))
+                    }
+                    // Check for traditional pattern suffix x_
+                    else if self.check(&TokenKind::Blank) 
                         || self.check(&TokenKind::BlankSequence) 
                         || self.check(&TokenKind::BlankNullSequence) {
-                        let pattern = self.parse_pattern_suffix(Some(name))?;
+                        let mut pattern = self.parse_pattern_suffix(Some(name))?;
+                        
+                        // Check for predicate pattern x_?Positive
+                        if self.check(&TokenKind::Question) {
+                            self.advance(); // consume '?'
+                            let test = self.or()?; // Parse predicate expression
+                            pattern = Pattern::Predicate {
+                                pattern: Box::new(pattern),
+                                test: Box::new(test),
+                            };
+                        }
+                        
+                        // Check for conditional pattern x_ /; condition
+                        if self.check(&TokenKind::Condition) {
+                            self.advance(); // consume '/;'
+                            let condition = self.or()?; // Parse condition expression
+                            pattern = Pattern::Conditional {
+                                pattern: Box::new(pattern),
+                                condition: Box::new(condition),
+                            };
+                        }
+                        
                         Ok(Expr::Pattern(pattern))
                     } else {
                         Ok(Expr::symbol(name))
@@ -261,7 +389,30 @@ impl Parser {
                     } else {
                         None
                     };
-                    Ok(Expr::Pattern(Pattern::Blank { head }))
+                    
+                    let mut pattern = Pattern::Blank { head };
+                    
+                    // Check for predicate pattern _?Positive
+                    if self.check(&TokenKind::Question) {
+                        self.advance(); // consume '?'
+                        let test = self.or()?; // Parse predicate expression
+                        pattern = Pattern::Predicate {
+                            pattern: Box::new(pattern),
+                            test: Box::new(test),
+                        };
+                    }
+                    
+                    // Check for conditional pattern _ /; condition
+                    if self.check(&TokenKind::Condition) {
+                        self.advance(); // consume '/;'
+                        let condition = self.or()?; // Parse condition expression
+                        pattern = Pattern::Conditional {
+                            pattern: Box::new(pattern),
+                            condition: Box::new(condition),
+                        };
+                    }
+                    
+                    Ok(Expr::Pattern(pattern))
                 }
                 TokenKind::BlankSequence => Ok(Expr::Pattern(Pattern::BlankSequence { head: None })),
                 TokenKind::BlankNullSequence => Ok(Expr::Pattern(Pattern::BlankNullSequence { head: None })),
@@ -278,6 +429,17 @@ impl Parser {
                     };
                     self.consume(&TokenKind::RightBrace, "Expected '}' after list elements")?;
                     Ok(Expr::list(elements))
+                }
+                TokenKind::LeftAssoc => {
+                    // Parse association <|key->value, key2->value2|>
+                    let pairs = if self.check(&TokenKind::Pipeline) {
+                        // Empty association <||>
+                        Vec::new()
+                    } else {
+                        self.association_pairs()?
+                    };
+                    self.consume(&TokenKind::Pipeline, "Expected '|>' after association elements")?;
+                    Ok(Expr::association(pairs))
                 }
                 _ => Err(Error::Parse {
                     message: format!("Unexpected token: {:?}", token.kind),
@@ -364,6 +526,26 @@ impl Parser {
         }
         
         Ok(args)
+    }
+
+    fn association_pairs(&mut self) -> Result<Vec<(Expr, Expr)>> {
+        let mut pairs = Vec::new();
+        
+        // Parse first pair - use or() to avoid parsing rules
+        let key = self.or()?;
+        self.consume(&TokenKind::Rule, "Expected '->' in association pair")?;
+        let value = self.or()?;
+        pairs.push((key, value));
+        
+        // Parse additional pairs
+        while self.match_token(&TokenKind::Comma) {
+            let key = self.or()?;
+            self.consume(&TokenKind::Rule, "Expected '->' in association pair")?;
+            let value = self.or()?;
+            pairs.push((key, value));
+        }
+        
+        Ok(pairs)
     }
 
     fn expression(&mut self) -> Result<Expr> {
@@ -884,6 +1066,466 @@ mod tests {
             Expr::symbol("y"),
             Expr::integer(2),
             false
+        ));
+    }
+
+    // Association tests
+    #[test]
+    fn test_empty_association() {
+        let result = parse_expression("<||>").unwrap();
+        assert_eq!(result, Expr::association(vec![]));
+    }
+
+    #[test]
+    fn test_single_pair_association() {
+        let result = parse_expression("<|\"name\" -> \"Ada\"|>").unwrap();
+        assert_eq!(result, Expr::association(vec![
+            (Expr::string("name"), Expr::string("Ada"))
+        ]));
+    }
+
+    #[test]
+    fn test_multiple_pairs_association() {
+        let result = parse_expression("<|\"name\" -> \"Ada\", \"age\" -> 37|>").unwrap();
+        assert_eq!(result, Expr::association(vec![
+            (Expr::string("name"), Expr::string("Ada")),
+            (Expr::string("age"), Expr::integer(37))
+        ]));
+    }
+
+    #[test]
+    fn test_association_with_symbol_keys() {
+        let result = parse_expression("<|x -> 1, y -> 2|>").unwrap();
+        assert_eq!(result, Expr::association(vec![
+            (Expr::symbol("x"), Expr::integer(1)),
+            (Expr::symbol("y"), Expr::integer(2))
+        ]));
+    }
+
+    #[test]
+    fn test_association_with_expression_values() {
+        let result = parse_expression("<|\"sum\" -> x + y, \"product\" -> x * y|>").unwrap();
+        assert_eq!(result, Expr::association(vec![
+            (Expr::string("sum"), Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::symbol("x"), Expr::symbol("y")]
+            )),
+            (Expr::string("product"), Expr::function(
+                Expr::symbol("Times"),
+                vec![Expr::symbol("x"), Expr::symbol("y")]
+            ))
+        ]));
+    }
+
+    #[test]
+    fn test_nested_association() {
+        let result = parse_expression("<|\"nested\" -> <|\"inner\" -> 42|>|>").unwrap();
+        assert_eq!(result, Expr::association(vec![
+            (Expr::string("nested"), Expr::association(vec![
+                (Expr::string("inner"), Expr::integer(42))
+            ]))
+        ]));
+    }
+
+    // Pipeline tests
+    #[test]
+    fn test_simple_pipeline() {
+        let result = parse_expression("x |> f").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::symbol("x"),
+            Expr::symbol("f")
+        ]));
+    }
+
+    #[test]
+    fn test_multi_stage_pipeline() {
+        let result = parse_expression("x |> f |> g |> h").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::symbol("x"),
+            Expr::symbol("f"),
+            Expr::symbol("g"),
+            Expr::symbol("h")
+        ]));
+    }
+
+    #[test]
+    fn test_pipeline_with_function_calls() {
+        let result = parse_expression("data |> Map[f] |> Select[g]").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::symbol("data"),
+            Expr::function(Expr::symbol("Map"), vec![Expr::symbol("f")]),
+            Expr::function(Expr::symbol("Select"), vec![Expr::symbol("g")])
+        ]));
+    }
+
+    #[test]
+    fn test_pipeline_with_complex_expressions() {
+        let result = parse_expression("{1, 2, 3} |> Map[x -> x * 2] |> Total[]").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::list(vec![Expr::integer(1), Expr::integer(2), Expr::integer(3)]),
+            Expr::function(
+                Expr::symbol("Map"),
+                vec![Expr::rule(
+                    Expr::symbol("x"),
+                    Expr::function(
+                        Expr::symbol("Times"),
+                        vec![Expr::symbol("x"), Expr::integer(2)]
+                    ),
+                    false
+                )]
+            ),
+            Expr::function(Expr::symbol("Total"), vec![])
+        ]));
+    }
+
+    #[test]
+    fn test_pipeline_precedence_with_assignment() {
+        let result = parse_statements("result = x |> f |> g").unwrap();
+        assert_eq!(result, vec![Expr::assignment(
+            Expr::symbol("result"),
+            Expr::pipeline(vec![
+                Expr::symbol("x"),
+                Expr::symbol("f"),
+                Expr::symbol("g")
+            ]),
+            false
+        )]);
+    }
+
+    #[test]
+    fn test_no_pipeline() {
+        // Single expression should not create a pipeline
+        let result = parse_expression("x").unwrap();
+        assert_eq!(result, Expr::symbol("x"));
+    }
+
+    // Dot-call tests
+    #[test]
+    fn test_simple_dot_call() {
+        let result = parse_expression("obj.method[]").unwrap();
+        assert_eq!(result, Expr::dot_call(
+            Expr::symbol("obj"),
+            "method",
+            vec![]
+        ));
+    }
+
+    #[test]
+    fn test_dot_call_with_args() {
+        let result = parse_expression("obj.method[x, y]").unwrap();
+        assert_eq!(result, Expr::dot_call(
+            Expr::symbol("obj"),
+            "method",
+            vec![Expr::symbol("x"), Expr::symbol("y")]
+        ));
+    }
+
+    #[test]
+    fn test_chained_dot_calls() {
+        let result = parse_expression("obj.first[].second[x]").unwrap();
+        assert_eq!(result, Expr::dot_call(
+            Expr::dot_call(
+                Expr::symbol("obj"),
+                "first",
+                vec![]
+            ),
+            "second",
+            vec![Expr::symbol("x")]
+        ));
+    }
+
+    #[test]
+    fn test_dot_call_on_complex_object() {
+        let result = parse_expression("{1, 2, 3}.map[f]").unwrap();
+        assert_eq!(result, Expr::dot_call(
+            Expr::list(vec![Expr::integer(1), Expr::integer(2), Expr::integer(3)]),
+            "map",
+            vec![Expr::symbol("f")]
+        ));
+    }
+
+    #[test]
+    fn test_dot_call_with_function_call_object() {
+        let result = parse_expression("getData[].transform[f]").unwrap();
+        assert_eq!(result, Expr::dot_call(
+            Expr::function(Expr::symbol("getData"), vec![]),
+            "transform",
+            vec![Expr::symbol("f")]
+        ));
+    }
+
+    #[test]
+    fn test_dot_call_in_pipeline() {
+        let result = parse_expression("data |> obj.process[config]").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::symbol("data"),
+            Expr::dot_call(
+                Expr::symbol("obj"),
+                "process",
+                vec![Expr::symbol("config")]
+            )
+        ]));
+    }
+
+    #[test]
+    fn test_mixed_postfix_operations() {
+        let result = parse_expression("obj.method[x][[1]]").unwrap();
+        assert_eq!(result, Expr::function(
+            Expr::symbol("Part"),
+            vec![
+                Expr::dot_call(
+                    Expr::symbol("obj"),
+                    "method",
+                    vec![Expr::symbol("x")]
+                ),
+                Expr::integer(1)
+            ]
+        ));
+    }
+
+    // Advanced pattern tests
+    #[test]
+    fn test_typed_pattern_modern() {
+        let result = parse_expression("x:_Integer").unwrap();
+        assert_eq!(result, Expr::typed_pattern("x", Expr::Pattern(Pattern::Blank {
+            head: Some("Integer".to_string())
+        })));
+    }
+
+    #[test]
+    fn test_typed_pattern_complex() {
+        let result = parse_expression("value:_Real").unwrap();
+        assert_eq!(result, Expr::typed_pattern("value", Expr::Pattern(Pattern::Blank {
+            head: Some("Real".to_string())
+        })));
+    }
+
+    #[test]
+    fn test_predicate_pattern_named() {
+        let result = parse_expression("x_?Positive").unwrap();
+        assert_eq!(result, Expr::Pattern(Pattern::Predicate {
+            pattern: Box::new(Pattern::Named {
+                name: "x".to_string(),
+                pattern: Box::new(Pattern::Blank { head: None })
+            }),
+            test: Box::new(Expr::symbol("Positive"))
+        }));
+    }
+
+    #[test]
+    fn test_predicate_pattern_blank() {
+        let result = parse_expression("_?EvenQ").unwrap();
+        assert_eq!(result, Expr::Pattern(Pattern::Predicate {
+            pattern: Box::new(Pattern::Blank { head: None }),
+            test: Box::new(Expr::symbol("EvenQ"))
+        }));
+    }
+
+    #[test]
+    fn test_conditional_pattern_named() {
+        let result = parse_expression("x_ /; x > 0").unwrap();
+        assert_eq!(result, Expr::Pattern(Pattern::Conditional {
+            pattern: Box::new(Pattern::Named {
+                name: "x".to_string(),
+                pattern: Box::new(Pattern::Blank { head: None })
+            }),
+            condition: Box::new(Expr::function(
+                Expr::symbol("Greater"),
+                vec![Expr::symbol("x"), Expr::integer(0)]
+            ))
+        }));
+    }
+
+    #[test]
+    fn test_conditional_pattern_blank() {
+        let result = parse_expression("_ /; # > 5").unwrap();
+        assert_eq!(result, Expr::Pattern(Pattern::Conditional {
+            pattern: Box::new(Pattern::Blank { head: None }),
+            condition: Box::new(Expr::function(
+                Expr::symbol("Greater"),
+                vec![Expr::symbol("#"), Expr::integer(5)]
+            ))
+        }));
+    }
+
+    #[test]
+    fn test_combined_pattern_predicate_and_conditional() {
+        let result = parse_expression("x_?Positive /; x < 100").unwrap();
+        assert_eq!(result, Expr::Pattern(Pattern::Conditional {
+            pattern: Box::new(Pattern::Predicate {
+                pattern: Box::new(Pattern::Named {
+                    name: "x".to_string(),
+                    pattern: Box::new(Pattern::Blank { head: None })
+                }),
+                test: Box::new(Expr::symbol("Positive"))
+            }),
+            condition: Box::new(Expr::function(
+                Expr::symbol("Less"),
+                vec![Expr::symbol("x"), Expr::integer(100)]
+            ))
+        }));
+    }
+
+    // Range tests
+    #[test]
+    fn test_simple_range() {
+        let result = parse_expression("1;;10").unwrap();
+        assert_eq!(result, Expr::range(
+            Expr::integer(1),
+            Expr::integer(10),
+            None
+        ));
+    }
+
+    #[test]
+    fn test_range_with_step() {
+        let result = parse_expression("0;;1;;0.1").unwrap();
+        assert_eq!(result, Expr::range(
+            Expr::integer(0),
+            Expr::integer(1),
+            Some(Expr::real(0.1))
+        ));
+    }
+
+    #[test]
+    fn test_range_with_expressions() {
+        let result = parse_expression("x;;y + 1").unwrap();
+        assert_eq!(result, Expr::range(
+            Expr::symbol("x"),
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::symbol("y"), Expr::integer(1)]
+            ),
+            None
+        ));
+    }
+
+    #[test]
+    fn test_range_negative_numbers() {
+        let result = parse_expression("-5;;5;;2").unwrap();
+        assert_eq!(result, Expr::range(
+            Expr::function(
+                Expr::symbol("Times"),
+                vec![Expr::integer(-1), Expr::integer(5)]
+            ),
+            Expr::integer(5),
+            Some(Expr::integer(2))
+        ));
+    }
+
+    #[test]
+    fn test_range_in_list() {
+        let result = parse_expression("{1;;5, 10;;15}").unwrap();
+        assert_eq!(result, Expr::list(vec![
+            Expr::range(Expr::integer(1), Expr::integer(5), None),
+            Expr::range(Expr::integer(10), Expr::integer(15), None)
+        ]));
+    }
+
+    #[test]
+    fn test_range_in_function_call() {
+        let result = parse_expression("Range[1;;10]").unwrap();
+        assert_eq!(result, Expr::function(
+            Expr::symbol("Range"),
+            vec![Expr::range(Expr::integer(1), Expr::integer(10), None)]
+        ));
+    }
+
+    // Arrow function tests
+    #[test]
+    fn test_simple_arrow_function() {
+        let result = parse_expression("(x) => x + 1").unwrap();
+        assert_eq!(result, Expr::arrow_function(
+            vec!["x".to_string()],
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::symbol("x"), Expr::integer(1)]
+            )
+        ));
+    }
+
+    #[test]
+    fn test_arrow_function_no_params() {
+        let result = parse_expression("() => 42").unwrap();
+        assert_eq!(result, Expr::arrow_function(
+            vec![],
+            Expr::integer(42)
+        ));
+    }
+
+    #[test]
+    fn test_arrow_function_multiple_params() {
+        let result = parse_expression("(x, y) => x * y").unwrap();
+        assert_eq!(result, Expr::arrow_function(
+            vec!["x".to_string(), "y".to_string()],
+            Expr::function(
+                Expr::symbol("Times"),
+                vec![Expr::symbol("x"), Expr::symbol("y")]
+            )
+        ));
+    }
+
+    #[test]
+    fn test_arrow_function_complex_body() {
+        let result = parse_expression("(x) => f[x + 1]").unwrap();
+        assert_eq!(result, Expr::arrow_function(
+            vec!["x".to_string()],
+            Expr::function(
+                Expr::symbol("f"),
+                vec![Expr::function(
+                    Expr::symbol("Plus"),
+                    vec![Expr::symbol("x"), Expr::integer(1)]
+                )]
+            )
+        ));
+    }
+
+    #[test]
+    fn test_arrow_function_in_pipeline() {
+        let result = parse_expression("data |> Map[(x) => x^2]").unwrap();
+        assert_eq!(result, Expr::pipeline(vec![
+            Expr::symbol("data"),
+            Expr::function(
+                Expr::symbol("Map"),
+                vec![Expr::arrow_function(
+                    vec!["x".to_string()],
+                    Expr::function(
+                        Expr::symbol("Power"),
+                        vec![Expr::symbol("x"), Expr::integer(2)]
+                    )
+                )]
+            )
+        ]));
+    }
+
+    #[test]
+    fn test_arrow_function_assignment() {
+        let result = parse_statements("square = (x) => x^2").unwrap();
+        assert_eq!(result, vec![Expr::assignment(
+            Expr::symbol("square"),
+            Expr::arrow_function(
+                vec!["x".to_string()],
+                Expr::function(
+                    Expr::symbol("Power"),
+                    vec![Expr::symbol("x"), Expr::integer(2)]
+                )
+            ),
+            false
+        )]);
+    }
+
+    #[test]
+    fn test_nested_arrow_functions() {
+        let result = parse_expression("(x) => (y) => x + y").unwrap();
+        assert_eq!(result, Expr::arrow_function(
+            vec!["x".to_string()],
+            Expr::arrow_function(
+                vec!["y".to_string()],
+                Expr::function(
+                    Expr::symbol("Plus"),
+                    vec![Expr::symbol("x"), Expr::symbol("y")]
+                )
+            )
         ));
     }
 }
