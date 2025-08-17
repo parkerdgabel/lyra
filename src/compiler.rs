@@ -112,26 +112,22 @@ impl Compiler {
     pub fn compile_expr(&mut self, expr: &Expr) -> CompilerResult<()> {
         match expr {
             Expr::Number(Number::Integer(n)) => {
-                // For small integers, use Push instruction
-                if *n >= 0 && *n <= 0xFFFFFF_i64 {
-                    self.context.emit(OpCode::Push, *n as u32)?;
-                } else {
-                    // For large integers, use constant pool
-                    let const_index = self.context.add_constant(Value::Integer(*n))?;
-                    self.context.emit(OpCode::LoadConst, const_index as u32)?;
-                }
+                // All integers now use constant pool with LDC
+                let const_index = self.context.add_constant(Value::Integer(*n))?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::Number(Number::Real(f)) => {
                 let const_index = self.context.add_constant(Value::Real(*f))?;
-                self.context.emit(OpCode::LoadConst, const_index as u32)?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::String(s) => {
                 let const_index = self.context.add_constant(Value::String(s.clone()))?;
-                self.context.emit(OpCode::LoadConst, const_index as u32)?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::Symbol(sym) => {
-                let symbol_index = self.context.add_symbol(sym.name.clone());
-                self.context.emit(OpCode::LoadSymbol, symbol_index as u32)?;
+                // Symbols now loaded via constant pool with LDC
+                let const_index = self.context.add_constant(Value::Symbol(sym.name.clone()))?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::List(elements) => {
                 // Compile each element and create a list
@@ -163,7 +159,7 @@ impl Compiler {
 
                 // Add the list to the constant pool
                 let const_index = self.context.add_constant(Value::List(list_values))?;
-                self.context.emit(OpCode::LoadConst, const_index as u32)?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::Function { head, args } => {
                 self.compile_function_call(head, args)?;
@@ -191,7 +187,7 @@ impl Compiler {
                     // Compile arguments in order (left operand first)
                     self.compile_expr(&args[0])?;
                     self.compile_expr(&args[1])?;
-                    self.context.emit(OpCode::Add, 0)?;
+                    self.context.emit(OpCode::ADD, 0)?;
                     return Ok(());
                 }
                 "Times" => {
@@ -204,7 +200,7 @@ impl Compiler {
                     }
                     self.compile_expr(&args[0])?;
                     self.compile_expr(&args[1])?;
-                    self.context.emit(OpCode::Mul, 0)?;
+                    self.context.emit(OpCode::MUL, 0)?;
                     return Ok(());
                 }
                 "Divide" => {
@@ -217,7 +213,7 @@ impl Compiler {
                     }
                     self.compile_expr(&args[0])?;
                     self.compile_expr(&args[1])?;
-                    self.context.emit(OpCode::Div, 0)?;
+                    self.context.emit(OpCode::DIV, 0)?;
                     return Ok(());
                 }
                 "Power" => {
@@ -230,15 +226,16 @@ impl Compiler {
                     }
                     self.compile_expr(&args[0])?;
                     self.compile_expr(&args[1])?;
-                    self.context.emit(OpCode::Power, 0)?;
+                    self.context.emit(OpCode::POW, 0)?;
                     return Ok(());
                 }
                 "Minus" => {
-                    // Handle unary minus: Minus[x] -> -1 * x
+                    // Handle unary minus: Minus[x] -> 0 - x
                     if args.len() == 1 {
-                        self.context.emit(OpCode::Push, 1)?; // Push -1 (will be negated)
+                        let zero_index = self.context.add_constant(Value::Integer(0))?;
+                        self.context.emit(OpCode::LDC, zero_index as u32)?;
                         self.compile_expr(&args[0])?;
-                        self.context.emit(OpCode::Mul, 0)?;
+                        self.context.emit(OpCode::SUB, 0)?;
                         return Ok(());
                     } else {
                         return Err(CompilerError::InvalidArity {
@@ -260,10 +257,10 @@ impl Compiler {
                         let func_index = self
                             .context
                             .add_constant(Value::Function(sym.name.clone()))?;
-                        self.context.emit(OpCode::LoadConst, func_index as u32)?;
+                        self.context.emit(OpCode::LDC, func_index as u32)?;
 
                         // Call the function with argument count
-                        self.context.emit(OpCode::Call, args.len() as u32)?;
+                        self.context.emit(OpCode::CALL, args.len() as u32)?;
                         return Ok(());
                     }
                     // For unknown functions, fall through to error
@@ -282,8 +279,7 @@ impl Compiler {
             // For statements, we might want to pop the result if it's not the last one
             // For now, keep all results on the stack
         }
-        // Add halt instruction at the end
-        self.context.emit(OpCode::Halt, 0)?;
+        // No halt instruction needed - execution ends naturally
         Ok(())
     }
 
@@ -304,7 +300,7 @@ impl Compiler {
     pub fn eval(expr: &Expr) -> CompilerResult<Value> {
         let mut compiler = Compiler::new();
         compiler.compile_expr(expr)?;
-        compiler.context.emit(OpCode::Halt, 0)?;
+        // No halt instruction needed
 
         let mut vm = compiler.into_vm();
         vm.run()
@@ -331,7 +327,7 @@ mod tests {
         compiler.compile_expr(&expr).unwrap();
 
         assert_eq!(compiler.context.code.len(), 1);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[0].operand, 42);
     }
 
@@ -343,7 +339,7 @@ mod tests {
         compiler.compile_expr(&expr).unwrap();
 
         assert_eq!(compiler.context.code.len(), 1);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.constants.len(), 1);
         assert_eq!(compiler.context.constants[0], Value::Integer(0x1000000));
     }
@@ -356,7 +352,7 @@ mod tests {
         compiler.compile_expr(&expr).unwrap();
 
         assert_eq!(compiler.context.code.len(), 1);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.constants.len(), 1);
         assert_eq!(compiler.context.constants[0], Value::Real(3.14));
     }
@@ -369,7 +365,7 @@ mod tests {
         compiler.compile_expr(&expr).unwrap();
 
         assert_eq!(compiler.context.code.len(), 1);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::LoadConst);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.constants.len(), 1);
         assert_eq!(
             compiler.context.constants[0],
@@ -387,7 +383,7 @@ mod tests {
         compiler.compile_expr(&expr).unwrap();
 
         assert_eq!(compiler.context.code.len(), 1);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::LoadSymbol);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.symbols.len(), 1);
         assert_eq!(compiler.context.symbols["x"], 0);
     }
@@ -409,11 +405,11 @@ mod tests {
 
         // Should generate: Push 2, Push 3, Add
         assert_eq!(compiler.context.code.len(), 3);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[0].operand, 2);
-        assert_eq!(compiler.context.code[1].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[1].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[1].operand, 3);
-        assert_eq!(compiler.context.code[2].opcode, OpCode::Add);
+        assert_eq!(compiler.context.code[2].opcode, OpCode::ADD);
     }
 
     #[test]
@@ -433,11 +429,11 @@ mod tests {
 
         // Should generate: Push 4, Push 5, Mul
         assert_eq!(compiler.context.code.len(), 3);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[0].operand, 4);
-        assert_eq!(compiler.context.code[1].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[1].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[1].operand, 5);
-        assert_eq!(compiler.context.code[2].opcode, OpCode::Mul);
+        assert_eq!(compiler.context.code[2].opcode, OpCode::MUL);
     }
 
     #[test]
@@ -466,14 +462,14 @@ mod tests {
 
         // Should generate: Push 2, Push 3, Add, Push 4, Mul
         assert_eq!(compiler.context.code.len(), 5);
-        assert_eq!(compiler.context.code[0].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[0].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[0].operand, 2);
-        assert_eq!(compiler.context.code[1].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[1].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[1].operand, 3);
-        assert_eq!(compiler.context.code[2].opcode, OpCode::Add);
-        assert_eq!(compiler.context.code[3].opcode, OpCode::Push);
+        assert_eq!(compiler.context.code[2].opcode, OpCode::ADD);
+        assert_eq!(compiler.context.code[3].opcode, OpCode::LDC);
         assert_eq!(compiler.context.code[3].operand, 4);
-        assert_eq!(compiler.context.code[4].opcode, OpCode::Mul);
+        assert_eq!(compiler.context.code[4].opcode, OpCode::MUL);
     }
 
     #[test]
@@ -638,8 +634,8 @@ mod tests {
 
         compiler.compile_program(&expressions).unwrap();
 
-        // Should generate: Push 42, Push 1, Push 2, Add, Halt
-        assert_eq!(compiler.context.code.len(), 5);
-        assert_eq!(compiler.context.code[4].opcode, OpCode::Halt);
+        // Should generate: LDC 42, LDC 1, LDC 2, ADD (no halt)
+        assert_eq!(compiler.context.code.len(), 4);
+        assert_eq!(compiler.context.code[3].opcode, OpCode::ADD);
     }
 }

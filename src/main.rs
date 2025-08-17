@@ -205,7 +205,7 @@ fn dump_ir(file_path: &PathBuf) -> Result<()> {
     for stmt in &statements {
         compiler.compile_expr(stmt)?;
     }
-    compiler.context.emit(lyra::bytecode::OpCode::Halt, 0)?;
+    // No halt instruction needed in minimal opcode set
 
     println!("=== Bytecode ===");
     for (i, instruction) in compiler.context.code.iter().enumerate() {
@@ -253,7 +253,7 @@ fn compile_source(source: &str) -> Result<Compiler> {
     for stmt in &statements {
         compiler.compile_expr(stmt)?;
     }
-    compiler.context.emit(lyra::bytecode::OpCode::Halt, 0)?;
+    // No halt instruction needed in minimal opcode set
 
     Ok(compiler)
 }

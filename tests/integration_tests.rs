@@ -182,11 +182,7 @@ fn test_compiler_with_parsed_ast() {
     // Verify the bytecode looks reasonable
     assert!(!compiler.context.code.is_empty());
 
-    // Execute it
-    compiler
-        .context
-        .emit(lyra::bytecode::OpCode::Halt, 0)
-        .unwrap();
+    // Execute it - no halt instruction needed in minimal opcode set
     let mut vm = compiler.into_vm();
     let result = vm.run().unwrap();
 

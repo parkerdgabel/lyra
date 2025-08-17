@@ -1356,10 +1356,7 @@ impl VirtualMachine {
 
             let instruction = *self.current_instruction()?;
 
-            // Check for halt instruction before executing
-            if matches!(instruction.opcode, OpCode::Halt) {
-                break;
-            }
+            // No halt instruction in minimal opcode set - execution ends naturally
 
             self.step()?;
         }
@@ -1377,7 +1374,7 @@ impl VirtualMachine {
         let instruction = *self.current_instruction()?;
 
         match instruction.opcode {
-            OpCode::LoadConst => {
+            OpCode::LDC => {
                 let const_index = instruction.operand as usize;
                 if const_index >= self.constants.len() {
                     return Err(VmError::InvalidConstantIndex(const_index));
@@ -1386,68 +1383,56 @@ impl VirtualMachine {
                 self.push(value);
                 self.ip += 1;
             }
-            OpCode::LoadSymbol => {
-                let symbol_index = instruction.operand as usize;
-                // For now, just push the symbol name as a Symbol value
-                // In a real implementation, this would look up the symbol's value
-                let symbol_name = format!("symbol_{}", symbol_index);
-                self.push(Value::Symbol(symbol_name));
-                self.ip += 1;
-            }
-            OpCode::Push => {
-                // Push immediate value (for small integers)
-                let value = Value::Integer(instruction.operand as i64);
-                self.push(value);
-                self.ip += 1;
-            }
-            OpCode::Pop => {
+            // LoadSymbol removed - symbols loaded via LDC constant pool
+            // Push removed - immediates loaded via LDC constant pool
+            OpCode::POP => {
                 self.pop()?;
                 self.ip += 1;
             }
-            OpCode::Dup => {
+            OpCode::DUP => {
                 let value = self.peek()?.clone();
                 self.push(value);
                 self.ip += 1;
             }
-            OpCode::Add => {
+            OpCode::ADD => {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 let result = self.add_values(a, b)?;
                 self.push(result);
                 self.ip += 1;
             }
-            OpCode::Sub => {
+            OpCode::SUB => {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 let result = self.sub_values(a, b)?;
                 self.push(result);
                 self.ip += 1;
             }
-            OpCode::Mul => {
+            OpCode::MUL => {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 let result = self.mul_values(a, b)?;
                 self.push(result);
                 self.ip += 1;
             }
-            OpCode::Div => {
+            OpCode::DIV => {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 let result = self.div_values(a, b)?;
                 self.push(result);
                 self.ip += 1;
             }
-            OpCode::Power => {
+            OpCode::POW => {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 let result = self.power_values(a, b)?;
                 self.push(result);
                 self.ip += 1;
             }
-            OpCode::Jump => {
+            OpCode::JMP => {
                 self.ip = instruction.operand as usize;
             }
-            OpCode::JumpIfFalse => {
+            OpCode::JIF => {
                 let condition = self.pop()?;
                 if self.is_falsy(&condition) {
                     self.ip = instruction.operand as usize;
@@ -1455,7 +1440,7 @@ impl VirtualMachine {
                     self.ip += 1;
                 }
             }
-            OpCode::Call => {
+            OpCode::CALL => {
                 let arg_count = instruction.operand as usize;
 
                 // Pop function name from stack
@@ -1490,15 +1475,83 @@ impl VirtualMachine {
 
                 self.ip += 1;
             }
-            OpCode::Return => {
+            OpCode::RET => {
                 if let Some(frame) = self.call_stack.pop() {
                     self.ip = frame.return_address;
                 } else {
                     return Ok(()); // End of program
                 }
             }
-            OpCode::Halt => {
-                return Ok(());
+            // Halt instruction removed from minimal opcode set
+            
+            // New minimal opcodes
+            OpCode::LDL => {
+                // Load local variable (placeholder implementation)
+                let local_index = instruction.operand as usize;
+                // For now, return Missing - full implementation needs local variable stack
+                self.push(Value::Missing);
+                self.ip += 1;
+            }
+            OpCode::STL => {
+                // Store local variable (placeholder implementation)
+                let _local_index = instruction.operand as usize;
+                let _value = self.pop()?;
+                // For now, just discard - full implementation needs local variable stack
+                self.ip += 1;
+            }
+            OpCode::STS => {
+                // Store symbol value (placeholder implementation)
+                let _symbol_index = instruction.operand as usize;
+                let _value = self.pop()?;
+                // For now, just discard - full implementation needs symbol table
+                self.ip += 1;
+            }
+            OpCode::NEWLIST => {
+                // Create new list from n stack items
+                let count = instruction.operand as usize;
+                let mut items = Vec::with_capacity(count);
+                for _ in 0..count {
+                    items.push(self.pop()?);
+                }
+                items.reverse(); // Items were popped in reverse order
+                self.push(Value::List(items));
+                self.ip += 1;
+            }
+            OpCode::NEWASSOC => {
+                // Create new associative array from 2n stack items (key-value pairs)
+                let pair_count = instruction.operand as usize;
+                let mut pairs = Vec::with_capacity(pair_count);
+                for _ in 0..pair_count {
+                    let value = self.pop()?;
+                    let key = self.pop()?;
+                    pairs.push((key, value));
+                }
+                pairs.reverse(); // Pairs were popped in reverse order
+                // For now, convert to a simple list representation
+                // Full implementation would use a proper associative data structure
+                let assoc_list: Vec<Value> = pairs.into_iter()
+                    .flat_map(|(k, v)| vec![k, v])
+                    .collect();
+                self.push(Value::List(assoc_list));
+                self.ip += 1;
+            }
+            OpCode::SYS => {
+                // System call (placeholder implementation)
+                let (sys_op, argc) = {
+                    let sys_op = (instruction.operand >> 8) as u16;
+                    let argc = (instruction.operand & 0xFF) as u8;
+                    (sys_op, argc)
+                };
+                
+                // Pop arguments
+                let mut _args = Vec::with_capacity(argc as usize);
+                for _ in 0..argc {
+                    _args.push(self.pop()?);
+                }
+                
+                // For now, just return Missing - full implementation needs system call registry
+                self.push(Value::Missing);
+                self.ip += 1;
             }
         }
 
@@ -1806,7 +1859,7 @@ mod tests {
         let mut vm = VirtualMachine::new();
         let const_index = vm.add_constant(Value::Integer(42));
 
-        let instruction = Instruction::new(OpCode::LoadConst, const_index as u32).unwrap();
+        let instruction = Instruction::new(OpCode::LDC, const_index as u32).unwrap();
         vm.load(vec![instruction], vm.constants.clone());
 
         vm.step().unwrap();
@@ -1820,7 +1873,7 @@ mod tests {
     fn test_push_instruction() {
         let mut vm = VirtualMachine::new();
 
-        let instruction = Instruction::new(OpCode::Push, 42).unwrap();
+        let instruction = Instruction::new(OpCode::LDC, 42).unwrap();
         vm.load(vec![instruction], vec![]);
 
         vm.step().unwrap();
@@ -1835,8 +1888,8 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 42).unwrap(),
-            Instruction::new(OpCode::Dup, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 42).unwrap(),
+            Instruction::new(OpCode::DUP, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1853,9 +1906,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 42).unwrap(),
-            Instruction::new(OpCode::Push, 24).unwrap(),
-            Instruction::new(OpCode::Pop, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 42).unwrap(),
+            Instruction::new(OpCode::LDC, 24).unwrap(),
+            Instruction::new(OpCode::POP, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1872,9 +1925,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 2).unwrap(),
-            Instruction::new(OpCode::Push, 3).unwrap(),
-            Instruction::new(OpCode::Add, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 2).unwrap(),
+            Instruction::new(OpCode::LDC, 3).unwrap(),
+            Instruction::new(OpCode::ADD, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1891,9 +1944,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 5).unwrap(),
-            Instruction::new(OpCode::Push, 3).unwrap(),
-            Instruction::new(OpCode::Sub, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 5).unwrap(),
+            Instruction::new(OpCode::LDC, 3).unwrap(),
+            Instruction::new(OpCode::SUB, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1910,9 +1963,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 3).unwrap(),
-            Instruction::new(OpCode::Push, 4).unwrap(),
-            Instruction::new(OpCode::Mul, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 3).unwrap(),
+            Instruction::new(OpCode::LDC, 4).unwrap(),
+            Instruction::new(OpCode::MUL, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1929,9 +1982,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 8).unwrap(),
-            Instruction::new(OpCode::Push, 2).unwrap(),
-            Instruction::new(OpCode::Div, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 8).unwrap(),
+            Instruction::new(OpCode::LDC, 2).unwrap(),
+            Instruction::new(OpCode::DIV, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1948,9 +2001,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 2).unwrap(),
-            Instruction::new(OpCode::Push, 3).unwrap(),
-            Instruction::new(OpCode::Power, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 2).unwrap(),
+            Instruction::new(OpCode::LDC, 3).unwrap(),
+            Instruction::new(OpCode::POW, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1967,9 +2020,9 @@ mod tests {
         let mut vm = VirtualMachine::new();
 
         let program = vec![
-            Instruction::new(OpCode::Push, 5).unwrap(),
-            Instruction::new(OpCode::Push, 0).unwrap(),
-            Instruction::new(OpCode::Div, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 5).unwrap(),
+            Instruction::new(OpCode::LDC, 0).unwrap(),
+            Instruction::new(OpCode::DIV, 0).unwrap(),
         ];
         vm.load(program, vec![]);
 
@@ -1988,7 +2041,7 @@ mod tests {
     fn test_jump_instruction() {
         let mut vm = VirtualMachine::new();
 
-        let instruction = Instruction::new(OpCode::Jump, 5).unwrap();
+        let instruction = Instruction::new(OpCode::JMP, 5).unwrap();
         vm.load(vec![instruction], vec![]);
 
         vm.step().unwrap();
@@ -2002,8 +2055,8 @@ mod tests {
         let true_index = vm.add_constant(Value::Boolean(true));
 
         let program = vec![
-            Instruction::new(OpCode::LoadConst, true_index as u32).unwrap(),
-            Instruction::new(OpCode::JumpIfFalse, 5).unwrap(),
+            Instruction::new(OpCode::LDC, true_index as u32).unwrap(),
+            Instruction::new(OpCode::JIF, 5).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
 
@@ -2019,8 +2072,8 @@ mod tests {
         let false_index = vm.add_constant(Value::Boolean(false));
 
         let program = vec![
-            Instruction::new(OpCode::LoadConst, false_index as u32).unwrap(),
-            Instruction::new(OpCode::JumpIfFalse, 5).unwrap(),
+            Instruction::new(OpCode::LDC, false_index as u32).unwrap(),
+            Instruction::new(OpCode::JIF, 5).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
 
@@ -2036,10 +2089,10 @@ mod tests {
 
         // Program: push 2, push 3, add, halt
         let program = vec![
-            Instruction::new(OpCode::Push, 2).unwrap(),
-            Instruction::new(OpCode::Push, 3).unwrap(),
-            Instruction::new(OpCode::Add, 0).unwrap(),
-            Instruction::new(OpCode::Halt, 0).unwrap(),
+            Instruction::new(OpCode::LDC, 2).unwrap(),
+            Instruction::new(OpCode::LDC, 3).unwrap(),
+            Instruction::new(OpCode::ADD, 0).unwrap(),
+            Instruction::new(OpCode::RET, 0).unwrap(),
         ];
 
         vm.load(program, vec![]);
@@ -2055,9 +2108,9 @@ mod tests {
         let real_index = vm.add_constant(Value::Real(3.5));
 
         let program = vec![
-            Instruction::new(OpCode::LoadConst, int_index as u32).unwrap(),
-            Instruction::new(OpCode::LoadConst, real_index as u32).unwrap(),
-            Instruction::new(OpCode::Add, 0).unwrap(),
+            Instruction::new(OpCode::LDC, int_index as u32).unwrap(),
+            Instruction::new(OpCode::LDC, real_index as u32).unwrap(),
+            Instruction::new(OpCode::ADD, 0).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
 
@@ -2076,9 +2129,9 @@ mod tests {
         let int_index = vm.add_constant(Value::Integer(42));
 
         let program = vec![
-            Instruction::new(OpCode::LoadConst, string_index as u32).unwrap(),
-            Instruction::new(OpCode::LoadConst, int_index as u32).unwrap(),
-            Instruction::new(OpCode::Add, 0).unwrap(),
+            Instruction::new(OpCode::LDC, string_index as u32).unwrap(),
+            Instruction::new(OpCode::LDC, int_index as u32).unwrap(),
+            Instruction::new(OpCode::ADD, 0).unwrap(),
         ];
         vm.load(program, vm.constants.clone());
 
