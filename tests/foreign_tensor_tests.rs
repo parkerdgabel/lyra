@@ -22,12 +22,11 @@
 //! 8. **Performance** - Efficient operations with minimal copying
 //! 9. **Integration** - Foreign trait method dispatch and VM integration
 
-use crate::TestValue;
 use std::sync::Arc;
 use ndarray::{ArrayD, IxDyn};
 
 /// Thread-safe test value enum to avoid Value enum threading issues during TDD
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum TestValue {
     Integer(i64),
     Real(f64),
@@ -43,6 +42,7 @@ pub trait TestForeign: Send + Sync + std::fmt::Debug {
     fn type_name(&self) -> &'static str;
     fn call_method(&self, method: &str, args: &[TestValue]) -> Result<TestValue, TestForeignError>;
     fn clone_boxed(&self) -> Box<dyn TestForeign>;
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Test Foreign error types
@@ -108,14 +108,14 @@ impl ForeignTensor {
     
     /// Create zero tensor with given shape
     pub fn zeros(shape: Vec<usize>) -> Self {
-        let len = shape.iter().product();
+        let len: usize = shape.iter().product();
         let array = ArrayD::zeros(IxDyn(&shape));
         Self::new(array)
     }
     
     /// Create ones tensor with given shape
     pub fn ones(shape: Vec<usize>) -> Self {
-        let len = shape.iter().product();
+        let len: usize = shape.iter().product();
         let array = ArrayD::ones(IxDyn(&shape));
         Self::new(array)
     }
@@ -151,7 +151,7 @@ impl ForeignTensor {
             });
         }
         
-        match self.data.clone().into_shape(IxDyn(&new_shape)) {
+        match (*self.data).clone().into_shape(IxDyn(&new_shape)) {
             Ok(reshaped) => Ok(Self::new(reshaped)),
             Err(e) => Err(TestForeignError::ShapeError {
                 message: format!("Reshape failed: {}", e),
@@ -161,7 +161,7 @@ impl ForeignTensor {
     
     /// Flatten tensor to 1D
     pub fn flatten(&self) -> Self {
-        let flattened = self.data.clone().into_shape(IxDyn(&[self.len])).unwrap();
+        let flattened = (*self.data).clone().into_shape(IxDyn(&[self.len])).unwrap();
         Self::new(flattened)
     }
     
@@ -216,7 +216,8 @@ impl ForeignTensor {
                             self.shape[0], other.shape[0]),
                     });
                 }
-                let result = self.data.dot(&other.data);
+                // Compute dot product manually to avoid trait conflicts
+                let result: f64 = self.data.iter().zip(other.data.iter()).map(|(a, b)| a * b).sum();
                 Ok(Self::from_list(vec![result]))
             },
             (2, 1) => {
@@ -679,13 +680,42 @@ impl TestForeign for ForeignTensor {
     fn clone_boxed(&self) -> Box<dyn TestForeign> {
         Box::new(self.clone())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
-// Required for downcasting in tests
-use std::any::Any;
-impl dyn TestForeign {
-    fn as_any(&self) -> &dyn Any {
-        self as &dyn Any
+// Manual implementations for TestValue since trait objects don't support derives
+impl Clone for TestValue {
+    fn clone(&self) -> Self {
+        match self {
+            TestValue::Integer(i) => TestValue::Integer(*i),
+            TestValue::Real(f) => TestValue::Real(*f),
+            TestValue::String(s) => TestValue::String(s.clone()),
+            TestValue::Boolean(b) => TestValue::Boolean(*b),
+            TestValue::List(list) => TestValue::List(list.clone()),
+            TestValue::Tensor(tensor) => TestValue::Tensor(tensor.clone()),
+            TestValue::LyObj(obj) => TestValue::LyObj(obj.clone_boxed()),
+        }
+    }
+}
+
+impl PartialEq for TestValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TestValue::Integer(a), TestValue::Integer(b)) => a == b,
+            (TestValue::Real(a), TestValue::Real(b)) => a == b,
+            (TestValue::String(a), TestValue::String(b)) => a == b,
+            (TestValue::Boolean(a), TestValue::Boolean(b)) => a == b,
+            (TestValue::List(a), TestValue::List(b)) => a == b,
+            (TestValue::Tensor(a), TestValue::Tensor(b)) => Arc::ptr_eq(a, b) || **a == **b,
+            (TestValue::LyObj(a), TestValue::LyObj(b)) => {
+                // Compare by type name and debug representation
+                a.type_name() == b.type_name() && format!("{:?}", a) == format!("{:?}", b)
+            },
+            _ => false,
+        }
     }
 }
 

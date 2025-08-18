@@ -172,7 +172,7 @@ impl ForeignSeries {
             (TestValue::Integer(_), SeriesType::Int64) => true,
             (TestValue::Real(_), SeriesType::Float64) => true,
             (TestValue::String(_), SeriesType::String) => true,
-            (TestValue::Boolean(_), SeriesType::Boolean) => true,
+            (TestValue::Boolean(_), SeriesType::Bool) => true,
             (TestValue::Missing, _) => true, // Missing is compatible with all types
             _ => false,
         }
@@ -184,7 +184,7 @@ impl ForeignSeries {
             TestValue::Integer(_) => SeriesType::Int64,
             TestValue::Real(_) => SeriesType::Float64,
             TestValue::String(_) => SeriesType::String,
-            TestValue::Boolean(_) => SeriesType::Boolean,
+            TestValue::Boolean(_) => SeriesType::Bool,
             TestValue::Missing => SeriesType::String, // Default for Missing
         }
     }
@@ -224,7 +224,7 @@ impl Foreign for ForeignSeries {
                     SeriesType::Int64 => "Integer",
                     SeriesType::Float64 => "Real",
                     SeriesType::String => "String",
-                    SeriesType::Boolean => "Boolean",
+                    SeriesType::Bool => "Boolean",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -415,7 +415,7 @@ fn test_foreign_series_type_inference() {
     let bool_series = ForeignSeries::infer(
         vec![TestValue::Boolean(true), TestValue::Boolean(false)]
     ).unwrap();
-    assert_eq!(bool_series.dtype, SeriesType::Boolean);
+    assert_eq!(bool_series.dtype, SeriesType::Bool);
 }
 
 #[test]

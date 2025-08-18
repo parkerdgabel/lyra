@@ -542,7 +542,8 @@ impl Foreign for ForeignSchema {
             
             "Validate" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -555,7 +556,8 @@ impl Foreign for ForeignSchema {
                     Value::String(s) => TestValue::String(s.clone()),
                     Value::Boolean(b) => TestValue::Boolean(*b),
                     Value::Missing => TestValue::Missing,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: method.to_string(),
                         expected: "Simple value type".to_string(),
                         actual: format!("{:?}", args[0]),
                     }),
@@ -569,7 +571,8 @@ impl Foreign for ForeignSchema {
             
             "Cast" => {
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
                         expected: 1, // or 2 for strict mode
                         actual: args.len(),
                     });
@@ -591,7 +594,8 @@ impl Foreign for ForeignSchema {
                     Value::String(s) => TestValue::String(s.clone()),
                     Value::Boolean(b) => TestValue::Boolean(*b),
                     Value::Missing => TestValue::Missing,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: method.to_string(),
                         expected: "Simple value type".to_string(),
                         actual: format!("{:?}", args[0]),
                     }),
@@ -604,13 +608,14 @@ impl Foreign for ForeignSchema {
                     Ok(TestValue::Boolean(b)) => Ok(Value::Boolean(b)),
                     Ok(TestValue::Missing) => Ok(Value::Missing),
                     Ok(_) => Ok(Value::String("Complex Value".to_string())),
-                    Err(e) => Err(ForeignError::RuntimeError(format!("Cast failed: {:?}", e))),
+                    Err(e) => Err(ForeignError::RuntimeError { message: format!("Cast failed: {:?}", e) }),
                 }
             },
             
             "Matches" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -623,7 +628,8 @@ impl Foreign for ForeignSchema {
                     Value::String(s) => TestValue::String(s.clone()),
                     Value::Boolean(b) => TestValue::Boolean(*b),
                     Value::Missing => TestValue::Missing,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: method.to_string(),
                         expected: "Simple value type".to_string(),
                         actual: format!("{:?}", args[0]),
                     }),
@@ -634,7 +640,8 @@ impl Foreign for ForeignSchema {
             
             "Unify" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -647,7 +654,8 @@ impl Foreign for ForeignSchema {
             
             "IsCompatibleWith" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -670,11 +678,19 @@ impl Foreign for ForeignSchema {
                 Ok(Value::List(constraints))
             },
             
-            _ => Err(ForeignError::MethodNotFound {
+            _ => Err(ForeignError::UnknownMethod {
                 method: method.to_string(),
                 type_name: "Schema".to_string(),
             }),
         }
+    }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -1213,11 +1229,11 @@ mod tests {
         let result = schema.call_method("UnknownMethod", &[]);
         assert!(result.is_err());
         match result.unwrap_err() {
-            ForeignError::MethodNotFound { method, type_name } => {
+            ForeignError::UnknownMethod { method, type_name } => {
                 assert_eq!(method, "UnknownMethod");
                 assert_eq!(type_name, "Schema");
             },
-            _ => panic!("Expected MethodNotFound error"),
+            _ => panic!("Expected UnknownMethod error"),
         }
     }
     
@@ -1285,7 +1301,7 @@ mod tests {
         // Single Missing value
         let schema = ForeignSchema::infer_from_values(&[TestValue::Missing]);
         match schema.schema_type {
-            SchemaType::Nullable(inner) => assert_eq!(**inner, SchemaType::String),
+            SchemaType::Nullable(inner) => assert_eq!(*inner, SchemaType::String),
             _ => panic!("Expected nullable string schema"),
         }
     }

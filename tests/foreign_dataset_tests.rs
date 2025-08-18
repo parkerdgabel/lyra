@@ -355,7 +355,8 @@ impl Foreign for ForeignDataset {
             
             "Get" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: "Get".to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -363,7 +364,8 @@ impl Foreign for ForeignDataset {
                 
                 let path = match &args[0] {
                     Value::String(s) => s,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: "Get".to_string(),
                         expected: "String path".to_string(),
                         actual: format!("{:?}", args[0]),
                     }),
@@ -378,13 +380,14 @@ impl Foreign for ForeignDataset {
                     Ok(TestValue::Boolean(b)) => Ok(Value::Boolean(b)),
                     Ok(TestValue::Missing) => Ok(Value::Missing),
                     Ok(_) => Ok(Value::String("Complex Value".to_string())), // Simplified
-                    Err(e) => Err(ForeignError::RuntimeError(format!("Path navigation failed: {:?}", e))),
+                    Err(e) => Err(ForeignError::RuntimeError { message: format!("Path navigation failed: {:?}", e) }),
                 }
             },
             
             "Set" => {
                 if args.len() != 2 {
-                    return Err(ForeignError::InvalidArguments {
+                    return Err(ForeignError::InvalidArity {
+                        method: "Set".to_string(),
                         expected: 2,
                         actual: args.len(),
                     });
@@ -392,7 +395,8 @@ impl Foreign for ForeignDataset {
                 
                 let path = match &args[0] {
                     Value::String(s) => s,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: "Set".to_string(),
                         expected: "String path".to_string(),
                         actual: format!("{:?}", args[0]),
                     }),
@@ -405,7 +409,8 @@ impl Foreign for ForeignDataset {
                     Value::String(s) => TestValue::String(s.clone()),
                     Value::Boolean(b) => TestValue::Boolean(*b),
                     Value::Missing => TestValue::Missing,
-                    _ => return Err(ForeignError::TypeError {
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: "Set".to_string(),
                         expected: "Simple value type".to_string(),
                         actual: format!("{:?}", args[1]),
                     }),
@@ -416,7 +421,7 @@ impl Foreign for ForeignDataset {
                         // Return a representation of the new dataset
                         Ok(Value::String(format!("Updated dataset with {} elements", new_dataset.size)))
                     },
-                    Err(e) => Err(ForeignError::RuntimeError(format!("Set operation failed: {:?}", e))),
+                    Err(e) => Err(ForeignError::RuntimeError { message: format!("Set operation failed: {:?}", e) }),
                 }
             },
             
@@ -443,11 +448,19 @@ impl Foreign for ForeignDataset {
                 Ok(Value::String(format!("{:?}", self.schema)))
             },
             
-            _ => Err(ForeignError::MethodNotFound {
+            _ => Err(ForeignError::UnknownMethod {
                 method: method.to_string(),
                 type_name: "Dataset".to_string(),
             }),
         }
+    }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -855,11 +868,11 @@ mod tests {
         assert!(result.is_err());
         
         match result.unwrap_err() {
-            ForeignError::MethodNotFound { method, type_name } => {
+            ForeignError::UnknownMethod { method, type_name } => {
                 assert_eq!(method, "UnknownMethod");
                 assert_eq!(type_name, "Dataset");
             },
-            _ => panic!("Expected MethodNotFound error"),
+            _ => panic!("Expected UnknownMethod error"),
         }
     }
     
