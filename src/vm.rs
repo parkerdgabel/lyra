@@ -1604,7 +1604,7 @@ impl VirtualMachine {
                     // Use the Function Registry to look up and call the method
                     match self.registry.lookup(type_name, method_name) {
                         Ok(function_entry) => {
-                            match function_entry.call(&lyobj, &args) {
+                            match function_entry.call(Some(&lyobj), &args) {
                                 Ok(result) => {
                                     self.push(result);
                                 }
