@@ -18,17 +18,18 @@ pub struct Instruction {
     pub operand: u32, // 24-bit operand (0..16777215)
 }
 
-/// Minimal opcode set for simplified VM (19 opcodes after adding LOAD_QUOTE)
+/// Minimal opcode set for simplified VM (20 opcodes after adding MAP_CALL_STATIC)
 /// Designed to push complexity into compiler and stdlib
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OpCode {
-    // Load/Store (5) - LDS removed: symbols loaded via LDC  
+    // Load/Store (6) - LDS removed: symbols loaded via LDC  
     LDC = 0x01,   // Load constant from pool (includes symbols)
     LDL = 0x02,   // Load local variable
     STL = 0x03,   // Store local variable  
     STS = 0x04,   // Store symbol value
     LOAD_QUOTE = 0x05, // Load quoted expression for Hold attributes
+    MAP_CALL_STATIC = 0x06, // Apply function to lists for Listable attributes
     
     // Aggregates (2)
     NEWLIST = 0x10,  // Create new list from n stack items
@@ -115,7 +116,7 @@ impl OpCode {
     pub fn from_u8(value: u8) -> Result<Self> {
         match value {
             0x01 => Ok(Self::LDC), 0x02 => Ok(Self::LDL), 0x03 => Ok(Self::STL),
-            0x04 => Ok(Self::STS),
+            0x04 => Ok(Self::STS), 0x05 => Ok(Self::LOAD_QUOTE), 0x06 => Ok(Self::MAP_CALL_STATIC),
             0x10 => Ok(Self::NEWLIST), 0x11 => Ok(Self::NEWASSOC),
             0x20 => Ok(Self::ADD), 0x21 => Ok(Self::SUB), 0x22 => Ok(Self::MUL),
             0x23 => Ok(Self::DIV), 0x24 => Ok(Self::POW),
@@ -130,7 +131,7 @@ impl OpCode {
     /// Get all opcodes for validation and testing
     pub fn all_opcodes() -> Vec<OpCode> {
         vec![
-            Self::LDC, Self::LDL, Self::STL, Self::STS,
+            Self::LDC, Self::LDL, Self::STL, Self::STS, Self::LOAD_QUOTE, Self::MAP_CALL_STATIC,
             Self::NEWLIST, Self::NEWASSOC,
             Self::ADD, Self::SUB, Self::MUL, Self::DIV, Self::POW,
             Self::JMP, Self::JIF,
@@ -142,7 +143,7 @@ impl OpCode {
     
     /// Check if opcode is a load/store operation
     pub fn is_load_store(&self) -> bool {
-        matches!(self, Self::LDC | Self::LDL | Self::STL | Self::STS)
+        matches!(self, Self::LDC | Self::LDL | Self::STL | Self::STS | Self::LOAD_QUOTE)
     }
     
     /// Check if opcode creates aggregates
@@ -162,13 +163,13 @@ impl OpCode {
     
     /// Check if opcode is a function call operation
     pub fn is_call(&self) -> bool {
-        matches!(self, Self::CALL_STATIC | Self::RET)
+        matches!(self, Self::CALL_STATIC | Self::MAP_CALL_STATIC | Self::RET)
     }
     
     /// Get opcode name for debugging
     pub fn name(&self) -> &'static str {
         match self {
-            Self::LDC => "LDC", Self::LOAD_QUOTE => "LOAD_QUOTE", 
+            Self::LDC => "LDC", Self::LOAD_QUOTE => "LOAD_QUOTE", Self::MAP_CALL_STATIC => "MAP_CALL_STATIC",
             Self::LDL => "LDL", Self::STL => "STL", Self::STS => "STS",
             Self::NEWLIST => "NEWLIST", Self::NEWASSOC => "NEWASSOC",
             Self::ADD => "ADD", Self::SUB => "SUB", Self::MUL => "MUL", 
@@ -308,13 +309,13 @@ mod tests {
     
     #[test]
     fn test_minimal_opcode_count() {
-        // Test that we have exactly 18 opcodes (minimal set with CALL removed)
+        // Test that we have exactly 20 opcodes (18 minimal + LOAD_QUOTE + MAP_CALL_STATIC)
         let minimal_opcodes = OpCode::all_opcodes();
-        assert_eq!(minimal_opcodes.len(), 18, "Opcode set must have exactly 18 opcodes (minimal set with CALL removed)");
+        assert_eq!(minimal_opcodes.len(), 20, "Opcode set must have exactly 20 opcodes (18 minimal + LOAD_QUOTE + MAP_CALL_STATIC)");
         
         // Verify each category has the expected count
         let loads_stores = minimal_opcodes.iter().filter(|op| op.is_load_store()).count();
-        assert_eq!(loads_stores, 4, "Should have 4 load/store opcodes");
+        assert_eq!(loads_stores, 5, "Should have 5 load/store opcodes (including LOAD_QUOTE)");
         
         let aggregates = minimal_opcodes.iter().filter(|op| op.is_aggregate()).count();
         assert_eq!(aggregates, 2, "Should have 2 aggregate opcodes");
@@ -326,7 +327,7 @@ mod tests {
         assert_eq!(control, 2, "Should have 2 control opcodes");
         
         let calls = minimal_opcodes.iter().filter(|op| op.is_call()).count();
-        assert_eq!(calls, 2, "Should have 2 call opcodes (CALL_STATIC, RET)");
+        assert_eq!(calls, 3, "Should have 3 call opcodes (CALL_STATIC, MAP_CALL_STATIC, RET)");
         
         let stack = minimal_opcodes.iter().filter(|op| matches!(op, OpCode::POP | OpCode::DUP)).count();
         assert_eq!(stack, 2, "Should have 2 stack opcodes");

@@ -42,6 +42,9 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::LyObj(obj) => {
             format!("{}[...]", obj.type_name())
         }
+        lyra::vm::Value::Quote(expr) => {
+            format!("Hold[{:?}]", expr)
+        }
     }
 }
 

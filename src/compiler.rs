@@ -468,15 +468,46 @@ impl Compiler {
         if !attributes.is_empty() {
             println!("🔍 Found attributes for {}: {:?}", function_name, attributes);
             
-            // Phase 5A.5.1b: Process Hold attributes
+            // Phase 5A.5.1b: Process Hold attributes (highest priority)
             for attribute in &attributes {
                 if let crate::linker::FunctionAttribute::Hold(positions) = attribute {
                     return self.compile_function_with_hold(head, args, positions);
                 }
             }
             
-            // TODO Phase 5A.5.1c: Process Listable attributes  
-            // TODO Phase 5A.5.1d: Process Orderless attributes
+            // Check if there are list arguments for Listable priority decision
+            let has_list_args = args.iter().any(|arg| matches!(arg, Expr::List(_)));
+            
+            // Priority: If there are list arguments, Listable takes precedence over Orderless
+            if has_list_args {
+                // Phase 5A.5.1c: Process Listable attributes FIRST when lists are present
+                for attribute in &attributes {
+                    if let crate::linker::FunctionAttribute::Listable = attribute {
+                        return self.compile_function_with_listable(head, args);
+                    }
+                }
+                
+                // Phase 5A.5.1d: Process Orderless attributes as fallback
+                for attribute in &attributes {
+                    if let crate::linker::FunctionAttribute::Orderless = attribute {
+                        return self.compile_function_with_orderless(head, args);
+                    }
+                }
+            } else {
+                // Phase 5A.5.1d: Process Orderless attributes FIRST when no lists present
+                for attribute in &attributes {
+                    if let crate::linker::FunctionAttribute::Orderless = attribute {
+                        return self.compile_function_with_orderless(head, args);
+                    }
+                }
+                
+                // Phase 5A.5.1c: Process Listable attributes as fallback
+                for attribute in &attributes {
+                    if let crate::linker::FunctionAttribute::Listable = attribute {
+                        return self.compile_function_with_listable(head, args);
+                    }
+                }
+            }
         }
         
         // Step 4: Fallback to existing compilation logic for now
@@ -503,10 +534,272 @@ impl Compiler {
             }
         }
         
-        // For now, since TestHold is not a registered function, just treat it as unknown
-        // In a real implementation, we'd emit a proper function call instruction here
-        // But our tests are designed to fail initially (RED phase)
-        Err(CompilerError::UnknownFunction(format!("TestHold function not implemented for Hold attributes yet")))
+        // Now emit the actual function call after processing Hold arguments
+        // Use the normal function compilation path since arguments are already on stack
+        if let Expr::Symbol(symbol) = head {
+            // Look up the function in the registry
+            if let Some(function_index) = self.registry.get_stdlib_index(&symbol.name) {
+                // Emit CALL_STATIC with proper argument count
+                let argc = args.len();
+                let operand = ((function_index as u32) << 8) | (argc as u32);
+                self.context.emit(OpCode::CALL_STATIC, operand)?;
+                Ok(())
+            } else {
+                Err(CompilerError::UnknownFunction(symbol.name.clone()))
+            }
+        } else {
+            Err(CompilerError::UnsupportedExpression("Expected symbol for function head".to_string()))
+        }
+    }
+    
+    /// Compile function call with Listable attribute processing
+    /// 
+    /// Listable functions automatically thread over lists:
+    /// - Sin[{1,2,3}] → {Sin[1], Sin[2], Sin[3]}
+    /// - Plus[{1,2}, {3,4}] → {Plus[1,3], Plus[2,4]}
+    /// - Plus[{1,2}, 10] → {Plus[1,10], Plus[2,10]}
+    fn compile_function_with_listable(&mut self, head: &Expr, args: &[Expr]) -> CompilerResult<()> {
+        // Step 1: Check if any arguments are lists
+        let mut has_list_args = false;
+        for arg in args {
+            if matches!(arg, Expr::List(_)) {
+                has_list_args = true;
+                break;
+            }
+        }
+        
+        // Step 2: If no list arguments, use normal CALL_STATIC compilation
+        if !has_list_args {
+            return self.compile_function_call(head, args);
+        }
+        
+        // Step 3: List arguments found - use MAP_CALL_STATIC for list threading
+        // First, extract function name and determine if it's stdlib or Foreign method
+        let function_name = self.extract_function_name(head)?;
+        
+        // Step 3a: Handle special arithmetic functions (Plus, Times, etc.)
+        // These are compiled to opcodes normally, but for Listable with lists we need special handling
+        match function_name.as_str() {
+            "Plus" | "Times" | "Divide" | "Power" | "Minus" => {
+                // For arithmetic functions with lists, we need to find the equivalent stdlib function
+                // or handle them specially. For now, let's try to find them in stdlib.
+                
+                // Check if this arithmetic function is registered in stdlib
+                if let Some(stdlib_index) = self.registry.get_stdlib_index(&function_name) {
+                    // Compile arguments normally (lists will be evaluated as list values)
+                    for arg in args {
+                        self.compile_expr(arg)?;
+                    }
+                    
+                    // Emit MAP_CALL_STATIC with stdlib function index
+                    self.context.emit(OpCode::MAP_CALL_STATIC, ((stdlib_index as u32) << 8) | (args.len() as u32))?;
+                    return Ok(());
+                } else {
+                    // Arithmetic function not found in stdlib registry
+                    // This means we need to fall back to existing arithmetic compilation
+                    // but that won't work with lists. For now, return an error.
+                    return Err(CompilerError::UnknownFunction(format!(
+                        "Arithmetic function {} with Listable attribute and list arguments needs stdlib registration", 
+                        function_name
+                    )));
+                }
+            }
+            _ => {
+                // Not a special arithmetic function, proceed with normal processing
+            }
+        }
+        
+        // Check if this is a stdlib function
+        if let Some(stdlib_index) = self.registry.get_stdlib_index(&function_name) {
+            // Compile arguments normally (lists will be evaluated as list values)
+            for arg in args {
+                self.compile_expr(arg)?;
+            }
+            
+            // Emit MAP_CALL_STATIC with stdlib function index (32+)
+            self.context.emit(OpCode::MAP_CALL_STATIC, ((stdlib_index as u32) << 8) | (args.len() as u32))?;
+            return Ok(());
+        }
+        
+        // Check if this is a method call that should be compiled as static method call
+        if !args.is_empty() {
+            // Check if this method exists in any Foreign type 
+            for type_name in self.registry.get_type_names() {
+                if self.registry.has_method(&type_name, &function_name) {
+                    // Compile all arguments (first arg is the object)
+                    for arg in args {
+                        self.compile_expr(arg)?;
+                    }
+                    
+                    // Map method name to function index (same mapping as in existing code)
+                    let function_index = match function_name.as_str() {
+                        "Length" => 0, "Type" => 1, "ToList" => 2, "IsEmpty" => 3,
+                        "Get" => 4, "Append" => 5, "Set" => 6, "Slice" => 7,
+                        "Shape" => 8, "Columns" => 9, "Rows" => 10,
+                        _ => 0, // Default fallback
+                    };
+                    
+                    // Generate MAP_CALL_STATIC instruction for static dispatch with list threading
+                    self.context.emit(OpCode::MAP_CALL_STATIC, ((function_index as u32) << 8) | (args.len() as u32))?;
+                    return Ok(());
+                }
+            }
+        }
+        
+        // Function not found in registry - this should not happen for registered Listable functions
+        Err(CompilerError::UnknownFunction(format!("Listable function {} not found in registry", function_name)))
+    }
+    
+    /// Compile function call with Orderless attribute processing
+    /// 
+    /// Orderless functions have their arguments sorted in canonical order:
+    /// - Numbers: sorted numerically (1, 2, 3)
+    /// - Symbols: sorted alphabetically (a, b, c)
+    /// - Complex expressions: sorted by a canonical ordering system
+    fn compile_function_with_orderless(&mut self, head: &Expr, args: &[Expr]) -> CompilerResult<()> {
+        // Step 1: Sort arguments according to canonical order
+        let mut sorted_args = args.to_vec();
+        sorted_args.sort_by(|a, b| self.canonical_order(a, b));
+        
+        // Step 2: Handle special cases for arithmetic functions with Orderless
+        if let Expr::Symbol(sym) = head {
+            match sym.name.as_str() {
+                "Plus" => {
+                    // For Orderless Plus with multiple arguments, we need to compile them 
+                    // as a sequence of binary additions: Plus[a, b, c] -> Plus[Plus[a, b], c]
+                    if sorted_args.len() >= 2 {
+                        // Compile first argument
+                        self.compile_expr(&sorted_args[0])?;
+                        
+                        // Add each subsequent argument with binary Plus
+                        for arg in &sorted_args[1..] {
+                            self.compile_expr(arg)?;
+                            self.context.emit(OpCode::ADD, 0)?;
+                        }
+                        return Ok(());
+                    } else {
+                        return Err(CompilerError::InvalidArity {
+                            function: "Plus".to_string(),
+                            expected: 2,
+                            actual: sorted_args.len(),
+                        });
+                    }
+                }
+                "Times" => {
+                    // Similar handling for Times
+                    if sorted_args.len() >= 2 {
+                        self.compile_expr(&sorted_args[0])?;
+                        for arg in &sorted_args[1..] {
+                            self.compile_expr(arg)?;
+                            self.context.emit(OpCode::MUL, 0)?;
+                        }
+                        return Ok(());
+                    } else {
+                        return Err(CompilerError::InvalidArity {
+                            function: "Times".to_string(),
+                            expected: 2,
+                            actual: sorted_args.len(),
+                        });
+                    }
+                }
+                _ => {
+                    // For other functions, check if it's a stdlib function and handle accordingly
+                    if let Some(stdlib_index) = self.registry.get_stdlib_index(&sym.name) {
+                        // Compile sorted arguments normally
+                        for arg in &sorted_args {
+                            self.compile_expr(arg)?;
+                        }
+                        
+                        // Emit CALL_STATIC with stdlib function index
+                        self.context.emit(OpCode::CALL_STATIC, ((stdlib_index as u32) << 8) | (sorted_args.len() as u32))?;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        
+        // Step 3: Fallback to normal function compilation for non-arithmetic functions
+        self.compile_function_call(head, &sorted_args)
+    }
+    
+    /// Canonical ordering for expressions (implements Mathematica-like ordering)
+    /// 
+    /// Ordering rules:
+    /// 1. Numbers come before symbols
+    /// 2. Symbols come before function calls
+    /// 3. Numbers are sorted numerically
+    /// 4. Symbols are sorted alphabetically
+    /// 5. Function calls are sorted by head name, then by arguments
+    fn canonical_order(&self, a: &Expr, b: &Expr) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        use crate::ast::{Expr, Number};
+        
+        match (a, b) {
+            // Numbers vs Numbers: sort numerically
+            (Expr::Number(Number::Integer(x)), Expr::Number(Number::Integer(y))) => x.cmp(y),
+            (Expr::Number(Number::Real(x)), Expr::Number(Number::Real(y))) => {
+                x.partial_cmp(y).unwrap_or(Ordering::Equal)
+            }
+            (Expr::Number(Number::Integer(x)), Expr::Number(Number::Real(y))) => {
+                (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal)
+            }
+            (Expr::Number(Number::Real(x)), Expr::Number(Number::Integer(y))) => {
+                x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal)
+            }
+            
+            // Numbers vs anything else: numbers come first
+            (Expr::Number(_), _) => Ordering::Less,
+            (_, Expr::Number(_)) => Ordering::Greater,
+            
+            // Symbols vs Symbols: sort alphabetically
+            (Expr::Symbol(sym_a), Expr::Symbol(sym_b)) => sym_a.name.cmp(&sym_b.name),
+            
+            // Symbols vs anything else (except numbers): symbols come first
+            (Expr::Symbol(_), _) => Ordering::Less,
+            (_, Expr::Symbol(_)) => Ordering::Greater,
+            
+            // Functions vs Functions: sort by head name, then by arguments
+            (Expr::Function { head: head_a, args: args_a }, Expr::Function { head: head_b, args: args_b }) => {
+                // First compare the function heads
+                let head_cmp = self.canonical_order(head_a, head_b);
+                if head_cmp != Ordering::Equal {
+                    return head_cmp;
+                }
+                
+                // Then compare argument count
+                let arity_cmp = args_a.len().cmp(&args_b.len());
+                if arity_cmp != Ordering::Equal {
+                    return arity_cmp;
+                }
+                
+                // Finally compare arguments pairwise
+                for (arg_a, arg_b) in args_a.iter().zip(args_b.iter()) {
+                    let arg_cmp = self.canonical_order(arg_a, arg_b);
+                    if arg_cmp != Ordering::Equal {
+                        return arg_cmp;
+                    }
+                }
+                
+                Ordering::Equal
+            }
+            
+            // Strings vs Strings: sort alphabetically
+            (Expr::String(s_a), Expr::String(s_b)) => s_a.cmp(s_b),
+            
+            // Default cases - maintain some consistent ordering for other expression types
+            // Lists come after symbols but before functions
+            (Expr::List(_), Expr::Function { .. }) => Ordering::Less,
+            (Expr::Function { .. }, Expr::List(_)) => Ordering::Greater,
+            (Expr::List(_), _) => Ordering::Greater,
+            (_, Expr::List(_)) => Ordering::Less,
+            
+            // Strings come after symbols but before functions
+            (Expr::String(_), Expr::Function { .. }) => Ordering::Less,
+            (Expr::Function { .. }, Expr::String(_)) => Ordering::Greater,
+            
+            // For any other cases, use a consistent default
+            _ => Ordering::Equal,
+        }
     }
 }
 

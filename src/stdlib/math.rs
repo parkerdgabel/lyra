@@ -178,6 +178,202 @@ pub fn sqrt(args: &[Value]) -> VmResult<Value> {
     Ok(Value::Real(x.sqrt()))
 }
 
+/// Addition function for Listable attribute support
+/// Usage: Plus[2, 3] -> 5, Plus[{1,2}, {3,4}] -> {4,6} (when Listable)
+pub fn plus(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x + y)),
+        (Value::Integer(x), Value::Real(y)) => Ok(Value::Real(*x as f64 + y)),
+        (Value::Real(x), Value::Integer(y)) => Ok(Value::Real(x + *y as f64)),
+        (Value::Real(x), Value::Real(y)) => Ok(Value::Real(x + y)),
+        _ => Err(VmError::TypeError {
+            expected: "Numbers".to_string(),
+            actual: format!("{:?}, {:?}", a, b),
+        }),
+    }
+}
+
+/// Multiplication function for Listable attribute support
+/// Usage: Times[2, 3] -> 6, Times[{1,2}, {3,4}] -> {3,8} (when Listable)
+pub fn times(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Ok(Value::Integer(x * y)),
+        (Value::Integer(x), Value::Real(y)) => Ok(Value::Real(*x as f64 * y)),
+        (Value::Real(x), Value::Integer(y)) => Ok(Value::Real(x * *y as f64)),
+        (Value::Real(x), Value::Real(y)) => Ok(Value::Real(x * y)),
+        _ => Err(VmError::TypeError {
+            expected: "Numbers".to_string(),
+            actual: format!("{:?}, {:?}", a, b),
+        }),
+    }
+}
+
+/// Division function for Listable attribute support
+/// Usage: Divide[6, 2] -> 3.0, Divide[{6,8}, {2,4}] -> {3.0,2.0} (when Listable)
+pub fn divide(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let divisor = match b {
+        Value::Integer(y) => {
+            if *y == 0 {
+                return Err(VmError::TypeError {
+                    expected: "non-zero divisor".to_string(),
+                    actual: "zero".to_string(),
+                });
+            }
+            *y as f64
+        }
+        Value::Real(y) => {
+            if *y == 0.0 {
+                return Err(VmError::TypeError {
+                    expected: "non-zero divisor".to_string(),
+                    actual: "zero".to_string(),
+                });
+            }
+            *y
+        }
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", b),
+            });
+        }
+    };
+    
+    let dividend = match a {
+        Value::Integer(x) => *x as f64,
+        Value::Real(x) => *x,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", a),
+            });
+        }
+    };
+    
+    Ok(Value::Real(dividend / divisor))
+}
+
+/// Power function for Listable attribute support
+/// Usage: Power[2, 3] -> 8, Power[{2,3}, {2,3}] -> {4,27} (when Listable)
+pub fn power(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let base = match a {
+        Value::Integer(x) => *x as f64,
+        Value::Real(x) => *x,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", a),
+            });
+        }
+    };
+    
+    let exponent = match b {
+        Value::Integer(y) => *y as f64,
+        Value::Real(y) => *y,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Number".to_string(),
+                actual: format!("{:?}", b),
+            });
+        }
+    };
+    
+    let result = base.powf(exponent);
+    
+    // Return integer if result is a whole number and both inputs were integers
+    if matches!((a, b), (Value::Integer(_), Value::Integer(_))) && result.fract() == 0.0 {
+        Ok(Value::Integer(result as i64))
+    } else {
+        Ok(Value::Real(result))
+    }
+}
+
+/// Minus (unary negation) function for Listable attribute support
+/// Usage: Minus[5] -> -5, Minus[{1,2,3}] -> {-1,-2,-3} (when Listable)
+pub fn minus(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    match &args[0] {
+        Value::Integer(x) => Ok(Value::Integer(-x)),
+        Value::Real(x) => Ok(Value::Real(-x)),
+        _ => Err(VmError::TypeError {
+            expected: "Number".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    }
+}
+
+/// Test function for Hold[1] attribute - holds first argument
+/// Usage: TestHold[1+1, 2+2] -> evaluates second arg but holds first
+pub fn test_hold(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // For testing purposes, just return a string indicating what we received
+    // First arg should be held (unevaluated), second arg should be evaluated
+    Ok(Value::String(format!("TestHold[{:?}, {:?}]", args[0], args[1])))
+}
+
+/// Test function for Hold[2,3] attribute - holds second and third arguments
+/// Usage: TestHoldMultiple[1+1, 2+2, 3+3, 4+4] -> evaluates args 1,4 but holds args 2,3
+pub fn test_hold_multiple(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 4 {
+        return Err(VmError::TypeError {
+            expected: "exactly 4 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // For testing purposes, return a string showing what we received
+    // Args 1,4 should be evaluated, args 2,3 should be held (unevaluated)
+    Ok(Value::String(format!("TestHoldMultiple[{:?}, {:?}, {:?}, {:?}]", 
+        args[0], args[1], args[2], args[3])))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

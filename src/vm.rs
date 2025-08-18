@@ -1614,6 +1614,144 @@ impl VirtualMachine {
                 
                 self.ip += 1;
             }
+            
+            OpCode::MAP_CALL_STATIC => {
+                // MAP_CALL_STATIC: Apply function to lists for Listable attributes
+                // Handles: Sin[{1,2,3}] → {Sin[1], Sin[2], Sin[3]}
+                //          Plus[{1,2}, {3,4}] → {Plus[1,3], Plus[2,4]}
+                //          Plus[{1,2}, 10] → {Plus[1,10], Plus[2,10]}
+                
+                // Decode function index and argument count (same encoding as CALL_STATIC)
+                let (function_index, argc) = {
+                    let function_index = (instruction.operand >> 8) as u16;
+                    let argc = (instruction.operand & 0xFF) as u8;
+                    (function_index, argc)
+                };
+                
+                // Pop arguments from stack
+                let mut args = Vec::with_capacity(argc as usize);
+                for _ in 0..argc {
+                    args.push(self.pop()?);
+                }
+                args.reverse(); // Stack pops in reverse order
+                
+                // Determine if we need to handle object method call (Foreign) vs stdlib function
+                let needs_object = function_index < 32;
+                let mut object = None;
+                
+                if needs_object {
+                    // For Foreign methods, pop the object too
+                    object = Some(self.pop()?);
+                }
+                
+                // Check which arguments are lists and determine the result list length
+                let mut list_indices = Vec::new();
+                let mut max_list_length = 1; // Minimum length for scalar broadcasting
+                
+                for (i, arg) in args.iter().enumerate() {
+                    if let Value::List(list_items) = arg {
+                        list_indices.push(i);
+                        max_list_length = max_list_length.max(list_items.len());
+                    }
+                }
+                
+                // If no lists found, this is an error - MAP_CALL_STATIC should only be used with Listable functions that have list arguments
+                if list_indices.is_empty() {
+                    return Err(VmError::TypeError {
+                        expected: "at least one list argument for Listable function".to_string(),
+                        actual: "no list arguments found".to_string(),
+                    });
+                }
+                
+                // Build result list by applying function element-wise
+                let mut result_list = Vec::with_capacity(max_list_length);
+                
+                for element_index in 0..max_list_length {
+                    // Build arguments for this element position
+                    let mut element_args = Vec::with_capacity(args.len());
+                    
+                    for (arg_index, arg) in args.iter().enumerate() {
+                        match arg {
+                            Value::List(list_items) => {
+                                // Get element at this position, or last element if list is shorter (broadcasting)
+                                let item_index = element_index.min(list_items.len().saturating_sub(1));
+                                element_args.push(list_items[item_index].clone());
+                            }
+                            _ => {
+                                // Scalar argument - broadcast to all positions
+                                element_args.push(arg.clone());
+                            }
+                        }
+                    }
+                    
+                    // Call the function for this element position
+                    let element_result = if needs_object {
+                        // Foreign method call
+                        if let Some(Value::LyObj(ref lyobj)) = object {
+                            // Map function_index to method name (same mapping as CALL_STATIC)
+                            let method_name = match function_index {
+                                0 => "Length", 1 => "Type", 2 => "ToList", 3 => "IsEmpty",
+                                4 => "Get", 5 => "Append", 6 => "Set", 7 => "Slice",
+                                8 => "Shape", 9 => "Columns", 10 => "Rows",
+                                _ => {
+                                    return Err(VmError::TypeError {
+                                        expected: "valid method index".to_string(),
+                                        actual: format!("index {}", function_index),
+                                    });
+                                }
+                            };
+                            
+                            let type_name = lyobj.type_name();
+                            match self.registry.lookup(type_name, method_name) {
+                                Ok(function_entry) => {
+                                    match function_entry.call(Some(lyobj), &element_args) {
+                                        Ok(result) => result,
+                                        Err(foreign_error) => {
+                                            return Err(VmError::TypeError {
+                                                expected: "successful method call".to_string(),
+                                                actual: format!("Foreign error: {:?}", foreign_error),
+                                            });
+                                        }
+                                    }
+                                }
+                                Err(linker_error) => {
+                                    return Err(VmError::TypeError {
+                                        expected: format!("method {}::{}", type_name, method_name),
+                                        actual: format!("Linker error: {:?}", linker_error),
+                                    });
+                                }
+                            }
+                        } else {
+                            return Err(VmError::TypeError {
+                                expected: "LyObj for method call".to_string(),
+                                actual: format!("{:?}", object),
+                            });
+                        }
+                    } else {
+                        // Stdlib function call
+                        match self.registry.get_stdlib_function(function_index) {
+                            Some(function) => {
+                                match function(&element_args) {
+                                    Ok(result) => result,
+                                    Err(vm_error) => return Err(vm_error),
+                                }
+                            }
+                            None => {
+                                return Err(VmError::TypeError {
+                                    expected: "valid stdlib function".to_string(),
+                                    actual: format!("index {}", function_index),
+                                });
+                            }
+                        }
+                    };
+                    
+                    result_list.push(element_result);
+                }
+                
+                // Push the result list onto the stack
+                self.push(Value::List(result_list));
+                self.ip += 1;
+            }
         }
 
         Ok(())

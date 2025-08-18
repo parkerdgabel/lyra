@@ -81,13 +81,24 @@ impl StandardLibrary {
     }
 
     fn register_math_functions(&mut self) {
-        // Basic arithmetic already handled by VM
+        // Basic arithmetic functions (for Listable attribute support)
+        self.register("Plus", math::plus);
+        self.register("Times", math::times);
+        self.register("Divide", math::divide);
+        self.register("Power", math::power);
+        self.register("Minus", math::minus);
+        
+        // Trigonometric and other math functions
         self.register("Sin", math::sin);
         self.register("Cos", math::cos);
         self.register("Tan", math::tan);
         self.register("Exp", math::exp);
         self.register("Log", math::log);
         self.register("Sqrt", math::sqrt);
+        
+        // Test functions for Hold attribute support
+        self.register("TestHold", math::test_hold);
+        self.register("TestHoldMultiple", math::test_hold_multiple);
     }
 
     fn register_rule_functions(&mut self) {

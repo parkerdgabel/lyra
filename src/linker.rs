@@ -697,6 +697,15 @@ impl FunctionRegistry {
             FunctionAttribute::Protected,
         ]);
         
+        // Test functions for Hold attribute validation
+        self.register_function_attributes("TestHold", vec![
+            FunctionAttribute::Hold(vec![1]), // Don't evaluate first argument
+        ]);
+        
+        self.register_function_attributes("TestHoldMultiple", vec![
+            FunctionAttribute::Hold(vec![2, 3]), // Don't evaluate second and third arguments
+        ]);
+        
         println!("✅ Registered stdlib function attributes");
     }
     
@@ -935,7 +944,10 @@ pub mod registry {
                         
                         // 2-arity functions
                         "StringJoin" | "Dot" | "ReplaceAll" | "Rule" | "RuleDelayed" |
-                        "Table" | "TableFromRows" | "GroupBy" | "Aggregate" => 2,
+                        "Table" | "TableFromRows" | "GroupBy" | "Aggregate" | "TestHold" => 2,
+                        
+                        // 4-arity functions
+                        "TestHoldMultiple" => 4,
                         
                         // Variable arity - default to 1 for now
                         _ => 1,
