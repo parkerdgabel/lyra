@@ -115,10 +115,15 @@ pub struct Compiler {
 impl Compiler {
     /// Create a new compiler
     pub fn new() -> Self {
+        let mut registry = create_global_registry().expect("Failed to create function registry");
+        
+        // Initialize stdlib attributes for Phase 5A
+        registry.register_stdlib_attributes();
+        
         Compiler {
             context: CompilerContext::new(),
             stdlib: StandardLibrary::new(),
-            registry: create_global_registry().expect("Failed to create function registry"),
+            registry,
         }
     }
 
@@ -176,7 +181,8 @@ impl Compiler {
                 self.context.emit(OpCode::LDC, const_index as u32)?;
             }
             Expr::Function { head, args } => {
-                self.compile_function_call(head, args)?;
+                // Use attribute-aware compilation (Phase 5A.5.1a)
+                self.compile_function_with_attributes(head, args)?;
             }
             Expr::DotCall { object, method, args } => {
                 self.compile_method_call(object, method, args)?;
@@ -416,6 +422,91 @@ impl Compiler {
         let mut vm = compiler.into_vm();
         vm.run()
             .map_err(|e| CompilerError::UnsupportedExpression(format!("Runtime error: {:?}", e)))
+    }
+    
+    // ================================
+    // ATTRIBUTE PROCESSING INFRASTRUCTURE (Phase 5A.5.1a)
+    // ================================
+    
+    /// Extract function name from the head expression of a function call
+    /// 
+    /// This handles simple cases like Symbol("Sin") and prepares for more complex cases
+    pub fn extract_function_name(&self, head: &Expr) -> CompilerResult<String> {
+        match head {
+            Expr::Symbol(sym) => Ok(sym.name.clone()),
+            _ => Err(CompilerError::UnsupportedExpression(format!(
+                "Complex function head not yet supported: {:?}",
+                head
+            ))),
+        }
+    }
+    
+    /// Query function attributes from the registry
+    /// 
+    /// Returns the list of attributes for the given function, or empty list if none
+    pub fn get_function_attributes(&self, function_name: &str) -> Vec<crate::linker::FunctionAttribute> {
+        self.registry.get_function_attributes(function_name)
+    }
+    
+    /// Check if a function has a specific attribute
+    pub fn function_has_attribute(&self, function_name: &str, attribute: &crate::linker::FunctionAttribute) -> bool {
+        self.registry.function_has_attribute(function_name, attribute)
+    }
+    
+    /// Enhanced function call compilation with attribute processing
+    /// 
+    /// This is the new entry point that will replace direct compile_function_call usage
+    /// for attribute-aware compilation
+    fn compile_function_with_attributes(&mut self, head: &Expr, args: &[Expr]) -> CompilerResult<()> {
+        // Step 1: Extract function name
+        let function_name = self.extract_function_name(head)?;
+        
+        // Step 2: Query attributes
+        let attributes = self.get_function_attributes(&function_name);
+        
+        // Step 3: Apply attribute-specific processing (Phase 5A.5.1b-d)
+        if !attributes.is_empty() {
+            println!("🔍 Found attributes for {}: {:?}", function_name, attributes);
+            
+            // Phase 5A.5.1b: Process Hold attributes
+            for attribute in &attributes {
+                if let crate::linker::FunctionAttribute::Hold(positions) = attribute {
+                    return self.compile_function_with_hold(head, args, positions);
+                }
+            }
+            
+            // TODO Phase 5A.5.1c: Process Listable attributes  
+            // TODO Phase 5A.5.1d: Process Orderless attributes
+        }
+        
+        // Step 4: Fallback to existing compilation logic for now
+        self.compile_function_call(head, args)
+    }
+    
+    /// Compile function call with Hold attribute processing
+    /// 
+    /// Hold positions are 1-indexed (Hold[1] means hold the first argument)
+    fn compile_function_with_hold(&mut self, head: &Expr, args: &[Expr], hold_positions: &[usize]) -> CompilerResult<()> {
+        // Compile arguments, using LOAD_QUOTE for held positions
+        for (i, arg) in args.iter().enumerate() {
+            let position = i + 1; // Convert to 1-indexed
+            
+            if hold_positions.contains(&position) {
+                // This argument should be held (not evaluated)
+                // Store the AST expression as a Quote value in the constant pool
+                let quote_value = crate::vm::Value::Quote(Box::new(arg.clone()));
+                let const_index = self.context.add_constant(quote_value)?;
+                self.context.emit(OpCode::LOAD_QUOTE, const_index as u32)?;
+            } else {
+                // Normal argument - compile and evaluate as usual
+                self.compile_expr(arg)?;
+            }
+        }
+        
+        // For now, since TestHold is not a registered function, just treat it as unknown
+        // In a real implementation, we'd emit a proper function call instruction here
+        // But our tests are designed to fail initially (RED phase)
+        Err(CompilerError::UnknownFunction(format!("TestHold function not implemented for Hold attributes yet")))
     }
 }
 

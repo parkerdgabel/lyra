@@ -1150,6 +1150,7 @@ pub enum Value {
     Tensor(ArrayD<f64>), // N-dimensional tensor with floating point values
     Missing,            // Missing/unknown value (distinct from Null)
     LyObj(LyObj),       // Foreign object wrapper for complex types (replaces Series/Table/Dataset/Schema)
+    Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
 }
 
 impl Eq for Value {}
@@ -1204,6 +1205,11 @@ impl std::hash::Hash for Value {
                 obj.type_name().hash(state);
                 format!("{:?}", obj).hash(state);
             },
+            Value::Quote(expr) => {
+                10u8.hash(state);
+                // Hash the debug representation of the AST expression
+                format!("{:?}", expr).hash(state);
+            },
         }
     }
 }
@@ -1224,6 +1230,10 @@ impl PartialEq for Value {
             }
             (Value::Missing, Value::Missing) => true,
             (Value::LyObj(a), Value::LyObj(b)) => a == b,
+            (Value::Quote(a), Value::Quote(b)) => {
+                // Compare AST expressions structurally
+                format!("{:?}", a) == format!("{:?}", b)
+            },
             _ => false,
         }
     }
@@ -1357,6 +1367,18 @@ impl VirtualMachine {
                 }
                 let value = self.constants[const_index].clone();
                 self.push(value);
+                self.ip += 1;
+            }
+            OpCode::LOAD_QUOTE => {
+                // LOAD_QUOTE expects the AST expression to be stored in constants pool
+                let const_index = instruction.operand as usize;
+                if const_index >= self.constants.len() {
+                    return Err(VmError::InvalidConstantIndex(const_index));
+                }
+                
+                // The constant should contain a Quote value with the AST expression
+                let quote_value = self.constants[const_index].clone();
+                self.push(quote_value);
                 self.ip += 1;
             }
             // LoadSymbol removed - symbols loaded via LDC constant pool

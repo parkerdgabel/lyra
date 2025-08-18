@@ -67,6 +67,33 @@ pub enum LinkerError {
     },
 }
 
+/// Function attributes for compile-time processing (Phase 5A)
+/// 
+/// These attributes control how functions behave during compilation and execution:
+/// - Hold: Prevents evaluation of specified arguments
+/// - Listable: Automatically threads over lists 
+/// - Orderless: Allows commutative argument reordering
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FunctionAttribute {
+    /// Hold[1,2] - Don't evaluate arguments at positions 1,2 (1-indexed)
+    /// Example: SetDelayed[f[x_], x^2] - the definition x_ should not evaluate
+    Hold(Vec<usize>),
+    
+    /// Listable - Automatically thread over lists
+    /// Example: Sin[{1,2,3}] becomes {Sin[1], Sin[2], Sin[3]}
+    Listable,
+    
+    /// Orderless - Commutative, can reorder arguments for canonical form
+    /// Example: Plus[b, a] becomes Plus[a, b] at compile time
+    Orderless,
+    
+    /// Protected - Cannot be redefined (built-in functions)
+    Protected,
+    
+    /// ReadProtected - Definition cannot be read
+    ReadProtected,
+}
+
 /// Function signature metadata for registry lookup and validation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionSignature {
@@ -81,6 +108,9 @@ pub struct FunctionSignature {
     
     /// Optional: argument type constraints for validation
     pub arg_types: Option<Vec<String>>,
+    
+    /// Function attributes for compile-time processing (Phase 5A)
+    pub attributes: Vec<FunctionAttribute>,
 }
 
 impl FunctionSignature {
@@ -91,6 +121,7 @@ impl FunctionSignature {
             method_name: method_name.to_string(),
             arity,
             arg_types: None,
+            attributes: Vec::new(),
         }
     }
     
@@ -101,7 +132,61 @@ impl FunctionSignature {
             method_name: method_name.to_string(),
             arity,
             arg_types: Some(arg_types),
+            attributes: Vec::new(),
         }
+    }
+    
+    /// Create a function signature with attributes (Phase 5A)
+    pub fn with_attributes(type_name: &str, method_name: &str, arity: u8, attributes: Vec<FunctionAttribute>) -> Self {
+        Self {
+            type_name: type_name.to_string(),
+            method_name: method_name.to_string(),
+            arity,
+            arg_types: None,
+            attributes,
+        }
+    }
+    
+    /// Create a function signature with both type constraints and attributes
+    pub fn with_types_and_attributes(
+        type_name: &str, 
+        method_name: &str, 
+        arity: u8, 
+        arg_types: Vec<String>,
+        attributes: Vec<FunctionAttribute>
+    ) -> Self {
+        Self {
+            type_name: type_name.to_string(),
+            method_name: method_name.to_string(),
+            arity,
+            arg_types: Some(arg_types),
+            attributes,
+        }
+    }
+    
+    /// Check if this function has a specific attribute
+    pub fn has_attribute(&self, attribute: &FunctionAttribute) -> bool {
+        self.attributes.contains(attribute)
+    }
+    
+    /// Get all Hold position arguments (1-indexed)
+    pub fn get_hold_positions(&self) -> Option<&Vec<usize>> {
+        for attr in &self.attributes {
+            if let FunctionAttribute::Hold(positions) = attr {
+                return Some(positions);
+            }
+        }
+        None
+    }
+    
+    /// Check if this function is Listable
+    pub fn is_listable(&self) -> bool {
+        self.attributes.contains(&FunctionAttribute::Listable)
+    }
+    
+    /// Check if this function is Orderless
+    pub fn is_orderless(&self) -> bool {
+        self.attributes.contains(&FunctionAttribute::Orderless)
     }
     
     /// Get a unique key for registry lookup
@@ -262,6 +347,13 @@ pub struct FunctionRegistry {
     /// Next available function index
     next_function_index: u16,
     
+    /// Attribute Registry (Phase 5A) - Maps from attributes to function names
+    /// This enables efficient lookup of functions by their attributes
+    attribute_registry: HashMap<FunctionAttribute, Vec<String>>,
+    
+    /// Reverse mapping: function name to its attributes for quick lookup
+    function_attributes: HashMap<String, Vec<FunctionAttribute>>,
+    
     /// Statistics for performance monitoring
     pub stats: RegistryStats,
 }
@@ -285,6 +377,8 @@ impl FunctionRegistry {
             type_methods: HashMap::new(),
             stdlib_indices: HashMap::new(),
             next_function_index: 0, // Start from 0 for Foreign methods
+            attribute_registry: HashMap::new(),
+            function_attributes: HashMap::new(),
             stats: RegistryStats::default(),
         }
     }
@@ -491,7 +585,127 @@ impl FunctionRegistry {
     pub fn clear(&mut self) {
         self.functions.clear();
         self.type_methods.clear();
+        self.attribute_registry.clear();
+        self.function_attributes.clear();
         self.stats = RegistryStats::default();
+    }
+    
+    // ================================
+    // ATTRIBUTE REGISTRY METHODS (Phase 5A)
+    // ================================
+    
+    /// Register function attributes in the attribute registry
+    pub fn register_function_attributes(&mut self, function_name: &str, attributes: Vec<FunctionAttribute>) {
+        // Store function -> attributes mapping
+        self.function_attributes.insert(function_name.to_string(), attributes.clone());
+        
+        // Store attribute -> functions mapping
+        for attribute in attributes {
+            self.attribute_registry
+                .entry(attribute)
+                .or_insert_with(Vec::new)
+                .push(function_name.to_string());
+        }
+    }
+    
+    /// Get all functions that have a specific attribute
+    pub fn get_functions_with_attribute(&self, attribute: &FunctionAttribute) -> Vec<String> {
+        self.attribute_registry
+            .get(attribute)
+            .cloned()
+            .unwrap_or_default()
+    }
+    
+    /// Get all attributes for a specific function
+    pub fn get_function_attributes(&self, function_name: &str) -> Vec<FunctionAttribute> {
+        self.function_attributes
+            .get(function_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+    
+    /// Check if a function has a specific attribute
+    pub fn function_has_attribute(&self, function_name: &str, attribute: &FunctionAttribute) -> bool {
+        self.function_attributes
+            .get(function_name)
+            .map(|attrs| attrs.contains(attribute))
+            .unwrap_or(false)
+    }
+    
+    /// Get all Listable functions (for compiler optimization)
+    pub fn get_listable_functions(&self) -> Vec<String> {
+        self.get_functions_with_attribute(&FunctionAttribute::Listable)
+    }
+    
+    /// Get all Orderless functions (for compiler optimization)
+    pub fn get_orderless_functions(&self) -> Vec<String> {
+        self.get_functions_with_attribute(&FunctionAttribute::Orderless)
+    }
+    
+    /// Get functions with Hold attributes (for compiler processing)
+    pub fn get_hold_functions(&self) -> Vec<(String, Vec<usize>)> {
+        let mut hold_functions = Vec::new();
+        
+        for (function_name, attributes) in &self.function_attributes {
+            for attribute in attributes {
+                if let FunctionAttribute::Hold(positions) = attribute {
+                    hold_functions.push((function_name.clone(), positions.clone()));
+                }
+            }
+        }
+        
+        hold_functions
+    }
+    
+    /// Register standard library functions with their default attributes (Phase 5A)
+    pub fn register_stdlib_attributes(&mut self) {
+        // Math functions - all Listable
+        let math_functions = vec!["Sin", "Cos", "Tan", "Exp", "Log", "Sqrt"];
+        for func in math_functions {
+            self.register_function_attributes(func, vec![
+                FunctionAttribute::Listable,
+                FunctionAttribute::Protected,
+            ]);
+        }
+        
+        // Arithmetic functions - Orderless and Listable
+        let arithmetic_functions = vec!["Plus", "Times"];
+        for func in arithmetic_functions {
+            self.register_function_attributes(func, vec![
+                FunctionAttribute::Orderless,
+                FunctionAttribute::Listable,
+                FunctionAttribute::Protected,
+            ]);
+        }
+        
+        // List functions - just Protected
+        let list_functions = vec!["Length", "Head", "Tail", "Append", "Flatten"];
+        for func in list_functions {
+            self.register_function_attributes(func, vec![
+                FunctionAttribute::Protected,
+            ]);
+        }
+        
+        // Special functions with Hold attributes
+        self.register_function_attributes("SetDelayed", vec![
+            FunctionAttribute::Hold(vec![1]), // Don't evaluate the pattern
+            FunctionAttribute::Protected,
+        ]);
+        
+        self.register_function_attributes("If", vec![
+            FunctionAttribute::Hold(vec![2, 3]), // Don't evaluate branches
+            FunctionAttribute::Protected,
+        ]);
+        
+        println!("✅ Registered stdlib function attributes");
+    }
+    
+    /// Get attribute registry statistics
+    pub fn get_attribute_stats(&self) -> (usize, usize) {
+        (
+            self.function_attributes.len(), // Functions with attributes
+            self.attribute_registry.len(),  // Unique attribute types
+        )
     }
 }
 

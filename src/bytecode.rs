@@ -18,16 +18,17 @@ pub struct Instruction {
     pub operand: u32, // 24-bit operand (0..16777215)
 }
 
-/// Minimal opcode set for simplified VM (exactly 18 opcodes)
+/// Minimal opcode set for simplified VM (19 opcodes after adding LOAD_QUOTE)
 /// Designed to push complexity into compiler and stdlib
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OpCode {
-    // Load/Store (4) - LDS removed: symbols loaded via LDC
+    // Load/Store (5) - LDS removed: symbols loaded via LDC  
     LDC = 0x01,   // Load constant from pool (includes symbols)
     LDL = 0x02,   // Load local variable
     STL = 0x03,   // Store local variable  
     STS = 0x04,   // Store symbol value
+    LOAD_QUOTE = 0x05, // Load quoted expression for Hold attributes
     
     // Aggregates (2)
     NEWLIST = 0x10,  // Create new list from n stack items
@@ -167,8 +168,8 @@ impl OpCode {
     /// Get opcode name for debugging
     pub fn name(&self) -> &'static str {
         match self {
-            Self::LDC => "LDC", Self::LDL => "LDL", Self::STL => "STL", 
-            Self::STS => "STS",
+            Self::LDC => "LDC", Self::LOAD_QUOTE => "LOAD_QUOTE", 
+            Self::LDL => "LDL", Self::STL => "STL", Self::STS => "STS",
             Self::NEWLIST => "NEWLIST", Self::NEWASSOC => "NEWASSOC",
             Self::ADD => "ADD", Self::SUB => "SUB", Self::MUL => "MUL", 
             Self::DIV => "DIV", Self::POW => "POW",
