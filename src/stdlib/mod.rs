@@ -55,9 +55,11 @@ impl StandardLibrary {
         self.functions.insert(name.into(), func);
     }
 
-    /// Get all registered function names
-    pub fn function_names(&self) -> impl Iterator<Item = &String> {
-        self.functions.keys()
+    /// Get all registered function names in deterministic sorted order
+    pub fn function_names(&self) -> Vec<&String> {
+        let mut names: Vec<&String> = self.functions.keys().collect();
+        names.sort();
+        names
     }
 
     // Registration functions for each category
@@ -177,7 +179,7 @@ mod tests {
     #[test]
     fn test_stdlib_function_count() {
         let stdlib = StandardLibrary::new();
-        let function_count = stdlib.function_names().count();
+        let function_count = stdlib.function_names().len();
 
         // Should have at least the core functions we're implementing
         assert!(function_count >= 31); // 7 list + 4 string + 6 math + 3 rules + 11 tensor = 31 minimum

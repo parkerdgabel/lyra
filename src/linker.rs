@@ -440,6 +440,24 @@ impl FunctionRegistry {
         self.stdlib_indices.get(function_name).copied()
     }
     
+    /// Get stdlib function by index (for VM CALL_STATIC execution)
+    pub fn get_stdlib_function(&self, function_index: u16) -> Option<StdlibFunction> {
+        // Find the function name that corresponds to this index
+        for (name, &index) in &self.stdlib_indices {
+            if index == function_index {
+                // Found the function name, now get the function entry
+                if let Some(entry) = self.functions.get(name) {
+                    // Extract the stdlib function pointer
+                    if let UnifiedFunction::Stdlib(function_ptr) = entry.function {
+                        return Some(function_ptr);
+                    }
+                }
+                break;
+            }
+        }
+        None
+    }
+    
     /// Get total function count (Foreign methods + stdlib functions)
     pub fn get_total_function_count(&self) -> usize {
         self.stats.total_functions
@@ -683,19 +701,19 @@ pub mod registry {
         fn register_stdlib_functions(&mut self) -> Result<(), LinkerError> {
             let stdlib = StandardLibrary::new();
             
-            // Get all stdlib function names and register them
-            let function_names: Vec<String> = stdlib.function_names().cloned().collect();
+            // Get all stdlib function names and register them (now in deterministic sorted order)
+            let function_names: Vec<String> = stdlib.function_names().iter().map(|s| (*s).clone()).collect();
             
             for function_name in function_names {
                 if let Some(function_ptr) = stdlib.get_function(&function_name) {
                     // Determine arity for each function (simplified mapping)
                     let arity = match function_name.as_str() {
-                        // 0-arity functions
+                        // 0-arity functions (take no arguments)
                         "Length" | "StringLength" | "Head" | "Tail" | "Flatten" | "Array" |
-                        "ArrayDimensions" | "ArrayRank" | "ArrayFlatten" | "Transpose" |
-                        "Sin" | "Cos" | "Tan" | "Exp" | "Log" | "Sqrt" | "Sigmoid" | "Tanh" | "Softmax" => 0,
+                        "ArrayDimensions" | "ArrayRank" | "ArrayFlatten" | "Transpose" => 0,
                         
-                        // 1-arity functions  
+                        // 1-arity functions (take one argument)
+                        "Sin" | "Cos" | "Tan" | "Exp" | "Log" | "Sqrt" | "Sigmoid" | "Tanh" | "Softmax" |
                         "StringTake" | "StringDrop" | "ArrayReshape" | "Maximum" | "Apply" |
                         "Map" | "Append" | "Zeros" | "Ones" | "Range" | "ConstantSeries" |
                         "ZerosTensor" | "OnesTensor" | "EyeTensor" | "RandomTensor" |

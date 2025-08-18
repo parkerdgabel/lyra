@@ -134,7 +134,7 @@ fn benchmark_static_dispatch(obj: &LyObj) -> std::time::Duration {
     
     for _ in 0..iterations {
         // Direct function call (no lookup overhead) - simulates CALL_STATIC
-        let _ = function_entry.call(obj, &[]);
+        let _ = function_entry.call(Some(obj), &[]);
     }
     
     start.elapsed()
@@ -169,7 +169,7 @@ fn benchmark_registry_lookup(obj: &LyObj) -> std::time::Duration {
             let _ = method_key.len(); // Simulate string manipulation overhead
             
             if let Ok(function_entry) = registry.lookup(type_name, method) {
-                let _ = function_entry.call(obj, &[]);
+                let _ = function_entry.call(Some(obj), &[]);
             }
         }
     }
@@ -183,7 +183,7 @@ fn benchmark_single_static_call(obj: &LyObj, method: &str, args: &[Value]) {
     let type_name = obj.type_name();
     
     if let Ok(function_entry) = registry.lookup(type_name, method) {
-        let _ = function_entry.call(obj, args);
+        let _ = function_entry.call(Some(obj), args);
     }
 }
 
@@ -196,7 +196,7 @@ fn benchmark_single_registry_lookup(obj: &LyObj, method: &str, args: &[Value]) {
     let method_key = format!("{}::{}", type_name, method);
     if method_key.contains("::") {
         if let Ok(function_entry) = registry.lookup(type_name, method) {
-            let _ = function_entry.call(obj, args);
+            let _ = function_entry.call(Some(obj), args);
         }
     }
 }

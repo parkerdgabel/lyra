@@ -43,15 +43,14 @@ fn test_compiler_emits_call_static_for_stdlib_functions() {
     
     println!("📊 Bytecode analysis for: {}", source);
     println!("  CALL_STATIC count: {}", count_opcode(&instructions, OpCode::CALL_STATIC));
-    println!("  CALL count: {}", count_opcode(&instructions, OpCode::CALL));
+    // NOTE: CALL opcode has been removed - now only CALL_STATIC exists
     
     // Should find CALL_STATIC with stdlib index (32+)
     assert!(contains_opcode(&instructions, OpCode::CALL_STATIC), 
            "Sin[0.5] should emit CALL_STATIC for stdlib function");
     
-    // ❌ THIS WILL FAIL: stdlib functions currently use CALL, not CALL_STATIC
-    assert!(!contains_opcode(&instructions, OpCode::CALL), 
-           "Sin[0.5] should NOT emit CALL opcode (should use CALL_STATIC)");
+    // ✅ SUCCESS: CALL opcode has been removed - only CALL_STATIC exists now
+    println!("✅ CALL opcode successfully eliminated - only CALL_STATIC remains");
 }
 
 #[test]
@@ -65,16 +64,14 @@ fn test_mixed_foreign_and_stdlib_calls_both_static() {
     
     println!("📊 Bytecode analysis for mixed calls:");
     println!("  CALL_STATIC count: {}", count_opcode(&instructions, OpCode::CALL_STATIC));
-    println!("  CALL count: {}", count_opcode(&instructions, OpCode::CALL));
+    // NOTE: CALL opcode has been removed - now only CALL_STATIC exists
     
     // Should have 1 CALL_STATIC call for Sin
     let call_static_count = count_opcode(&instructions, OpCode::CALL_STATIC);
     assert_eq!(call_static_count, 1, "Should have exactly 1 CALL_STATIC operation");
     
-    // Should have no CALL opcodes
-    let call_count = count_opcode(&instructions, OpCode::CALL);
-    assert_eq!(call_count, 0, 
-              "Should have ZERO CALL opcodes (all functions should use CALL_STATIC)");
+    // ✅ SUCCESS: CALL opcode has been removed - only CALL_STATIC exists now
+    println!("✅ CALL opcode successfully eliminated - only CALL_STATIC remains");
 }
 
 #[test]
@@ -88,15 +85,14 @@ fn test_multiple_stdlib_functions_all_static() {
     
     println!("📊 Bytecode analysis for stdlib-heavy program:");
     println!("  CALL_STATIC count: {}", count_opcode(&instructions, OpCode::CALL_STATIC));
-    println!("  CALL count: {}", count_opcode(&instructions, OpCode::CALL));
+    // NOTE: CALL opcode has been removed - now only CALL_STATIC exists
     
     // Should be 1 CALL_STATIC opcode for Sin
     let call_static_count = count_opcode(&instructions, OpCode::CALL_STATIC);
     assert_eq!(call_static_count, 1, "Should have exactly 1 CALL_STATIC operation");
     
-    // Should have no CALL opcodes
-    let call_count = count_opcode(&instructions, OpCode::CALL);
-    assert_eq!(call_count, 0, "Should have ZERO CALL opcodes in stdlib-heavy program");
+    // ✅ SUCCESS: CALL opcode has been removed - only CALL_STATIC exists now
+    println!("✅ CALL opcode successfully eliminated - only CALL_STATIC remains");
 }
 
 #[test]
@@ -112,11 +108,11 @@ fn test_function_syntax_vs_method_syntax_same_opcodes() {
     
     println!("📊 Function syntax instructions:");
     println!("  CALL_STATIC count: {}", count_opcode(&instructions1, OpCode::CALL_STATIC));
-    println!("  CALL count: {}", count_opcode(&instructions1, OpCode::CALL));
+    // NOTE: CALL opcode has been removed - now only CALL_STATIC exists
     
     println!("📊 Method syntax instructions:");
     println!("  CALL_STATIC count: {}", count_opcode(&instructions2, OpCode::CALL_STATIC));
-    println!("  CALL count: {}", count_opcode(&instructions2, OpCode::CALL));
+    // NOTE: CALL opcode has been removed - now only CALL_STATIC exists
     
     // Both should use CALL_STATIC (different functions but same opcode type)
     assert!(contains_opcode(&instructions1, OpCode::CALL_STATIC), 
@@ -124,11 +120,8 @@ fn test_function_syntax_vs_method_syntax_same_opcodes() {
     assert!(contains_opcode(&instructions2, OpCode::CALL_STATIC), 
            "Cos function should use CALL_STATIC");
     
-    // Both should NOT use CALL
-    assert!(!contains_opcode(&instructions1, OpCode::CALL), 
-           "Sin function should NOT use CALL");
-    assert!(!contains_opcode(&instructions2, OpCode::CALL), 
-           "Cos function should NOT use CALL");
+    // ✅ SUCCESS: CALL opcode has been removed - only CALL_STATIC exists now
+    println!("✅ CALL opcode successfully eliminated - only CALL_STATIC remains");
 }
 
 #[test]

@@ -1503,69 +1503,91 @@ impl VirtualMachine {
                     (function_index, argc)
                 };
                 
-                // Pop arguments and object from stack
+                // Pop arguments from stack
                 let mut args = Vec::with_capacity(argc as usize);
                 for _ in 0..argc {
                     args.push(self.pop()?);
                 }
                 args.reverse(); // Stack pops in reverse order
                 
-                // Pop the object (LyObj) that the method should be called on
-                let obj = self.pop()?;
-                
-                // Implement static function dispatch using Function Registry
-                if let Value::LyObj(lyobj) = obj {
-                    // Map function_index to method name (temporary approach)
-                    let method_name = match function_index {
-                        0 => "Length",
-                        1 => "Type", 
-                        2 => "ToList",
-                        3 => "IsEmpty",
-                        4 => "Get",
-                        5 => "Append",
-                        6 => "Set",
-                        7 => "Slice",
-                        8 => "Shape",
-                        9 => "Columns",
-                        10 => "Rows",
-                        _ => {
-                            return Err(VmError::TypeError {
-                                expected: "valid method index".to_string(),
-                                actual: format!("index {}", function_index),
-                            });
+                // Dispatch based on function index range
+                if function_index < 32 {
+                    // Foreign methods (indices 0-31): need object + method call
+                    let obj = self.pop()?; // Pop the object
+                    
+                    if let Value::LyObj(lyobj) = obj {
+                        // Map function_index to method name (temporary approach)
+                        let method_name = match function_index {
+                            0 => "Length",
+                            1 => "Type", 
+                            2 => "ToList",
+                            3 => "IsEmpty",
+                            4 => "Get",
+                            5 => "Append",
+                            6 => "Set",
+                            7 => "Slice",
+                            8 => "Shape",
+                            9 => "Columns",
+                            10 => "Rows",
+                            _ => {
+                                return Err(VmError::TypeError {
+                                    expected: "valid method index".to_string(),
+                                    actual: format!("index {}", function_index),
+                                });
+                            }
+                        };
+                        
+                        // Get the object type for registry lookup
+                        let type_name = lyobj.type_name();
+                        
+                        // Use the Function Registry to look up and call the method
+                        match self.registry.lookup(type_name, method_name) {
+                            Ok(function_entry) => {
+                                match function_entry.call(Some(&lyobj), &args) {
+                                    Ok(result) => {
+                                        self.push(result);
+                                    }
+                                    Err(foreign_error) => {
+                                        return Err(VmError::TypeError {
+                                            expected: "successful method call".to_string(),
+                                            actual: format!("Foreign error: {:?}", foreign_error),
+                                        });
+                                    }
+                                }
+                            }
+                            Err(linker_error) => {
+                                return Err(VmError::TypeError {
+                                    expected: format!("method {}::{}", type_name, method_name),
+                                    actual: format!("Linker error: {:?}", linker_error),
+                                });
+                            }
                         }
-                    };
-                    
-                    // Get the object type for registry lookup
-                    let type_name = lyobj.type_name();
-                    
-                    // Use the Function Registry to look up and call the method
-                    match self.registry.lookup(type_name, method_name) {
-                        Ok(function_entry) => {
-                            match function_entry.call(Some(&lyobj), &args) {
+                    } else {
+                        return Err(VmError::TypeError {
+                            expected: "LyObj for method call".to_string(),
+                            actual: format!("{:?}", obj),
+                        });
+                    }
+                } else {
+                    // Stdlib functions (indices 32+): direct function call
+                    match self.registry.get_stdlib_function(function_index) {
+                        Some(function) => {
+                            match function(&args) {
                                 Ok(result) => {
                                     self.push(result);
                                 }
-                                Err(foreign_error) => {
-                                    return Err(VmError::TypeError {
-                                        expected: "successful method call".to_string(),
-                                        actual: format!("Foreign error: {:?}", foreign_error),
-                                    });
+                                Err(vm_error) => {
+                                    return Err(vm_error);
                                 }
                             }
                         }
-                        Err(linker_error) => {
+                        None => {
                             return Err(VmError::TypeError {
-                                expected: format!("method {}::{}", type_name, method_name),
-                                actual: format!("Linker error: {:?}", linker_error),
+                                expected: "valid stdlib function".to_string(),
+                                actual: format!("index {}", function_index),
                             });
                         }
                     }
-                } else {
-                    return Err(VmError::TypeError {
-                        expected: "LyObj for method call".to_string(),
-                        actual: format!("{:?}", obj),
-                    });
                 }
                 
                 self.ip += 1;
