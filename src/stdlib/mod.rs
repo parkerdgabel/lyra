@@ -102,7 +102,12 @@ impl StandardLibrary {
     }
 
     fn register_rule_functions(&mut self) {
+        self.register("MatchQ", rules::match_q);
+        self.register("Cases", rules::cases);
+        self.register("CountPattern", rules::count_pattern);
+        self.register("Position", rules::position);
         self.register("ReplaceAll", rules::replace_all);
+        self.register("ReplaceRepeated", rules::replace_repeated);
         self.register("Rule", rules::rule);
         self.register("RuleDelayed", rules::rule_delayed);
     }

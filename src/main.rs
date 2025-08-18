@@ -290,6 +290,9 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::Quote(expr) => {
             format!("Hold[{:?}]", expr)
         }
+        lyra::vm::Value::Pattern(pattern) => {
+            format!("{}", pattern)
+        }
     }
 }
 

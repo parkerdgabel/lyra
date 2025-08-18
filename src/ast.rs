@@ -31,6 +31,7 @@ pub enum Expr {
     Replace {
         expr: Box<Expr>,
         rules: Box<Expr>,
+        repeated: bool, // false for /., true for //.
     },
     // Modern syntax extensions
     Association(Vec<(Expr, Expr)>),
@@ -133,8 +134,9 @@ impl fmt::Display for Expr {
                 let op = if *delayed { ":=" } else { "=" };
                 write!(f, "{} {} {}", lhs, op, rhs)
             }
-            Expr::Replace { expr, rules } => {
-                write!(f, "{} /. {}", expr, rules)
+            Expr::Replace { expr, rules, repeated } => {
+                let operator = if *repeated { "//." } else { "/." };
+                write!(f, "{} {} {}", expr, operator, rules)
             }
             Expr::Association(pairs) => {
                 write!(f, "<|")?;
@@ -307,6 +309,15 @@ impl Expr {
         Expr::Replace {
             expr: Box::new(expr),
             rules: Box::new(rules),
+            repeated: false,
+        }
+    }
+
+    pub fn replace_repeated(expr: Expr, rules: Expr) -> Self {
+        Expr::Replace {
+            expr: Box::new(expr),
+            rules: Box::new(rules),
+            repeated: true,
         }
     }
 

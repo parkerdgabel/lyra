@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expr, Number},
+    ast::{Expr, Number, Pattern},
     bytecode::{Instruction, OpCode},
     linker::{registry::create_global_registry, FunctionRegistry},
     stdlib::StandardLibrary,
@@ -165,6 +165,9 @@ impl Compiler {
                         Expr::String(s) => {
                             list_values.push(Value::String(s.clone()));
                         }
+                        Expr::Symbol(sym) => {
+                            list_values.push(Value::Symbol(sym.name.clone()));
+                        }
                         _ => {
                             // For complex expressions, we'd need to compile them and evaluate at runtime
                             // For now, just put the list in the constant pool
@@ -183,6 +186,19 @@ impl Compiler {
             Expr::Function { head, args } => {
                 // Use attribute-aware compilation (Phase 5A.5.1a)
                 self.compile_function_with_attributes(head, args)?;
+            }
+            Expr::Pattern(pattern) => {
+                // Store pattern in constant pool as a Pattern value
+                let const_index = self.context.add_constant(Value::Pattern(pattern.clone()))?;
+                self.context.emit(OpCode::LDC, const_index as u32)?;
+            }
+            Expr::Replace { expr, rules, repeated } => {
+                // Compile replace expressions (/.  and //.)
+                self.compile_replace_expression(expr, rules, *repeated)?;
+            }
+            Expr::Rule { lhs, rhs, delayed } => {
+                // Compile rule expressions (-> and :>)
+                self.compile_rule_expression(lhs, rhs, *delayed)?;
             }
             Expr::DotCall { object, method, args } => {
                 self.compile_method_call(object, method, args)?;
@@ -800,6 +816,43 @@ impl Compiler {
             // For any other cases, use a consistent default
             _ => Ordering::Equal,
         }
+    }
+
+    /// Compile replace expressions (expr /. rules and expr //. rules)
+    fn compile_replace_expression(&mut self, expr: &Expr, rules: &Expr, repeated: bool) -> CompilerResult<()> {
+        // Compile the expression to be transformed
+        self.compile_expr(expr)?;
+        
+        // Compile the rules
+        self.compile_expr(rules)?;
+        
+        // For now, call the ReplaceAll stdlib function
+        // Later we might want ReplaceRepeated for the //. case
+        let function_name = if repeated { "ReplaceRepeated" } else { "ReplaceAll" };
+        
+        if let Some(stdlib_index) = self.registry.get_stdlib_index(function_name) {
+            // Emit CALL_STATIC with stdlib function index
+            self.context.emit(OpCode::CALL_STATIC, ((stdlib_index as u32) << 8) | 2)?;
+            Ok(())
+        } else {
+            Err(CompilerError::UnknownFunction(format!(
+                "Replace function {} not found in stdlib", function_name
+            )))
+        }
+    }
+
+    /// Compile rule expressions (lhs -> rhs and lhs :> rhs)
+    fn compile_rule_expression(&mut self, lhs: &Expr, rhs: &Expr, delayed: bool) -> CompilerResult<()> {
+        // For now, create a function representation of the rule
+        // This is similar to how the stdlib Rule function works
+        let rule_type = if delayed { "RuleDelayed" } else { "Rule" };
+        let rule_repr = format!("{}[{:?}, {:?}]", rule_type, lhs, rhs);
+        
+        // Store the rule as a Function value in constants
+        let const_index = self.context.add_constant(Value::Function(rule_repr))?;
+        self.context.emit(OpCode::LDC, const_index as u32)?;
+        
+        Ok(())
     }
 }
 

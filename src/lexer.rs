@@ -54,6 +54,7 @@ pub enum TokenKind {
     Rule,        // ->
     RuleDelayed, // :>
     ReplaceAll,  // /.
+    ReplaceRepeated, // //.
 
     // Modern operators
     Pipeline,    // |>
@@ -189,17 +190,30 @@ impl<'a> Lexer<'a> {
                     }
                     '/' => {
                         self.advance();
-                        if self.current_char == Some('.') {
+                        if self.current_char == Some('/') {
+                            // Check for //. (ReplaceRepeated) first
+                            let next_pos = self.char_position() + 1;
+                            if let Some('.') = self.input.chars().nth(next_pos) {
+                                self.advance(); // consume second '/'
+                                self.advance(); // consume '.'
+                                Ok(Token {
+                                    kind: TokenKind::ReplaceRepeated,
+                                    position: start_pos,
+                                    length: 3,
+                                })
+                            } else {
+                                // Just // (Postfix)
+                                self.advance();
+                                Ok(Token {
+                                    kind: TokenKind::Postfix,
+                                    position: start_pos,
+                                    length: 2,
+                                })
+                            }
+                        } else if self.current_char == Some('.') {
                             self.advance();
                             Ok(Token {
                                 kind: TokenKind::ReplaceAll,
-                                position: start_pos,
-                                length: 2,
-                            })
-                        } else if self.current_char == Some('/') {
-                            self.advance();
-                            Ok(Token {
-                                kind: TokenKind::Postfix,
                                 position: start_pos,
                                 length: 2,
                             })

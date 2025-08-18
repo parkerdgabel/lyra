@@ -60,9 +60,10 @@ fn format_expr(e: &Expr, level: usize, cfg: &FormatterConfig, out: &mut String) 
             write!(out, "{}", op)?;
             format_expr(rhs, level, cfg, out)
         }
-        Expr::Replace { expr, rules } => {
+        Expr::Replace { expr, rules, repeated } => {
             format_expr(expr, level, cfg, out)?;
-            write!(out, " /. ")?;
+            let operator = if *repeated { " //. " } else { " /. " };
+            write!(out, "{}", operator)?;
             format_expr(rules, level, cfg, out)
         }
         Expr::Association(pairs) => format_association(pairs, level, cfg, out),

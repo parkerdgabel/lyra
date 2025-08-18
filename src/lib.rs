@@ -7,6 +7,7 @@ pub mod format;
 pub mod lexer;
 pub mod linker;
 pub mod parser;
+pub mod pattern_matcher;
 pub mod stdlib;
 pub mod vm;
 

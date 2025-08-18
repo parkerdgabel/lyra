@@ -131,6 +131,11 @@ impl Parser {
             expr = Expr::replace(expr, rules);
         }
 
+        while self.match_token(&TokenKind::ReplaceRepeated) {
+            let rules = self.rule()?;
+            expr = Expr::replace_repeated(expr, rules);
+        }
+
         Ok(expr)
     }
 

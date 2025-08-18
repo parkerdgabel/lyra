@@ -1151,6 +1151,7 @@ pub enum Value {
     Missing,            // Missing/unknown value (distinct from Null)
     LyObj(LyObj),       // Foreign object wrapper for complex types (replaces Series/Table/Dataset/Schema)
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
+    Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
 }
 
 impl Eq for Value {}
@@ -1210,6 +1211,11 @@ impl std::hash::Hash for Value {
                 // Hash the debug representation of the AST expression
                 format!("{:?}", expr).hash(state);
             },
+            Value::Pattern(pattern) => {
+                11u8.hash(state);
+                // Hash the debug representation of the Pattern
+                format!("{:?}", pattern).hash(state);
+            },
         }
     }
 }
@@ -1233,6 +1239,10 @@ impl PartialEq for Value {
             (Value::Quote(a), Value::Quote(b)) => {
                 // Compare AST expressions structurally
                 format!("{:?}", a) == format!("{:?}", b)
+            },
+            (Value::Pattern(a), Value::Pattern(b)) => {
+                // Compare Pattern expressions structurally
+                a == b
             },
             _ => false,
         }
