@@ -1,6 +1,7 @@
 use crate::{
     ast::{Expr, Number},
     bytecode::{Instruction, OpCode},
+    linker::{registry::create_global_registry, FunctionRegistry},
     stdlib::StandardLibrary,
     vm::{Value, VirtualMachine},
 };
@@ -108,6 +109,7 @@ impl Default for CompilerContext {
 pub struct Compiler {
     pub context: CompilerContext,
     pub stdlib: StandardLibrary,
+    pub registry: FunctionRegistry,
 }
 
 impl Compiler {
@@ -116,6 +118,7 @@ impl Compiler {
         Compiler {
             context: CompilerContext::new(),
             stdlib: StandardLibrary::new(),
+            registry: create_global_registry().expect("Failed to create function registry"),
         }
     }
 
@@ -275,28 +278,68 @@ impl Compiler {
                         return Ok(());
                     }
                     
-                    // For unknown functions, emit a method dispatch call
-                    // This allows the VM to decide at runtime whether to:
-                    // 1. Call obj.call_method(name, args) if first arg is LyObj
-                    // 2. Return UnknownFunction error otherwise
+                    // Try compile-time static method resolution
                     if !args.is_empty() {
-                        // Compile all arguments
-                        for arg in args {
-                            self.compile_expr(arg)?;
+                        // Check if this method exists in any Foreign type
+                        let mut method_found = false;
+                        let mut expected_arity = None;
+                        
+                        // Check all known Foreign types for this method
+                        for type_name in self.registry.get_type_names() {
+                            if self.registry.has_method(&type_name, &sym.name) {
+                                method_found = true;
+                                // Get arity from function signature (lookup requires mutable self)
+                                // For now, we'll use hardcoded common method arities
+                                expected_arity = Some(match sym.name.as_str() {
+                                    "Length" | "Type" | "ToList" | "IsEmpty" | "Shape" | "Columns" | "Rows" => 0,
+                                    "Get" | "Append" => 1, 
+                                    "Set" | "Slice" => 2,
+                                    _ => args.len(), // Allow any arity for unknown methods
+                                });
+                                break;
+                            }
                         }
-
-                        // Push method name as Symbol for method dispatch
-                        let method_index = self
-                            .context
-                            .add_constant(Value::Symbol(sym.name.clone()))?;
-                        self.context.emit(OpCode::LDC, method_index as u32)?;
-
-                        // Use a special encoding for method dispatch calls
-                        // High bit set indicates potential method dispatch
-                        let method_dispatch_flag = 0x80000000;
-                        let call_operand = method_dispatch_flag | (args.len() as u32);
-                        self.context.emit(OpCode::CALL, call_operand)?;
-                        return Ok(());
+                        
+                        if method_found {
+                            // Validate arity at compile time
+                            if let Some(expected) = expected_arity {
+                                if args.len() != expected {
+                                    return Err(CompilerError::InvalidMethodArity {
+                                        method: sym.name.clone(),
+                                        expected,
+                                        actual: args.len(),
+                                    });
+                                }
+                            }
+                            
+                            // Compile all arguments (first arg is the object)
+                            for arg in args {
+                                self.compile_expr(arg)?;
+                            }
+                            
+                            // Map method name to function index (simplified mapping)
+                            let function_index = match sym.name.as_str() {
+                                "Length" => 0,
+                                "Type" => 1, 
+                                "ToList" => 2,
+                                "IsEmpty" => 3,
+                                "Get" => 4,
+                                "Append" => 5,
+                                "Set" => 6,
+                                "Slice" => 7,
+                                "Shape" => 8,
+                                "Columns" => 9,
+                                "Rows" => 10,
+                                _ => 0, // Default fallback
+                            };
+                            let argc = args.len() as u8;
+                            
+                            // Generate CALL_STATIC instruction for static dispatch
+                            let instruction = Instruction::new_call_static(function_index, argc)
+                                .map_err(|_| CompilerError::TooManyConstants)?;
+                            self.context.code.push(instruction);
+                            return Ok(());
+                        }
                     }
                     // For unknown functions with no args, fall through to error
                 }

@@ -1,5 +1,6 @@
 use crate::bytecode::{Instruction, OpCode};
 use crate::foreign::LyObj;
+use crate::linker::{registry::create_global_registry, FunctionRegistry};
 use crate::stdlib::StandardLibrary;
 use crate::stdlib::tensor::{tensor_add, tensor_sub, tensor_mul, tensor_div, tensor_pow};
 use std::collections::HashMap;
@@ -1255,6 +1256,8 @@ pub struct VirtualMachine {
     pub max_call_depth: usize,
     /// Standard library functions
     pub stdlib: StandardLibrary,
+    /// Function registry for static dispatch
+    pub registry: FunctionRegistry,
 }
 
 impl VirtualMachine {
@@ -1269,6 +1272,7 @@ impl VirtualMachine {
             code: Vec::new(),
             max_call_depth: 1000,
             stdlib: StandardLibrary::new(),
+            registry: create_global_registry().expect("Failed to create function registry"),
         }
     }
 
@@ -1571,12 +1575,54 @@ impl VirtualMachine {
                 // Pop the object (LyObj) that the method should be called on
                 let obj = self.pop()?;
                 
-                // TODO: Implement static function dispatch using Function Registry
-                // For now, fall back to dynamic dispatch to get tests compiling
+                // Implement static function dispatch using Function Registry
                 if let Value::LyObj(lyobj) = obj {
-                    // This is a placeholder - we'll replace with static calls
-                    // For now, just return Missing to allow compilation
-                    self.push(Value::Missing);
+                    // Map function_index to method name (temporary approach)
+                    let method_name = match function_index {
+                        0 => "Length",
+                        1 => "Type", 
+                        2 => "ToList",
+                        3 => "IsEmpty",
+                        4 => "Get",
+                        5 => "Append",
+                        6 => "Set",
+                        7 => "Slice",
+                        8 => "Shape",
+                        9 => "Columns",
+                        10 => "Rows",
+                        _ => {
+                            return Err(VmError::TypeError {
+                                expected: "valid method index".to_string(),
+                                actual: format!("index {}", function_index),
+                            });
+                        }
+                    };
+                    
+                    // Get the object type for registry lookup
+                    let type_name = lyobj.type_name();
+                    
+                    // Use the Function Registry to look up and call the method
+                    match self.registry.lookup(type_name, method_name) {
+                        Ok(function_entry) => {
+                            match function_entry.call(&lyobj, &args) {
+                                Ok(result) => {
+                                    self.push(result);
+                                }
+                                Err(foreign_error) => {
+                                    return Err(VmError::TypeError {
+                                        expected: "successful method call".to_string(),
+                                        actual: format!("Foreign error: {:?}", foreign_error),
+                                    });
+                                }
+                            }
+                        }
+                        Err(linker_error) => {
+                            return Err(VmError::TypeError {
+                                expected: format!("method {}::{}", type_name, method_name),
+                                actual: format!("Linker error: {:?}", linker_error),
+                            });
+                        }
+                    }
                 } else {
                     return Err(VmError::TypeError {
                         expected: "LyObj for method call".to_string(),
