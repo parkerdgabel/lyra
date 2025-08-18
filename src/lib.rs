@@ -8,6 +8,7 @@ pub mod lexer;
 pub mod linker;
 pub mod parser;
 pub mod pattern_matcher;
+pub mod repl;
 pub mod rules_engine;
 pub mod stdlib;
 pub mod vm;

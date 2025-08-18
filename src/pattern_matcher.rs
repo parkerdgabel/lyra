@@ -15,7 +15,10 @@ use crate::ast::{Expr, Pattern, Symbol, Number};
 use crate::vm::Value;
 use crate::error::{Error, Result};
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, RwLock, OnceLock};
+use dashmap::DashMap;
 
 /// String interning for common variable names to reduce allocations
 static COMMON_VARIABLES: OnceLock<Vec<&'static str>> = OnceLock::new();
@@ -39,6 +42,47 @@ fn intern_variable_name(name: &str) -> String {
 /// Most patterns have 1-4 variables, so we pre-allocate to avoid rehashing
 fn create_optimized_bindings() -> HashMap<String, Value> {
     HashMap::with_capacity(4)
+}
+
+/// Pattern categorization for optimization
+#[derive(Debug, Clone, PartialEq)]
+pub enum PatternCategory {
+    Simple,       // Blank, Named with simple patterns
+    Complex,      // Function patterns, nested structures
+    Conditional,  // Patterns with conditions
+}
+
+/// Pattern type classification for bytecode generation
+#[derive(Debug, Clone, PartialEq)]
+pub enum PatternType {
+    Blank,
+    Named,
+    Function,
+    Conditional,
+    BlankSequence,
+    BlankNullSequence,
+    Typed,
+    Predicate,
+    Alternative,
+}
+
+/// Bytecode instructions for optimized pattern matching
+#[derive(Debug, Clone, PartialEq)]
+pub enum BytecodeInstruction {
+    CheckType { expected_type: String },
+    BindVariable { name: String },
+    CheckFunctionHead { expected_head: String },
+    CheckArgumentCount { expected_count: usize },
+    DescendIntoArg { arg_index: usize },
+    Return { success: bool },
+}
+
+/// Compiled pattern bytecode for fast matching
+#[derive(Debug, Clone)]
+pub struct PatternBytecode {
+    pub instructions: Vec<BytecodeInstruction>,
+    pub variable_count: usize,
+    pub pattern_type: PatternType,
 }
 
 /// Result of a pattern matching operation
@@ -65,7 +109,47 @@ struct MatchFrame {
     local_bindings: HashMap<String, Value>,
 }
 
-/// Core pattern matching engine
+/// Thread-safe context for pattern matching operations
+/// This holds the mutable state for a single pattern matching session
+#[derive(Debug, Clone)]
+pub struct MatchingContext {
+    /// Variable bindings from successful pattern matches
+    pub bindings: HashMap<String, Value>,
+    /// Stack of match frames for nested matching
+    pub match_stack: Vec<MatchFrame>,
+}
+
+impl MatchingContext {
+    /// Create a new matching context
+    pub fn new() -> Self {
+        Self {
+            bindings: create_optimized_bindings(),
+            match_stack: Vec::new(),
+        }
+    }
+    
+    /// Get a binding by name
+    pub fn get_binding(&self, name: &str) -> Option<&Value> {
+        self.bindings.get(name)
+    }
+    
+    /// Check if a binding exists
+    pub fn has_binding(&self, name: &str) -> bool {
+        self.bindings.contains_key(name)
+    }
+    
+    /// Clear all bindings
+    pub fn clear_bindings(&mut self) {
+        self.bindings.clear();
+    }
+    
+    /// Get all bindings
+    pub fn get_bindings(&self) -> &HashMap<String, Value> {
+        &self.bindings
+    }
+}
+
+/// Core pattern matching engine with thread-safe infrastructure
 #[derive(Debug)]
 pub struct PatternMatcher {
     /// Variable bindings from successful pattern matches
@@ -74,6 +158,12 @@ pub struct PatternMatcher {
     match_stack: Vec<MatchFrame>,
     /// Maximum recursion depth to prevent stack overflow
     max_depth: usize,
+    /// Whether to use pattern compilation for optimization
+    use_compilation: bool,
+    /// Cache of compiled patterns for performance (thread-safe)
+    pattern_cache: Arc<DashMap<u64, PatternBytecode>>,
+    /// Pattern router for fast-path optimization
+    router: Option<PatternRouter>,
 }
 
 impl PatternMatcher {
@@ -83,6 +173,9 @@ impl PatternMatcher {
             bindings: create_optimized_bindings(),
             match_stack: Vec::new(),
             max_depth: 1000, // Reasonable default for recursion depth
+            use_compilation: true, // Enable compilation by default for performance
+            pattern_cache: Arc::new(DashMap::new()),
+            router: Some(PatternRouter::new()), // Enable fast-path routing by default
         }
     }
     
@@ -92,6 +185,51 @@ impl PatternMatcher {
             bindings: create_optimized_bindings(),
             match_stack: Vec::new(),
             max_depth,
+            use_compilation: true,
+            pattern_cache: Arc::new(DashMap::new()),
+            router: Some(PatternRouter::new()),
+        }
+    }
+    
+    /// Create a pattern matcher with compilation enabled or disabled
+    pub fn with_compilation(use_compilation: bool) -> Self {
+        Self {
+            bindings: create_optimized_bindings(),
+            match_stack: Vec::new(),
+            max_depth: 1000,
+            use_compilation,
+            pattern_cache: Arc::new(DashMap::new()),
+            router: Some(PatternRouter::new()),
+        }
+    }
+    
+    /// Create a pattern matcher with fast-path routing disabled (for testing)
+    pub fn with_fast_path_disabled() -> Self {
+        Self {
+            bindings: create_optimized_bindings(),
+            match_stack: Vec::new(),
+            max_depth: 1000,
+            use_compilation: true,
+            pattern_cache: Arc::new(DashMap::new()),
+            router: None, // Disable fast-path routing
+        }
+    }
+    
+    /// Create a new matching context for this matcher
+    pub fn create_context(&self) -> MatchingContext {
+        MatchingContext::new()
+    }
+    
+    /// Clone this matcher for use in concurrent environments
+    /// This shares the thread-safe caches but creates new local state
+    pub fn clone_for_concurrent_use(&self) -> Self {
+        Self {
+            bindings: create_optimized_bindings(),
+            match_stack: Vec::new(),
+            max_depth: self.max_depth,
+            use_compilation: self.use_compilation,
+            pattern_cache: Arc::clone(&self.pattern_cache), // Shared thread-safe cache
+            router: self.router.as_ref().map(|r| r.clone_with_shared_stats()), // Shared stats
         }
     }
     
@@ -130,8 +268,8 @@ impl PatternMatcher {
             local_bindings: create_optimized_bindings(),
         });
         
-        // Perform the actual matching
-        let result = self.match_pattern_impl(expr, pattern);
+        // Perform the actual matching with integrated optimization
+        let result = self.match_pattern_integrated(expr, pattern);
         
         // Pop match frame and merge bindings on success
         if let Some(frame) = self.match_stack.pop() {
@@ -144,6 +282,42 @@ impl PatternMatcher {
         }
         
         result
+    }
+    
+    /// Integrated pattern matching with lightweight fast-path optimization
+    fn match_pattern_integrated(&mut self, expr: &Expr, pattern: &Pattern) -> MatchResult {
+        // Try fast-path matching for simple patterns only
+        if self.router.is_some() {
+            // Quick check for patterns that can benefit from fast-path
+            if self.is_fast_path_candidate(pattern) {
+                if let Some(router) = &self.router {
+                    // Try direct fast-path matching without fallback overhead
+                    if let Some(result) = router.fast_path_registry.try_fast_match(expr, pattern) {
+                        return result;
+                    }
+                }
+            }
+        }
+        
+        // Use standard matching logic for all other cases
+        self.match_pattern_impl(expr, pattern)
+    }
+    
+    /// Quick check if pattern is a candidate for fast-path matching
+    /// Uses simple pattern type checks instead of expensive complexity scoring
+    fn is_fast_path_candidate(&self, pattern: &Pattern) -> bool {
+        match pattern {
+            // Blank patterns with type constraints - these showed excellent performance
+            Pattern::Blank { head: Some(_) } => true,
+            // Anonymous blank patterns - moderate benefit but consistent
+            Pattern::Blank { head: None } => true,
+            // Named patterns wrapping simple blanks - excellent performance
+            Pattern::Named { pattern: inner, .. } => {
+                matches!(inner.as_ref(), Pattern::Blank { .. })
+            }
+            // All other patterns use standard matching
+            _ => false,
+        }
     }
     
     /// Internal implementation of pattern matching
@@ -1003,7 +1177,7 @@ impl PatternMatcher {
         }
         
         match &args[0] {
-            Expr::List(items) => {
+            Expr::List(_items) => {
                 // Return the length as a comparison with itself (always true)
                 // This is a placeholder - in real usage, Length would be part of a comparison
                 Ok(true)
@@ -1578,6 +1752,818 @@ mod tests {
                 assert_eq!(bindings.get("x"), Some(&expected_list));
             }
             _ => panic!("Expected successful function pattern with sequence match"),
+        }
+    }
+}
+
+/// Pattern compilation functions for Phase 6B.5.1d.2a infrastructure
+
+/// Categorize a pattern for optimization purposes
+pub fn categorize_pattern(pattern: &Pattern) -> PatternCategory {
+    match pattern {
+        Pattern::Blank { .. } => PatternCategory::Simple,
+        Pattern::Named { pattern, .. } => {
+            match pattern.as_ref() {
+                Pattern::Blank { .. } => PatternCategory::Simple,
+                _ => PatternCategory::Complex,
+            }
+        }
+        Pattern::Function { .. } => PatternCategory::Complex,
+        Pattern::Conditional { .. } => PatternCategory::Conditional,
+        Pattern::BlankSequence { .. } | Pattern::BlankNullSequence { .. } => PatternCategory::Complex,
+        Pattern::Typed { .. } => PatternCategory::Complex,
+        Pattern::Predicate { .. } => PatternCategory::Conditional,
+        Pattern::Alternative { .. } => PatternCategory::Complex,
+    }
+}
+
+/// Compile a pattern into optimized bytecode
+pub fn compile_pattern(pattern: &Pattern) -> PatternBytecode {
+    match pattern {
+        Pattern::Blank { head } => PatternBytecode {
+            instructions: if let Some(type_name) = head {
+                vec![
+                    BytecodeInstruction::CheckType { expected_type: type_name.clone() },
+                    BytecodeInstruction::Return { success: true },
+                ]
+            } else {
+                vec![BytecodeInstruction::Return { success: true }]
+            },
+            variable_count: 0,
+            pattern_type: PatternType::Blank,
+        },
+        Pattern::Named { name, pattern } => {
+            let mut instructions = vec![];
+            let inner_bytecode = compile_pattern(pattern);
+            instructions.extend(inner_bytecode.instructions);
+            instructions.push(BytecodeInstruction::BindVariable { name: name.clone() });
+            
+            PatternBytecode {
+                instructions,
+                variable_count: 1 + inner_bytecode.variable_count,
+                pattern_type: PatternType::Named,
+            }
+        }
+        Pattern::Function { head, args } => {
+            let mut instructions = vec![];
+            instructions.push(BytecodeInstruction::CheckArgumentCount { expected_count: args.len() });
+            
+            if let Pattern::Blank { head: Some(head_name) } = head.as_ref() {
+                instructions.push(BytecodeInstruction::CheckFunctionHead { expected_head: head_name.clone() });
+            }
+            
+            let mut total_variables = 0;
+            for (i, arg) in args.iter().enumerate() {
+                instructions.push(BytecodeInstruction::DescendIntoArg { arg_index: i });
+                let arg_bytecode = compile_pattern(arg);
+                instructions.extend(arg_bytecode.instructions);
+                total_variables += arg_bytecode.variable_count;
+            }
+            
+            instructions.push(BytecodeInstruction::Return { success: true });
+            
+            PatternBytecode {
+                instructions,
+                variable_count: total_variables,
+                pattern_type: PatternType::Function,
+            }
+        }
+        Pattern::Conditional { pattern, .. } => {
+            let inner_bytecode = compile_pattern(pattern);
+            PatternBytecode {
+                instructions: inner_bytecode.instructions,
+                variable_count: inner_bytecode.variable_count,
+                pattern_type: PatternType::Conditional,
+            }
+        }
+        Pattern::BlankSequence { .. } => PatternBytecode {
+            instructions: vec![BytecodeInstruction::Return { success: true }],
+            variable_count: 0,
+            pattern_type: PatternType::BlankSequence,
+        },
+        Pattern::BlankNullSequence { .. } => PatternBytecode {
+            instructions: vec![BytecodeInstruction::Return { success: true }],
+            variable_count: 0,
+            pattern_type: PatternType::BlankNullSequence,
+        },
+        Pattern::Typed { .. } => PatternBytecode {
+            instructions: vec![BytecodeInstruction::Return { success: true }],
+            variable_count: 0,
+            pattern_type: PatternType::Typed,
+        },
+        Pattern::Predicate { .. } => PatternBytecode {
+            instructions: vec![BytecodeInstruction::Return { success: true }],
+            variable_count: 0,
+            pattern_type: PatternType::Predicate,
+        },
+        Pattern::Alternative { .. } => PatternBytecode {
+            instructions: vec![BytecodeInstruction::Return { success: true }],
+            variable_count: 0,
+            pattern_type: PatternType::Alternative,
+        },
+    }
+}
+
+/// Hash a pattern for caching purposes
+fn hash_pattern(pattern: &Pattern) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    pattern.hash(&mut hasher);
+    hasher.finish()
+}
+
+//
+// Phase 6B.5.1d.2b: Fast-Path Matcher Infrastructure
+//
+
+/// Fast-path matcher trait for specialized pattern matching optimizations
+/// 
+/// Fast-path matchers provide optimized implementations for common pattern types,
+/// bypassing the general-purpose pattern matching algorithm for performance gains.
+pub trait FastPathMatcher: std::fmt::Debug {
+    /// Check if this matcher can handle the given pattern
+    fn can_handle(&self, pattern: &Pattern) -> bool;
+    
+    /// Perform fast pattern matching against an expression
+    /// Returns None if the matcher cannot handle this pattern/expression combination
+    fn fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult>;
+    
+    /// Get a descriptive name for this matcher (for debugging/profiling)
+    fn name(&self) -> &'static str;
+}
+
+/// Fast-path matcher for blank patterns (_)
+/// 
+/// This is the most common pattern type and benefits significantly from optimization.
+/// Handles both anonymous blanks (_) and typed blanks (_Integer, _Real, etc.).
+#[derive(Debug)]
+pub struct BlankMatcher;
+
+impl BlankMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl FastPathMatcher for BlankMatcher {
+    fn can_handle(&self, pattern: &Pattern) -> bool {
+        matches!(pattern, Pattern::Blank { .. })
+    }
+    
+    fn fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult> {
+        if let Pattern::Blank { head } = pattern {
+            if let Some(type_name) = head {
+                // Typed blank pattern - direct type check without full pattern machinery
+                let matches_type = match (expr, type_name.as_str()) {
+                    (Expr::Number(Number::Integer(_)), "Integer") => true,
+                    (Expr::Number(Number::Real(_)), "Real") => true,
+                    (Expr::String(_), "String") => true,
+                    (Expr::Symbol(_), "Symbol") => true,
+                    (Expr::List(_), "List") => true,
+                    _ => false,
+                };
+                
+                Some(if matches_type {
+                    MatchResult::Success {
+                        bindings: create_optimized_bindings(),
+                    }
+                } else {
+                    MatchResult::Failure {
+                        reason: format!("Expression does not match type {}", type_name),
+                    }
+                })
+            } else {
+                // Anonymous blank - always matches
+                Some(MatchResult::Success {
+                    bindings: create_optimized_bindings(),
+                })
+            }
+        } else {
+            None // Cannot handle non-blank patterns
+        }
+    }
+    
+    fn name(&self) -> &'static str {
+        "BlankMatcher"
+    }
+}
+
+/// Fast-path matcher for symbol expressions
+/// 
+/// Optimizes matching when both pattern and expression are symbols,
+/// which is common in algebraic expressions.
+#[derive(Debug)]
+pub struct SymbolMatcher;
+
+impl SymbolMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl FastPathMatcher for SymbolMatcher {
+    fn can_handle(&self, pattern: &Pattern) -> bool {
+        // Handle patterns that expect symbol expressions
+        matches!(pattern, Pattern::Blank { head: Some(head) } if head == "Symbol")
+    }
+    
+    fn fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult> {
+        if let Pattern::Blank { head: Some(head) } = pattern {
+            if head == "Symbol" {
+                return Some(match expr {
+                    Expr::Symbol(_) => MatchResult::Success {
+                        bindings: create_optimized_bindings(),
+                    },
+                    _ => MatchResult::Failure {
+                        reason: "Expression is not a symbol".to_string(),
+                    },
+                });
+            }
+        }
+        None
+    }
+    
+    fn name(&self) -> &'static str {
+        "SymbolMatcher"
+    }
+}
+
+/// Fast-path matcher for integer expressions
+/// 
+/// Optimizes integer pattern matching, which is very common in mathematical expressions.
+#[derive(Debug)]
+pub struct IntegerMatcher;
+
+impl IntegerMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl FastPathMatcher for IntegerMatcher {
+    fn can_handle(&self, pattern: &Pattern) -> bool {
+        // Handle patterns that expect integer expressions
+        matches!(pattern, Pattern::Blank { head: Some(head) } if head == "Integer")
+    }
+    
+    fn fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult> {
+        if let Pattern::Blank { head: Some(head) } = pattern {
+            if head == "Integer" {
+                return Some(match expr {
+                    Expr::Number(Number::Integer(_)) => MatchResult::Success {
+                        bindings: create_optimized_bindings(),
+                    },
+                    _ => MatchResult::Failure {
+                        reason: "Expression is not an integer".to_string(),
+                    },
+                });
+            }
+        }
+        None
+    }
+    
+    fn name(&self) -> &'static str {
+        "IntegerMatcher"
+    }
+}
+
+/// Fast-path matcher for function head matching
+/// 
+/// Optimizes the common case of matching function expressions against function patterns
+/// with known head names (e.g., Plus, Times, Power).
+#[derive(Debug)]
+pub struct FunctionHeadMatcher;
+
+impl FunctionHeadMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl FastPathMatcher for FunctionHeadMatcher {
+    fn can_handle(&self, pattern: &Pattern) -> bool {
+        // Handle simple function patterns with typed head and simple argument patterns
+        if let Pattern::Function { head, args } = pattern {
+            // Check if head is a simple typed blank (e.g., _Plus)
+            let simple_head = matches!(head.as_ref(), Pattern::Blank { head: Some(_) });
+            
+            // Check if arguments are simple patterns that don't require complex matching
+            let simple_args = args.iter().all(|arg| {
+                match arg {
+                    Pattern::Blank { .. } => true,
+                    Pattern::Named { pattern: inner_pattern, .. } => {
+                        matches!(inner_pattern.as_ref(), Pattern::Blank { .. })
+                    }
+                    _ => false,
+                }
+            });
+            
+            simple_head && simple_args && args.len() <= 3 // Limit to common function arities
+        } else {
+            false
+        }
+    }
+    
+    fn fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult> {
+        if let (Expr::Function { head: expr_head, args: expr_args }, 
+                Pattern::Function { head: pattern_head, args: pattern_args }) = (expr, pattern) {
+            
+            // Fast head matching
+            if let (Expr::Symbol(expr_symbol), Pattern::Blank { head: Some(expected_head) }) = 
+                (expr_head.as_ref(), pattern_head.as_ref()) {
+                
+                if expr_symbol.name != *expected_head {
+                    return Some(MatchResult::Failure {
+                        reason: format!("Function head '{}' does not match expected '{}'", 
+                                      expr_symbol.name, expected_head),
+                    });
+                }
+                
+                // Quick argument count check
+                if expr_args.len() != pattern_args.len() {
+                    return Some(MatchResult::Failure {
+                        reason: format!("Function has {} arguments but pattern expects {}", 
+                                      expr_args.len(), pattern_args.len()),
+                    });
+                }
+                
+                // Fast argument matching for simple patterns
+                let mut bindings = create_optimized_bindings();
+                
+                for (expr_arg, pattern_arg) in expr_args.iter().zip(pattern_args.iter()) {
+                    match pattern_arg {
+                        Pattern::Blank { head: None } => {
+                            // Anonymous blank - always matches, no binding
+                        }
+                        Pattern::Blank { head: Some(type_name) } => {
+                            // Typed blank - check type
+                            let matches_type = match (expr_arg, type_name.as_str()) {
+                                (Expr::Number(Number::Integer(_)), "Integer") => true,
+                                (Expr::Number(Number::Real(_)), "Real") => true,
+                                (Expr::String(_), "String") => true,
+                                (Expr::Symbol(_), "Symbol") => true,
+                                (Expr::List(_), "List") => true,
+                                _ => false,
+                            };
+                            
+                            if !matches_type {
+                                return Some(MatchResult::Failure {
+                                    reason: format!("Argument does not match type {}", type_name),
+                                });
+                            }
+                        }
+                        Pattern::Named { name, pattern } => {
+                            if let Pattern::Blank { head } = pattern.as_ref() {
+                                // Simple named pattern
+                                if let Some(type_name) = head {
+                                    // Check type constraint
+                                    let matches_type = match (expr_arg, type_name.as_str()) {
+                                        (Expr::Number(Number::Integer(_)), "Integer") => true,
+                                        (Expr::Number(Number::Real(_)), "Real") => true,
+                                        (Expr::String(_), "String") => true,
+                                        (Expr::Symbol(_), "Symbol") => true,
+                                        (Expr::List(_), "List") => true,
+                                        _ => false,
+                                    };
+                                    
+                                    if !matches_type {
+                                        return Some(MatchResult::Failure {
+                                            reason: format!("Argument does not match type {}", type_name),
+                                        });
+                                    }
+                                }
+                                
+                                // Convert expression to value for binding
+                                if let Ok(value) = self.expr_to_value_fast(expr_arg) {
+                                    bindings.insert(intern_variable_name(name), value);
+                                } else {
+                                    return Some(MatchResult::Failure {
+                                        reason: "Failed to convert expression to value".to_string(),
+                                    });
+                                }
+                            } else {
+                                // Complex named pattern - fall back to standard matcher
+                                return None;
+                            }
+                        }
+                        _ => {
+                            // Complex pattern - fall back to standard matcher
+                            return None;
+                        }
+                    }
+                }
+                
+                return Some(MatchResult::Success { bindings });
+            }
+        }
+        
+        None
+    }
+    
+    fn name(&self) -> &'static str {
+        "FunctionHeadMatcher"
+    }
+}
+
+impl FunctionHeadMatcher {
+    /// Fast expression to value conversion for common cases
+    fn expr_to_value_fast(&self, expr: &Expr) -> std::result::Result<Value, ()> {
+        match expr {
+            Expr::Number(Number::Integer(n)) => Ok(Value::Integer(*n)),
+            Expr::Number(Number::Real(f)) => Ok(Value::Real(*f)),
+            Expr::String(s) => Ok(Value::String(s.clone())),
+            Expr::Symbol(Symbol { name }) => Ok(Value::Symbol(name.clone())),
+            _ => Err(()), // Complex expressions not supported in fast path
+        }
+    }
+}
+
+/// Fast-path matcher registry that manages all available matchers
+#[derive(Debug)]
+pub struct FastPathRegistry {
+    matchers: Vec<Box<dyn FastPathMatcher>>,
+}
+
+impl FastPathRegistry {
+    /// Create a new registry with default fast-path matchers
+    pub fn new() -> Self {
+        let matchers: Vec<Box<dyn FastPathMatcher>> = vec![
+            Box::new(BlankMatcher::new()),
+            Box::new(SymbolMatcher::new()),
+            Box::new(IntegerMatcher::new()),
+            Box::new(FunctionHeadMatcher::new()),
+        ];
+        
+        Self { matchers }
+    }
+    
+    /// Find the best matcher for a given pattern
+    pub fn find_matcher(&self, pattern: &Pattern) -> Option<&dyn FastPathMatcher> {
+        self.matchers
+            .iter()
+            .find(|matcher| matcher.can_handle(pattern))
+            .map(|matcher| matcher.as_ref())
+    }
+    
+    /// Try fast-path matching with all available matchers
+    pub fn try_fast_match(&self, expr: &Expr, pattern: &Pattern) -> Option<MatchResult> {
+        for matcher in &self.matchers {
+            if matcher.can_handle(pattern) {
+                if let Some(result) = matcher.fast_match(expr, pattern) {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
+    
+    /// Get statistics about matcher usage (for performance analysis)
+    pub fn get_matcher_names(&self) -> Vec<&'static str> {
+        self.matchers.iter().map(|m| m.name()).collect()
+    }
+}
+
+//
+// Sub-Phase 2b.2: Pattern Routing System
+//
+
+/// Pattern complexity score for routing decisions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ComplexityScore {
+    /// Trivial patterns (blank, simple typed patterns)
+    Trivial = 0,
+    /// Simple patterns (named blanks, simple functions)
+    Simple = 1,
+    /// Moderate patterns (functions with multiple arguments)
+    Moderate = 2,
+    /// Complex patterns (nested patterns, sequences)
+    Complex = 3,
+    /// Very complex patterns (conditionals, alternatives, predicates)
+    VeryComplex = 4,
+}
+
+/// Pattern routing strategy for optimization decisions
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoutingStrategy {
+    /// Always try fast-path first, fall back to standard
+    FastPathFirst,
+    /// Use standard matcher for all patterns
+    StandardOnly,
+    /// Hybrid approach based on complexity scoring
+    Hybrid { complexity_threshold: ComplexityScore },
+}
+
+impl Default for RoutingStrategy {
+    fn default() -> Self {
+        Self::Hybrid {
+            complexity_threshold: ComplexityScore::Moderate,
+        }
+    }
+}
+
+/// Intelligent pattern router that decides between fast-path and standard matching
+#[derive(Debug)]
+pub struct PatternRouter {
+    /// Fast-path matcher registry
+    fast_path_registry: FastPathRegistry,
+    /// Routing strategy configuration
+    strategy: RoutingStrategy,
+    /// Performance statistics for adaptive routing (thread-safe)
+    performance_stats: Arc<DashMap<ComplexityScore, RouteStats>>,
+}
+
+/// Performance statistics for routing decisions
+#[derive(Debug, Clone)]
+pub struct RouteStats {
+    fast_path_attempts: u64,
+    fast_path_successes: u64,
+    standard_attempts: u64,
+    total_time_fast_path: std::time::Duration,
+    total_time_standard: std::time::Duration,
+}
+
+impl RouteStats {
+    /// Get number of fast-path attempts
+    pub fn fast_path_attempts(&self) -> u64 {
+        self.fast_path_attempts
+    }
+    
+    /// Get number of fast-path successes
+    pub fn fast_path_successes(&self) -> u64 {
+        self.fast_path_successes
+    }
+    
+    /// Get number of standard attempts
+    pub fn standard_attempts(&self) -> u64 {
+        self.standard_attempts
+    }
+    
+    /// Get total time spent in fast-path matching
+    pub fn total_time_fast_path(&self) -> std::time::Duration {
+        self.total_time_fast_path
+    }
+    
+    /// Get total time spent in standard matching
+    pub fn total_time_standard(&self) -> std::time::Duration {
+        self.total_time_standard
+    }
+}
+
+impl Default for RouteStats {
+    fn default() -> Self {
+        Self {
+            fast_path_attempts: 0,
+            fast_path_successes: 0,
+            standard_attempts: 0,
+            total_time_fast_path: std::time::Duration::new(0, 0),
+            total_time_standard: std::time::Duration::new(0, 0),
+        }
+    }
+}
+
+impl PatternRouter {
+    /// Create a new pattern router with default settings
+    pub fn new() -> Self {
+        Self {
+            fast_path_registry: FastPathRegistry::new(),
+            strategy: RoutingStrategy::default(),
+            performance_stats: Arc::new(DashMap::new()),
+        }
+    }
+    
+    /// Create a pattern router with a specific routing strategy
+    pub fn with_strategy(strategy: RoutingStrategy) -> Self {
+        Self {
+            fast_path_registry: FastPathRegistry::new(),
+            strategy,
+            performance_stats: Arc::new(DashMap::new()),
+        }
+    }
+    
+    /// Route a pattern matching request to the appropriate matcher
+    pub fn route_pattern_match(
+        &mut self,
+        expr: &Expr,
+        pattern: &Pattern,
+        standard_matcher: &mut PatternMatcher,
+    ) -> MatchResult {
+        let complexity = self.calculate_pattern_complexity(pattern);
+        let should_try_fast_path = self.should_use_fast_path(complexity);
+        
+        if should_try_fast_path {
+            // Try fast-path first
+            let start_time = std::time::Instant::now();
+            if let Some(result) = self.fast_path_registry.try_fast_match(expr, pattern) {
+                // Fast-path handled it
+                let elapsed = start_time.elapsed();
+                self.record_fast_path_success(complexity, elapsed);
+                return result;
+            } else {
+                // Fast-path couldn't handle it, record attempt
+                let elapsed = start_time.elapsed();
+                self.record_fast_path_attempt(complexity, elapsed);
+            }
+        }
+        
+        // Fall back to standard matching
+        let start_time = std::time::Instant::now();
+        let result = standard_matcher.match_pattern(expr, pattern);
+        let elapsed = start_time.elapsed();
+        self.record_standard_attempt(complexity, elapsed);
+        
+        result
+    }
+    
+    /// Calculate complexity score for a pattern
+    pub fn calculate_pattern_complexity(&self, pattern: &Pattern) -> ComplexityScore {
+        match pattern {
+            // Trivial patterns - direct type/value matching
+            Pattern::Blank { head: None } => ComplexityScore::Trivial,
+            Pattern::Blank { head: Some(_) } => ComplexityScore::Trivial,
+            
+            // Simple patterns - single level with basic constraints
+            Pattern::Named { pattern: inner, .. } => {
+                match inner.as_ref() {
+                    Pattern::Blank { .. } => ComplexityScore::Simple,
+                    _ => self.calculate_pattern_complexity(inner).max(ComplexityScore::Simple),
+                }
+            }
+            
+            // Moderate patterns - functions with simple arguments
+            Pattern::Function { head, args } => {
+                let _head_complexity = self.calculate_pattern_complexity(head);
+                let max_arg_complexity = args.iter()
+                    .map(|arg| self.calculate_pattern_complexity(arg))
+                    .max()
+                    .unwrap_or(ComplexityScore::Trivial);
+                
+                // Function patterns are at least moderate
+                let base_complexity = ComplexityScore::Moderate;
+                
+                // Increase complexity based on argument count and complexity
+                match (args.len(), max_arg_complexity) {
+                    (0..=2, ComplexityScore::Trivial | ComplexityScore::Simple) => base_complexity,
+                    (3..=4, ComplexityScore::Trivial | ComplexityScore::Simple) => ComplexityScore::Complex,
+                    _ => ComplexityScore::VeryComplex,
+                }
+            }
+            
+            // Complex patterns - sequences and structural patterns
+            Pattern::BlankSequence { .. } => ComplexityScore::Complex,
+            Pattern::BlankNullSequence { .. } => ComplexityScore::Complex,
+            Pattern::Typed { .. } => ComplexityScore::Complex,
+            Pattern::Alternative { patterns } => {
+                let max_inner = patterns.iter()
+                    .map(|p| self.calculate_pattern_complexity(p))
+                    .max()
+                    .unwrap_or(ComplexityScore::Trivial);
+                max_inner.max(ComplexityScore::Complex)
+            }
+            
+            // Very complex patterns - require evaluation or complex logic
+            Pattern::Conditional { pattern: inner, .. } => {
+                let inner_complexity = self.calculate_pattern_complexity(inner);
+                inner_complexity.max(ComplexityScore::VeryComplex)
+            }
+            Pattern::Predicate { pattern: inner, .. } => {
+                let inner_complexity = self.calculate_pattern_complexity(inner);
+                inner_complexity.max(ComplexityScore::VeryComplex)
+            }
+        }
+    }
+    
+    /// Determine if fast-path matching should be attempted for given complexity
+    fn should_use_fast_path(&self, complexity: ComplexityScore) -> bool {
+        match &self.strategy {
+            RoutingStrategy::FastPathFirst => true,
+            RoutingStrategy::StandardOnly => false,
+            RoutingStrategy::Hybrid { complexity_threshold } => {
+                complexity <= *complexity_threshold
+            }
+        }
+    }
+    
+    /// Record a successful fast-path match
+    fn record_fast_path_success(&mut self, complexity: ComplexityScore, elapsed: std::time::Duration) {
+        let mut stats = self.performance_stats.entry(complexity).or_default();
+        stats.fast_path_attempts += 1;
+        stats.fast_path_successes += 1;
+        stats.total_time_fast_path += elapsed;
+    }
+    
+    /// Record a fast-path attempt that fell back to standard
+    fn record_fast_path_attempt(&mut self, complexity: ComplexityScore, elapsed: std::time::Duration) {
+        let mut stats = self.performance_stats.entry(complexity).or_default();
+        stats.fast_path_attempts += 1;
+        stats.total_time_fast_path += elapsed;
+    }
+    
+    /// Record a standard matcher attempt
+    fn record_standard_attempt(&mut self, complexity: ComplexityScore, elapsed: std::time::Duration) {
+        let mut stats = self.performance_stats.entry(complexity).or_default();
+        stats.standard_attempts += 1;
+        stats.total_time_standard += elapsed;
+    }
+    
+    /// Get performance statistics for analysis
+    pub fn get_performance_stats(&self) -> Arc<DashMap<ComplexityScore, RouteStats>> {
+        Arc::clone(&self.performance_stats)
+    }
+    
+    /// Get the success rate for fast-path matching at different complexity levels
+    pub fn get_fast_path_success_rate(&self, complexity: ComplexityScore) -> f64 {
+        if let Some(stats) = self.performance_stats.get(&complexity) {
+            if stats.fast_path_attempts > 0 {
+                stats.fast_path_successes as f64 / stats.fast_path_attempts as f64
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
+    }
+    
+    /// Get average time per match for fast-path vs standard at given complexity
+    pub fn get_average_times(&self, complexity: ComplexityScore) -> (Option<std::time::Duration>, Option<std::time::Duration>) {
+        if let Some(stats) = self.performance_stats.get(&complexity) {
+            let fast_path_avg = if stats.fast_path_attempts > 0 {
+                Some(stats.total_time_fast_path / stats.fast_path_attempts as u32)
+            } else {
+                None
+            };
+            
+            let standard_avg = if stats.standard_attempts > 0 {
+                Some(stats.total_time_standard / stats.standard_attempts as u32)
+            } else {
+                None
+            };
+            
+            (fast_path_avg, standard_avg)
+        } else {
+            (None, None)
+        }
+    }
+    
+    /// Adaptive strategy adjustment based on performance data
+    /// This can be used to automatically tune the complexity threshold
+    pub fn suggest_strategy_adjustment(&self) -> Option<RoutingStrategy> {
+        // Analyze performance data to suggest better routing strategy
+        let mut should_increase_threshold = true;
+        let mut should_decrease_threshold = true;
+        
+        // Check if we should increase threshold (more aggressive fast-path usage)
+        for complexity in [ComplexityScore::Complex] {
+            if let Some(stats) = self.performance_stats.get(&complexity) {
+                let success_rate = self.get_fast_path_success_rate(complexity);
+                if success_rate < 0.7 || stats.fast_path_attempts < 10 {
+                    should_increase_threshold = false;
+                }
+            }
+        }
+        
+        // Check if we should decrease threshold (less aggressive fast-path usage)
+        for complexity in [ComplexityScore::Simple, ComplexityScore::Moderate] {
+            if let Some(stats) = self.performance_stats.get(&complexity) {
+                let success_rate = self.get_fast_path_success_rate(complexity);
+                if success_rate > 0.9 && stats.fast_path_attempts > 20 {
+                    should_decrease_threshold = false;
+                }
+            }
+        }
+        
+        match &self.strategy {
+            RoutingStrategy::Hybrid { complexity_threshold } => {
+                if should_increase_threshold && *complexity_threshold < ComplexityScore::Complex {
+                    Some(RoutingStrategy::Hybrid {
+                        complexity_threshold: ComplexityScore::Complex,
+                    })
+                } else if should_decrease_threshold && *complexity_threshold > ComplexityScore::Simple {
+                    Some(RoutingStrategy::Hybrid {
+                        complexity_threshold: ComplexityScore::Simple,
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+    
+    /// Clear performance statistics (for testing or reset)
+    pub fn clear_stats(&mut self) {
+        self.performance_stats.clear();
+    }
+    
+    /// Update routing strategy
+    pub fn set_strategy(&mut self, strategy: RoutingStrategy) {
+        self.strategy = strategy;
+    }
+    
+    /// Clone this router with shared performance statistics for concurrent use
+    pub fn clone_with_shared_stats(&self) -> Self {
+        Self {
+            fast_path_registry: FastPathRegistry::new(),
+            strategy: self.strategy.clone(),
+            performance_stats: Arc::clone(&self.performance_stats),
         }
     }
 }

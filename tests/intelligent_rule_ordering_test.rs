@@ -92,7 +92,7 @@ fn test_rule_statistics_tracking() {
             if let Some(rule1_stats) = stats.get(&1) {
                 assert_eq!(rule1_stats.success_rate, 0.0); // 0% success
                 assert_eq!(rule1_stats.successes, 0);
-            }
+            };
         }
     }
     

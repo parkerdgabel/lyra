@@ -16,6 +16,8 @@ use crate::vm::{Value, VmError, VmResult};
 use crate::pattern_matcher::{PatternMatcher, MatchResult};
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
+use std::sync::Arc;
+use dashmap::DashMap;
 
 /// Type of rule evaluation
 #[derive(Debug, Clone, PartialEq)]
@@ -158,8 +160,8 @@ pub struct RuleEngine {
     mathematical_rules: Vec<MathematicalRule>,
     /// User-defined rules added during runtime
     user_rules: Vec<Rule>,
-    /// Rule performance statistics for intelligent ordering
-    rule_stats: HashMap<usize, RuleStats>,
+    /// Rule performance statistics for intelligent ordering (thread-safe)
+    rule_stats: Arc<DashMap<usize, RuleStats>>,
     /// Enable/disable rule profiling and intelligent ordering
     intelligent_ordering: bool,
     /// Minimum attempts before reordering rules
@@ -175,7 +177,7 @@ impl RuleEngine {
             symbolic_rules: Vec::new(),
             mathematical_rules: Vec::new(),
             user_rules: Vec::new(),
-            rule_stats: HashMap::new(),
+            rule_stats: Arc::new(DashMap::new()),
             intelligent_ordering: true, // Enable by default
             reorder_threshold: 10, // Reorder after 10 attempts
         };
@@ -191,7 +193,7 @@ impl RuleEngine {
             symbolic_rules: Vec::new(),
             mathematical_rules: Vec::new(),
             user_rules: Vec::new(),
-            rule_stats: HashMap::new(),
+            rule_stats: Arc::new(DashMap::new()),
             intelligent_ordering: true,
             reorder_threshold: 10,
         };
@@ -207,7 +209,7 @@ impl RuleEngine {
             symbolic_rules: Vec::new(),
             mathematical_rules: Vec::new(),
             user_rules: Vec::new(),
-            rule_stats: HashMap::new(),
+            rule_stats: Arc::new(DashMap::new()),
             intelligent_ordering: false,
             reorder_threshold: 0,
         };
@@ -221,8 +223,8 @@ impl RuleEngine {
     }
     
     /// Get rule statistics for analysis
-    pub fn get_rule_stats(&self) -> &HashMap<usize, RuleStats> {
-        &self.rule_stats
+    pub fn get_rule_stats(&self) -> Arc<DashMap<usize, RuleStats>> {
+        Arc::clone(&self.rule_stats)
     }
     
     /// Initialize built-in mathematical simplification rules
@@ -759,7 +761,7 @@ impl RuleEngine {
         let mut rule_indices: Vec<usize> = (0..rules.len()).collect();
         
         // Check if we should reorder rules based on statistics
-        let total_attempts: u64 = self.rule_stats.values().map(|s| s.attempts).sum();
+        let total_attempts: u64 = self.rule_stats.iter().map(|entry| entry.value().attempts).sum();
         if total_attempts >= self.reorder_threshold {
             // Sort rules by priority score (highest first)
             rule_indices.sort_by(|&a, &b| {
@@ -780,9 +782,8 @@ impl RuleEngine {
             let matched = !self.expressions_equal(expr, &result);
             
             // Update statistics
-            self.rule_stats.entry(rule_index)
-                .or_insert_with(RuleStats::default)
-                .update(matched, execution_time);
+            let mut entry = self.rule_stats.entry(rule_index).or_insert_with(RuleStats::default);
+            entry.update(matched, execution_time);
             
             // If rule transformed the expression, return the result
             if matched {

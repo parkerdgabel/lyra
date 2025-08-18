@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum InterpolationPart {
     Text(String),
     Expression(Box<Expr>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Expr {
     Symbol(Symbol),
     Number(Number),
@@ -55,7 +55,7 @@ pub enum Expr {
     InterpolatedString(Vec<InterpolationPart>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Symbol {
     pub name: String,
 }
@@ -66,7 +66,23 @@ pub enum Number {
     Real(f64),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl std::hash::Hash for Number {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Number::Integer(i) => {
+                0u8.hash(state);
+                i.hash(state);
+            }
+            Number::Real(f) => {
+                1u8.hash(state);
+                // Use a safe hash for f64 by converting to bits
+                f.to_bits().hash(state);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Pattern {
     Blank {
         head: Option<String>,

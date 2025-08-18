@@ -53,8 +53,8 @@ pub struct Series {
 impl PartialEq for Series {
     fn eq(&self, other: &Self) -> bool {
         // Use pointer equality first for efficiency, then value equality
-        (Rc::ptr_eq(&self.data, &other.data) || *self.data == *other.data) 
-            && self.dtype == other.dtype 
+        (Rc::ptr_eq(&self.data, &other.data) || *self.data == *other.data)
+            && self.dtype == other.dtype
             && self.length == other.length
     }
 }
@@ -71,14 +71,14 @@ impl Series {
                 });
             }
         }
-        
+
         Ok(Series {
             length: data.len(),
             data: Rc::new(data),
             dtype,
         })
     }
-    
+
     /// Create a new Series with automatic type inference
     pub fn infer(data: Vec<Value>) -> VmResult<Self> {
         if data.is_empty() {
@@ -87,16 +87,16 @@ impl Series {
                 actual: "empty data".to_string(),
             });
         }
-        
+
         // Infer type from first non-Missing element
         let dtype = data.iter()
             .find(|v| !matches!(v, Value::Missing))
             .map(|v| Self::infer_type(v))
             .unwrap_or(SeriesType::String); // Default to String if all Missing
-            
+
         Self::new(data, dtype)
     }
-    
+
     /// Create a view/slice of this Series (COW optimization)
     pub fn slice(&self, start: usize, end: usize) -> VmResult<Self> {
         if start > end || end > self.length {
@@ -105,17 +105,17 @@ impl Series {
                 actual: format!("invalid bounds start={}, end={}", start, end),
             });
         }
-        
+
         // Create a new vector with the sliced data (for now - could optimize with views later)
         let sliced_data = self.data[start..end].to_vec();
-        
+
         Ok(Series {
             data: Rc::new(sliced_data),
             dtype: self.dtype.clone(),
             length: end - start,
         })
     }
-    
+
     /// Get a value at index (bounds-checked)
     pub fn get(&self, index: usize) -> VmResult<&Value> {
         if index >= self.length {
@@ -126,7 +126,7 @@ impl Series {
         }
         Ok(&self.data[index])
     }
-    
+
     /// Create a new Series with a modified value (COW semantics)
     pub fn with_value_at(&self, index: usize, value: Value) -> VmResult<Self> {
         if index >= self.length {
@@ -135,7 +135,7 @@ impl Series {
                 actual: format!("index {}", index),
             });
         }
-        
+
         // Validate the new value matches the series type
         if !Self::value_matches_type(&value, &self.dtype) {
             return Err(VmError::TypeError {
@@ -143,18 +143,18 @@ impl Series {
                 actual: format!("{:?}", value),
             });
         }
-        
+
         // Clone the data (COW)
         let mut new_data = (*self.data).clone();
         new_data[index] = value;
-        
+
         Ok(Series {
             data: Rc::new(new_data),
             dtype: self.dtype.clone(),
             length: self.length,
         })
     }
-    
+
     /// Append a value to create a new Series (COW semantics)
     pub fn append(&self, value: Value) -> VmResult<Self> {
         // Validate the value matches the series type
@@ -164,28 +164,28 @@ impl Series {
                 actual: format!("{:?}", value),
             });
         }
-        
+
         // Clone and extend the data (COW)
         let mut new_data = (*self.data).clone();
         new_data.push(value);
-        
+
         Ok(Series {
             data: Rc::new(new_data),
             dtype: self.dtype.clone(),
             length: self.length + 1,
         })
     }
-    
+
     /// Create an iterator over the series values
     pub fn iter(&self) -> std::slice::Iter<Value> {
         self.data.iter()
     }
-    
+
     /// Check if this series shares data with another (for COW detection)
     pub fn shares_data_with(&self, other: &Series) -> bool {
         Rc::ptr_eq(&self.data, &other.data)
     }
-    
+
     fn value_matches_type(value: &Value, dtype: &SeriesType) -> bool {
         match (value, dtype) {
             (Value::Missing, _) => true, // Missing can be in any series
@@ -196,7 +196,7 @@ impl Series {
             _ => false,
         }
     }
-    
+
     fn infer_type(value: &Value) -> SeriesType {
         match value {
             Value::Integer(_) => SeriesType::Int64,
@@ -217,7 +217,7 @@ pub enum SchemaType {
     String,
     Decimal { precision: u8, scale: u8 }, // Decimal[p,s]
     Date,                                 // Date values
-    Timestamp,                            // Timestamp values  
+    Timestamp,                            // Timestamp values
     UUID,                                 // UUID values
     Nullable(Box<SchemaType>),
     List(Box<SchemaType>),
@@ -235,94 +235,94 @@ impl Schema {
     pub fn new(schema_type: SchemaType) -> Self {
         Schema { schema_type }
     }
-    
+
     /// Create common schema types
     pub fn int64() -> Self {
         Schema::new(SchemaType::Int64)
     }
-    
+
     pub fn float64() -> Self {
         Schema::new(SchemaType::Float64)
     }
-    
+
     pub fn bool() -> Self {
         Schema::new(SchemaType::Bool)
     }
-    
+
     pub fn string() -> Self {
         Schema::new(SchemaType::String)
     }
-    
+
     pub fn decimal(precision: u8, scale: u8) -> Self {
         Schema::new(SchemaType::Decimal { precision, scale })
     }
-    
+
     pub fn date() -> Self {
         Schema::new(SchemaType::Date)
     }
-    
+
     pub fn timestamp() -> Self {
         Schema::new(SchemaType::Timestamp)
     }
-    
+
     pub fn uuid() -> Self {
         Schema::new(SchemaType::UUID)
     }
-    
+
     pub fn nullable(inner: SchemaType) -> Self {
         Schema::new(SchemaType::Nullable(Box::new(inner)))
     }
-    
+
     pub fn list(item_type: SchemaType) -> Self {
         Schema::new(SchemaType::List(Box::new(item_type)))
     }
-    
+
     pub fn struct_type(fields: HashMap<String, SchemaType>) -> Self {
         let mut field_vec: Vec<(String, SchemaType)> = fields.into_iter().collect();
         field_vec.sort_by(|a, b| a.0.cmp(&b.0)); // Sort for consistent ordering
         Schema::new(SchemaType::Struct(field_vec))
     }
-    
+
     /// Infer schema from a value
     pub fn infer_from_value(value: &Value) -> Self {
         let schema_type = Self::infer_schema_type(value);
         Schema::new(schema_type)
     }
-    
+
     /// Infer schema from a list of values (like a column)
     pub fn infer_from_values(values: &[Value]) -> Self {
         if values.is_empty() {
             return Schema::string(); // Default for empty
         }
-        
+
         // Find the most general type that can accommodate all values
         let mut inferred_type = None;
         let mut has_missing = false;
-        
+
         for value in values {
             if matches!(value, Value::Missing) {
                 has_missing = true;
                 continue;
             }
-            
+
             let value_type = Self::infer_schema_type(value);
-            
+
             if inferred_type.is_none() {
                 inferred_type = Some(value_type);
             } else {
                 inferred_type = Some(Self::unify_types(inferred_type.unwrap(), value_type));
             }
         }
-        
+
         let final_type = inferred_type.unwrap_or(SchemaType::String);
-        
+
         if has_missing {
             Schema::new(SchemaType::Nullable(Box::new(final_type)))
         } else {
             Schema::new(final_type)
         }
     }
-    
+
     /// Infer the schema type for a single value
     fn infer_schema_type(value: &Value) -> SchemaType {
         match value {
@@ -377,13 +377,13 @@ impl Schema {
             _ => SchemaType::String, // Default fallback
         }
     }
-    
+
     /// Unify two schema types to find the most general type that accommodates both
     fn unify_types(type1: SchemaType, type2: SchemaType) -> SchemaType {
         if type1 == type2 {
             return type1;
         }
-        
+
         match (type1, type2) {
             // Numeric type unification
             (SchemaType::Int64, SchemaType::Float64) | (SchemaType::Float64, SchemaType::Int64) => {
@@ -395,7 +395,7 @@ impl Schema {
             (SchemaType::Float64, SchemaType::Decimal { .. }) | (SchemaType::Decimal { .. }, SchemaType::Float64) => {
                 SchemaType::Float64
             },
-            
+
             // String type unification
             (SchemaType::Date, SchemaType::String) | (SchemaType::String, SchemaType::Date) => {
                 SchemaType::String // String is more general
@@ -409,36 +409,36 @@ impl Schema {
             (SchemaType::Date, SchemaType::Timestamp) | (SchemaType::Timestamp, SchemaType::Date) => {
                 SchemaType::String // Different date formats, generalize to string
             },
-            
+
             // List unification
             (SchemaType::List(item1), SchemaType::List(item2)) => {
                 let unified_item = Self::unify_types(*item1, *item2);
                 SchemaType::List(Box::new(unified_item))
             },
-            
+
             // When all else fails, use String as the most general type
             _ => SchemaType::String,
         }
     }
-    
+
     /// Helper to check if a string looks like a date
     fn looks_like_date(s: &str) -> bool {
         // Simple heuristic: YYYY-MM-DD format
         s.len() == 10 && s.chars().nth(4) == Some('-') && s.chars().nth(7) == Some('-')
     }
-    
+
     /// Helper to check if a string looks like a timestamp
     fn looks_like_timestamp(s: &str) -> bool {
         // Simple heuristic: contains both date and time parts
         s.contains(' ') && s.len() >= 19 && Self::looks_like_date(&s[..10])
     }
-    
+
     /// Helper to check if a string looks like a UUID
     fn looks_like_uuid(s: &str) -> bool {
         // Simple heuristic: 8-4-4-4-12 format
         s.len() == 36 && s.matches('-').count() == 4
     }
-    
+
     /// Validate a value against this schema
     pub fn validate(&self, value: &Value) -> VmResult<()> {
         if self.matches_type(value, &self.schema_type) {
@@ -450,19 +450,19 @@ impl Schema {
             })
         }
     }
-    
+
     /// Cast a value to match this schema (with type conversion)
     pub fn cast(&self, value: &Value, strict: bool) -> VmResult<Value> {
         self.cast_to_type(value, &self.schema_type, strict)
     }
-    
+
     /// Cast a value to a specific schema type
     fn cast_to_type(&self, value: &Value, target_type: &SchemaType, strict: bool) -> VmResult<Value> {
         // If value already matches, return as-is
         if self.matches_type(value, target_type) {
             return Ok(value.clone());
         }
-        
+
         // Handle Missing values
         if matches!(value, Value::Missing) {
             match target_type {
@@ -477,7 +477,7 @@ impl Schema {
             self.perform_cast(value, target_type, strict)
         }
     }
-    
+
     /// Perform the actual type casting
     fn perform_cast(&self, value: &Value, target_type: &SchemaType, strict: bool) -> VmResult<Value> {
         match (value, target_type) {
@@ -486,12 +486,12 @@ impl Schema {
             (Value::Integer(i), SchemaType::Decimal { .. }) => Ok(Value::Real(*i as f64)),
             (Value::Real(f), SchemaType::Int64) if !strict => Ok(Value::Integer(*f as i64)),
             (Value::Real(_), SchemaType::Decimal { .. }) => Ok(value.clone()), // Accept as-is for now
-            
+
             // String conversions
             (Value::Integer(i), SchemaType::String) => Ok(Value::String(i.to_string())),
             (Value::Real(f), SchemaType::String) => Ok(Value::String(f.to_string())),
             (Value::Boolean(b), SchemaType::String) => Ok(Value::String(b.to_string())),
-            
+
             // Parse from string
             (Value::String(s), SchemaType::Int64) if !strict => {
                 s.parse::<i64>()
@@ -519,10 +519,10 @@ impl Schema {
                     }),
                 }
             },
-            
+
             // Handle nullable types
             (_, SchemaType::Nullable(inner)) => self.cast_to_type(value, inner, strict),
-            
+
             // List casting
             (Value::List(items), SchemaType::List(item_type)) => {
                 let mut cast_items = Vec::new();
@@ -531,7 +531,7 @@ impl Schema {
                 }
                 Ok(Value::List(cast_items))
             },
-            
+
             // Default: no conversion possible
             _ => Err(VmError::TypeError {
                 expected: format!("{:?}", target_type),
@@ -539,7 +539,7 @@ impl Schema {
             }),
         }
     }
-    
+
     /// Validate and cast a value (convenience method)
     pub fn validate_and_cast(&self, value: &Value, strict: bool) -> VmResult<Value> {
         // Try validation first
@@ -550,7 +550,7 @@ impl Schema {
             self.cast(value, strict)
         }
     }
-    
+
     /// Check if a value matches a schema type
     fn matches_type(&self, value: &Value, schema_type: &SchemaType) -> bool {
         match (value, schema_type) {
@@ -586,7 +586,7 @@ impl Schema {
             _ => false,
         }
     }
-    
+
     /// Validate date string format (simple implementation)
     fn is_valid_date_string(&self, s: &str) -> bool {
         // Simple validation: YYYY-MM-DD format
@@ -594,12 +594,12 @@ impl Schema {
         if parts.len() != 3 {
             return false;
         }
-        
+
         // Check year (4 digits)
         if parts[0].len() != 4 || !parts[0].chars().all(|c| c.is_ascii_digit()) {
             return false;
         }
-        
+
         // Check month (01-12)
         if parts[1].len() != 2 || !parts[1].chars().all(|c| c.is_ascii_digit()) {
             return false;
@@ -611,7 +611,7 @@ impl Schema {
         } else {
             return false;
         }
-        
+
         // Check day (01-31)
         if parts[2].len() != 2 || !parts[2].chars().all(|c| c.is_ascii_digit()) {
             return false;
@@ -623,10 +623,10 @@ impl Schema {
         } else {
             return false;
         }
-        
+
         true
     }
-    
+
     /// Validate timestamp string format (simple implementation)
     fn is_valid_timestamp_string(&self, s: &str) -> bool {
         // Simple validation: YYYY-MM-DD HH:MM:SS format
@@ -634,24 +634,24 @@ impl Schema {
         if parts.len() != 2 {
             return false;
         }
-        
+
         // Validate date part
         if !self.is_valid_date_string(parts[0]) {
             return false;
         }
-        
+
         // Validate time part (HH:MM:SS)
         let time_parts: Vec<&str> = parts[1].split(':').collect();
         if time_parts.len() != 3 {
             return false;
         }
-        
+
         // Check each time component
         for (i, part) in time_parts.iter().enumerate() {
             if part.len() != 2 || !part.chars().all(|c| c.is_ascii_digit()) {
                 return false;
             }
-            
+
             if let Ok(value) = part.parse::<u32>() {
                 match i {
                     0 => if value > 23 { return false; }, // Hours: 00-23
@@ -663,10 +663,10 @@ impl Schema {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Validate UUID string format (simple implementation)
     fn is_valid_uuid_string(&self, s: &str) -> bool {
         // Simple validation: 8-4-4-4-12 hex format
@@ -674,17 +674,17 @@ impl Schema {
         if parts.len() != 5 {
             return false;
         }
-        
+
         let expected_lengths = [8, 4, 4, 4, 12];
         for (i, part) in parts.iter().enumerate() {
             if part.len() != expected_lengths[i] || !part.chars().all(|c| c.is_ascii_hexdigit()) {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Validate struct items (simple implementation)
     fn validate_struct_items(&self, items: &[Value], fields: &[(String, SchemaType)]) -> bool {
         // For now, just check if we have the right number of fields
@@ -716,31 +716,31 @@ impl Table {
             index: None,
         }
     }
-    
+
     /// Create a Table from columns, validating all series have same length
     pub fn from_columns(columns: HashMap<String, Series>) -> VmResult<Self> {
         if columns.is_empty() {
             return Ok(Table::new());
         }
-        
+
         // Check all series have the same length
         let lengths: Vec<usize> = columns.values().map(|s| s.length).collect();
         let first_length = lengths[0];
-        
+
         if !lengths.iter().all(|&len| len == first_length) {
             return Err(VmError::TypeError {
                 expected: format!("all columns to have length {}", first_length),
                 actual: format!("columns with varying lengths: {:?}", lengths),
             });
         }
-        
+
         Ok(Table {
             length: first_length,
             columns,
             index: None,
         })
     }
-    
+
     /// Add a column to the table
     pub fn add_column(&mut self, name: String, series: Series) -> VmResult<()> {
         if self.columns.is_empty() {
@@ -751,26 +751,26 @@ impl Table {
                 actual: format!("column length {}", series.length),
             });
         }
-        
+
         self.columns.insert(name, series);
         Ok(())
     }
-    
+
     /// Get column names
     pub fn column_names(&self) -> Vec<&String> {
         self.columns.keys().collect()
     }
-    
+
     /// Get a column by name
     pub fn get_column(&self, name: &str) -> Option<&Series> {
         self.columns.get(name)
     }
-    
+
     /// Get a mutable reference to a column by name
     pub fn get_column_mut(&mut self, name: &str) -> Option<&mut Series> {
         self.columns.get_mut(name)
     }
-    
+
     /// Drop columns by name
     pub fn drop_columns(&self, column_names: &[&str]) -> VmResult<Self> {
         let mut new_columns = HashMap::new();
@@ -779,57 +779,57 @@ impl Table {
                 new_columns.insert(name.clone(), series.clone());
             }
         }
-        
+
         Ok(Table {
             columns: new_columns,
             length: self.length,
             index: self.index.clone(),
         })
     }
-    
+
     /// Select specific columns by name
     pub fn select_columns(&self, column_names: &[&str]) -> VmResult<Self> {
         let mut new_columns = HashMap::new();
-        
+
         for &name in column_names {
             if let Some(series) = self.columns.get(name) {
                 new_columns.insert(name.to_string(), series.clone());
             } else {
                 return Err(VmError::TypeError {
                     expected: format!("column '{}' to exist", name),
-                    actual: format!("column not found in table with columns: {:?}", 
+                    actual: format!("column not found in table with columns: {:?}",
                                   self.column_names()),
                 });
             }
         }
-        
+
         Ok(Table {
             columns: new_columns,
             length: self.length,
             index: self.index.clone(),
         })
     }
-    
+
     /// Rename columns
     pub fn rename_columns(&self, renames: &HashMap<String, String>) -> Self {
         let mut new_columns = HashMap::new();
-        
+
         for (old_name, series) in &self.columns {
             let new_name = renames.get(old_name).unwrap_or(old_name);
             new_columns.insert(new_name.clone(), series.clone());
         }
-        
+
         Table {
             columns: new_columns,
             length: self.length,
             index: self.index.clone(),
         }
     }
-    
+
     /// Add computed columns with COW semantics
     pub fn with_columns(&self, new_columns: HashMap<String, Series>) -> VmResult<Self> {
         let mut result_columns = self.columns.clone();
-        
+
         for (name, series) in new_columns {
             if series.length != self.length && self.length > 0 {
                 return Err(VmError::TypeError {
@@ -839,20 +839,20 @@ impl Table {
             }
             result_columns.insert(name, series);
         }
-        
+
         let new_length = if self.length == 0 && !result_columns.is_empty() {
             result_columns.values().next().unwrap().length
         } else {
             self.length
         };
-        
+
         Ok(Table {
             columns: result_columns,
             length: new_length,
             index: self.index.clone(),
         })
     }
-    
+
     /// Get row as a vector of values (for iteration)
     pub fn get_row(&self, index: usize) -> VmResult<Vec<Value>> {
         if index >= self.length {
@@ -861,17 +861,17 @@ impl Table {
                 length: self.length,
             });
         }
-        
+
         let mut row = Vec::new();
         for column_name in self.column_names() {
             if let Some(series) = self.columns.get(column_name) {
                 row.push(series.get(index)?.clone());
             }
         }
-        
+
         Ok(row)
     }
-    
+
     /// Slice rows (equivalent to head/tail operations)
     pub fn slice_rows(&self, start: usize, end: usize) -> VmResult<Self> {
         if start > end || end > self.length {
@@ -880,26 +880,26 @@ impl Table {
                 length: self.length,
             });
         }
-        
+
         let mut new_columns = HashMap::new();
         for (name, series) in &self.columns {
             let sliced_series = series.slice(start, end)?;
             new_columns.insert(name.clone(), sliced_series);
         }
-        
+
         let new_index = if let Some(ref idx) = self.index {
             Some(idx[start..end].to_vec())
         } else {
             None
         };
-        
+
         Ok(Table {
             columns: new_columns,
             length: end - start,
             index: new_index,
         })
     }
-    
+
     /// Filter rows by predicate (simple boolean mask)
     pub fn filter_rows(&self, mask: &[bool]) -> VmResult<Self> {
         if mask.len() != self.length {
@@ -908,7 +908,7 @@ impl Table {
                 actual: format!("mask length {}", mask.len()),
             });
         }
-        
+
         let mut new_columns = HashMap::new();
         for (name, series) in &self.columns {
             let mut filtered_data = Vec::new();
@@ -917,11 +917,11 @@ impl Table {
                     filtered_data.push(series.get(i)?.clone());
                 }
             }
-            
+
             let filtered_series = Series::new(filtered_data, series.dtype.clone())?;
             new_columns.insert(name.clone(), filtered_series);
         }
-        
+
         let new_index = if let Some(ref idx) = self.index {
             let mut filtered_index = Vec::new();
             for (i, &include) in mask.iter().enumerate() {
@@ -933,28 +933,28 @@ impl Table {
         } else {
             None
         };
-        
+
         let new_length = mask.iter().filter(|&&x| x).count();
-        
+
         Ok(Table {
             columns: new_columns,
             length: new_length,
             index: new_index,
         })
     }
-    
+
     /// Get column data types as a map
     pub fn dtypes(&self) -> HashMap<String, SeriesType> {
         self.columns.iter()
             .map(|(name, series)| (name.clone(), series.dtype.clone()))
             .collect()
     }
-    
+
     /// Get table shape (rows, columns)
     pub fn shape(&self) -> (usize, usize) {
         (self.length, self.columns.len())
     }
-    
+
     /// Convert table to a vector of rows (each row as a Vec<Value>)
     pub fn to_rows(&self) -> VmResult<Vec<Vec<Value>>> {
         let mut rows = Vec::with_capacity(self.length);
@@ -963,13 +963,13 @@ impl Table {
         }
         Ok(rows)
     }
-    
+
     /// Create Table from rows of data with column names
     pub fn from_rows(column_names: Vec<String>, rows: Vec<Vec<Value>>) -> VmResult<Self> {
         if column_names.is_empty() {
             return Ok(Table::new());
         }
-        
+
         if rows.is_empty() {
             // Create empty table with given columns
             let mut columns = HashMap::new();
@@ -978,10 +978,10 @@ impl Table {
             }
             return Ok(Table::from_columns(columns)?);
         }
-        
+
         let num_cols = column_names.len();
         let num_rows = rows.len();
-        
+
         // Validate all rows have same number of columns
         for (i, row) in rows.iter().enumerate() {
             if row.len() != num_cols {
@@ -991,7 +991,7 @@ impl Table {
                 });
             }
         }
-        
+
         // Transpose rows to columns
         let mut columns = HashMap::new();
         for (col_idx, column_name) in column_names.into_iter().enumerate() {
@@ -999,60 +999,60 @@ impl Table {
             for row in &rows {
                 column_data.push(row[col_idx].clone());
             }
-            
+
             // Create series using Series inference, not Schema inference
             let series = Series::infer(column_data)?;
             columns.insert(column_name, series);
         }
-        
+
         Table::from_columns(columns)
     }
-    
+
     /// Create Table from rows with automatic column naming (col0, col1, ...)
     pub fn from_rows_auto_names(rows: Vec<Vec<Value>>) -> VmResult<Self> {
         if rows.is_empty() {
             return Ok(Table::new());
         }
-        
+
         let num_cols = rows[0].len();
         let column_names: Vec<String> = (0..num_cols)
             .map(|i| format!("col{}", i))
             .collect();
-            
+
         Self::from_rows(column_names, rows)
     }
-    
+
     /// Create Table from a single column
     pub fn from_column(name: String, series: Series) -> Self {
         let mut columns = HashMap::new();
         let length = series.length;
         columns.insert(name, series);
-        
+
         Table {
             columns,
             length,
             index: None,
         }
     }
-    
+
     /// Get head of table (first n rows)
     pub fn head(&self, n: usize) -> VmResult<Self> {
         let end = std::cmp::min(n, self.length);
         self.slice_rows(0, end)
     }
-    
+
     /// Get tail of table (last n rows)
     pub fn tail(&self, n: usize) -> VmResult<Self> {
         let start = if n >= self.length { 0 } else { self.length - n };
         self.slice_rows(start, self.length)
     }
-    
+
     /// Check if table is empty
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
-    
-    
+
+
     /// Sort table by column values (simple ascending sort)
     pub fn sort_by_column(&self, column_name: &str, ascending: bool) -> VmResult<Self> {
         let column = self.get_column(column_name)
@@ -1060,15 +1060,15 @@ impl Table {
                 expected: format!("column '{}' to exist", column_name),
                 actual: format!("column not found in table"),
             })?;
-        
+
         // Create indices for sorting
         let mut indices: Vec<usize> = (0..self.length).collect();
-        
+
         // Sort indices based on column values
         indices.sort_by(|&a, &b| {
             let val_a = column.get(a).map(|v| v.clone()).unwrap_or(Value::Missing);
             let val_b = column.get(b).map(|v| v.clone()).unwrap_or(Value::Missing);
-            
+
             let cmp = match (&val_a, &val_b) {
                 (Value::Missing, Value::Missing) => std::cmp::Ordering::Equal,
                 (Value::Missing, _) => std::cmp::Ordering::Greater, // Missing values last
@@ -1079,10 +1079,10 @@ impl Table {
                 (Value::Boolean(a), Value::Boolean(b)) => a.cmp(b),
                 _ => std::cmp::Ordering::Equal, // For mixed types, keep original order
             };
-            
+
             if ascending { cmp } else { cmp.reverse() }
         });
-        
+
         // Reorder all columns based on sorted indices
         let mut new_columns = HashMap::new();
         for (name, series) in &self.columns {
@@ -1090,11 +1090,11 @@ impl Table {
             for &idx in &indices {
                 reordered_data.push(series.get(idx)?.clone());
             }
-            
+
             let reordered_series = Series::new(reordered_data, series.dtype.clone())?;
             new_columns.insert(name.clone(), reordered_series);
         }
-        
+
         // Reorder index if present
         let new_index = if let Some(ref idx) = self.index {
             let mut reordered_index = Vec::with_capacity(self.length);
@@ -1105,7 +1105,7 @@ impl Table {
         } else {
             None
         };
-        
+
         Ok(Table {
             columns: new_columns,
             length: self.length,
@@ -1128,7 +1128,7 @@ impl Dataset {
             value: Box::new(value),
         }
     }
-    
+
     /// Create Dataset from nested lists/associations
     pub fn from_nested(value: Value) -> VmResult<Self> {
         // TODO: Validate that the value is appropriate for hierarchical data

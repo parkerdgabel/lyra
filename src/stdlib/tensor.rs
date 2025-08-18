@@ -115,6 +115,49 @@ fn broadcast_tensors(a: &ArrayD<f64>, b: &ArrayD<f64>) -> VmResult<(ArrayD<f64>,
     }
 }
 
+/// Helper function to convert ArrayD<f64> to Value::LyObj(ForeignTensor)
+/// 
+/// This function provides a unified way to convert ndarray ArrayD<f64> tensors
+/// into the VM's foreign object system, ensuring consistency across all tensor operations.
+pub fn array_to_lyobj(tensor: ArrayD<f64>) -> Value {
+    use std::sync::Arc;
+    
+    let shape: Vec<usize> = tensor.shape().to_vec();
+    let ndim = shape.len();
+    let len = tensor.len();
+    
+    let foreign_tensor = ForeignTensor {
+        data: Arc::new(tensor),
+        shape,
+        ndim, 
+        len,
+    };
+    
+    Value::LyObj(LyObj::new(Box::new(foreign_tensor)))
+}
+
+/// Helper function to extract ArrayD<f64> from Value::LyObj(ForeignTensor)
+/// 
+/// This function safely extracts the underlying tensor data from a foreign tensor object,
+/// providing easy access to the ndarray for mathematical operations.
+pub fn lyobj_to_array(value: &Value) -> VmResult<&ArrayD<f64>> {
+    match value {
+        Value::LyObj(lyobj) => {
+            match lyobj.downcast_ref::<ForeignTensor>() {
+                Some(foreign_tensor) => Ok(&foreign_tensor.data),
+                None => Err(VmError::TypeError {
+                    expected: "ForeignTensor".to_string(),
+                    actual: lyobj.type_name().to_string(),
+                })
+            }
+        }
+        _ => Err(VmError::TypeError {
+            expected: "Tensor".to_string(),
+            actual: format!("{:?}", value),
+        })
+    }
+}
+
 /// Create an array (tensor) from nested lists with automatic shape inference.
 ///
 /// This function converts Lyra lists into n-dimensional tensors, automatically
@@ -308,41 +351,99 @@ pub fn array_flatten(args: &[Value]) -> VmResult<Value> {
 /// Returns the result of a + b where a and b can be tensors or scalars
 pub fn tensor_add(a: &Value, b: &Value) -> VmResult<Value> {
     match (a, b) {
-        // Tensor + Tensor
-        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
+        // Tensor + Tensor (both foreign objects)
+        (Value::LyObj(_), Value::LyObj(_)) => {
+            let tensor_a = lyobj_to_array(a)?;
+            let tensor_b = lyobj_to_array(b)?;
             let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
             let result = &broadcast_a + &broadcast_b;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Tensor + Scalar (Real)
-        (Value::Tensor(tensor), Value::Real(scalar)) => {
+        (Value::LyObj(_), Value::Real(scalar)) => {
+            let tensor = lyobj_to_array(a)?;
             let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
             let result = tensor + &scalar_tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Scalar (Real) + Tensor
-        (Value::Real(scalar), Value::Tensor(tensor)) => {
+        (Value::Real(scalar), Value::LyObj(_)) => {
+            let tensor = lyobj_to_array(b)?;
             let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
             let result = &scalar_tensor + tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Tensor + Scalar (Integer - promote to Real)
+        (Value::LyObj(_), Value::Integer(int_val)) => {
+            let tensor = lyobj_to_array(a)?;
+            let scalar = *int_val as f64;
+            let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
+            let result = tensor + &scalar_tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Scalar (Integer) + Tensor
+        (Value::Integer(int_val), Value::LyObj(_)) => {
+            let tensor = lyobj_to_array(b)?;
+            let scalar = *int_val as f64;
+            let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
+            let result = &scalar_tensor + tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor + Tensor (ArrayD format - will be removed)
+        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
+            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
+            let result = &broadcast_a + &broadcast_b;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor + Scalar (Real)
+        (Value::Tensor(tensor), Value::Real(scalar)) => {
+            let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
+            let result = tensor + &scalar_tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Scalar (Real) + Tensor
+        (Value::Real(scalar), Value::Tensor(tensor)) => {
+            let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
+            let result = &scalar_tensor + tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor + Scalar (Integer - promote to Real)
         (Value::Tensor(tensor), Value::Integer(int_val)) => {
             let scalar = *int_val as f64;
             let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
             let result = tensor + &scalar_tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
-        // Scalar (Integer) + Tensor
+        // Legacy support: Scalar (Integer) + Tensor
         (Value::Integer(int_val), Value::Tensor(tensor)) => {
             let scalar = *int_val as f64;
             let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
             let result = &scalar_tensor + tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Mixed legacy + foreign combinations
+        (Value::Tensor(tensor_a), Value::LyObj(_)) => {
+            let tensor_b = lyobj_to_array(b)?;
+            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
+            let result = &broadcast_a + &broadcast_b;
+            Ok(array_to_lyobj(result))
+        }
+        
+        (Value::LyObj(_), Value::Tensor(tensor_b)) => {
+            let tensor_a = lyobj_to_array(a)?;
+            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
+            let result = &broadcast_a + &broadcast_b;
+            Ok(array_to_lyobj(result))
         }
         
         // All other combinations are type errors
@@ -357,41 +458,84 @@ pub fn tensor_add(a: &Value, b: &Value) -> VmResult<Value> {
 /// Returns the result of a - b where a and b can be tensors or scalars
 pub fn tensor_sub(a: &Value, b: &Value) -> VmResult<Value> {
     match (a, b) {
-        // Tensor - Tensor
-        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
+        // Tensor - Tensor (both foreign objects)
+        (Value::LyObj(_), Value::LyObj(_)) => {
+            let tensor_a = lyobj_to_array(a)?;
+            let tensor_b = lyobj_to_array(b)?;
             let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
             let result = &broadcast_a - &broadcast_b;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Tensor - Scalar (Real)
-        (Value::Tensor(tensor), Value::Real(scalar)) => {
+        (Value::LyObj(_), Value::Real(scalar)) => {
+            let tensor = lyobj_to_array(a)?;
             let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
             let result = tensor - &scalar_tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Scalar (Real) - Tensor
-        (Value::Real(scalar), Value::Tensor(tensor)) => {
+        (Value::Real(scalar), Value::LyObj(_)) => {
+            let tensor = lyobj_to_array(b)?;
             let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
             let result = &scalar_tensor - tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // Tensor - Scalar (Integer - promote to Real)
+        (Value::LyObj(_), Value::Integer(int_val)) => {
+            let tensor = lyobj_to_array(a)?;
+            let scalar = *int_val as f64;
+            let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
+            let result = tensor - &scalar_tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Scalar (Integer) - Tensor
+        (Value::Integer(int_val), Value::LyObj(_)) => {
+            let tensor = lyobj_to_array(b)?;
+            let scalar = *int_val as f64;
+            let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
+            let result = &scalar_tensor - tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor - Tensor (ArrayD format - will be removed)
+        (Value::Tensor(tensor_a), Value::Tensor(tensor_b)) => {
+            let (broadcast_a, broadcast_b) = broadcast_tensors(tensor_a, tensor_b)?;
+            let result = &broadcast_a - &broadcast_b;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor - Scalar (Real)
+        (Value::Tensor(tensor), Value::Real(scalar)) => {
+            let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
+            let result = tensor - &scalar_tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Scalar (Real) - Tensor
+        (Value::Real(scalar), Value::Tensor(tensor)) => {
+            let scalar_tensor = broadcast_scalar_to_tensor(*scalar, tensor);
+            let result = &scalar_tensor - tensor;
+            Ok(array_to_lyobj(result))
+        }
+        
+        // Legacy support: Tensor - Scalar (Integer - promote to Real)
         (Value::Tensor(tensor), Value::Integer(int_val)) => {
             let scalar = *int_val as f64;
             let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
             let result = tensor - &scalar_tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
-        // Scalar (Integer) - Tensor
+        // Legacy support: Scalar (Integer) - Tensor
         (Value::Integer(int_val), Value::Tensor(tensor)) => {
             let scalar = *int_val as f64;
             let scalar_tensor = broadcast_scalar_to_tensor(scalar, tensor);
             let result = &scalar_tensor - tensor;
-            Ok(Value::Tensor(result))
+            Ok(array_to_lyobj(result))
         }
         
         // All other combinations are type errors
