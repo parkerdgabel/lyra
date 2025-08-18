@@ -15,6 +15,7 @@ use crate::ast::{Expr, Pattern, Symbol, Number};
 use crate::vm::{Value, VmError, VmResult};
 use crate::pattern_matcher::{PatternMatcher, MatchResult};
 use std::collections::HashMap;
+use std::time::{Instant, Duration};
 
 /// Type of rule evaluation
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +61,70 @@ pub enum MathRuleType {
     Constant { value: i64 },
 }
 
+/// Rule performance statistics for intelligent ordering
+#[derive(Debug, Clone)]
+pub struct RuleStats {
+    /// Total number of times this rule was attempted
+    pub attempts: u64,
+    /// Total number of times this rule successfully matched
+    pub successes: u64,
+    /// Total time spent executing this rule
+    pub total_time: Duration,
+    /// Average execution time per attempt
+    pub avg_time: Duration,
+    /// Success rate (0.0 to 1.0)
+    pub success_rate: f64,
+    /// Priority score for ordering (higher = higher priority)
+    pub priority_score: f64,
+}
+
+impl Default for RuleStats {
+    fn default() -> Self {
+        Self {
+            attempts: 0,
+            successes: 0,
+            total_time: Duration::from_nanos(0),
+            avg_time: Duration::from_nanos(0),
+            success_rate: 0.0,
+            priority_score: 0.0,
+        }
+    }
+}
+
+impl RuleStats {
+    /// Update statistics after a rule execution
+    pub fn update(&mut self, matched: bool, execution_time: Duration) {
+        self.attempts += 1;
+        if matched {
+            self.successes += 1;
+        }
+        self.total_time += execution_time;
+        
+        // Recalculate derived statistics
+        self.avg_time = if self.attempts > 0 {
+            Duration::from_nanos(self.total_time.as_nanos() as u64 / self.attempts)
+        } else {
+            Duration::from_nanos(0)
+        };
+        
+        self.success_rate = if self.attempts > 0 {
+            self.successes as f64 / self.attempts as f64
+        } else {
+            0.0
+        };
+        
+        // Priority score: balance success rate and speed
+        // Higher success rate and lower execution time = higher priority
+        let speed_factor = if self.avg_time.as_nanos() > 0 {
+            1.0 / (self.avg_time.as_nanos() as f64 / 1000.0) // Convert to microseconds
+        } else {
+            1.0
+        };
+        
+        self.priority_score = self.success_rate * speed_factor * 1000.0; // Scale for readability
+    }
+}
+
 impl Rule {
     /// Create a new immediate rule (->)
     pub fn immediate(pattern: Pattern, replacement: Expr) -> Self {
@@ -93,6 +158,12 @@ pub struct RuleEngine {
     mathematical_rules: Vec<MathematicalRule>,
     /// User-defined rules added during runtime
     user_rules: Vec<Rule>,
+    /// Rule performance statistics for intelligent ordering
+    rule_stats: HashMap<usize, RuleStats>,
+    /// Enable/disable rule profiling and intelligent ordering
+    intelligent_ordering: bool,
+    /// Minimum attempts before reordering rules
+    reorder_threshold: u64,
 }
 
 impl RuleEngine {
@@ -104,6 +175,9 @@ impl RuleEngine {
             symbolic_rules: Vec::new(),
             mathematical_rules: Vec::new(),
             user_rules: Vec::new(),
+            rule_stats: HashMap::new(),
+            intelligent_ordering: true, // Enable by default
+            reorder_threshold: 10, // Reorder after 10 attempts
         };
         engine.initialize_symbolic_rules();
         engine
@@ -117,9 +191,38 @@ impl RuleEngine {
             symbolic_rules: Vec::new(),
             mathematical_rules: Vec::new(),
             user_rules: Vec::new(),
+            rule_stats: HashMap::new(),
+            intelligent_ordering: true,
+            reorder_threshold: 10,
         };
         engine.initialize_symbolic_rules();
         engine
+    }
+    
+    /// Create a rule engine with intelligent ordering disabled
+    pub fn without_intelligent_ordering() -> Self {
+        let mut engine = Self {
+            pattern_matcher: PatternMatcher::new(),
+            max_iterations: 1000,
+            symbolic_rules: Vec::new(),
+            mathematical_rules: Vec::new(),
+            user_rules: Vec::new(),
+            rule_stats: HashMap::new(),
+            intelligent_ordering: false,
+            reorder_threshold: 0,
+        };
+        engine.initialize_symbolic_rules();
+        engine
+    }
+    
+    /// Enable or disable intelligent rule ordering
+    pub fn set_intelligent_ordering(&mut self, enabled: bool) {
+        self.intelligent_ordering = enabled;
+    }
+    
+    /// Get rule statistics for analysis
+    pub fn get_rule_stats(&self) -> &HashMap<usize, RuleStats> {
+        &self.rule_stats
     }
     
     /// Initialize built-in mathematical simplification rules
@@ -645,7 +748,54 @@ impl RuleEngine {
     /// 
     /// Tries each rule in order until one matches and transforms the expression.
     /// This implements rule lists like {rule1, rule2, rule3}.
+    /// With intelligent ordering enabled, reorders rules based on success rate and performance.
     pub fn apply_rules(&mut self, expr: &Expr, rules: &[Rule]) -> VmResult<Expr> {
+        // If intelligent ordering is disabled, use original behavior
+        if !self.intelligent_ordering {
+            return self.apply_rules_original(expr, rules);
+        }
+        
+        // Create rule indices for tracking
+        let mut rule_indices: Vec<usize> = (0..rules.len()).collect();
+        
+        // Check if we should reorder rules based on statistics
+        let total_attempts: u64 = self.rule_stats.values().map(|s| s.attempts).sum();
+        if total_attempts >= self.reorder_threshold {
+            // Sort rules by priority score (highest first)
+            rule_indices.sort_by(|&a, &b| {
+                let score_a = self.rule_stats.get(&a).map(|s| s.priority_score).unwrap_or(0.0);
+                let score_b = self.rule_stats.get(&b).map(|s| s.priority_score).unwrap_or(0.0);
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        
+        // Apply rules in (potentially reordered) order
+        for &rule_index in &rule_indices {
+            let rule = &rules[rule_index];
+            let start_time = Instant::now();
+            
+            let result = self.apply_rule(expr, rule)?;
+            let execution_time = start_time.elapsed();
+            
+            let matched = !self.expressions_equal(expr, &result);
+            
+            // Update statistics
+            self.rule_stats.entry(rule_index)
+                .or_insert_with(RuleStats::default)
+                .update(matched, execution_time);
+            
+            // If rule transformed the expression, return the result
+            if matched {
+                return Ok(result);
+            }
+        }
+        
+        // No rule matched - return original expression
+        Ok(expr.clone())
+    }
+    
+    /// Original apply_rules implementation without intelligent ordering
+    fn apply_rules_original(&mut self, expr: &Expr, rules: &[Rule]) -> VmResult<Expr> {
         for rule in rules {
             let result = self.apply_rule(expr, rule)?;
             

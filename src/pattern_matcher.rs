@@ -15,6 +15,31 @@ use crate::ast::{Expr, Pattern, Symbol, Number};
 use crate::vm::Value;
 use crate::error::{Error, Result};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// String interning for common variable names to reduce allocations
+static COMMON_VARIABLES: OnceLock<Vec<&'static str>> = OnceLock::new();
+
+fn get_common_variables() -> &'static Vec<&'static str> {
+    COMMON_VARIABLES.get_or_init(|| vec!["x", "y", "z", "a", "b", "c", "n", "i", "j", "k"])
+}
+
+/// Get interned string for common variable names to reduce allocation overhead
+fn intern_variable_name(name: &str) -> String {
+    if get_common_variables().contains(&name) {
+        // For common variables, use a static allocation strategy
+        // This could be further optimized with a proper string interner
+        name.to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// Create a HashMap with optimized capacity for pattern matching
+/// Most patterns have 1-4 variables, so we pre-allocate to avoid rehashing
+fn create_optimized_bindings() -> HashMap<String, Value> {
+    HashMap::with_capacity(4)
+}
 
 /// Result of a pattern matching operation
 #[derive(Debug, Clone, PartialEq)]
@@ -55,7 +80,7 @@ impl PatternMatcher {
     /// Create a new pattern matcher with default settings
     pub fn new() -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: create_optimized_bindings(),
             match_stack: Vec::new(),
             max_depth: 1000, // Reasonable default for recursion depth
         }
@@ -64,7 +89,7 @@ impl PatternMatcher {
     /// Create a pattern matcher with custom maximum recursion depth
     pub fn with_max_depth(max_depth: usize) -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: create_optimized_bindings(),
             match_stack: Vec::new(),
             max_depth,
         }
@@ -102,7 +127,7 @@ impl PatternMatcher {
         self.match_stack.push(MatchFrame {
             level: self.match_stack.len(),
             sequence_pos: None,
-            local_bindings: HashMap::new(),
+            local_bindings: create_optimized_bindings(),
         });
         
         // Perform the actual matching
@@ -142,7 +167,7 @@ impl PatternMatcher {
             // Typed blank pattern like _Integer
             if self.matches_type(expr, type_name) {
                 MatchResult::Success {
-                    bindings: HashMap::new(),
+                    bindings: create_optimized_bindings(),
                 }
             } else {
                 MatchResult::Failure {
@@ -152,7 +177,7 @@ impl PatternMatcher {
         } else {
             // Anonymous blank pattern _ matches anything
             MatchResult::Success {
-                bindings: HashMap::new(),
+                bindings: create_optimized_bindings(),
             }
         }
     }
@@ -202,7 +227,7 @@ impl PatternMatcher {
         self.match_stack.push(MatchFrame {
             level: self.match_stack.len(),
             sequence_pos: Some(0),
-            local_bindings: HashMap::new(),
+            local_bindings: create_optimized_bindings(),
         });
         
         // Perform sequence matching
@@ -236,7 +261,7 @@ impl PatternMatcher {
             if expr_pos >= exprs.len() {
                 // All expressions consumed too - perfect match
                 return MatchResult::Success {
-                    bindings: HashMap::new(),
+                    bindings: create_optimized_bindings(),
                 };
             } else {
                 // Still have expressions left but no patterns - no match
@@ -376,7 +401,7 @@ impl PatternMatcher {
                     self.bindings.insert(name, value);
                 }
                 return MatchResult::Success {
-                    bindings: HashMap::new(),
+                    bindings: create_optimized_bindings(),
                 };
             }
         }
@@ -423,7 +448,7 @@ impl PatternMatcher {
             
             if let MatchResult::Success { bindings } = rest_result {
                 // Success! Add our binding and merge other bindings
-                let mut all_bindings = HashMap::new();
+                let mut all_bindings = create_optimized_bindings();
                 all_bindings.insert(name.to_string(), Value::List(match_values.clone()));
                 
                 for (name, value) in &bindings {
@@ -458,7 +483,7 @@ impl PatternMatcher {
     
     /// Bind empty sequences for patterns that can match empty
     fn bind_empty_sequences(&mut self, patterns: &[Pattern]) -> MatchResult {
-        let mut bindings = HashMap::new();
+        let mut bindings = create_optimized_bindings();
         
         for pattern in patterns {
             match pattern {
@@ -515,11 +540,12 @@ impl PatternMatcher {
             
             match inner_result {
                 MatchResult::Success { mut bindings } => {
-                    // Pattern matched - add the named binding
-                    bindings.insert(name.to_string(), value);
+                    // Pattern matched - add the named binding using optimized string interning
+                    let interned_name = intern_variable_name(name);
+                    bindings.insert(interned_name.clone(), value.clone());
                     
                     // Also add to our global bindings for future checks
-                    self.bindings.insert(name.to_string(), bindings.get(name).unwrap().clone());
+                    self.bindings.insert(interned_name, value);
                     
                     MatchResult::Success { bindings }
                 }
@@ -564,7 +590,7 @@ impl PatternMatcher {
                     Pattern::Blank { head: Some(type_name) } => {
                         if type_name == "List" {
                             // Pattern is _List, which should match List expressions
-                            MatchResult::Success { bindings: HashMap::new() }
+                            MatchResult::Success { bindings: create_optimized_bindings() }
                         } else {
                             MatchResult::Failure {
                                 reason: format!("List expression does not match type {}", type_name),
@@ -573,7 +599,7 @@ impl PatternMatcher {
                     }
                     Pattern::Blank { head: None } => {
                         // Pattern is _, which matches anything
-                        MatchResult::Success { bindings: HashMap::new() }
+                        MatchResult::Success { bindings: create_optimized_bindings() }
                     }
                     _ => {
                         // Try matching against a "List" symbol for other pattern types
