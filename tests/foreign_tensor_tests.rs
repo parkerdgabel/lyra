@@ -228,11 +228,11 @@ impl ForeignTensor {
                             self.shape[0], self.shape[1], other.shape[0]),
                     });
                 }
-                let self_2d = self.data.clone().into_dimensionality::<ndarray::Ix2>()
+                let self_2d = <ArrayD<f64> as Clone>::clone(&self.data).into_dimensionality::<ndarray::Ix2>()
                     .map_err(|e| TestForeignError::RuntimeError { 
                         message: format!("Failed to convert to 2D: {}", e) 
                     })?;
-                let other_1d = other.data.clone().into_dimensionality::<ndarray::Ix1>()
+                let other_1d = <ArrayD<f64> as Clone>::clone(&other.data).into_dimensionality::<ndarray::Ix1>()
                     .map_err(|e| TestForeignError::RuntimeError { 
                         message: format!("Failed to convert to 1D: {}", e) 
                     })?;
@@ -249,11 +249,11 @@ impl ForeignTensor {
                             self.shape[0], self.shape[1], other.shape[0], other.shape[1]),
                     });
                 }
-                let self_2d = self.data.clone().into_dimensionality::<ndarray::Ix2>()
+                let self_2d = <ArrayD<f64> as Clone>::clone(&self.data).into_dimensionality::<ndarray::Ix2>()
                     .map_err(|e| TestForeignError::RuntimeError { 
                         message: format!("Failed to convert to 2D: {}", e) 
                     })?;
-                let other_2d = other.data.clone().into_dimensionality::<ndarray::Ix2>()
+                let other_2d = <ArrayD<f64> as Clone>::clone(&other.data).into_dimensionality::<ndarray::Ix2>()
                     .map_err(|e| TestForeignError::RuntimeError { 
                         message: format!("Failed to convert to 2D: {}", e) 
                     })?;

@@ -188,7 +188,6 @@ impl ForeignDataset {
         
         let parts: Vec<&str> = path.split('.').collect();
         let mut current_value = current;
-        let mut owned_value: Option<TestValue> = None;
         
         for part in parts {
             // Handle array indexing like "items[0]"
@@ -201,7 +200,7 @@ impl ForeignDataset {
                 })?;
                 
                 // Navigate to the key first
-                current_value = match current_value {
+                let key_value = match current_value {
                     TestValue::Object(obj) => obj.get(key).ok_or_else(|| VmError::TypeError {
                         expected: format!("key '{}'", key),
                         actual: "key not found".to_string(),
@@ -213,22 +212,16 @@ impl ForeignDataset {
                 };
                 
                 // Then navigate to the index
-                current_value = match current_value {
+                current_value = match key_value {
                     TestValue::List(list) => list.get(index).ok_or_else(|| VmError::TypeError {
                         expected: format!("index {} to be valid", index),
                         actual: format!("list has {} elements", list.len()),
                     })?,
                     _ => return Err(VmError::TypeError {
                         expected: "list".to_string(),
-                        actual: format!("{:?}", current_value),
+                        actual: format!("{:?}", key_value),
                     }),
                 };
-                
-                // Store owned value for next iteration
-                owned_value = Some(current_value.clone());
-                if let Some(ref owned) = owned_value {
-                    current_value = owned;
-                }
             } else {
                 // Regular key navigation
                 current_value = match current_value {
@@ -241,11 +234,6 @@ impl ForeignDataset {
                         actual: format!("{:?}", current_value),
                     }),
                 };
-                
-                owned_value = Some(current_value.clone());
-                if let Some(ref owned) = owned_value {
-                    current_value = owned;
-                }
             }
         }
         
