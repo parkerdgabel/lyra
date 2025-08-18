@@ -5,6 +5,7 @@ pub mod error;
 pub mod foreign;
 pub mod format;
 pub mod lexer;
+pub mod linker;
 pub mod parser;
 pub mod stdlib;
 pub mod vm;

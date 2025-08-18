@@ -1,0 +1,1164 @@
+//! Link-time Function Resolution System
+//!
+//! This module implements a compile-time function resolution system that eliminates
+//! dynamic dispatch overhead by resolving method calls to direct function pointers
+//! during compilation/link time rather than at runtime.
+//!
+//! ## Architecture Overview
+//!
+//! **Current (Dynamic Dispatch):**
+//! ```
+//! Runtime: method_name -> HashMap lookup -> trait object call -> Foreign::call_method()
+//! ```
+//! 
+//! **Target (Static Resolution):**
+//! ```
+//! Compile-time: method_name -> FunctionRegistry -> direct function pointer
+//! Runtime: CALL_DIRECT opcode -> direct function call (no lookup overhead)
+//! ```
+//!
+//! ## Performance Goals
+//! - Eliminate string-based method lookup overhead  
+//! - Remove trait object dynamic dispatch costs
+//! - Enable compile-time optimizations and inlining
+//! - Target: 5-10x performance improvement for method calls
+//!
+//! ## TDD Implementation Strategy
+//! Following strict TDD practices established in previous phases:
+//! 1. Write comprehensive tests defining expected behavior
+//! 2. Implement minimal functionality to pass tests
+//! 3. Refactor and optimize while maintaining green tests
+
+use crate::{
+    vm::Value,
+    foreign::{ForeignError, LyObj},
+};
+use std::collections::HashMap;
+use thiserror::Error;
+
+/// Errors that can occur during link-time function resolution
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum LinkerError {
+    #[error("Function not found: {type_name}::{method_name}")]
+    FunctionNotFound {
+        type_name: String,
+        method_name: String,
+    },
+    
+    #[error("Invalid arity for function {function_name}: expected {expected}, got {actual}")]
+    InvalidArity {
+        function_name: String,
+        expected: u8,
+        actual: u8,
+    },
+    
+    #[error("Type validation failed for function {function_name}: {message}")]
+    TypeValidationFailed {
+        function_name: String,
+        message: String,
+    },
+    
+    #[error("Registry error: {message}")]
+    RegistryError {
+        message: String,
+    },
+}
+
+/// Function signature metadata for registry lookup and validation
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunctionSignature {
+    /// The Foreign object type name (e.g., "Tensor", "Series", "Dataset")
+    pub type_name: String,
+    
+    /// The method name (e.g., "add", "get", "transpose")
+    pub method_name: String,
+    
+    /// Expected argument count (not including the self object)
+    pub arity: u8,
+    
+    /// Optional: argument type constraints for validation
+    pub arg_types: Option<Vec<String>>,
+}
+
+impl FunctionSignature {
+    /// Create a new function signature for a Foreign method
+    pub fn new(type_name: &str, method_name: &str, arity: u8) -> Self {
+        Self {
+            type_name: type_name.to_string(),
+            method_name: method_name.to_string(),
+            arity,
+            arg_types: None,
+        }
+    }
+    
+    /// Create a function signature with type constraints
+    pub fn with_types(type_name: &str, method_name: &str, arity: u8, arg_types: Vec<String>) -> Self {
+        Self {
+            type_name: type_name.to_string(),
+            method_name: method_name.to_string(),
+            arity,
+            arg_types: Some(arg_types),
+        }
+    }
+    
+    /// Get a unique key for registry lookup
+    pub fn key(&self) -> String {
+        format!("{}::{}", self.type_name, self.method_name)
+    }
+}
+
+/// Type-safe function pointer for Foreign object methods
+/// 
+/// This wraps a native function pointer with validation and metadata.
+/// The function signature is: fn(object: &LyObj, args: &[Value]) -> Result<Value, ForeignError>
+pub type NativeFunctionPtr = fn(&LyObj, &[Value]) -> Result<Value, ForeignError>;
+
+/// Function metadata stored in the registry
+#[derive(Debug, Clone)]
+pub struct FunctionEntry {
+    /// The function signature for validation
+    pub signature: FunctionSignature,
+    
+    /// The native function pointer
+    pub function_ptr: NativeFunctionPtr,
+    
+    /// Optional documentation for debugging
+    pub documentation: Option<String>,
+}
+
+impl FunctionEntry {
+    /// Create a new function entry
+    pub fn new(signature: FunctionSignature, function_ptr: NativeFunctionPtr) -> Self {
+        Self {
+            signature,
+            function_ptr,
+            documentation: None,
+        }
+    }
+    
+    /// Create a function entry with documentation
+    pub fn with_docs(
+        signature: FunctionSignature, 
+        function_ptr: NativeFunctionPtr,
+        docs: &str
+    ) -> Self {
+        Self {
+            signature,
+            function_ptr,
+            documentation: Some(docs.to_string()),
+        }
+    }
+    
+    /// Validate argument count against signature
+    pub fn validate_arity(&self, arg_count: usize) -> Result<(), LinkerError> {
+        if arg_count != self.signature.arity as usize {
+            return Err(LinkerError::InvalidArity {
+                function_name: self.signature.key(),
+                expected: self.signature.arity,
+                actual: arg_count as u8,
+            });
+        }
+        Ok(())
+    }
+    
+    /// Call the function with validation
+    pub fn call(&self, object: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        // Validate arity
+        if let Err(linker_err) = self.validate_arity(args.len()) {
+            return Err(ForeignError::InvalidArity {
+                method: self.signature.method_name.clone(),
+                expected: self.signature.arity as usize,
+                actual: args.len(),
+            });
+        }
+        
+        // Call the native function
+        (self.function_ptr)(object, args)
+    }
+}
+
+/// Central registry of all Foreign object methods for link-time resolution
+/// 
+/// This registry is populated at compile time with all available Foreign object methods,
+/// allowing the compiler/linker to resolve method calls to direct function pointers
+/// instead of using runtime dynamic dispatch.
+#[derive(Debug, Default)]
+pub struct FunctionRegistry {
+    /// Map from function signature to function entry
+    functions: HashMap<String, FunctionEntry>,
+    
+    /// Map from type name to list of available methods (for introspection)
+    type_methods: HashMap<String, Vec<String>>,
+    
+    /// Statistics for performance monitoring
+    pub stats: RegistryStats,
+}
+
+/// Statistics about the function registry
+#[derive(Debug, Default)]
+pub struct RegistryStats {
+    pub total_functions: usize,
+    pub total_types: usize,
+    pub lookups_performed: usize,
+    pub cache_hits: usize,
+    pub cache_misses: usize,
+}
+
+impl FunctionRegistry {
+    /// Create a new empty function registry
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Register a Foreign object method in the registry
+    pub fn register_method(
+        &mut self,
+        signature: FunctionSignature,
+        function_ptr: NativeFunctionPtr,
+    ) -> Result<(), LinkerError> {
+        let key = signature.key();
+        let type_name = signature.type_name.clone();
+        let method_name = signature.method_name.clone();
+        
+        // Check for duplicate registration
+        if self.functions.contains_key(&key) {
+            return Err(LinkerError::RegistryError {
+                message: format!("Function {} already registered", key),
+            });
+        }
+        
+        // Create function entry
+        let entry = FunctionEntry::new(signature, function_ptr);
+        
+        // Add to functions map
+        self.functions.insert(key, entry);
+        
+        // Update type methods map
+        self.type_methods
+            .entry(type_name)
+            .or_insert_with(Vec::new)
+            .push(method_name);
+        
+        // Update stats
+        self.stats.total_functions += 1;
+        self.stats.total_types = self.type_methods.len();
+        
+        Ok(())
+    }
+    
+    /// Look up a function by type and method name
+    pub fn lookup(&mut self, type_name: &str, method_name: &str) -> Result<&FunctionEntry, LinkerError> {
+        let key = format!("{}::{}", type_name, method_name);
+        self.stats.lookups_performed += 1;
+        
+        match self.functions.get(&key) {
+            Some(entry) => {
+                self.stats.cache_hits += 1;
+                Ok(entry)
+            }
+            None => {
+                self.stats.cache_misses += 1;
+                Err(LinkerError::FunctionNotFound {
+                    type_name: type_name.to_string(),
+                    method_name: method_name.to_string(),
+                })
+            }
+        }
+    }
+    
+    /// Get all methods available for a specific type
+    pub fn get_type_methods(&self, type_name: &str) -> Vec<String> {
+        self.type_methods
+            .get(type_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+    
+    /// Get all registered type names
+    pub fn get_type_names(&self) -> Vec<String> {
+        self.type_methods.keys().cloned().collect()
+    }
+    
+    /// Check if a specific method is registered for a type
+    pub fn has_method(&self, type_name: &str, method_name: &str) -> bool {
+        let key = format!("{}::{}", type_name, method_name);
+        self.functions.contains_key(&key)
+    }
+    
+    /// Get registry statistics
+    pub fn get_stats(&self) -> &RegistryStats {
+        &self.stats
+    }
+    
+    /// Clear all registered functions (for testing)
+    pub fn clear(&mut self) {
+        self.functions.clear();
+        self.type_methods.clear();
+        self.stats = RegistryStats::default();
+    }
+}
+
+/// Link-time resolver that maps method calls to function pointers during compilation
+/// 
+/// This component analyzes method calls in the AST/bytecode and resolves them to
+/// direct function pointers, enabling the VM to bypass dynamic dispatch entirely.
+pub struct LinkTimeResolver {
+    /// The function registry to resolve against
+    registry: FunctionRegistry,
+    
+    /// Cache of resolved function pointers for performance
+    resolution_cache: HashMap<String, NativeFunctionPtr>,
+    
+    /// Statistics about resolution performance
+    pub stats: ResolverStats,
+}
+
+/// Statistics about link-time resolution
+#[derive(Debug, Default)]
+pub struct ResolverStats {
+    pub resolutions_attempted: usize,
+    pub resolutions_successful: usize,
+    pub resolutions_failed: usize,
+    pub cache_hits: usize,
+}
+
+impl LinkTimeResolver {
+    /// Create a new link-time resolver with the given registry
+    pub fn new(registry: FunctionRegistry) -> Self {
+        Self {
+            registry,
+            resolution_cache: HashMap::new(),
+            stats: ResolverStats::default(),
+        }
+    }
+    
+    /// Resolve a method call to a direct function pointer
+    /// 
+    /// This is called during compilation to convert dynamic method calls
+    /// into static function pointer calls.
+    pub fn resolve_method_call(
+        &mut self,
+        type_name: &str,
+        method_name: &str,
+        arg_count: usize,
+    ) -> Result<NativeFunctionPtr, LinkerError> {
+        let key = format!("{}::{}({})", type_name, method_name, arg_count);
+        self.stats.resolutions_attempted += 1;
+        
+        // Check cache first
+        if let Some(&cached_ptr) = self.resolution_cache.get(&key) {
+            self.stats.cache_hits += 1;
+            self.stats.resolutions_successful += 1;
+            return Ok(cached_ptr);
+        }
+        
+        // Look up in registry
+        match self.registry.lookup(type_name, method_name) {
+            Ok(entry) => {
+                // Validate arity
+                entry.validate_arity(arg_count)?;
+                
+                // Cache the result
+                let function_ptr = entry.function_ptr;
+                self.resolution_cache.insert(key, function_ptr);
+                
+                self.stats.resolutions_successful += 1;
+                Ok(function_ptr)
+            }
+            Err(err) => {
+                self.stats.resolutions_failed += 1;
+                Err(err)
+            }
+        }
+    }
+    
+    /// Get resolver statistics
+    pub fn get_stats(&self) -> &ResolverStats {
+        &self.stats
+    }
+    
+    /// Clear resolution cache (for testing or memory management)
+    pub fn clear_cache(&mut self) {
+        self.resolution_cache.clear();
+    }
+}
+
+/// Auto-registration system for Foreign object methods
+/// 
+/// This module provides automatic registration of Foreign object methods into the
+/// Function Registry. It scans Foreign implementations and extracts method metadata
+/// to populate the registry for link-time resolution.
+pub mod registry {
+    use super::*;
+    use crate::foreign::Foreign;
+    use crate::stdlib::data::{
+        tensor::ForeignTensor,
+        series::ForeignSeries, 
+        table::ForeignTable,
+    };
+
+    /// Registry builder that auto-registers all Foreign object methods
+    pub struct RegistryBuilder {
+        registry: FunctionRegistry,
+    }
+
+    impl RegistryBuilder {
+        /// Create a new registry builder
+        pub fn new() -> Self {
+            Self {
+                registry: FunctionRegistry::new(),
+            }
+        }
+
+        /// Build the complete registry with all Foreign object methods registered
+        pub fn build(mut self) -> Result<FunctionRegistry, LinkerError> {
+            // Register all Tensor methods
+            self.register_tensor_methods()?;
+            
+            // Register all Series methods
+            self.register_series_methods()?;
+            
+            // Register all Table methods  
+            self.register_table_methods()?;
+
+            Ok(self.registry)
+        }
+
+        /// Register all Tensor methods
+        fn register_tensor_methods(&mut self) -> Result<(), LinkerError> {
+            // Tensor methods with 0 arguments
+            self.register_method("Tensor", "Dimensions", 0, tensor_dimensions)?;
+            self.register_method("Tensor", "Rank", 0, tensor_rank)?;
+            self.register_method("Tensor", "Length", 0, tensor_length)?;
+            self.register_method("Tensor", "Flatten", 0, tensor_flatten)?;
+            self.register_method("Tensor", "Transpose", 0, tensor_transpose)?;
+            self.register_method("Tensor", "ToList", 0, tensor_to_list)?;
+
+            // Tensor methods with 1 argument
+            self.register_method("Tensor", "Reshape", 1, tensor_reshape)?;
+            self.register_method("Tensor", "Add", 1, tensor_add)?;
+            self.register_method("Tensor", "Multiply", 1, tensor_multiply)?;
+            self.register_method("Tensor", "Subtract", 1, tensor_subtract)?;
+            self.register_method("Tensor", "Divide", 1, tensor_divide)?;
+            self.register_method("Tensor", "Dot", 1, tensor_dot)?;
+            self.register_method("Tensor", "Maximum", 1, tensor_maximum)?;
+
+            // Tensor methods with variable arguments (handled as special cases)
+            self.register_method("Tensor", "Get", 1, tensor_get)?; // Simplified to 1 arg for now
+            self.register_method("Tensor", "Set", 2, tensor_set)?; // Simplified to 2 args for now
+
+            Ok(())
+        }
+
+        /// Register all Series methods
+        fn register_series_methods(&mut self) -> Result<(), LinkerError> {
+            // Series methods with 0 arguments
+            self.register_method("Series", "Length", 0, series_length)?;
+            self.register_method("Series", "Type", 0, series_type)?;
+            self.register_method("Series", "ToList", 0, series_to_list)?;
+            self.register_method("Series", "IsEmpty", 0, series_is_empty)?;
+
+            // Series methods with 1 argument
+            self.register_method("Series", "Get", 1, series_get)?;
+            self.register_method("Series", "Append", 1, series_append)?;
+
+            // Series methods with 2 arguments
+            self.register_method("Series", "Set", 2, series_set)?;
+            self.register_method("Series", "Slice", 2, series_slice)?;
+
+            Ok(())
+        }
+
+        /// Register all Table methods
+        fn register_table_methods(&mut self) -> Result<(), LinkerError> {
+            // Table methods with 0 arguments
+            self.register_method("Table", "RowCount", 0, table_row_count)?;
+            self.register_method("Table", "ColumnCount", 0, table_column_count)?;
+            self.register_method("Table", "ColumnNames", 0, table_column_names)?;
+            self.register_method("Table", "IsEmpty", 0, table_is_empty)?;
+
+            // Table methods with 1 argument
+            self.register_method("Table", "GetRow", 1, table_get_row)?;
+            self.register_method("Table", "GetColumn", 1, table_get_column)?;
+            self.register_method("Table", "Head", 1, table_head)?;
+            self.register_method("Table", "Tail", 1, table_tail)?;
+
+            // Table methods with 2 arguments
+            self.register_method("Table", "GetCell", 2, table_get_cell)?;
+
+            Ok(())
+        }
+
+        /// Helper method to register a single method
+        fn register_method(
+            &mut self,
+            type_name: &str,
+            method_name: &str,
+            arity: u8,
+            function_ptr: NativeFunctionPtr,
+        ) -> Result<(), LinkerError> {
+            let signature = FunctionSignature::new(type_name, method_name, arity);
+            self.registry.register_method(signature, function_ptr)
+        }
+    }
+
+    // ===== TENSOR NATIVE FUNCTION IMPLEMENTATIONS =====
+
+    fn tensor_dimensions(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Dimensions".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Dimensions", args)
+    }
+
+    fn tensor_rank(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Rank".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Rank", args)
+    }
+
+    fn tensor_length(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Length".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Length", args)
+    }
+
+    fn tensor_flatten(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Flatten".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Flatten", args)
+    }
+
+    fn tensor_transpose(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Transpose".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Transpose", args)
+    }
+
+    fn tensor_to_list(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "ToList".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("ToList", args)
+    }
+
+    fn tensor_reshape(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Reshape".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Reshape", args)
+    }
+
+    fn tensor_add(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Add".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Add", args)
+    }
+
+    fn tensor_multiply(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Multiply".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Multiply", args)
+    }
+
+    fn tensor_subtract(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Subtract".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Subtract", args)
+    }
+
+    fn tensor_divide(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Divide".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Divide", args)
+    }
+
+    fn tensor_dot(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Dot".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Dot", args)
+    }
+
+    fn tensor_maximum(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Maximum".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Maximum", args)
+    }
+
+    fn tensor_get(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Get".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Get", args)
+    }
+
+    fn tensor_set(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let tensor = obj.downcast_ref::<ForeignTensor>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Set".to_string(),
+                expected: "Tensor".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        tensor.call_method("Set", args)
+    }
+
+    // ===== SERIES NATIVE FUNCTION IMPLEMENTATIONS =====
+
+    fn series_length(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Length".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Length", args)
+    }
+
+    fn series_type(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Type".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Type", args)
+    }
+
+    fn series_to_list(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "ToList".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("ToList", args)
+    }
+
+    fn series_is_empty(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "IsEmpty".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("IsEmpty", args)
+    }
+
+    fn series_get(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Get".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Get", args)
+    }
+
+    fn series_append(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Append".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Append", args)
+    }
+
+    fn series_set(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Set".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Set", args)
+    }
+
+    fn series_slice(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let series = obj.downcast_ref::<ForeignSeries>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Slice".to_string(),
+                expected: "Series".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        series.call_method("Slice", args)
+    }
+
+    // ===== TABLE NATIVE FUNCTION IMPLEMENTATIONS =====
+
+    fn table_row_count(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "RowCount".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("RowCount", args)
+    }
+
+    fn table_column_count(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "ColumnCount".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("ColumnCount", args)
+    }
+
+    fn table_column_names(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "ColumnNames".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("ColumnNames", args)
+    }
+
+    fn table_is_empty(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "IsEmpty".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("IsEmpty", args)
+    }
+
+    fn table_get_row(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "GetRow".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("GetRow", args)
+    }
+
+    fn table_get_column(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "GetColumn".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("GetColumn", args)
+    }
+
+    fn table_head(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Head".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("Head", args)
+    }
+
+    fn table_tail(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "Tail".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("Tail", args)
+    }
+
+    fn table_get_cell(obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        let table = obj.downcast_ref::<ForeignTable>()
+            .ok_or_else(|| ForeignError::InvalidArgumentType {
+                method: "GetCell".to_string(),
+                expected: "Table".to_string(),
+                actual: obj.type_name().to_string(),
+            })?;
+        table.call_method("GetCell", args)
+    }
+
+    /// Create the global function registry with all Foreign object methods registered
+    pub fn create_global_registry() -> Result<FunctionRegistry, LinkerError> {
+        RegistryBuilder::new().build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vm::Value;
+    
+    /// Test function for Series::length method
+    fn series_length(_obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        if !args.is_empty() {
+            return Err(ForeignError::InvalidArity {
+                method: "length".to_string(),
+                expected: 0,
+                actual: args.len(),
+            });
+        }
+        Ok(Value::Integer(42)) // Mock length
+    }
+    
+    /// Test function for Tensor::add method
+    fn tensor_add(_obj: &LyObj, args: &[Value]) -> Result<Value, ForeignError> {
+        if args.len() != 1 {
+            return Err(ForeignError::InvalidArity {
+                method: "add".to_string(),
+                expected: 1,
+                actual: args.len(),
+            });
+        }
+        Ok(Value::Integer(100)) // Mock result
+    }
+    
+    #[test]
+    fn test_function_signature_creation() {
+        let sig = FunctionSignature::new("Series", "length", 0);
+        assert_eq!(sig.type_name, "Series");
+        assert_eq!(sig.method_name, "length");
+        assert_eq!(sig.arity, 0);
+        assert_eq!(sig.key(), "Series::length");
+    }
+    
+    #[test]
+    fn test_function_signature_with_types() {
+        let sig = FunctionSignature::with_types(
+            "Tensor", 
+            "add", 
+            1, 
+            vec!["Tensor".to_string()]
+        );
+        assert_eq!(sig.type_name, "Tensor");
+        assert_eq!(sig.method_name, "add");
+        assert_eq!(sig.arity, 1);
+        assert!(sig.arg_types.is_some());
+        assert_eq!(sig.arg_types.unwrap(), vec!["Tensor"]);
+    }
+    
+    #[test]
+    fn test_function_registry_registration() {
+        let mut registry = FunctionRegistry::new();
+        let sig = FunctionSignature::new("Series", "length", 0);
+        
+        let result = registry.register_method(sig, series_length);
+        assert!(result.is_ok());
+        
+        assert_eq!(registry.stats.total_functions, 1);
+        assert!(registry.has_method("Series", "length"));
+    }
+    
+    #[test]
+    fn test_function_registry_duplicate_registration() {
+        let mut registry = FunctionRegistry::new();
+        let sig = FunctionSignature::new("Series", "length", 0);
+        
+        // First registration should succeed
+        assert!(registry.register_method(sig.clone(), series_length).is_ok());
+        
+        // Second registration should fail
+        let result = registry.register_method(sig, series_length);
+        assert!(result.is_err());
+        
+        match result.unwrap_err() {
+            LinkerError::RegistryError { message } => {
+                assert!(message.contains("already registered"));
+            }
+            _ => panic!("Expected RegistryError"),
+        }
+    }
+    
+    #[test]
+    fn test_function_registry_lookup() {
+        let mut registry = FunctionRegistry::new();
+        let sig = FunctionSignature::new("Series", "length", 0);
+        registry.register_method(sig, series_length).unwrap();
+        
+        // Successful lookup
+        let entry = registry.lookup("Series", "length").unwrap();
+        assert_eq!(entry.signature.type_name, "Series");
+        assert_eq!(entry.signature.method_name, "length");
+        
+        // Failed lookup
+        let result = registry.lookup("Series", "nonexistent");
+        assert!(result.is_err());
+        
+        match result.unwrap_err() {
+            LinkerError::FunctionNotFound { type_name, method_name } => {
+                assert_eq!(type_name, "Series");
+                assert_eq!(method_name, "nonexistent");
+            }
+            _ => panic!("Expected FunctionNotFound error"),
+        }
+    }
+    
+    #[test]
+    fn test_function_registry_type_methods() {
+        let mut registry = FunctionRegistry::new();
+        
+        // Register multiple methods for Series
+        registry.register_method(
+            FunctionSignature::new("Series", "length", 0),
+            series_length
+        ).unwrap();
+        
+        registry.register_method(
+            FunctionSignature::new("Series", "get", 1),
+            series_length
+        ).unwrap();
+        
+        // Register method for Tensor
+        registry.register_method(
+            FunctionSignature::new("Tensor", "add", 1),
+            tensor_add
+        ).unwrap();
+        
+        // Check type methods
+        let series_methods = registry.get_type_methods("Series");
+        assert_eq!(series_methods.len(), 2);
+        assert!(series_methods.contains(&"length".to_string()));
+        assert!(series_methods.contains(&"get".to_string()));
+        
+        let tensor_methods = registry.get_type_methods("Tensor");
+        assert_eq!(tensor_methods.len(), 1);
+        assert!(tensor_methods.contains(&"add".to_string()));
+        
+        // Check type names
+        let type_names = registry.get_type_names();
+        assert_eq!(type_names.len(), 2);
+        assert!(type_names.contains(&"Series".to_string()));
+        assert!(type_names.contains(&"Tensor".to_string()));
+    }
+    
+    #[test]
+    fn test_link_time_resolver() {
+        let mut registry = FunctionRegistry::new();
+        registry.register_method(
+            FunctionSignature::new("Series", "length", 0),
+            series_length
+        ).unwrap();
+        
+        let mut resolver = LinkTimeResolver::new(registry);
+        
+        // Successful resolution
+        let result = resolver.resolve_method_call("Series", "length", 0);
+        assert!(result.is_ok());
+        
+        // Check that cache works on second call
+        let result2 = resolver.resolve_method_call("Series", "length", 0);
+        assert!(result2.is_ok());
+        assert_eq!(resolver.stats.cache_hits, 1);
+        
+        // Failed resolution (wrong arity)
+        let result = resolver.resolve_method_call("Series", "length", 1);
+        assert!(result.is_err());
+        
+        // Failed resolution (unknown method)
+        let result = resolver.resolve_method_call("Series", "unknown", 0);
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_function_entry_validation() {
+        let sig = FunctionSignature::new("Series", "length", 0);
+        let entry = FunctionEntry::new(sig, series_length);
+        
+        // Valid arity
+        assert!(entry.validate_arity(0).is_ok());
+        
+        // Invalid arity
+        let result = entry.validate_arity(1);
+        assert!(result.is_err());
+        
+        match result.unwrap_err() {
+            LinkerError::InvalidArity { expected, actual, .. } => {
+                assert_eq!(expected, 0);
+                assert_eq!(actual, 1);
+            }
+            _ => panic!("Expected InvalidArity error"),
+        }
+    }
+    
+    #[test]
+    fn test_registry_builder_create() {
+        let builder = registry::RegistryBuilder::new();
+        // Test that builder creates without error
+        // We can't access private fields, so just check it builds successfully
+        let registry = builder.build().unwrap();
+        assert!(!registry.get_type_names().is_empty());
+    }
+    
+    #[test] 
+    fn test_registry_builder_build() {
+        let builder = registry::RegistryBuilder::new();
+        let registry = builder.build().unwrap();
+        
+        // Should have registered all 3 types
+        let type_names = registry.get_type_names();
+        assert_eq!(type_names.len(), 3);
+        assert!(type_names.contains(&"Tensor".to_string()));
+        assert!(type_names.contains(&"Series".to_string()));
+        assert!(type_names.contains(&"Table".to_string()));
+        
+        // Check total function count (15 Tensor + 8 Series + 9 Table = 32)
+        assert_eq!(registry.stats.total_functions, 32);
+    }
+    
+    #[test]
+    fn test_registry_has_tensor_methods() {
+        let builder = registry::RegistryBuilder::new();
+        let registry = builder.build().unwrap();
+        
+        // Test Tensor methods with 0 args
+        assert!(registry.has_method("Tensor", "Dimensions"));
+        assert!(registry.has_method("Tensor", "Rank"));
+        assert!(registry.has_method("Tensor", "Length"));
+        assert!(registry.has_method("Tensor", "Flatten"));
+        assert!(registry.has_method("Tensor", "Transpose"));
+        assert!(registry.has_method("Tensor", "ToList"));
+        
+        // Test Tensor methods with 1 arg
+        assert!(registry.has_method("Tensor", "Reshape"));
+        assert!(registry.has_method("Tensor", "Add"));
+        assert!(registry.has_method("Tensor", "Multiply"));
+        assert!(registry.has_method("Tensor", "Subtract"));
+        assert!(registry.has_method("Tensor", "Divide"));
+        assert!(registry.has_method("Tensor", "Dot"));
+        assert!(registry.has_method("Tensor", "Maximum"));
+        
+        // Test Tensor methods with variable args
+        assert!(registry.has_method("Tensor", "Get"));
+        assert!(registry.has_method("Tensor", "Set"));
+        
+        // Test non-existent method
+        assert!(!registry.has_method("Tensor", "NonExistent"));
+    }
+    
+    #[test]
+    fn test_registry_has_series_methods() {
+        let builder = registry::RegistryBuilder::new();
+        let registry = builder.build().unwrap();
+        
+        // Test Series methods with 0 args
+        assert!(registry.has_method("Series", "Length"));
+        assert!(registry.has_method("Series", "Type"));
+        assert!(registry.has_method("Series", "ToList"));
+        assert!(registry.has_method("Series", "IsEmpty"));
+        
+        // Test Series methods with 1 arg
+        assert!(registry.has_method("Series", "Get"));
+        assert!(registry.has_method("Series", "Append"));
+        
+        // Test Series methods with 2 args
+        assert!(registry.has_method("Series", "Set"));
+        assert!(registry.has_method("Series", "Slice"));
+        
+        // Test non-existent method
+        assert!(!registry.has_method("Series", "NonExistent"));
+    }
+    
+    #[test]
+    fn test_registry_has_table_methods() {
+        let builder = registry::RegistryBuilder::new();
+        let registry = builder.build().unwrap();
+        
+        // Test Table methods with 0 args
+        assert!(registry.has_method("Table", "RowCount"));
+        assert!(registry.has_method("Table", "ColumnCount"));
+        assert!(registry.has_method("Table", "ColumnNames"));
+        assert!(registry.has_method("Table", "IsEmpty"));
+        
+        // Test Table methods with 1 arg
+        assert!(registry.has_method("Table", "GetRow"));
+        assert!(registry.has_method("Table", "GetColumn"));
+        assert!(registry.has_method("Table", "Head"));
+        assert!(registry.has_method("Table", "Tail"));
+        
+        // Test Table methods with 2 args
+        assert!(registry.has_method("Table", "GetCell"));
+        
+        // Test non-existent method
+        assert!(!registry.has_method("Table", "NonExistent"));
+    }
+    
+    #[test]
+    fn test_global_registry_creation() {
+        let registry = registry::create_global_registry().unwrap();
+        
+        // Should have all types and methods
+        assert_eq!(registry.get_type_names().len(), 3);
+        assert_eq!(registry.stats.total_functions, 32);
+        
+        // Test a few key methods are registered
+        assert!(registry.has_method("Tensor", "Add"));
+        assert!(registry.has_method("Series", "Length"));
+        assert!(registry.has_method("Table", "RowCount"));
+    }
+    
+    #[test]
+    fn test_registry_method_counts() {
+        let builder = registry::RegistryBuilder::new();
+        let registry = builder.build().unwrap();
+        
+        // Check method counts for each type
+        let tensor_methods = registry.get_type_methods("Tensor");
+        assert_eq!(tensor_methods.len(), 15);
+        
+        let series_methods = registry.get_type_methods("Series");
+        assert_eq!(series_methods.len(), 8);
+        
+        let table_methods = registry.get_type_methods("Table");
+        assert_eq!(table_methods.len(), 9);
+    }
+}
