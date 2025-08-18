@@ -365,8 +365,29 @@ impl Compiler {
             }
         }
 
-        // Unknown function
-        Err(CompilerError::UnknownFunction(format!("{:?}", head)))
+        // Handle unknown functions as symbolic expressions (for symbolic computation)
+        // Create a symbolic function representation
+        if let Expr::Symbol(sym) = head {
+            // Compile arguments first
+            for arg in args {
+                self.compile_expr(arg)?;
+            }
+            
+            // Create a Function value representing the symbolic function call
+            let function_repr = if args.is_empty() {
+                sym.name.clone() // f becomes "f"
+            } else {
+                format!("{}[{}]", sym.name, "...".repeat(args.len())) // f[x,y] becomes "f[..,..]"
+            };
+            
+            // Store the symbolic function as a Function value
+            let const_index = self.context.add_constant(Value::Function(function_repr))?;
+            self.context.emit(OpCode::LDC, const_index as u32)?;
+            
+            Ok(())
+        } else {
+            Err(CompilerError::UnknownFunction(format!("{:?}", head)))
+        }
     }
 
     /// Compile a method call (obj.Method[args] syntax) using unified registry
