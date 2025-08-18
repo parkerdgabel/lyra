@@ -1,21 +1,21 @@
 use crate::{
     foreign::LyObj,
-    stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor},
-    vm::{Value, Table, Series, SeriesType, VmError, VmResult},
+    stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor, SeriesType},
+    vm::{Value, VmError, VmResult},
 };
 use std::collections::HashMap;
 
 /// GroupBy - handles grouped operations on tables
 #[derive(Debug, Clone)]
 pub struct GroupBy {
-    pub table: Table,
+    pub table: ForeignTable,
     pub group_columns: Vec<String>,
     pub groups: HashMap<Vec<Value>, Vec<usize>>, // group_key -> row_indices
 }
 
 impl GroupBy {
     /// Create a new GroupBy from a table and grouping columns
-    pub fn new(table: Table, group_columns: Vec<String>) -> VmResult<Self> {
+    pub fn new(table: ForeignTable, group_columns: Vec<String>) -> VmResult<Self> {
         // Validate that all group columns exist
         for col_name in &group_columns {
             if !table.columns.contains_key(col_name) {
@@ -66,8 +66,8 @@ impl GroupBy {
     }
     
     /// Apply aggregation function to all groups
-    pub fn agg(&self, aggregations: HashMap<String, AggregationFunction>) -> VmResult<Table> {
-        let mut result_columns: HashMap<String, Series> = HashMap::new();
+    pub fn agg(&self, aggregations: HashMap<String, AggregationFunction>) -> VmResult<ForeignTable> {
+        let mut result_columns: HashMap<String, ForeignSeries> = HashMap::new();
         
         // Add group columns to result
         for (i, group_col) in self.group_columns.iter().enumerate() {
@@ -78,7 +78,7 @@ impl GroupBy {
                 }
             }
             
-            let group_series = Series::infer(group_values)?;
+            let group_series = ForeignSeries::infer(group_values)?;
             result_columns.insert(group_col.clone(), group_series);
         }
         
@@ -100,15 +100,15 @@ impl GroupBy {
             }
             
             let result_col_name = format!("{}_{}", col_name, agg_func.name());
-            let agg_series = Series::infer(agg_values)?;
+            let agg_series = ForeignSeries::infer(agg_values)?;
             result_columns.insert(result_col_name, agg_series);
         }
         
-        Table::from_columns(result_columns)
+        ForeignTable::from_columns(result_columns)
     }
     
     /// Apply a single aggregation function to a group
-    fn apply_aggregation(&self, series: &Series, indices: &[usize], func: &AggregationFunction) -> VmResult<Value> {
+    fn apply_aggregation(&self, series: &ForeignSeries, indices: &[usize], func: &AggregationFunction) -> VmResult<Value> {
         match func {
             AggregationFunction::Count => {
                 Ok(Value::Integer(indices.len() as i64))
@@ -125,7 +125,7 @@ impl GroupBy {
                             has_values = true;
                         },
                         Value::Real(f) => {
-                            sum += f;
+                            sum += *f;
                             has_values = true;
                         },
                         Value::Missing => {}, // Skip missing values
@@ -154,7 +154,7 @@ impl GroupBy {
                             count += 1;
                         },
                         Value::Real(f) => {
-                            sum += f;
+                            sum += *f;
                             count += 1;
                         },
                         Value::Missing => {}, // Skip missing values
@@ -300,7 +300,7 @@ pub fn group_by(args: &[Value]) -> VmResult<Value> {
     
     // Note: Legacy function needs conversion from Foreign to legacy Table
     // This is a temporary bridge until all table operations are migrated
-    let table = Table::new(); // TODO: Convert from ForeignTable to Table
+    let table = ForeignTable::new(); // Already ForeignTable
     
     let mut group_columns = Vec::new();
     for arg in &args[1..] {
@@ -350,7 +350,7 @@ pub fn aggregate(args: &[Value]) -> VmResult<Value> {
     
     // Note: Legacy function needs conversion from Foreign to legacy Table
     // This is a temporary bridge until all table operations are migrated
-    let table = Table::new(); // TODO: Convert from ForeignTable to Table
+    let table = ForeignTable::new(); // Already ForeignTable
     
     // Simple aggregation without grouping for now
     let mut aggregations = HashMap::new();
@@ -410,9 +410,8 @@ pub fn aggregate(args: &[Value]) -> VmResult<Value> {
     };
     
     let result = dummy_groupby.agg(aggregations)?;
-    // Convert legacy Table back to Foreign Table
-    let foreign_result = ForeignTable::from_table(&result);
-    Ok(Value::LyObj(LyObj::new(Box::new(foreign_result))))
+    // Result is already a ForeignTable
+    Ok(Value::LyObj(LyObj::new(Box::new(result))))
 }
 
 /// Count function - count non-missing values in a column
@@ -444,7 +443,7 @@ pub fn count(args: &[Value]) -> VmResult<Value> {
     
     // Note: Legacy function needs conversion from Foreign to legacy Table
     // This is a temporary bridge until all table operations are migrated
-    let table = &Table::new(); // TODO: Convert from ForeignTable to Table
+    let table = &ForeignTable::new(); // Already ForeignTable
     
     let column_name = match &args[1] {
         Value::String(s) => s,
@@ -477,10 +476,10 @@ pub fn count(args: &[Value]) -> VmResult<Value> {
 // ============================================================================
 
 /// Inner join - returns only rows where join keys match in both tables
-pub fn inner_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -> VmResult<Table> {
+pub fn inner_join(left: ForeignTable, right: ForeignTable, join_keys: Vec<(String, String)>) -> VmResult<ForeignTable> {
     if join_keys.is_empty() {
         // No join keys specified - cartesian product (for now, return empty)
-        return Table::from_columns(HashMap::new());
+        return ForeignTable::from_columns(HashMap::new());
     }
     
     // Validate that all join columns exist
@@ -601,9 +600,9 @@ pub fn inner_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -
 }
 
 /// Left join - returns all rows from left table, with Missing for unmatched right rows
-pub fn left_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -> VmResult<Table> {
+pub fn left_join(left: ForeignTable, right: ForeignTable, join_keys: Vec<(String, String)>) -> VmResult<ForeignTable> {
     if join_keys.is_empty() {
-        return Table::from_columns(HashMap::new());
+        return ForeignTable::from_columns(HashMap::new());
     }
     
     // Validate join columns exist
@@ -698,7 +697,7 @@ pub fn left_join(left: Table, right: Table, join_keys: Vec<(String, String)>) ->
 }
 
 /// Right join - returns all rows from right table, with Missing for unmatched left rows
-pub fn right_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -> VmResult<Table> {
+pub fn right_join(left: ForeignTable, right: ForeignTable, join_keys: Vec<(String, String)>) -> VmResult<ForeignTable> {
     // Right join is equivalent to left join with tables swapped
     let swapped_keys: Vec<(String, String)> = join_keys.iter()
         .map(|(l, r)| (r.clone(), l.clone()))
@@ -711,9 +710,9 @@ pub fn right_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -
 }
 
 /// Full outer join - returns all rows from both tables, with Missing for unmatched rows
-pub fn full_join(left: Table, right: Table, join_keys: Vec<(String, String)>) -> VmResult<Table> {
+pub fn full_join(left: ForeignTable, right: ForeignTable, join_keys: Vec<(String, String)>) -> VmResult<ForeignTable> {
     if join_keys.is_empty() {
-        return Table::from_columns(HashMap::new());
+        return ForeignTable::from_columns(HashMap::new());
     }
     
     // Build hash tables from both sides
@@ -846,15 +845,15 @@ pub fn full_join(left: Table, right: Table, join_keys: Vec<(String, String)>) ->
 /// Helper function to create a joined table from result rows
 fn create_joined_table(
     result_rows: Vec<Vec<Value>>,
-    left: &Table,
-    right: &Table,
+    left: &ForeignTable,
+    right: &ForeignTable,
     join_keys: &[(String, String)]
-) -> VmResult<Table> {
+) -> VmResult<ForeignTable> {
     if result_rows.is_empty() {
-        return Table::from_columns(HashMap::new());
+        return ForeignTable::from_columns(HashMap::new());
     }
     
-    let mut result_columns: HashMap<String, Series> = HashMap::new();
+    let mut result_columns: HashMap<String, ForeignSeries> = HashMap::new();
     let mut column_index = 0;
     
     // Add left table columns
@@ -864,7 +863,7 @@ fn create_joined_table(
             column_data.push(row[column_index].clone());
         }
         
-        let series = Series::infer(column_data)?;
+        let series = ForeignSeries::infer(column_data)?;
         result_columns.insert(col_name.clone(), series);
         column_index += 1;
     }
@@ -877,22 +876,22 @@ fn create_joined_table(
                 column_data.push(row[column_index].clone());
             }
             
-            let series = Series::infer(column_data)?;
+            let series = ForeignSeries::infer(column_data)?;
             result_columns.insert(col_name.clone(), series);
             column_index += 1;
         }
     }
     
-    Table::from_columns(result_columns)
+    ForeignTable::from_columns(result_columns)
 }
 
 /// Helper function to reorder columns for right join result
 fn reorder_columns_for_right_join(
-    table: Table,
-    _left: &Table,
-    _right: &Table,
+    table: ForeignTable,
+    _left: &ForeignTable,
+    _right: &ForeignTable,
     _join_keys: &[(String, String)]
-) -> VmResult<Table> {
+) -> VmResult<ForeignTable> {
     // For now, return as-is. In a production implementation,
     // we would reorder columns to match left-first, right-second convention
     Ok(table)
@@ -901,21 +900,21 @@ fn reorder_columns_for_right_join(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vm::{SeriesType};
+    use crate::stdlib::data::SeriesType;
 
     #[test]
     fn test_groupby_creation() {
         let mut columns = HashMap::new();
-        columns.insert("group".to_string(), Series::new(
+        columns.insert("group".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("A".to_string())],
             SeriesType::String
         ).unwrap());
-        columns.insert("value".to_string(), Series::new(
+        columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(10), Value::Integer(20), Value::Integer(15)],
             SeriesType::Int64
         ).unwrap());
         
-        let table = Table::from_columns(columns).unwrap();
+        let table = ForeignTable::from_columns(columns).unwrap();
         let groupby = GroupBy::new(table, vec!["group".to_string()]).unwrap();
         
         assert_eq!(groupby.group_count(), 2);
@@ -926,16 +925,16 @@ mod tests {
     #[test]
     fn test_groupby_aggregation() {
         let mut columns = HashMap::new();
-        columns.insert("group".to_string(), Series::new(
+        columns.insert("group".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("A".to_string())],
             SeriesType::String
         ).unwrap());
-        columns.insert("value".to_string(), Series::new(
+        columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(10), Value::Integer(20), Value::Integer(15)],
             SeriesType::Int64
         ).unwrap());
         
-        let table = Table::from_columns(columns).unwrap();
+        let table = ForeignTable::from_columns(columns).unwrap();
         let groupby = GroupBy::new(table, vec!["group".to_string()]).unwrap();
         
         let mut aggregations = HashMap::new();
@@ -950,16 +949,16 @@ mod tests {
     #[test]
     fn test_aggregation_with_missing_values() {
         let mut columns = HashMap::new();
-        columns.insert("group".to_string(), Series::new(
+        columns.insert("group".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("A".to_string())],
             SeriesType::String
         ).unwrap());
-        columns.insert("value".to_string(), Series::new(
+        columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(10), Value::Missing],
             SeriesType::Int64
         ).unwrap());
         
-        let table = Table::from_columns(columns).unwrap();
+        let table = ForeignTable::from_columns(columns).unwrap();
         let groupby = GroupBy::new(table, vec!["group".to_string()]).unwrap();
         
         let mut aggregations = HashMap::new();
@@ -976,7 +975,7 @@ mod tests {
     // #[test]
     // fn test_count_function() {
     //     let mut columns = HashMap::new();
-    //     columns.insert("test".to_string(), Series::new(
+    //     columns.insert("test".to_string(), ForeignSeries::new(
     //         vec![Value::Integer(1), Value::Missing, Value::Integer(3)],
     //         SeriesType::Int64
     //     ).unwrap());
@@ -999,27 +998,27 @@ mod tests {
     fn test_inner_join_basic() {
         // Create left table: {id: [1, 2, 3], name: ["A", "B", "C"]}
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         // Create right table: {id: [2, 3, 4], value: [20, 30, 40]}
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(20), Value::Integer(30), Value::Integer(40)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Inner join on 'id' column
         let result = inner_join(left_table, right_table, vec![("id".to_string(), "id".to_string())]).unwrap();
@@ -1049,26 +1048,26 @@ mod tests {
     fn test_left_join_basic() {
         // Same tables as inner join test
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(20), Value::Integer(30), Value::Integer(40)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Left join on 'id' column
         let result = left_join(left_table, right_table, vec![("id".to_string(), "id".to_string())]).unwrap();
@@ -1091,26 +1090,26 @@ mod tests {
     fn test_right_join_basic() {
         // Same setup as previous tests
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(20), Value::Integer(30), Value::Integer(40)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Right join on 'id' column
         let result = right_join(left_table, right_table, vec![("id".to_string(), "id".to_string())]).unwrap();
@@ -1141,26 +1140,26 @@ mod tests {
     fn test_full_join_basic() {
         // Same setup as previous tests
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(20), Value::Integer(30), Value::Integer(40)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Full outer join on 'id' column
         let result = full_join(left_table, right_table, vec![("id".to_string(), "id".to_string())]).unwrap();
@@ -1190,27 +1189,27 @@ mod tests {
     fn test_join_with_missing_values() {
         // Left table with Missing values
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Missing, Value::Integer(3)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("B".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         // Right table with Missing values
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Missing, Value::Integer(3), Value::Integer(4)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(10), Value::Integer(30), Value::Integer(40)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Inner join - Missing values should NOT match each other
         let result = inner_join(left_table, right_table, vec![("id".to_string(), "id".to_string())]).unwrap();
@@ -1225,35 +1224,35 @@ mod tests {
     fn test_multi_column_join() {
         // Left table: {dept: ["A", "A", "B"], level: [1, 2, 1], name: ["Alice", "Bob", "Charlie"]}
         let mut left_columns = HashMap::new();
-        left_columns.insert("dept".to_string(), Series::new(
+        left_columns.insert("dept".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("A".to_string()), Value::String("B".to_string())],
             SeriesType::String
         ).unwrap());
-        left_columns.insert("level".to_string(), Series::new(
+        left_columns.insert("level".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2), Value::Integer(1)],
             SeriesType::Int64
         ).unwrap());
-        left_columns.insert("name".to_string(), Series::new(
+        left_columns.insert("name".to_string(), ForeignSeries::new(
             vec![Value::String("Alice".to_string()), Value::String("Bob".to_string()), Value::String("Charlie".to_string())],
             SeriesType::String
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         // Right table: {dept: ["A", "A", "C"], level: [1, 3, 1], salary: [50000, 60000, 70000]}
         let mut right_columns = HashMap::new();
-        right_columns.insert("dept".to_string(), Series::new(
+        right_columns.insert("dept".to_string(), ForeignSeries::new(
             vec![Value::String("A".to_string()), Value::String("A".to_string()), Value::String("C".to_string())],
             SeriesType::String
         ).unwrap());
-        right_columns.insert("level".to_string(), Series::new(
+        right_columns.insert("level".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(3), Value::Integer(1)],
             SeriesType::Int64
         ).unwrap());
-        right_columns.insert("salary".to_string(), Series::new(
+        right_columns.insert("salary".to_string(), ForeignSeries::new(
             vec![Value::Integer(50000), Value::Integer(60000), Value::Integer(70000)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Join on both dept and level
         let result = inner_join(left_table, right_table, vec![
@@ -1274,15 +1273,15 @@ mod tests {
     #[test]
     fn test_join_empty_tables() {
         // Empty left table
-        let left_table = Table::from_columns(HashMap::new()).unwrap();
+        let left_table = ForeignTable::from_columns(HashMap::new()).unwrap();
         
         // Non-empty right table
         let mut right_columns = HashMap::new();
-        right_columns.insert("id".to_string(), Series::new(
+        right_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1), Value::Integer(2)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Any join with empty table should result in empty table
         let result = inner_join(left_table.clone(), right_table.clone(), vec![]).unwrap();
@@ -1299,18 +1298,18 @@ mod tests {
     fn test_join_no_common_columns() {
         // Tables with no overlapping join columns should return appropriate errors
         let mut left_columns = HashMap::new();
-        left_columns.insert("id".to_string(), Series::new(
+        left_columns.insert("id".to_string(), ForeignSeries::new(
             vec![Value::Integer(1)],
             SeriesType::Int64
         ).unwrap());
-        let left_table = Table::from_columns(left_columns).unwrap();
+        let left_table = ForeignTable::from_columns(left_columns).unwrap();
 
         let mut right_columns = HashMap::new();
-        right_columns.insert("value".to_string(), Series::new(
+        right_columns.insert("value".to_string(), ForeignSeries::new(
             vec![Value::Integer(10)],
             SeriesType::Int64
         ).unwrap());
-        let right_table = Table::from_columns(right_columns).unwrap();
+        let right_table = ForeignTable::from_columns(right_columns).unwrap();
 
         // Should return error for non-existent join column
         let result = inner_join(left_table, right_table, vec![("nonexistent".to_string(), "id".to_string())]);

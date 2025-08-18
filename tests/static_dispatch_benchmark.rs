@@ -4,7 +4,7 @@ use lyra::{
     ast::{Expr, Symbol, Number},
     vm::{Value, VirtualMachine},
     foreign::{Foreign, LyObj},
-    stdlib::data::series::ForeignSeries,
+    stdlib::data::series::{ForeignSeries, SeriesType},
     linker::{registry::create_global_registry, FunctionRegistry},
 };
 use std::time::Instant;
@@ -20,7 +20,7 @@ fn benchmark_static_dispatch_vs_baseline() {
     // Create test data - large series for meaningful benchmarks
     let large_series = ForeignSeries::new(
         (0..10000).map(Value::Integer).collect(), 
-        lyra::vm::SeriesType::Int64
+        SeriesType::Int64
     ).unwrap();
     let series_obj = LyObj::new(Box::new(large_series));
     
@@ -63,7 +63,7 @@ fn benchmark_method_call_throughput() {
     for (method_name, args) in test_cases {
         let series = ForeignSeries::new(
             (0..1000).map(Value::Integer).collect(), 
-            lyra::vm::SeriesType::Int64
+            SeriesType::Int64
         ).unwrap();
         let series_obj = LyObj::new(Box::new(series));
         
@@ -93,7 +93,7 @@ fn benchmark_memory_efficiency() {
     // Test memory allocation patterns for static vs dynamic dispatch
     let series = ForeignSeries::new(
         vec![Value::Integer(1), Value::Integer(2)], 
-        lyra::vm::SeriesType::Int64
+        SeriesType::Int64
     ).unwrap();
     let series_obj = LyObj::new(Box::new(series));
     
@@ -238,7 +238,7 @@ fn benchmark_compile_time_vs_runtime_resolution() {
         let start = Instant::now();
         
         for _ in 0..iterations {
-            let series = ForeignSeries::new(vec![Value::Integer(1)], lyra::vm::SeriesType::Int64).unwrap();
+            let series = ForeignSeries::new(vec![Value::Integer(1)], SeriesType::Int64).unwrap();
             let obj = LyObj::new(Box::new(series));
             
             // Runtime method dispatch simulation (happens every call)

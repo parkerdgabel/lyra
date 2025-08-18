@@ -5,7 +5,7 @@ use lyra::{
     linker::{registry::create_global_registry, FunctionRegistry},
     foreign::{Foreign, ForeignError, LyObj},
     vm::Value,
-    stdlib::data::series::ForeignSeries,
+    stdlib::data::series::{ForeignSeries, SeriesType},
 };
 use std::any::Any;
 
@@ -17,7 +17,7 @@ fn test_compile_time_method_resolution_basic() {
     // RED PHASE: This test should initially fail because compile-time resolution doesn't exist yet
     
     // Create a simple Series method call: series.Length[]
-    let series = ForeignSeries::new(vec![Value::Integer(1), Value::Integer(2)], lyra::vm::SeriesType::Int64).unwrap();
+    let series = ForeignSeries::new(vec![Value::Integer(1), Value::Integer(2)], SeriesType::Int64).unwrap();
     let lyobj = LyObj::new(Box::new(series));
     
     // This should be resolved at compile-time, not runtime
@@ -46,7 +46,7 @@ fn test_compile_time_method_resolution_basic() {
 fn test_compile_time_method_validation() {
     // RED PHASE: Should fail because method validation doesn't exist yet
     
-    let series = ForeignSeries::new(vec![Value::Integer(1)], lyra::vm::SeriesType::Int64).unwrap();
+    let series = ForeignSeries::new(vec![Value::Integer(1)], SeriesType::Int64).unwrap();
     let lyobj = LyObj::new(Box::new(series));
     
     let mut compiler = TestCompiler::new();
@@ -72,7 +72,7 @@ fn test_compile_time_method_validation() {
 fn test_compile_time_arity_validation() {
     // RED PHASE: Should fail because arity validation doesn't exist yet
     
-    let series = ForeignSeries::new(vec![Value::Integer(1)], lyra::vm::SeriesType::Int64).unwrap();
+    let series = ForeignSeries::new(vec![Value::Integer(1)], SeriesType::Int64).unwrap();
     let lyobj = LyObj::new(Box::new(series));
     
     let mut compiler = TestCompiler::new();
@@ -102,7 +102,7 @@ fn test_all_foreign_types_resolve() {
     let mut compiler = TestCompiler::new();
     
     // Test Series methods
-    let series = ForeignSeries::new(vec![Value::Integer(1)], lyra::vm::SeriesType::Int64).unwrap();
+    let series = ForeignSeries::new(vec![Value::Integer(1)], SeriesType::Int64).unwrap();
     let series_obj = LyObj::new(Box::new(series));
     
     assert!(compiler.compile_method_call("Length", &series_obj, &[]).is_ok());
@@ -120,7 +120,7 @@ fn test_performance_improvement_measurement() {
     
     use std::time::Instant;
     
-    let series = ForeignSeries::new((0..1000).map(Value::Integer).collect(), lyra::vm::SeriesType::Int64).unwrap();
+    let series = ForeignSeries::new((0..1000).map(Value::Integer).collect(), SeriesType::Int64).unwrap();
     let lyobj = LyObj::new(Box::new(series));
     
     let mut compiler = TestCompiler::new();

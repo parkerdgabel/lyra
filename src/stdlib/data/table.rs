@@ -1,7 +1,7 @@
 use crate::{
     foreign::{Foreign, ForeignError, LyObj},
-    stdlib::data::ForeignSeries,
-    vm::{Value, Series, SeriesType, VmError, VmResult},
+    stdlib::data::{ForeignSeries, SeriesType},
+    vm::{Value, VmError, VmResult},
 };
 use std::any::Any;
 use std::collections::HashMap;
@@ -88,39 +88,6 @@ impl ForeignTable {
         ForeignTable::from_columns(columns)
     }
     
-    /// Create ForeignTable from existing VM Table
-    pub fn from_table(table: &crate::vm::Table) -> Self {
-        let mut foreign_columns = HashMap::new();
-        
-        for (name, series) in &table.columns {
-            foreign_columns.insert(name.clone(), ForeignSeries::from_series(series));
-        }
-        
-        let foreign_index = None; // Simplified for now to avoid Value threading issues
-        
-        ForeignTable {
-            columns: foreign_columns,
-            length: table.length,
-            index: foreign_index,
-        }
-    }
-    
-    /// Convert back to VM Table
-    pub fn to_table(&self) -> crate::vm::Table {
-        let mut vm_columns = HashMap::new();
-        
-        for (name, foreign_series) in &self.columns {
-            vm_columns.insert(name.clone(), foreign_series.to_series());
-        }
-        
-        let vm_index = None; // Simplified for now
-        
-        crate::vm::Table {
-            columns: vm_columns,
-            length: self.length,
-            index: vm_index,
-        }
-    }
     
     /// Get column names
     pub fn column_names(&self) -> Vec<&String> {

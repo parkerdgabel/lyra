@@ -1,9 +1,18 @@
 use crate::{
     foreign::{Foreign, ForeignError, LyObj},
-    vm::{Value, Series, SeriesType, VmError, VmResult},
+    vm::{Value, VmError, VmResult},
 };
 use std::any::Any;
 use std::sync::Arc;
+
+/// Series data type for typed vectors
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SeriesType {
+    Int64,
+    Float64,
+    Bool,
+    String,
+}
 
 /// Thread-safe Series implementation for Foreign objects
 /// Uses Arc instead of Rc to be Send + Sync compliant
@@ -52,24 +61,6 @@ impl ForeignSeries {
         Self::new(data, dtype)
     }
     
-    /// Create ForeignSeries from existing VM Series (converts Rc to Arc)
-    pub fn from_series(series: &Series) -> Self {
-        ForeignSeries {
-            data: Arc::new((*series.data).clone()),
-            dtype: series.dtype.clone(),
-            length: series.length,
-        }
-    }
-    
-    /// Convert back to VM Series (Arc to Rc)
-    pub fn to_series(&self) -> Series {
-        use std::rc::Rc;
-        Series {
-            data: Rc::new((*self.data).clone()),
-            dtype: self.dtype.clone(),
-            length: self.length,
-        }
-    }
     
     /// Get a value at index (bounds-checked)
     pub fn get(&self, index: usize) -> VmResult<&Value> {
