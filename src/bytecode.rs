@@ -44,8 +44,7 @@ pub enum OpCode {
     JMP = 0x30,   // Unconditional jump
     JIF = 0x31,   // Jump if true
     
-    // Calls (3)
-    CALL = 0x40,  // Call function (func_id, argc encoded in operand)
+    // Calls (2)
     CALL_STATIC = 0x42,  // Call static function (registry_index, argc encoded in operand)
     RET = 0x41,   // Return from function
     
@@ -66,12 +65,6 @@ impl Instruction {
         Ok(Instruction { opcode, operand })
     }
     
-    /// Create a CALL instruction with function ID and argument count
-    /// Encoding: func_id in high 16 bits, argc in low 8 bits
-    pub fn new_call(func_id: u16, argc: u8) -> Result<Self> {
-        let operand = ((func_id as u32) << 8) | (argc as u32);
-        Self::new(OpCode::CALL, operand)
-    }
     
     /// Create a SYS instruction with system operation and argument count  
     /// Encoding: sys_op in high 16 bits, argc in low 8 bits
@@ -87,12 +80,6 @@ impl Instruction {
         Self::new(OpCode::CALL_STATIC, operand)
     }
     
-    /// Decode CALL instruction to get function ID and argument count
-    pub fn decode_call(&self) -> (u16, u8) {
-        let func_id = (self.operand >> 8) as u16;
-        let argc = (self.operand & 0xFF) as u8;
-        (func_id, argc)
-    }
     
     /// Decode SYS instruction to get system operation and argument count
     pub fn decode_sys(&self) -> (u16, u8) {
@@ -132,7 +119,7 @@ impl OpCode {
             0x20 => Ok(Self::ADD), 0x21 => Ok(Self::SUB), 0x22 => Ok(Self::MUL),
             0x23 => Ok(Self::DIV), 0x24 => Ok(Self::POW),
             0x30 => Ok(Self::JMP), 0x31 => Ok(Self::JIF),
-            0x40 => Ok(Self::CALL), 0x41 => Ok(Self::RET), 0x42 => Ok(Self::CALL_STATIC),
+            0x41 => Ok(Self::RET), 0x42 => Ok(Self::CALL_STATIC),
             0x50 => Ok(Self::POP), 0x51 => Ok(Self::DUP),
             0x60 => Ok(Self::SYS),
             _ => Err(BytecodeError::InvalidOpcode(value)),
@@ -146,7 +133,7 @@ impl OpCode {
             Self::NEWLIST, Self::NEWASSOC,
             Self::ADD, Self::SUB, Self::MUL, Self::DIV, Self::POW,
             Self::JMP, Self::JIF,
-            Self::CALL, Self::CALL_STATIC, Self::RET,
+            Self::CALL_STATIC, Self::RET,
             Self::POP, Self::DUP,
             Self::SYS,
         ]
@@ -174,7 +161,7 @@ impl OpCode {
     
     /// Check if opcode is a function call operation
     pub fn is_call(&self) -> bool {
-        matches!(self, Self::CALL | Self::CALL_STATIC | Self::RET)
+        matches!(self, Self::CALL_STATIC | Self::RET)
     }
     
     /// Get opcode name for debugging
@@ -186,7 +173,7 @@ impl OpCode {
             Self::ADD => "ADD", Self::SUB => "SUB", Self::MUL => "MUL", 
             Self::DIV => "DIV", Self::POW => "POW",
             Self::JMP => "JMP", Self::JIF => "JIF",
-            Self::CALL => "CALL", Self::CALL_STATIC => "CALL_STATIC", Self::RET => "RET",
+            Self::CALL_STATIC => "CALL_STATIC", Self::RET => "RET",
             Self::POP => "POP", Self::DUP => "DUP",
             Self::SYS => "SYS",
         }
@@ -289,19 +276,6 @@ mod tests {
         assert_eq!(std::mem::size_of::<OpCode>(), 1);
     }
     
-    #[test]
-    fn test_call_instruction_encoding() {
-        // Test CALL opcode encoding: func_id in high 16 bits, argc in low 8 bits
-        let func_id = 1234;
-        let argc = 5;
-        
-        let call_inst = Instruction::new_call(func_id, argc).unwrap();
-        assert_eq!(call_inst.opcode, OpCode::CALL);
-        
-        let (decoded_func_id, decoded_argc) = call_inst.decode_call();
-        assert_eq!(decoded_func_id, func_id);
-        assert_eq!(decoded_argc, argc);
-    }
     
     #[test]
     fn test_sys_instruction_encoding() {
@@ -333,9 +307,9 @@ mod tests {
     
     #[test]
     fn test_minimal_opcode_count() {
-        // Test that we have exactly 19 opcodes (18 minimal + CALL_STATIC for performance)
+        // Test that we have exactly 18 opcodes (minimal set with CALL removed)
         let minimal_opcodes = OpCode::all_opcodes();
-        assert_eq!(minimal_opcodes.len(), 19, "Opcode set must have exactly 19 opcodes (18 minimal + CALL_STATIC)");
+        assert_eq!(minimal_opcodes.len(), 18, "Opcode set must have exactly 18 opcodes (minimal set with CALL removed)");
         
         // Verify each category has the expected count
         let loads_stores = minimal_opcodes.iter().filter(|op| op.is_load_store()).count();
@@ -351,7 +325,7 @@ mod tests {
         assert_eq!(control, 2, "Should have 2 control opcodes");
         
         let calls = minimal_opcodes.iter().filter(|op| op.is_call()).count();
-        assert_eq!(calls, 3, "Should have 3 call opcodes (CALL, CALL_STATIC, RET)");
+        assert_eq!(calls, 2, "Should have 2 call opcodes (CALL_STATIC, RET)");
         
         let stack = minimal_opcodes.iter().filter(|op| matches!(op, OpCode::POP | OpCode::DUP)).count();
         assert_eq!(stack, 2, "Should have 2 stack opcodes");

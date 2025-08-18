@@ -1122,7 +1122,7 @@ mod tests {
         let mut registry = FunctionRegistry::new();
         let sig = FunctionSignature::new("Series", "length", 0);
         
-        let result = registry.register_method(sig, series_length);
+        let result = registry.register_method(sig, series_length, 0);
         assert!(result.is_ok());
         
         assert_eq!(registry.stats.total_functions, 1);
@@ -1135,10 +1135,10 @@ mod tests {
         let sig = FunctionSignature::new("Series", "length", 0);
         
         // First registration should succeed
-        assert!(registry.register_method(sig.clone(), series_length).is_ok());
+        assert!(registry.register_method(sig.clone(), series_length, 1).is_ok());
         
         // Second registration should fail
-        let result = registry.register_method(sig, series_length);
+        let result = registry.register_method(sig, series_length, 0);
         assert!(result.is_err());
         
         match result.unwrap_err() {
@@ -1153,7 +1153,7 @@ mod tests {
     fn test_function_registry_lookup() {
         let mut registry = FunctionRegistry::new();
         let sig = FunctionSignature::new("Series", "length", 0);
-        registry.register_method(sig, series_length).unwrap();
+        registry.register_method(sig, series_length, 2).unwrap();
         
         // Successful lookup
         let entry = registry.lookup("Series", "length").unwrap();
@@ -1180,18 +1180,21 @@ mod tests {
         // Register multiple methods for Series
         registry.register_method(
             FunctionSignature::new("Series", "length", 0),
-            series_length
+            series_length,
+            3
         ).unwrap();
         
         registry.register_method(
             FunctionSignature::new("Series", "get", 1),
-            series_length
+            series_length,
+            4
         ).unwrap();
         
         // Register method for Tensor
         registry.register_method(
             FunctionSignature::new("Tensor", "add", 1),
-            tensor_add
+            tensor_add,
+            5
         ).unwrap();
         
         // Check type methods
@@ -1216,7 +1219,8 @@ mod tests {
         let mut registry = FunctionRegistry::new();
         registry.register_method(
             FunctionSignature::new("Series", "length", 0),
-            series_length
+            series_length,
+            7
         ).unwrap();
         
         let mut resolver = LinkTimeResolver::new(registry);
@@ -1242,7 +1246,7 @@ mod tests {
     #[test]
     fn test_function_entry_validation() {
         let sig = FunctionSignature::new("Series", "length", 0);
-        let entry = FunctionEntry::new(sig, series_length);
+        let entry = FunctionEntry::new_foreign(sig, series_length, 6);
         
         // Valid arity
         assert!(entry.validate_arity(0).is_ok());

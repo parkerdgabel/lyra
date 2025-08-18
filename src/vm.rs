@@ -1416,68 +1416,6 @@ impl VirtualMachine {
                     self.ip += 1;
                 }
             }
-            OpCode::CALL => {
-                let operand = instruction.operand;
-                let method_dispatch_flag = 0x80000000;
-                let is_method_dispatch = (operand & method_dispatch_flag) != 0;
-                let arg_count = (operand & 0x7FFFFFFF) as usize; // Clear the flag bit
-
-                // Pop function/method name from stack
-                let function_name = match self.pop()? {
-                    Value::Function(name) => name,
-                    Value::Symbol(name) => name,
-                    other => {
-                        return Err(VmError::TypeError {
-                            expected: "Function or Symbol".to_string(),
-                            actual: format!("{:?}", other),
-                        })
-                    }
-                };
-
-                // Pop arguments from stack (in reverse order)
-                let mut args = Vec::with_capacity(arg_count);
-                for _ in 0..arg_count {
-                    args.push(self.pop()?);
-                }
-                args.reverse(); // Arguments were pushed in reverse order
-
-                // Handle method dispatch if flag is set and first argument is LyObj
-                if is_method_dispatch && !args.is_empty() {
-                    if let Value::LyObj(obj) = &args[0] {
-                        // This is a method call: method_name[obj, arg1, arg2, ...]
-                        // Call obj.call_method(method_name, &[arg1, arg2, ...])
-                        let method_args = &args[1..]; // Skip the object itself
-                        
-                        match obj.call_method(&function_name, method_args) {
-                            Ok(result) => {
-                                self.push(result);
-                            }
-                            Err(foreign_err) => {
-                                return Err(VmError::TypeError {
-                                    expected: "valid method call".to_string(),
-                                    actual: format!("Foreign method error: {}", foreign_err),
-                                });
-                            }
-                        }
-                        
-                        self.ip += 1;
-                        return Ok(());
-                    }
-                }
-
-                // Regular function call (stdlib or built-in)
-                if let Some(func) = self.stdlib.get_function(&function_name) {
-                    let result = func(&args)?;
-                    self.push(result);
-                } else {
-                    return Err(VmError::TypeError {
-                        expected: format!("known function, got: {}", function_name),
-                        actual: "unknown function".to_string(),
-                    });
-                }
-
-                self.ip += 1;
-            }
             OpCode::RET => {
                 if let Some(frame) = self.call_stack.pop() {
                     self.ip = frame.return_address;

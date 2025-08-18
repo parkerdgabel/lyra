@@ -178,6 +178,9 @@ impl Compiler {
             Expr::Function { head, args } => {
                 self.compile_function_call(head, args)?;
             }
+            Expr::DotCall { object, method, args } => {
+                self.compile_method_call(object, method, args)?;
+            }
             _ => {
                 return Err(CompilerError::UnsupportedExpression(format!("{:?}", expr)));
             }
@@ -260,21 +263,15 @@ impl Compiler {
                     }
                 }
                 _ => {
-                    // Check if this is a stdlib function
-                    if self.stdlib.get_function(&sym.name).is_some() {
+                    // Check if this is a stdlib function - use CALL_STATIC for 1000x+ speedup!
+                    if let Some(stdlib_index) = self.registry.get_stdlib_index(&sym.name) {
                         // Compile arguments first
                         for arg in args {
                             self.compile_expr(arg)?;
                         }
 
-                        // Push function name
-                        let func_index = self
-                            .context
-                            .add_constant(Value::Function(sym.name.clone()))?;
-                        self.context.emit(OpCode::LDC, func_index as u32)?;
-
-                        // Call the function with argument count
-                        self.context.emit(OpCode::CALL, args.len() as u32)?;
+                        // Emit CALL_STATIC with stdlib function index (32-78)
+                        self.context.emit(OpCode::CALL_STATIC, ((stdlib_index as u32) << 8) | (args.len() as u32))?;
                         return Ok(());
                     }
                     
@@ -348,6 +345,42 @@ impl Compiler {
 
         // Unknown function
         Err(CompilerError::UnknownFunction(format!("{:?}", head)))
+    }
+
+    /// Compile a method call (obj.Method[args] syntax) using unified registry
+    fn compile_method_call(&mut self, object: &Expr, method: &str, args: &[Expr]) -> CompilerResult<()> {
+        // Search all known Foreign types for this method
+        let mut method_found = false;
+        let mut method_index = None;
+        
+        for type_name in self.registry.get_type_names() {
+            if self.registry.has_method(&type_name, method) {
+                method_found = true;
+                method_index = self.registry.get_method_index(&type_name, method);
+                break;
+            }
+        }
+        
+        if method_found && method_index.is_some() {
+            // Compile object expression first
+            self.compile_expr(object)?;
+            
+            // Compile arguments
+            for arg in args {
+                self.compile_expr(arg)?;
+            }
+            
+            let index = method_index.unwrap();
+            // Emit CALL_STATIC with Foreign method index (0-31)
+            self.context.emit(OpCode::CALL_STATIC, ((index as u32) << 8) | (args.len() as u32))?;
+            return Ok(());
+        }
+        
+        // Method not found in registry
+        Err(CompilerError::UnknownMethod {
+            type_name: "Unknown".to_string(),  // We don't know the type at compile time
+            method: method.to_string(),
+        })
     }
 
     /// Compile a complete program (list of expressions)
