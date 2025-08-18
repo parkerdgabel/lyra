@@ -21,6 +21,17 @@ pub enum CompilerError {
         expected: usize,
         actual: usize,
     },
+    #[error("Unknown method: {type_name}.{method}")]
+    UnknownMethod {
+        type_name: String,
+        method: String,
+    },
+    #[error("Invalid method arity: {method} expects {expected} args, got {actual}")]
+    InvalidMethodArity {
+        method: String,
+        expected: usize,
+        actual: usize,
+    },
 }
 
 pub type CompilerResult<T> = std::result::Result<T, CompilerError>;

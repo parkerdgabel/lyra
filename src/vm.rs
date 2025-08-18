@@ -1552,6 +1552,40 @@ impl VirtualMachine {
                 self.push(Value::Missing);
                 self.ip += 1;
             }
+            
+            OpCode::CALL_STATIC => {
+                // Decode function index and argument count
+                let (function_index, argc) = {
+                    let function_index = (instruction.operand >> 8) as u16;
+                    let argc = (instruction.operand & 0xFF) as u8;
+                    (function_index, argc)
+                };
+                
+                // Pop arguments and object from stack
+                let mut args = Vec::with_capacity(argc as usize);
+                for _ in 0..argc {
+                    args.push(self.pop()?);
+                }
+                args.reverse(); // Stack pops in reverse order
+                
+                // Pop the object (LyObj) that the method should be called on
+                let obj = self.pop()?;
+                
+                // TODO: Implement static function dispatch using Function Registry
+                // For now, fall back to dynamic dispatch to get tests compiling
+                if let Value::LyObj(lyobj) = obj {
+                    // This is a placeholder - we'll replace with static calls
+                    // For now, just return Missing to allow compilation
+                    self.push(Value::Missing);
+                } else {
+                    return Err(VmError::TypeError {
+                        expected: "LyObj for method call".to_string(),
+                        actual: format!("{:?}", obj),
+                    });
+                }
+                
+                self.ip += 1;
+            }
         }
 
         Ok(())
