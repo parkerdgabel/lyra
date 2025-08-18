@@ -207,6 +207,17 @@ fn format_pattern(p: &Pattern, level: usize, cfg: &FormatterConfig, out: &mut St
             write!(out, "{}", name)?;
             format_pattern(pattern, level, cfg, out)
         }
+        Pattern::Function { head, args } => {
+            format_pattern(head, level, cfg, out)?;
+            write!(out, "[")?;
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                format_pattern(arg, level, cfg, out)?;
+            }
+            write!(out, "]")
+        }
         Pattern::Typed { name, type_pattern } => {
             write!(out, "{}:", name)?;
             format_expr(type_pattern, level, cfg, out)

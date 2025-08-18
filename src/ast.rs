@@ -81,6 +81,10 @@ pub enum Pattern {
         name: String,
         pattern: Box<Pattern>,
     },
+    Function {
+        head: Box<Pattern>,
+        args: Vec<Pattern>,
+    },
     // Modern pattern extensions
     Typed {
         name: String,
@@ -238,6 +242,16 @@ impl fmt::Display for Pattern {
             }
             Pattern::Named { name, pattern } => {
                 write!(f, "{}{}", name, pattern)
+            }
+            Pattern::Function { head, args } => {
+                write!(f, "{}[", head)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, "]")
             }
             Pattern::Typed { name, type_pattern } => {
                 write!(f, "{}:{}", name, type_pattern)
