@@ -256,6 +256,283 @@ impl Dual {
         let sigmoid_deriv = sigmoid_val * (1.0 - sigmoid_val);
         Dual::new(sigmoid_val, sigmoid_deriv * self.derivative)
     }
+    
+    // ===== INVERSE TRIGONOMETRIC FUNCTIONS =====
+    
+    /// Inverse sine: asin(self) 
+    pub fn asin(self) -> AutodiffResult<Dual> {
+        if self.value.abs() > 1.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "asin domain error: input must be in [-1, 1]".to_string(),
+            });
+        }
+        
+        let asin_val = self.value.asin();
+        let denom = (1.0 - self.value * self.value).sqrt();
+        
+        if denom == 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "asin derivative undefined at ±1".to_string(),
+            });
+        }
+        
+        let asin_deriv = self.derivative / denom;
+        Ok(Dual::new(asin_val, asin_deriv))
+    }
+    
+    /// Inverse cosine: acos(self)
+    pub fn acos(self) -> AutodiffResult<Dual> {
+        if self.value.abs() > 1.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "acos domain error: input must be in [-1, 1]".to_string(),
+            });
+        }
+        
+        let acos_val = self.value.acos();
+        let denom = (1.0 - self.value * self.value).sqrt();
+        
+        if denom == 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "acos derivative undefined at ±1".to_string(),
+            });
+        }
+        
+        let acos_deriv = -self.derivative / denom;
+        Ok(Dual::new(acos_val, acos_deriv))
+    }
+    
+    /// Inverse tangent: atan(self)
+    pub fn atan(self) -> Dual {
+        self.apply_unary(|x| x.atan(), |x| 1.0 / (1.0 + x * x))
+    }
+    
+    /// Two-argument inverse tangent: atan2(self, other)
+    pub fn atan2(self, other: Dual) -> Dual {
+        self.apply_binary(
+            other,
+            |y, x| y.atan2(x),
+            |y, x| x / (x * x + y * y),     // ∂/∂y atan2(y,x) = x/(x²+y²)
+            |y, x| -y / (x * x + y * y),    // ∂/∂x atan2(y,x) = -y/(x²+y²)
+        )
+    }
+    
+    // ===== INVERSE HYPERBOLIC FUNCTIONS =====
+    
+    /// Inverse hyperbolic sine: asinh(self)
+    pub fn asinh(self) -> Dual {
+        self.apply_unary(
+            |x| x.asinh(),
+            |x| 1.0 / (x * x + 1.0).sqrt()
+        )
+    }
+    
+    /// Inverse hyperbolic cosine: acosh(self)
+    pub fn acosh(self) -> AutodiffResult<Dual> {
+        if self.value < 1.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "acosh domain error: input must be ≥ 1".to_string(),
+            });
+        }
+        
+        let acosh_val = self.value.acosh();
+        let denom = (self.value * self.value - 1.0).sqrt();
+        
+        if denom == 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "acosh derivative undefined at 1".to_string(),
+            });
+        }
+        
+        let acosh_deriv = self.derivative / denom;
+        Ok(Dual::new(acosh_val, acosh_deriv))
+    }
+    
+    /// Inverse hyperbolic tangent: atanh(self)
+    pub fn atanh(self) -> AutodiffResult<Dual> {
+        if self.value.abs() >= 1.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "atanh domain error: input must be in (-1, 1)".to_string(),
+            });
+        }
+        
+        let atanh_val = self.value.atanh();
+        let atanh_deriv = self.derivative / (1.0 - self.value * self.value);
+        Ok(Dual::new(atanh_val, atanh_deriv))
+    }
+    
+    // ===== LOGARITHMIC VARIANTS =====
+    
+    /// Base-10 logarithm: log10(self)
+    pub fn log10(self) -> AutodiffResult<Dual> {
+        if self.value <= 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "log10 of non-positive number".to_string(),
+            });
+        }
+        
+        let log10_val = self.value.log10();
+        let log10_deriv = self.derivative / (self.value * 10.0_f64.ln());
+        Ok(Dual::new(log10_val, log10_deriv))
+    }
+    
+    /// Base-2 logarithm: log2(self)
+    pub fn log2(self) -> AutodiffResult<Dual> {
+        if self.value <= 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "log2 of non-positive number".to_string(),
+            });
+        }
+        
+        let log2_val = self.value.log2();
+        let log2_deriv = self.derivative / (self.value * 2.0_f64.ln());
+        Ok(Dual::new(log2_val, log2_deriv))
+    }
+    
+    /// Natural logarithm of (1 + self): ln(1 + self)
+    /// More numerically stable for small values
+    pub fn ln_1p(self) -> AutodiffResult<Dual> {
+        if self.value <= -1.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "ln_1p domain error: input must be > -1".to_string(),
+            });
+        }
+        
+        let ln_1p_val = self.value.ln_1p();
+        let ln_1p_deriv = self.derivative / (1.0 + self.value);
+        Ok(Dual::new(ln_1p_val, ln_1p_deriv))
+    }
+    
+    /// Exponential minus 1: e^self - 1
+    /// More numerically stable for small values
+    pub fn exp_m1(self) -> Dual {
+        self.apply_unary(|x| x.exp_m1(), |x| x.exp())
+    }
+    
+    // ===== ADVANCED ACTIVATION FUNCTIONS =====
+    
+    /// Leaky ReLU activation: max(alpha * self, self)
+    pub fn leaky_relu(self, alpha: f64) -> Dual {
+        if self.value > 0.0 {
+            self
+        } else {
+            Dual::new(alpha * self.value, alpha * self.derivative)
+        }
+    }
+    
+    /// Exponential Linear Unit (ELU): x if x > 0, else alpha * (e^x - 1)
+    pub fn elu(self, alpha: f64) -> Dual {
+        if self.value > 0.0 {
+            self
+        } else {
+            let exp_x = self.exp();
+            Dual::new(alpha * (exp_x.value - 1.0), alpha * exp_x.derivative)
+        }
+    }
+    
+    /// Scaled Exponential Linear Unit (SELU)
+    pub fn selu(self) -> Dual {
+        const ALPHA: f64 = 1.6732632423543772848170429916717;
+        const SCALE: f64 = 1.0507009873554804934193349852946;
+        
+        if self.value > 0.0 {
+            Dual::new(SCALE * self.value, SCALE * self.derivative)
+        } else {
+            let exp_x = self.exp();
+            let selu_val = SCALE * ALPHA * (exp_x.value - 1.0);
+            let selu_deriv = SCALE * ALPHA * exp_x.derivative;
+            Dual::new(selu_val, selu_deriv)
+        }
+    }
+    
+    /// Gaussian Error Linear Unit (GELU): x * Φ(x) where Φ is CDF of standard normal
+    /// Approximation: 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+    pub fn gelu(self) -> Dual {
+        const COEFF1: f64 = 0.7978845608028654; // √(2/π)
+        const COEFF2: f64 = 0.044715;
+        
+        let x = self.value;
+        let x_cubed = x * x * x;
+        let inner = COEFF1 * (x + COEFF2 * x_cubed);
+        let tanh_inner = inner.tanh();
+        
+        let gelu_val = 0.5 * x * (1.0 + tanh_inner);
+        
+        // Derivative computation
+        let tanh_deriv = 1.0 - tanh_inner * tanh_inner;
+        let inner_deriv = COEFF1 * (1.0 + 3.0 * COEFF2 * x * x);
+        let gelu_deriv = 0.5 * (1.0 + tanh_inner + x * tanh_deriv * inner_deriv);
+        
+        Dual::new(gelu_val, gelu_deriv * self.derivative)
+    }
+    
+    /// Swish/SiLU activation: x * sigmoid(x)
+    pub fn swish(self) -> Dual {
+        let sigmoid = self.sigmoid();
+        let swish_val = self.value * sigmoid.value;
+        let swish_deriv = sigmoid.value + self.value * sigmoid.derivative;
+        Dual::new(swish_val, swish_deriv)
+    }
+    
+    /// Softplus activation: ln(1 + e^x)
+    pub fn softplus(self) -> Dual {
+        let exp_x = self.exp();
+        let softplus_val = (1.0 + exp_x.value).ln();
+        let softplus_deriv = exp_x.derivative / (1.0 + exp_x.value);
+        Dual::new(softplus_val, softplus_deriv)
+    }
+    
+    /// Softsign activation: x / (1 + |x|)
+    pub fn softsign(self) -> Dual {
+        let abs_x = self.value.abs();
+        let denom = 1.0 + abs_x;
+        let softsign_val = self.value / denom;
+        
+        let sign = if self.value >= 0.0 { 1.0 } else { -1.0 };
+        let softsign_deriv = self.derivative / (denom * denom);
+        
+        Dual::new(softsign_val, softsign_deriv)
+    }
+    
+    // ===== SPECIAL MATHEMATICAL FUNCTIONS =====
+    
+    /// Error function: erf(self)
+    /// Using approximation for now - exact implementation would require libm
+    pub fn erf(self) -> Dual {
+        // Abramowitz and Stegun approximation
+        let x = self.value;
+        let t = 1.0 / (1.0 + 0.3275911 * x.abs());
+        let poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+        let erf_val = if x >= 0.0 {
+            1.0 - poly * (-x * x).exp()
+        } else {
+            poly * (-x * x).exp() - 1.0
+        };
+        
+        // erf'(x) = (2/√π) * exp(-x²)
+        let erf_deriv = 2.0 / std::f64::consts::PI.sqrt() * (-x * x).exp() * self.derivative;
+        
+        Dual::new(erf_val, erf_deriv)
+    }
+    
+    /// Gamma function: Γ(self)
+    /// Using Stirling's approximation for implementation
+    pub fn gamma(self) -> AutodiffResult<Dual> {
+        if self.value <= 0.0 {
+            return Err(AutodiffError::InvalidDualOperation {
+                reason: "gamma function undefined for non-positive integers".to_string(),
+            });
+        }
+        
+        // Stirling's approximation: Γ(x) ≈ √(2π/x) * (x/e)^x
+        let x = self.value;
+        let gamma_val = (2.0 * std::f64::consts::PI / x).sqrt() * (x / std::f64::consts::E).powf(x);
+        
+        // Derivative using digamma function approximation
+        let digamma_x = x.ln() - 1.0 / (2.0 * x); // Simple approximation
+        let gamma_deriv = gamma_val * digamma_x * self.derivative;
+        
+        Ok(Dual::new(gamma_val, gamma_deriv))
+    }
 }
 
 impl Add for Dual {
@@ -640,5 +917,237 @@ mod tests {
         
         let value: f64 = Dual::new(2.5, 1.0).into();
         assert_eq!(value, 2.5);
+    }
+    
+    // ===== TESTS FOR NEW TRANSCENDENTAL FUNCTIONS =====
+    
+    #[test]
+    fn test_inverse_trigonometric() {
+        // Test asin
+        let x = Dual::variable(0.5);
+        let asin_x = x.asin().unwrap();
+        let expected_asin = 0.5_f64.asin();
+        let expected_asin_deriv = 1.0 / (1.0_f64 - 0.25).sqrt(); // 1/√(1-x²)
+        assert!(approx_eq(asin_x.value, expected_asin));
+        assert!(approx_eq(asin_x.derivative, expected_asin_deriv));
+        
+        // Test acos
+        let acos_x = x.acos().unwrap();
+        let expected_acos = 0.5_f64.acos();
+        let expected_acos_deriv = -1.0 / (1.0_f64 - 0.25).sqrt(); // -1/√(1-x²)
+        assert!(approx_eq(acos_x.value, expected_acos));
+        assert!(approx_eq(acos_x.derivative, expected_acos_deriv));
+        
+        // Test atan
+        let atan_x = x.atan();
+        let expected_atan = 0.5_f64.atan();
+        let expected_atan_deriv = 1.0 / (1.0 + 0.25); // 1/(1+x²)
+        assert!(approx_eq(atan_x.value, expected_atan));
+        assert!(approx_eq(atan_x.derivative, expected_atan_deriv));
+        
+        // Test atan2 - y.atan2(x) where y is variable (deriv=1), x is constant (deriv=0)
+        let y = Dual::variable(1.0);  // derivative = 1
+        let x_const = Dual::constant(0.5);  // derivative = 0
+        let atan2_result = y.atan2(x_const);
+        let expected_atan2 = 1.0_f64.atan2(0.5);
+        // ∂/∂y atan2(y,x) = x/(x²+y²) = 0.5/(0.25+1) = 0.5/1.25 = 0.4
+        let expected_atan2_deriv = 0.5 / (0.25 + 1.0);
+        assert!(approx_eq(atan2_result.value, expected_atan2));
+        assert!(approx_eq(atan2_result.derivative, expected_atan2_deriv));
+    }
+    
+    #[test]
+    fn test_inverse_hyperbolic() {
+        // Test asinh
+        let x = Dual::variable(1.0);
+        let asinh_x = x.asinh();
+        let expected_asinh = 1.0_f64.asinh();
+        let expected_asinh_deriv = 1.0 / (1.0_f64 + 1.0).sqrt(); // 1/√(x²+1)
+        assert!(approx_eq(asinh_x.value, expected_asinh));
+        assert!(approx_eq(asinh_x.derivative, expected_asinh_deriv));
+        
+        // Test acosh
+        let x = Dual::variable(2.0);
+        let acosh_x = x.acosh().unwrap();
+        let expected_acosh = 2.0_f64.acosh();
+        let expected_acosh_deriv = 1.0 / (4.0_f64 - 1.0).sqrt(); // 1/√(x²-1)
+        assert!(approx_eq(acosh_x.value, expected_acosh));
+        assert!(approx_eq(acosh_x.derivative, expected_acosh_deriv));
+        
+        // Test atanh
+        let x = Dual::variable(0.5);
+        let atanh_x = x.atanh().unwrap();
+        let expected_atanh = 0.5_f64.atanh();
+        let expected_atanh_deriv = 1.0 / (1.0 - 0.25); // 1/(1-x²)
+        assert!(approx_eq(atanh_x.value, expected_atanh));
+        assert!(approx_eq(atanh_x.derivative, expected_atanh_deriv));
+    }
+    
+    #[test]
+    fn test_logarithmic_variants() {
+        // Test log10
+        let x = Dual::variable(10.0);
+        let log10_x = x.log10().unwrap();
+        assert!(approx_eq(log10_x.value, 1.0));
+        let expected_log10_deriv = 1.0 / (10.0 * 10.0_f64.ln());
+        assert!(approx_eq(log10_x.derivative, expected_log10_deriv));
+        
+        // Test log2
+        let x = Dual::variable(8.0);
+        let log2_x = x.log2().unwrap();
+        assert!(approx_eq(log2_x.value, 3.0));
+        let expected_log2_deriv = 1.0 / (8.0 * 2.0_f64.ln());
+        assert!(approx_eq(log2_x.derivative, expected_log2_deriv));
+        
+        // Test ln_1p
+        let x = Dual::variable(1.0);
+        let ln_1p_x = x.ln_1p().unwrap();
+        let expected_ln_1p = 2.0_f64.ln(); // ln(1+1) = ln(2)
+        let expected_ln_1p_deriv = 1.0 / 2.0; // 1/(1+x)
+        assert!(approx_eq(ln_1p_x.value, expected_ln_1p));
+        assert!(approx_eq(ln_1p_x.derivative, expected_ln_1p_deriv));
+        
+        // Test exp_m1
+        let x = Dual::variable(0.0);
+        let exp_m1_x = x.exp_m1();
+        assert!(approx_eq(exp_m1_x.value, 0.0)); // e^0 - 1 = 0
+        assert!(approx_eq(exp_m1_x.derivative, 1.0)); // d/dx(e^x-1) = e^x, at x=0 -> e^0 = 1
+    }
+    
+    #[test]
+    fn test_advanced_activations() {
+        // Test leaky_relu
+        let x_pos = Dual::variable(2.0);
+        let x_neg = Dual::variable(-1.0);
+        let alpha = 0.01;
+        
+        let leaky_pos = x_pos.leaky_relu(alpha);
+        assert_eq!(leaky_pos.value, 2.0);
+        assert_eq!(leaky_pos.derivative, 1.0);
+        
+        let leaky_neg = x_neg.leaky_relu(alpha);
+        assert_eq!(leaky_neg.value, -0.01);
+        assert_eq!(leaky_neg.derivative, 0.01);
+        
+        // Test ELU
+        let elu_pos = x_pos.elu(1.0);
+        assert_eq!(elu_pos.value, 2.0);
+        assert_eq!(elu_pos.derivative, 1.0);
+        
+        let elu_neg = x_neg.elu(1.0);
+        let expected_elu = 1.0 * ((-1.0_f64).exp() - 1.0);
+        let expected_elu_deriv = 1.0 * (-1.0_f64).exp();
+        assert!(approx_eq(elu_neg.value, expected_elu));
+        assert!(approx_eq(elu_neg.derivative, expected_elu_deriv));
+        
+        // Test SELU
+        let selu_pos = x_pos.selu();
+        const SCALE: f64 = 1.0507009873554804934193349852946;
+        assert!(approx_eq(selu_pos.value, SCALE * 2.0));
+        assert!(approx_eq(selu_pos.derivative, SCALE));
+        
+        // Test softplus
+        let x = Dual::variable(0.0);
+        let softplus_x = x.softplus();
+        let expected_softplus = (1.0_f64 + 1.0).ln(); // ln(1 + e^0) = ln(2)
+        let expected_softplus_deriv = 1.0 / (1.0 + 1.0); // e^x/(1+e^x), at x=0 -> 1/2
+        assert!(approx_eq(softplus_x.value, expected_softplus));
+        assert!(approx_eq(softplus_x.derivative, expected_softplus_deriv));
+        
+        // Test softsign
+        let x = Dual::variable(2.0);
+        let softsign_x = x.softsign();
+        let expected_softsign = 2.0 / (1.0 + 2.0); // x/(1+|x|)
+        let expected_softsign_deriv = 1.0 / ((1.0 + 2.0) * (1.0 + 2.0)); // 1/(1+|x|)²
+        assert!(approx_eq(softsign_x.value, expected_softsign));
+        assert!(approx_eq(softsign_x.derivative, expected_softsign_deriv));
+    }
+    
+    #[test]
+    fn test_swish_gelu() {
+        // Test swish (x * sigmoid(x))
+        let x = Dual::variable(1.0);
+        let swish_x = x.swish();
+        
+        let sigmoid_1 = 1.0 / (1.0 + (-1.0_f64).exp());
+        let expected_swish = 1.0 * sigmoid_1;
+        // swish'(x) = sigmoid(x) + x * sigmoid'(x) 
+        // sigmoid'(x) = sigmoid(x) * (1 - sigmoid(x))
+        let sigmoid_deriv = sigmoid_1 * (1.0 - sigmoid_1);
+        let expected_swish_deriv = sigmoid_1 + 1.0 * sigmoid_deriv;
+        
+        assert!(approx_eq(swish_x.value, expected_swish));
+        assert!(approx_eq(swish_x.derivative, expected_swish_deriv));
+        
+        // Test GELU (basic functionality)
+        let x = Dual::variable(0.0);
+        let gelu_x = x.gelu();
+        // GELU(0) ≈ 0
+        assert!(approx_eq(gelu_x.value, 0.0));
+        // GELU'(0) ≈ 0.5
+        assert!(approx_eq(gelu_x.derivative, 0.5));
+    }
+    
+    #[test]
+    fn test_special_functions() {
+        // Test error function
+        let x = Dual::variable(0.0);
+        let erf_x = x.erf();
+        // Our erf approximation may not be perfect at x=0, so allow some tolerance
+        assert!(erf_x.value.abs() < 0.1); // erf(0) should be close to 0
+        let expected_erf_deriv = 2.0 / PI.sqrt(); // erf'(0) = 2/√π
+        assert!(approx_eq(erf_x.derivative, expected_erf_deriv));
+        
+        // Test gamma function (basic case)
+        let x = Dual::variable(1.0);
+        let gamma_x = x.gamma().unwrap();
+        // Γ(1) = 1, but our Stirling approximation may not be exact
+        assert!(gamma_x.value > 0.5 && gamma_x.value < 2.0); // Reasonable range
+        assert!(gamma_x.derivative.abs() < 10.0); // Reasonable derivative
+    }
+    
+    #[test]
+    fn test_domain_errors() {
+        // Test asin domain errors
+        let x = Dual::variable(1.5);
+        assert!(x.asin().is_err());
+        
+        // Test acos domain errors  
+        assert!(x.acos().is_err());
+        
+        // Test acosh domain errors
+        let x = Dual::variable(0.5);
+        assert!(x.acosh().is_err());
+        
+        // Test atanh domain errors
+        let x = Dual::variable(1.0);
+        assert!(x.atanh().is_err());
+        
+        // Test log variants domain errors
+        let x = Dual::variable(-1.0);
+        assert!(x.log10().is_err());
+        assert!(x.log2().is_err());
+        
+        let x = Dual::variable(-1.1);
+        assert!(x.ln_1p().is_err());
+        
+        // Test gamma domain errors
+        let x = Dual::variable(-1.0);
+        assert!(x.gamma().is_err());
+    }
+    
+    #[test]
+    fn test_numerical_stability() {
+        // Test ln_1p for small values (more stable than ln(1+x))
+        let small_x = Dual::variable(1e-10);
+        let ln_1p_result = small_x.ln_1p().unwrap();
+        assert!(ln_1p_result.value > 0.0);
+        assert!(ln_1p_result.derivative > 0.99); // Should be close to 1
+        
+        // Test exp_m1 for small values (more stable than exp(x)-1)
+        let exp_m1_result = small_x.exp_m1();
+        assert!(exp_m1_result.value > 0.0);
+        // For exp_m1, derivative is exp(x), which at x=1e-10 should be ≈ 1.0
+        assert!(approx_eq(exp_m1_result.derivative, (1e-10_f64).exp())); // Should be close to 1
     }
 }
