@@ -945,7 +945,7 @@ impl ImportTransformer {
 }
 
 /// Results of import resolution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportResolutionResults {
     /// Resolved imports
     pub resolved_imports: Vec<ResolvedImport>,
@@ -964,7 +964,7 @@ pub struct ImportResolutionResults {
 }
 
 /// Validation results
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ValidationResults {
     /// Validation passed
     pub passed: bool,
@@ -980,7 +980,7 @@ pub struct ValidationResults {
 }
 
 /// Validation error
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
     /// Error type
     pub error_type: ValidationErrorType,
@@ -1009,7 +1009,7 @@ pub enum ValidationErrorType {
 }
 
 /// Validation warning
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationWarning {
     /// Warning type
     pub warning_type: ValidationWarningType,
@@ -1035,7 +1035,7 @@ pub enum ValidationWarningType {
 }
 
 /// Resolution error
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolutionError {
     /// Module name
     pub module_name: String,
@@ -1051,7 +1051,7 @@ pub struct ResolutionError {
 }
 
 /// Types of resolution errors
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ResolutionErrorType {
     /// Transformation failed
     TransformationFailed,
@@ -1075,7 +1075,7 @@ pub enum ResolutionErrorSeverity {
 }
 
 /// Import resolution performance metrics
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportResolutionPerformance {
     /// Total resolution time
     pub total_resolution_time: std::time::Duration,
@@ -1091,7 +1091,7 @@ pub struct ImportResolutionPerformance {
 }
 
 /// Resolution results metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolutionResultsMetadata {
     /// Resolver configuration
     pub resolver_config: SelectiveResolverConfig,
@@ -1168,11 +1168,11 @@ mod tests {
 
     #[test]
     fn test_validation_status() {
-        let valid = ValidationStatus::Valid;
-        let invalid = ValidationStatus::Invalid { errors: vec!["Error".to_string()] };
+        let valid = ValidationStatus::Passed;
+        let invalid = ValidationStatus::Failed;
         
-        assert_eq!(valid, ValidationStatus::Valid);
-        assert!(matches!(invalid, ValidationStatus::Invalid { .. }));
+        assert_eq!(valid, ValidationStatus::Passed);
+        assert!(matches!(invalid, ValidationStatus::Failed));
     }
 
     #[test]

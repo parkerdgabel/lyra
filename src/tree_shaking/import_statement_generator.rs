@@ -1698,7 +1698,7 @@ impl DependencyOrderer {
 }
 
 /// Results of import statement generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportGenerationResults {
     /// Generated import code
     pub generated_code: String,

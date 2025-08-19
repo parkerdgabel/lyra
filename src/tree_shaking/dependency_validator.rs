@@ -1360,6 +1360,18 @@ pub struct BaselineMetadata {
     pub last_updated: SystemTime,
 }
 
+impl Default for BaselineMetadata {
+    fn default() -> Self {
+        BaselineMetadata {
+            baseline_version: "1.0.0".to_string(),
+            environment: EnvironmentInfo::default(),
+            methodology: "default".to_string(),
+            quality_score: 1.0,
+            last_updated: SystemTime::now(),
+        }
+    }
+}
+
 /// Environment information
 #[derive(Debug, Clone)]
 pub struct EnvironmentInfo {
@@ -1377,6 +1389,18 @@ pub struct EnvironmentInfo {
     
     /// Additional flags
     pub compiler_flags: Vec<String>,
+}
+
+impl Default for EnvironmentInfo {
+    fn default() -> Self {
+        EnvironmentInfo {
+            os: "unknown".to_string(),
+            cpu: "unknown".to_string(),
+            memory: "unknown".to_string(),
+            compiler_version: "1.0.0".to_string(),
+            compiler_flags: Vec::new(),
+        }
+    }
 }
 
 /// Regression detector
@@ -3145,6 +3169,73 @@ pub enum RecommendationPriority {
     
     /// Urgent priority
     Urgent = 5,
+}
+
+impl DependencyValidationResults {
+    /// Check if there are any critical errors that would prevent optimization
+    pub fn has_critical_errors(&self) -> bool {
+        match &self.validation_status {
+            ValidationStatus::Failed | ValidationStatus::Error => true,
+            _ => false,
+        }
+    }
+    
+    /// Get all error messages
+    pub fn get_all_errors(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+        
+        match &self.validation_status {
+            ValidationStatus::Failed => {
+                errors.push("Validation failed".to_string());
+            },
+            ValidationStatus::Error => {
+                errors.push("Validation error occurred".to_string());
+            },
+            _ => {},
+        }
+        
+        // Add errors from other validation results
+        for cycle in &self.circular_dependency_results.cycles_detected {
+            if cycle.severity == CycleSeverity::Critical {
+                errors.push(format!("Critical circular dependency: {}", cycle.cycle_id));
+            }
+        }
+        
+        errors
+    }
+    
+    /// Get validation summary
+    pub fn get_summary(&self) -> ValidationSummary {
+        ValidationSummary {
+            total_checks_performed: 1, // Simplified - would count actual checks
+            checks_passed: match self.validation_status {
+                ValidationStatus::Valid => 1,
+                _ => 0,
+            },
+            checks_failed: if self.has_critical_errors() { 1 } else { 0 },
+            circular_dependencies_found: self.circular_dependency_results.cycles_found.len(),
+            critical_errors: self.get_all_errors().len(),
+        }
+    }
+}
+
+/// Summary of validation results
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ValidationSummary {
+    /// Total validation checks performed
+    pub total_checks_performed: usize,
+    
+    /// Number of checks that passed
+    pub checks_passed: usize,
+    
+    /// Number of checks that failed
+    pub checks_failed: usize,
+    
+    /// Number of circular dependencies found
+    pub circular_dependencies_found: usize,
+    
+    /// Number of critical errors
+    pub critical_errors: usize,
 }
 
 impl DependencyValidator {

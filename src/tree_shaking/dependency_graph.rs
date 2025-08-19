@@ -509,6 +509,53 @@ impl DependencyGraph {
             .collect()
     }
     
+    /// Find circular dependencies in the graph
+    pub fn find_circular_dependencies(&self) -> Vec<Vec<String>> {
+        // Simple cycle detection implementation
+        // In a real implementation, this would use sophisticated algorithms
+        let mut cycles = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut rec_stack = std::collections::HashSet::new();
+        
+        for node_name in self.nodes.keys() {
+            if !visited.contains(node_name) {
+                if let Some(cycle) = self.dfs_find_cycle(node_name, &mut visited, &mut rec_stack) {
+                    cycles.push(cycle);
+                }
+            }
+        }
+        
+        cycles
+    }
+    
+    fn dfs_find_cycle(
+        &self,
+        node_name: &str,
+        visited: &mut std::collections::HashSet<String>,
+        rec_stack: &mut std::collections::HashSet<String>,
+    ) -> Option<Vec<String>> {
+        visited.insert(node_name.to_string());
+        rec_stack.insert(node_name.to_string());
+        
+        // Use outgoing edges instead of node.dependencies
+        if let Some(edges) = self.outgoing_edges.get(node_name) {
+            for edge in edges {
+                let dep = &edge.to;
+                if !visited.contains(dep) {
+                    if let Some(cycle) = self.dfs_find_cycle(dep, visited, rec_stack) {
+                        return Some(cycle);
+                    }
+                } else if rec_stack.contains(dep) {
+                    // Found a cycle
+                    return Some(vec![node_name.to_string(), dep.clone()]);
+                }
+            }
+        }
+        
+        rec_stack.remove(node_name);
+        None
+    }
+    
     // Private helper methods
     
     fn update_metadata(&mut self) {

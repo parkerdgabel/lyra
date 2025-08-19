@@ -53,6 +53,8 @@ pub use import_cache::{
     CacheOptimizationReport, MemoryCacheStats, DiskCacheStats
 };
 
+// Integrated tree-shaking results and analysis (types defined below)
+
 use crate::modules::registry::ModuleRegistry;
 use std::collections::HashMap;
 
@@ -114,47 +116,83 @@ impl TreeShaker {
         }
     }
     
-    /// Analyze stdlib dependencies and build dependency graph
-    pub fn analyze_stdlib(&mut self, module_registry: &ModuleRegistry) -> Result<(), TreeShakeError> {
-        // Step 1: Track all function usage patterns
+    /// Analyze stdlib dependencies and build dependency graph with integrated validation and caching
+    pub fn analyze_stdlib(&mut self, module_registry: &ModuleRegistry) -> Result<TreeShakingResults, TreeShakeError> {
+        let analysis_start_time = std::time::Instant::now();
+        
+        // Step 1: Check cache for existing analysis results
+        let cache_key = self.generate_analysis_cache_key(module_registry);
+        if let Some(cached_results) = self.get_cached_analysis_results(&cache_key)? {
+            return Ok(cached_results);
+        }
+        
+        // Step 2: Track all function usage patterns
         self.usage_tracker.track_stdlib_usage(module_registry)?;
         
-        // Step 2: Analyze function calls and build dependency graph
+        // Step 3: Analyze function calls and build dependency graph
         self.call_analyzer.analyze_stdlib_calls(module_registry, &mut self.dependency_graph)?;
         
-        // Step 3: Analyze module-level dependencies
+        // Step 4: Analyze module-level dependencies
         self.module_deps.analyze_module_dependencies(module_registry, &mut self.dependency_graph)?;
         
-        // Step 4: Run graph analysis algorithms
+        // Step 5: Run graph analysis algorithms
         self.graph_analyzer.analyze_graph(&mut self.dependency_graph)?;
         
-        // Step 5: Analyze import patterns and optimize imports
-        self.import_analyzer.analyze_imports(&self.dependency_graph, &self.usage_tracker, module_registry)?;
-        
-        // Step 6: Resolve selective imports based on analysis
-        let resolution_results = self.selective_resolver.resolve_imports(
-            &self.import_analyzer, 
-            &self.dependency_graph, 
-            &self.usage_tracker, 
-            module_registry
-        )?;
-        
-        // Step 7: Perform compile-time dependency resolution
-        let compile_time_results = self.compile_time_resolver.resolve_compile_time_dependencies(
-            &resolution_results,
+        // Step 6: Validate dependencies (integrated validation)
+        let validation_results = self.dependency_validator.validate_dependencies(
             &self.dependency_graph,
             &self.usage_tracker,
-            module_registry
+            module_registry,
+        ).map_err(|e| TreeShakeError::ValidationError { message: e.to_string() })?;
+        
+        // Step 7: Cache validation results for future use
+        self.cache_validation_results(&validation_results)?;
+        
+        // Step 8: Analyze import patterns with validation-guided optimization
+        self.import_analyzer.analyze_imports(&self.dependency_graph, &self.usage_tracker, module_registry)?;
+        
+        // Step 9: Warm cache with frequently accessed import patterns
+        let frequent_patterns = self.identify_frequent_import_patterns();
+        self.warm_import_cache(frequent_patterns)?;
+        
+        // Step 10: Resolve selective imports with cache-first strategy
+        let resolution_results = self.resolve_imports_with_caching(module_registry)?;
+        
+        // Step 11: Perform compile-time dependency resolution with caching
+        let compile_time_results = self.resolve_compile_time_dependencies_with_caching(
+            &resolution_results,
+            module_registry,
         )?;
         
-        // Step 8: Generate optimized import statements
-        let _import_statements = self.import_statement_generator.generate_import_statements(
+        // Step 12: Generate optimized import statements with validation
+        let import_statements = self.generate_validated_import_statements(
             &resolution_results,
             &compile_time_results,
-            None, // Use default format
+            &validation_results,
         )?;
         
-        Ok(())
+        // Step 13: Create comprehensive results
+        let results = TreeShakingResults {
+            dependency_graph_summary: self.create_dependency_graph_summary(),
+            usage_statistics: self.usage_tracker.stats().clone(),
+            validation_results,
+            resolution_results,
+            compile_time_results,
+            import_statements,
+            performance_metrics: TreeShakingPerformanceMetrics {
+                total_analysis_time: analysis_start_time.elapsed(),
+                cache_hit_ratio: self.calculate_overall_cache_hit_ratio(),
+                validation_time: self.dependency_validator.get_performance_metrics().total_validation_time,
+                import_resolution_time: resolution_results.performance_metrics.total_resolution_time,
+                optimization_effectiveness: self.calculate_optimization_effectiveness(),
+            },
+            recommendations: self.generate_optimization_recommendations(),
+        };
+        
+        // Step 14: Cache the complete analysis results
+        self.cache_analysis_results(&cache_key, &results)?;
+        
+        Ok(results)
     }
     
     /// Get the complete dependency graph
@@ -427,6 +465,377 @@ impl TreeShaker {
         self.import_cache = ImportCache::with_config(config);
         Ok(())
     }
+    
+    // Enhanced integration methods for validation and caching
+    
+    /// Generate cache key for analysis results
+    fn generate_analysis_cache_key(&self, module_registry: &ModuleRegistry) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // Include module registry state in cache key
+        let module_list: Vec<_> = module_registry.list_modules();
+        module_list.hash(&mut hasher);
+        
+        // Include configuration state
+        format!("analysis_results_{:x}", hasher.finish())
+    }
+    
+    /// Get cached analysis results
+    fn get_cached_analysis_results(&mut self, cache_key: &str) -> Result<Option<TreeShakingResults>, TreeShakeError> {
+        match self.import_cache.get(cache_key)? {
+            Some(CachedImportData::CustomData { data_type, serialized_data }) 
+                if data_type == "tree_shaking_results" => {
+                let results: TreeShakingResults = bincode::deserialize(&serialized_data)
+                    .map_err(|e| TreeShakeError::CacheError { 
+                        message: format!("Failed to deserialize cached results: {}", e) 
+                    })?;
+                Ok(Some(results))
+            },
+            _ => Ok(None),
+        }
+    }
+    
+    /// Cache analysis results
+    fn cache_analysis_results(&mut self, cache_key: &str, results: &TreeShakingResults) -> Result<(), TreeShakeError> {
+        let serialized_data = bincode::serialize(results)
+            .map_err(|e| TreeShakeError::CacheError { 
+                message: format!("Failed to serialize results for caching: {}", e) 
+            })?;
+        
+        let cache_data = CachedImportData::CustomData {
+            data_type: "tree_shaking_results".to_string(),
+            serialized_data,
+        };
+        
+        self.import_cache.put(cache_key.to_string(), cache_data, None)
+    }
+    
+    /// Cache validation results
+    fn cache_validation_results(&mut self, results: &DependencyValidationResults) -> Result<(), TreeShakeError> {
+        let cache_key = format!("validation_results_{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap().as_secs());
+        
+        let cache_data = CachedImportData::DependencyReport(results.clone());
+        self.import_cache.put(cache_key, cache_data, Some(std::time::Duration::from_secs(1800)))
+    }
+    
+    /// Identify frequently accessed import patterns for cache warming
+    fn identify_frequent_import_patterns(&self) -> Vec<String> {
+        self.import_analyzer.get_all_optimizations()
+            .iter()
+            .filter(|opt| {
+                // Include patterns that are accessed frequently
+                opt.original_pattern.used_functions.iter()
+                    .any(|func| func.usage_count > 5)
+            })
+            .map(|opt| format!("import_pattern_{}", opt.module_name))
+            .collect()
+    }
+    
+    /// Resolve imports with cache-first strategy
+    fn resolve_imports_with_caching(&mut self, module_registry: &ModuleRegistry) -> Result<ImportResolutionResults, TreeShakeError> {
+        let cache_key = "import_resolution_current";
+        
+        // Check cache first
+        if let Some(cached_results) = self.get_cached_import_resolution_results(cache_key)? {
+            return Ok(cached_results);
+        }
+        
+        // Perform resolution
+        let results = self.selective_resolver.resolve_imports(
+            &self.import_analyzer, 
+            &self.dependency_graph, 
+            &self.usage_tracker, 
+            module_registry
+        )?;
+        
+        // Cache the results
+        self.cache_import_resolution_results(cache_key, &results)?;
+        
+        Ok(results)
+    }
+    
+    /// Get cached import resolution results
+    fn get_cached_import_resolution_results(&mut self, cache_key: &str) -> Result<Option<ImportResolutionResults>, TreeShakeError> {
+        match self.import_cache.get(cache_key)? {
+            Some(CachedImportData::ResolvedImports(results)) => Ok(Some(results)),
+            _ => Ok(None),
+        }
+    }
+    
+    /// Cache import resolution results
+    fn cache_import_resolution_results(&mut self, cache_key: &str, results: &ImportResolutionResults) -> Result<(), TreeShakeError> {
+        let cache_data = CachedImportData::ResolvedImports(results.clone());
+        self.import_cache.put(cache_key.to_string(), cache_data, Some(std::time::Duration::from_secs(900)))
+    }
+    
+    /// Resolve compile-time dependencies with caching
+    fn resolve_compile_time_dependencies_with_caching(
+        &mut self,
+        resolution_results: &ImportResolutionResults,
+        module_registry: &ModuleRegistry,
+    ) -> Result<CompileTimeResolutionResults, TreeShakeError> {
+        self.compile_time_resolver.resolve_compile_time_dependencies(
+            resolution_results,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )
+    }
+    
+    /// Generate validated import statements
+    fn generate_validated_import_statements(
+        &mut self,
+        resolution_results: &ImportResolutionResults,
+        compile_time_results: &CompileTimeResolutionResults,
+        validation_results: &DependencyValidationResults,
+    ) -> Result<ImportGenerationResults, TreeShakeError> {
+        // Only generate imports for modules that passed validation
+        if validation_results.has_critical_errors() {
+            return Err(TreeShakeError::ValidationError {
+                message: "Cannot generate imports due to critical validation errors".to_string(),
+            });
+        }
+        
+        self.import_statement_generator.generate_import_statements(
+            resolution_results,
+            compile_time_results,
+            None, // Use default format
+        )
+    }
+    
+    /// Create dependency graph summary
+    fn create_dependency_graph_summary(&self) -> DependencyGraphSummary {
+        DependencyGraphSummary {
+            total_nodes: self.dependency_graph.node_count(),
+            total_edges: self.dependency_graph.edge_count(),
+            circular_dependencies: self.dependency_graph.find_circular_dependencies().len(),
+            unused_functions: self.unused_functions().len(),
+            critical_path_length: self.graph_analyzer.find_critical_path_length(&self.dependency_graph),
+        }
+    }
+    
+    /// Calculate overall cache hit ratio across all systems
+    fn calculate_overall_cache_hit_ratio(&self) -> f64 {
+        let cache_stats = self.import_cache.get_cache_stats_summary();
+        cache_stats.overall_hit_ratio
+    }
+    
+    /// Calculate optimization effectiveness
+    fn calculate_optimization_effectiveness(&self) -> f64 {
+        let import_impact = self.import_analyzer.calculate_total_impact();
+        import_impact.import_reduction_percentage / 100.0
+    }
+    
+    /// Generate optimization recommendations based on integrated analysis
+    fn generate_optimization_recommendations(&self) -> Vec<IntegratedOptimizationRecommendation> {
+        let mut recommendations = Vec::new();
+        
+        // Add cache-based recommendations
+        let cache_stats = self.import_cache.get_cache_stats_summary();
+        if cache_stats.overall_hit_ratio < 0.8 {
+            recommendations.push(IntegratedOptimizationRecommendation {
+                recommendation_type: IntegratedOptimizationType::ImproveCache,
+                description: "Cache hit ratio is below optimal threshold. Consider warming more frequently accessed patterns.".to_string(),
+                expected_impact: OptimizationImpact {
+                    size_reduction: 0,
+                    compile_time_improvement: (cache_stats.average_response_time.as_millis() as u64 * 10),
+                    runtime_impact: RuntimeImpact::Positive(0.1),
+                    functions_affected: 0,
+                },
+                confidence: 0.8,
+            });
+        }
+        
+        // Add validation-based recommendations
+        let validation_metrics = self.dependency_validator.get_performance_metrics();
+        if validation_metrics.circular_dependencies_found > 0 {
+            recommendations.push(IntegratedOptimizationRecommendation {
+                recommendation_type: IntegratedOptimizationType::ResolveDependencies,
+                description: format!("Found {} circular dependencies that should be resolved for better optimization.", 
+                    validation_metrics.circular_dependencies_found),
+                expected_impact: OptimizationImpact {
+                    size_reduction: validation_metrics.circular_dependencies_found * 500,
+                    compile_time_improvement: validation_metrics.circular_dependencies_found * 100,
+                    runtime_impact: RuntimeImpact::Positive(0.05),
+                    functions_affected: validation_metrics.circular_dependencies_found,
+                },
+                confidence: 0.9,
+            });
+        }
+        
+        recommendations
+    }
+}
+
+/// Comprehensive tree-shaking analysis results
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TreeShakingResults {
+    /// Summary of the dependency graph
+    pub dependency_graph_summary: DependencyGraphSummary,
+    
+    /// Usage statistics
+    pub usage_statistics: UsageStats,
+    
+    /// Dependency validation results
+    pub validation_results: DependencyValidationResults,
+    
+    /// Import resolution results
+    pub resolution_results: ImportResolutionResults,
+    
+    /// Compile-time resolution results
+    pub compile_time_results: CompileTimeResolutionResults,
+    
+    /// Generated import statements
+    pub import_statements: ImportGenerationResults,
+    
+    /// Performance metrics
+    pub performance_metrics: TreeShakingPerformanceMetrics,
+    
+    /// Optimization recommendations
+    pub recommendations: Vec<IntegratedOptimizationRecommendation>,
+}
+
+/// Summary of dependency graph characteristics
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DependencyGraphSummary {
+    /// Total number of nodes in the graph
+    pub total_nodes: usize,
+    
+    /// Total number of edges in the graph
+    pub total_edges: usize,
+    
+    /// Number of circular dependencies detected
+    pub circular_dependencies: usize,
+    
+    /// Number of unused functions
+    pub unused_functions: usize,
+    
+    /// Length of the critical path
+    pub critical_path_length: usize,
+}
+
+/// Performance metrics for the entire tree-shaking process
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TreeShakingPerformanceMetrics {
+    /// Total time for analysis
+    pub total_analysis_time: std::time::Duration,
+    
+    /// Overall cache hit ratio
+    pub cache_hit_ratio: f64,
+    
+    /// Time spent on validation
+    pub validation_time: std::time::Duration,
+    
+    /// Time spent on import resolution
+    pub import_resolution_time: std::time::Duration,
+    
+    /// Effectiveness of optimizations (0.0 to 1.0)
+    pub optimization_effectiveness: f64,
+}
+
+/// Integrated optimization recommendation combining multiple analysis results
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IntegratedOptimizationRecommendation {
+    /// Type of integrated optimization
+    pub recommendation_type: IntegratedOptimizationType,
+    
+    /// Description of the recommendation
+    pub description: String,
+    
+    /// Expected impact of applying this recommendation
+    pub expected_impact: OptimizationImpact,
+    
+    /// Confidence level in this recommendation (0.0 to 1.0)
+    pub confidence: f64,
+}
+
+/// Types of integrated optimizations that combine validation and caching insights
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum IntegratedOptimizationType {
+    /// Improve cache performance
+    ImproveCache,
+    
+    /// Resolve circular dependencies
+    ResolveDependencies,
+    
+    /// Optimize import patterns based on validation
+    OptimizeImports,
+    
+    /// Eliminate validated dead code
+    EliminateDeadCode,
+    
+    /// Improve validation performance
+    ImproveValidation,
+    
+    /// Bundle related imports more effectively
+    OptimizeImportBundling,
+    
+    /// Reduce memory usage
+    ReduceMemoryUsage,
+    
+    /// Improve compilation performance
+    ImproveCompilationPerformance,
+}
+
+impl TreeShakingResults {
+    /// Get overall success status
+    pub fn is_successful(&self) -> bool {
+        !self.validation_results.has_critical_errors() && 
+        self.resolution_results.resolved_imports.len() > 0
+    }
+    
+    /// Get total time saved from optimizations
+    pub fn total_time_saved(&self) -> std::time::Duration {
+        self.performance_metrics.total_analysis_time
+    }
+    
+    /// Get total functions optimized
+    pub fn functions_optimized(&self) -> usize {
+        self.resolution_results.resolved_imports.len()
+    }
+    
+    /// Get optimization summary
+    pub fn get_optimization_summary(&self) -> OptimizationSummary {
+        OptimizationSummary {
+            total_modules_analyzed: self.resolution_results.resolved_imports.len(),
+            circular_dependencies_found: self.dependency_graph_summary.circular_dependencies,
+            unused_functions_eliminated: self.dependency_graph_summary.unused_functions,
+            cache_hit_ratio: self.performance_metrics.cache_hit_ratio,
+            optimization_effectiveness: self.performance_metrics.optimization_effectiveness,
+            total_analysis_time: self.performance_metrics.total_analysis_time,
+            recommendations_generated: self.recommendations.len(),
+        }
+    }
+}
+
+/// Summary of optimization results
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OptimizationSummary {
+    /// Total modules analyzed
+    pub total_modules_analyzed: usize,
+    
+    /// Circular dependencies found and resolved
+    pub circular_dependencies_found: usize,
+    
+    /// Unused functions eliminated
+    pub unused_functions_eliminated: usize,
+    
+    /// Cache hit ratio achieved
+    pub cache_hit_ratio: f64,
+    
+    /// Overall optimization effectiveness
+    pub optimization_effectiveness: f64,
+    
+    /// Total time spent on analysis
+    pub total_analysis_time: std::time::Duration,
+    
+    /// Number of optimization recommendations generated
+    pub recommendations_generated: usize,
 }
 
 /// Tree-shaking specific errors

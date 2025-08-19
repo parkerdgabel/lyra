@@ -1152,17 +1152,13 @@ mod tests {
 
     #[test]
     fn test_validation_status() {
-        let valid = ValidationStatus::Valid;
-        let warnings = ValidationStatus::ValidWithWarnings { 
-            warnings: vec!["Warning 1".to_string()] 
-        };
-        let invalid = ValidationStatus::Invalid { 
-            errors: vec!["Error 1".to_string()] 
-        };
+        let valid = ValidationStatus::Passed;
+        let warnings = ValidationStatus::PassedWithWarnings;
+        let invalid = ValidationStatus::Failed;
         
-        assert_eq!(valid, ValidationStatus::Valid);
-        assert!(matches!(warnings, ValidationStatus::ValidWithWarnings { .. }));
-        assert!(matches!(invalid, ValidationStatus::Invalid { .. }));
+        assert_eq!(valid, ValidationStatus::Passed);
+        assert!(matches!(warnings, ValidationStatus::PassedWithWarnings));
+        assert!(matches!(invalid, ValidationStatus::Failed));
     }
 
     #[test]
