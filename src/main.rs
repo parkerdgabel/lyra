@@ -178,7 +178,12 @@ fn main() -> Result<()> {
 }
 
 /// Handle package management commands
-fn run_pkg_command(pkg_cmd: PkgCommands) -> Result<()> {
+fn run_pkg_command(_pkg_cmd: PkgCommands) -> Result<()> {
+    // TODO: Temporarily disabled due to module system being disabled
+    Err(lyra::Error::Runtime {
+        message: "Package management temporarily disabled during memory system integration".to_string(),
+    })
+    /*
     use lyra::modules::cli::{PackageCli, PackageCommand, default_cache_dir};
     
     // Convert clap command to our package command enum
@@ -209,6 +214,7 @@ fn run_pkg_command(pkg_cmd: PkgCommands) -> Result<()> {
             message: format!("Package command failed: {}", e),
         })
     })
+    */
 }
 
 /// Run the interactive REPL

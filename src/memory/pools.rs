@@ -4,10 +4,9 @@
 //! overhead and enable efficient recycling of frequently used value types.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use parking_lot::RwLock;
 use crate::vm::{Value, VmResult, VmError};
-use crate::memory::{ManagedValue, ValueTag, MemoryManaged, stats::PoolStats};
+use crate::memory::{ManagedValue, ValueTag, stats::PoolStats};
 
 /// Generic typed memory pool for efficient allocation and recycling
 pub struct TypedPool<T> {

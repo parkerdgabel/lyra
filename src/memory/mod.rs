@@ -23,12 +23,10 @@ pub mod interner;
 pub mod pools;
 pub mod arena;
 pub mod managed_value;
-// TODO: Temporarily comment out managed_vm due to compilation issues
-// pub mod managed_vm;
 pub mod stats;
 
 use std::sync::Arc;
-use crate::vm::{Value, VmResult, VmError};
+use crate::vm::{Value, VmResult};
 
 pub use interner::{StringInterner, InternedString};
 pub use pools::{ValuePools, TypedPool};

@@ -4,7 +4,6 @@
 //! for the common patterns in symbolic computation where symbols like "x", "y",
 //! "Plus", "Times" are used repeatedly.
 
-use std::sync::Arc;
 use std::collections::HashMap;
 use parking_lot::RwLock;
 use crate::memory::stats::InternerStats;

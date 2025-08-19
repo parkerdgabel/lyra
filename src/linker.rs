@@ -677,6 +677,8 @@ impl FunctionRegistry {
         self.get_functions_with_attribute(&FunctionAttribute::Listable)
     }
     
+    // TODO: Temporarily disabled due to module system being disabled
+    /*
     /// Register all functions from a module with their namespace
     pub fn register_module_functions(
         &mut self,
@@ -730,6 +732,7 @@ impl FunctionRegistry {
         
         Ok(())
     }
+    */
     
     /// Get all functions in a specific namespace
     pub fn get_namespace_functions(&self, namespace: &str) -> Vec<String> {

@@ -5,7 +5,7 @@
 
 use std::fmt;
 use crate::vm::{Value, VmResult, VmError};
-use crate::memory::{InternedString, MemoryManaged};
+use crate::memory::InternedString;
 
 /// Compact value tag for discriminating union data
 #[repr(u8)]

@@ -370,10 +370,91 @@ fn test_string_interner_memory_usage() {
 }
 */
 
-// Simple placeholder test that should compile
+// Comprehensive memory management system tests
 #[test]
-fn test_memory_system_placeholder() {
-    // This is a placeholder test to ensure the test file compiles
-    // Real memory integration tests will be added once compilation issues are resolved
-    assert!(true);
+fn test_memory_system_comprehensive() {
+    use lyra::memory::{MemoryManager, StringInterner, ManagedValue, ComputationArena};
+    use lyra::vm::Value;
+    
+    // Test 1: Basic memory manager creation
+    let manager = MemoryManager::new();
+    let stats = manager.memory_stats();
+    assert!(stats.total_allocated >= 0);
+    println!("✅ Memory Manager creation: {} bytes initial allocation", stats.total_allocated);
+    
+    // Test 2: String interning efficiency
+    let interner = StringInterner::new();
+    let str1 = interner.intern("x");
+    let str2 = interner.intern("x");
+    assert!(std::ptr::eq(str1.as_str(), str2.as_str()));
+    println!("✅ String interning: 'x' symbols share same memory address");
+    
+    // Test 3: ManagedValue memory efficiency
+    let test_values = vec![
+        Value::Integer(42),
+        Value::Real(3.14159),
+        Value::String("test".to_string()),
+        Value::Symbol("Plus".to_string()),
+        Value::Boolean(true),
+        Value::Missing,
+    ];
+    
+    let mut total_standard_size = 0;
+    let mut total_managed_size = 0;
+    
+    for value in &test_values {
+        let standard_size = std::mem::size_of::<Value>();
+        let managed_value = ManagedValue::from_value(value.clone(), &interner).unwrap();
+        let managed_size = managed_value.memory_size();
+        
+        total_standard_size += standard_size;
+        total_managed_size += managed_size;
+        
+        // Test round-trip conversion
+        let converted_back = managed_value.to_value().unwrap();
+        match (value, &converted_back) {
+            (Value::Integer(a), Value::Integer(b)) => assert_eq!(a, b),
+            (Value::Real(a), Value::Real(b)) => assert!((a - b).abs() < f64::EPSILON),
+            (Value::String(a), Value::String(b)) => assert_eq!(a, b),
+            (Value::Symbol(a), Value::Symbol(b)) => assert_eq!(a, b),
+            (Value::Boolean(a), Value::Boolean(b)) => assert_eq!(a, b),
+            (Value::Missing, Value::Missing) => {},
+            _ => panic!("Round-trip conversion failed for {:?}", value),
+        }
+    }
+    
+    println!("✅ ManagedValue conversions: All {} values converted successfully", test_values.len());
+    println!("📊 Memory comparison: Standard {} bytes vs Managed {} bytes per value", 
+             total_standard_size / test_values.len(), 
+             total_managed_size / test_values.len());
+    
+    // Test 4: Arena allocation scoping
+    let arena = ComputationArena::new();
+    assert_eq!(arena.active_scope_count(), 0);
+    
+    let initial_allocated = arena.total_allocated();
+    arena.with_scope(|_scope_id| {
+        arena.alloc(ManagedValue::integer(1));
+        arena.alloc(ManagedValue::real(2.5));
+        arena.alloc(ManagedValue::boolean(true));
+        
+        let scope_allocated = arena.total_allocated();
+        assert!(scope_allocated > initial_allocated);
+        println!("✅ Arena scoping: {} bytes allocated in scope", scope_allocated - initial_allocated);
+    });
+    
+    let final_allocated = arena.total_allocated();
+    assert_eq!(final_allocated, initial_allocated);
+    println!("✅ Arena cleanup: Memory automatically freed after scope");
+    
+    // Test 5: Memory statistics collection
+    let interner_stats = interner.stats();
+    let arena_stats = arena.stats();
+    
+    println!("📈 String interner stats: {} static hits, {} dynamic misses", 
+             interner_stats.static_hits, interner_stats.dynamic_misses);
+    println!("📈 Arena stats: {} total scopes created, {} total allocated bytes", 
+             arena_stats.total_scopes, arena_stats.total_allocated);
+    
+    println!("🎉 All memory management system components working correctly!");
 }
