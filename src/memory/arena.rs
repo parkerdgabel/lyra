@@ -143,12 +143,14 @@ impl ComputationArena {
     /// End a scope and clean up its allocations
     pub fn pop_scope(&self, scope_id: ScopeId) -> usize {
         let mut freed_bytes = 0;
+        let parent_scope_id;
         
-        // Remove scope and get its memory usage
+        // Remove scope and get its memory usage and parent
         {
             let mut scopes = self.scopes.write();
             if let Some(scope) = scopes.remove(&scope_id) {
                 freed_bytes = scope.memory_usage();
+                parent_scope_id = scope.parent;
                 
                 // Remove from parent's children
                 if let Some(parent_id) = scope.parent {
@@ -156,6 +158,8 @@ impl ComputationArena {
                         parent_scope.child_scopes.retain(|&id| id != scope_id);
                     }
                 }
+            } else {
+                parent_scope_id = None;
             }
         }
         
@@ -163,12 +167,7 @@ impl ComputationArena {
         {
             let mut current = self.current_scope.write();
             if *current == Some(scope_id) {
-                // Find parent scope
-                let scopes = self.scopes.read();
-                let parent = scopes.values()
-                    .find(|s| s.child_scopes.contains(&scope_id))
-                    .map(|s| s.id);
-                *current = parent;
+                *current = parent_scope_id;
             }
         }
         

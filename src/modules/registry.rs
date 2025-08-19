@@ -160,6 +160,16 @@ impl ModuleRegistry {
             .unwrap_or_default()
     }
     
+    /// Check if a module contains a specific function
+    pub fn has_function(&self, namespace: &str, function_name: &str) -> bool {
+        self.modules
+            .read()
+            .unwrap()
+            .get(namespace)
+            .map(|module| module.exports.contains_key(function_name))
+            .unwrap_or(false)
+    }
+    
     /// Register standard library functions as modules
     fn register_stdlib_modules(&mut self) -> Result<(), ModuleError> {
         // Create std::math module

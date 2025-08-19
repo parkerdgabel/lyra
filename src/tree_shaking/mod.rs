@@ -15,6 +15,7 @@ pub mod compile_time_resolver;
 pub mod import_statement_generator;
 pub mod dependency_validator;
 pub mod import_cache;
+pub mod intelligent_pipeline;
 
 pub use dependency_graph::{DependencyGraph, DependencyNode, DependencyEdge, DependencyType, 
                            CallContext as DependencyCallContext, FunctionMetadata, 

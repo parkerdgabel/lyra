@@ -1996,7 +1996,7 @@ pub struct ValidationMetrics {
 }
 
 /// Main validation results structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyValidationResults {
     /// Overall validation status
     pub validation_status: ValidationStatus,
@@ -2024,7 +2024,7 @@ pub struct DependencyValidationResults {
 }
 
 /// Overall validation status
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidationStatus {
     /// All validations passed
     Passed,
@@ -3062,7 +3062,7 @@ pub enum CouplingRecommendationType {
 }
 
 /// Validation metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationMetadata {
     /// Validation timestamp
     pub validated_at: SystemTime,
@@ -3279,7 +3279,7 @@ impl DependencyValidator {
         let cache_key = self.generate_cache_key(import_results, compile_time_results);
         if let Some(cached_result) = self.get_cached_validation(&cache_key) {
             self.metrics.cache_performance.hits += 1;
-            return Ok(cached_result.result);
+            return Ok(cached_result.result.clone());
         }
         self.metrics.cache_performance.misses += 1;
         

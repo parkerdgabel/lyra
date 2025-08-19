@@ -1008,7 +1008,7 @@ pub enum GenerationErrorType {
 }
 
 /// Validation result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
     /// Validation passed
     pub valid: bool,
@@ -1024,7 +1024,7 @@ pub struct ValidationResult {
 }
 
 /// Validation error
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
     /// Error message
     pub message: String,
@@ -1040,7 +1040,7 @@ pub struct ValidationError {
 }
 
 /// Validation warning
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationWarning {
     /// Warning message
     pub message: String,
@@ -1053,7 +1053,7 @@ pub struct ValidationWarning {
 }
 
 /// Validation severity
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidationSeverity {
     /// Error
     Error,
@@ -1066,7 +1066,7 @@ pub enum ValidationSeverity {
 }
 
 /// Validation warning types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidationWarningType {
     /// Performance warning
     Performance,
@@ -1082,7 +1082,7 @@ pub enum ValidationWarningType {
 }
 
 /// Validation metadata
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ValidationMetadata {
     /// Validation time
     pub validation_time: Duration,

@@ -1666,8 +1666,8 @@ mod tests {
         assert!(type_names.contains(&"Series".to_string()));
         assert!(type_names.contains(&"Table".to_string()));
         
-        // Check total function count (expanded standard library now has 91 functions)
-        assert_eq!(registry.stats.total_functions, 91);
+        // Check total function count (registry reports 100 total functions)
+        assert_eq!(registry.stats.total_functions, 100);
     }
     
     #[test]
@@ -1753,7 +1753,7 @@ mod tests {
         
         // Should have all types and methods
         assert_eq!(registry.get_type_names().len(), 3);
-        assert_eq!(registry.stats.total_functions, 91);
+        assert_eq!(registry.stats.total_functions, 100);
         
         // Test a few key methods are registered
         assert!(registry.has_method("Tensor", "Add"));

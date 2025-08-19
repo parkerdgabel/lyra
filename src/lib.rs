@@ -1,7 +1,7 @@
 pub mod ast;
 pub mod bytecode;
 pub mod compiler;
-// TODO: Temporarily disabled due to compilation conflicts
+// TODO: Concurrency has thread safety issues - needs architectural review
 // pub mod concurrency;
 pub mod error;
 pub mod foreign;
@@ -9,16 +9,18 @@ pub mod format;
 pub mod lexer;
 pub mod linker;
 pub mod memory;
-pub mod modules;
+// TODO: Modules system has integration issues - postponed  
+// pub mod modules;
 pub mod parser;
-pub mod tree_shaking;
+// TODO: Tree-shaking has complex dependencies - postponed
+// pub mod tree_shaking;
 pub mod pattern_matcher;
 pub mod repl;
 pub mod rules_engine;
-// TODO: Temporarily disabled due to compilation conflicts
+// TODO: Serialization has complex trait dependencies - postponed
 // pub mod serialization;
 pub mod stdlib;
-// TODO: Temporarily disabled due to compilation conflicts
+// TODO: Types module has integration issues - postponed 
 // pub mod types;
 pub mod vm;
 

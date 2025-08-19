@@ -475,7 +475,7 @@ pub struct DependencyResolutionMetadata {
 }
 
 /// Resolution algorithms
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ResolutionAlgorithm {
     /// Breadth-first search
     BreadthFirst,
@@ -1066,7 +1066,7 @@ pub struct CompileTimeResolutionMetadata {
 }
 
 /// Optimization levels
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OptimizationLevel {
     /// Conservative optimization
     Conservative,
