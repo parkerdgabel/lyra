@@ -13,6 +13,8 @@ pub mod import_analyzer;
 pub mod selective_resolver;
 pub mod compile_time_resolver;
 pub mod import_statement_generator;
+pub mod dependency_validator;
+pub mod import_cache;
 
 pub use dependency_graph::{DependencyGraph, DependencyNode, DependencyEdge, DependencyType, 
                            CallContext as DependencyCallContext, FunctionMetadata, 
@@ -41,6 +43,14 @@ pub use compile_time_resolver::{
 pub use import_statement_generator::{
     ImportStatementGenerator, StatementGeneratorConfig, ImportGenerationResults,
     OutputFormat, FormatGenerator, GenerationMetrics
+};
+pub use dependency_validator::{
+    DependencyValidator, DependencyValidatorConfig, DependencyValidationResults, 
+    CircularDependencyDetector, ValidationMetrics, CycleDetectionAlgorithm
+};
+pub use import_cache::{
+    ImportCache, ImportCacheConfig, CachedImportData, CacheStatsSummary,
+    CacheOptimizationReport, MemoryCacheStats, DiskCacheStats
 };
 
 use crate::modules::registry::ModuleRegistry;
@@ -77,6 +87,12 @@ pub struct TreeShaker {
     
     /// Import statement generator
     import_statement_generator: ImportStatementGenerator,
+    
+    /// Dependency validator
+    dependency_validator: DependencyValidator,
+    
+    /// Import cache system
+    import_cache: ImportCache,
 }
 
 impl TreeShaker {
@@ -93,6 +109,8 @@ impl TreeShaker {
             selective_resolver: SelectiveImportResolver::new(),
             compile_time_resolver: CompileTimeResolver::new(),
             import_statement_generator: ImportStatementGenerator::new(),
+            dependency_validator: DependencyValidator::new(),
+            import_cache: ImportCache::new(),
         }
     }
     
@@ -351,6 +369,64 @@ impl TreeShaker {
     pub fn clear_import_generator_caches(&mut self) {
         self.import_statement_generator.clear_caches();
     }
+    
+    /// Validate dependencies using the dependency validator
+    pub fn validate_dependencies(
+        &mut self,
+        module_registry: &ModuleRegistry,
+    ) -> Result<DependencyValidationResults, TreeShakeError> {
+        self.dependency_validator.validate_dependencies(
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        ).map_err(|e| TreeShakeError::ValidationError { message: e.to_string() })
+    }
+    
+    /// Get dependency validator performance metrics
+    pub fn get_validation_metrics(&self) -> &ValidationMetrics {
+        self.dependency_validator.get_performance_metrics()
+    }
+    
+    /// Configure dependency validator
+    pub fn configure_dependency_validator(&mut self, config: DependencyValidatorConfig) {
+        self.dependency_validator.configure(config);
+    }
+    
+    /// Get import cache statistics
+    pub fn get_import_cache_stats(&self) -> CacheStatsSummary {
+        self.import_cache.get_cache_stats_summary()
+    }
+    
+    /// Get cached import data
+    pub fn get_cached_import_data(&mut self, key: &str) -> Result<Option<CachedImportData>, TreeShakeError> {
+        self.import_cache.get(key)
+    }
+    
+    /// Cache import data
+    pub fn cache_import_data(&mut self, key: String, data: CachedImportData) -> Result<(), TreeShakeError> {
+        self.import_cache.put(key, data, None)
+    }
+    
+    /// Warm import cache with frequently accessed keys
+    pub fn warm_import_cache(&mut self, keys: Vec<String>) -> Result<(), TreeShakeError> {
+        self.import_cache.warm_cache(keys)
+    }
+    
+    /// Optimize import cache performance
+    pub fn optimize_import_cache(&mut self) -> Result<CacheOptimizationReport, TreeShakeError> {
+        self.import_cache.optimize()
+    }
+    
+    /// Clear import cache
+    pub fn clear_import_cache(&mut self) -> Result<(), TreeShakeError> {
+        self.import_cache.clear()
+    }
+    
+    /// Configure import cache
+    pub fn configure_import_cache(&mut self, config: ImportCacheConfig) -> Result<(), TreeShakeError> {
+        self.import_cache = ImportCache::with_config(config);
+        Ok(())
+    }
 }
 
 /// Tree-shaking specific errors
@@ -367,6 +443,12 @@ pub enum TreeShakeError {
     
     /// Module resolution failed
     ModuleResolutionError { module: String, message: String },
+    
+    /// Cache operation failed
+    CacheError { message: String },
+    
+    /// Validation failed
+    ValidationError { message: String },
 }
 
 impl std::fmt::Display for TreeShakeError {
@@ -383,6 +465,12 @@ impl std::fmt::Display for TreeShakeError {
             }
             TreeShakeError::ModuleResolutionError { module, message } => {
                 write!(f, "Module resolution error in {}: {}", module, message)
+            }
+            TreeShakeError::CacheError { message } => {
+                write!(f, "Cache error: {}", message)
+            }
+            TreeShakeError::ValidationError { message } => {
+                write!(f, "Validation error: {}", message)
             }
         }
     }
