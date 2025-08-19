@@ -30,7 +30,7 @@ pub struct CompileTimeResolver {
 }
 
 /// Configuration for compile-time resolver
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileTimeResolverConfig {
     /// Enable aggressive compile-time optimization
     pub aggressive_optimization: bool,
@@ -497,7 +497,7 @@ pub enum ResolutionAlgorithm {
 }
 
 /// Performance metrics for resolver
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResolverPerformanceMetrics {
     /// Total resolutions performed
     pub total_resolutions: u64,
@@ -1025,7 +1025,7 @@ impl CompileTimeResolver {
 }
 
 /// Results of compile-time resolution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileTimeResolutionResults {
     /// Resolved dependencies
     pub resolved_dependencies: Vec<ResolvedDependency>,
@@ -1047,7 +1047,7 @@ pub struct CompileTimeResolutionResults {
 }
 
 /// Metadata for compile-time resolution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileTimeResolutionMetadata {
     /// Total resolution time
     pub total_resolution_time: Duration,

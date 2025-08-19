@@ -673,7 +673,7 @@ impl TreeShaker {
 }
 
 /// Comprehensive tree-shaking analysis results
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TreeShakingResults {
     /// Summary of the dependency graph
     pub dependency_graph_summary: DependencyGraphSummary,

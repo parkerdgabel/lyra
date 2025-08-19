@@ -26,7 +26,7 @@ pub struct SelectiveImportResolver {
 }
 
 /// Configuration for selective import resolution
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectiveResolverConfig {
     /// Enable aggressive selective imports
     pub aggressive_selection: bool,
@@ -993,7 +993,7 @@ pub struct ValidationError {
 }
 
 /// Types of validation errors
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidationErrorType {
     /// Missing dependency
     MissingDependency,
@@ -1022,7 +1022,7 @@ pub struct ValidationWarning {
 }
 
 /// Types of validation warnings
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValidationWarningType {
     /// Performance concern
     PerformanceConcern,
@@ -1067,7 +1067,7 @@ pub enum ResolutionErrorType {
 }
 
 /// Resolution error severity
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ResolutionErrorSeverity {
     Warning,
     Error,

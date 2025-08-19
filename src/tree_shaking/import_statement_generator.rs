@@ -92,7 +92,7 @@ impl Default for StatementGeneratorConfig {
 }
 
 /// Output formats supported by the generator
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OutputFormat {
     /// ES6 modules (import/export)
     ES6Module,
@@ -1723,7 +1723,7 @@ pub struct ImportGenerationResults {
 }
 
 /// Performance metrics for import generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportGenerationPerformance {
     /// Total generation time
     pub generation_time: Duration,
@@ -1739,7 +1739,7 @@ pub struct ImportGenerationPerformance {
 }
 
 /// Import generation metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportGenerationMetadata {
     /// Generator version
     pub generator_version: String,
