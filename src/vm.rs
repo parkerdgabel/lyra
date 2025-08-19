@@ -227,6 +227,12 @@ pub struct VirtualMachine {
     pub global_symbols: HashMap<String, Value>,
     /// Delayed symbol definitions for delayed assignments (:=)
     pub delayed_definitions: HashMap<String, crate::ast::Expr>,
+    /// Type metadata for user-defined functions
+    pub type_metadata: HashMap<String, crate::compiler::SimpleFunctionSignature>,
+    /// Enhanced type metadata for user-defined functions
+    pub enhanced_metadata: HashMap<String, crate::compiler::EnhancedFunctionSignature>,
+    /// User-defined function bodies
+    pub user_functions: HashMap<String, crate::ast::Expr>,
     /// Bytecode instructions
     pub code: Vec<Instruction>,
     /// Maximum call stack depth
@@ -248,6 +254,9 @@ impl VirtualMachine {
             symbols: HashMap::new(),
             global_symbols: HashMap::new(),
             delayed_definitions: HashMap::new(),
+            type_metadata: HashMap::new(),
+            enhanced_metadata: HashMap::new(),
+            user_functions: HashMap::new(),
             code: Vec::new(),
             max_call_depth: 1000,
             stdlib: StandardLibrary::new(),
@@ -435,6 +444,42 @@ impl VirtualMachine {
                 } else {
                     return Ok(()); // End of program
                 }
+            }
+
+            OpCode::CallUser => {
+                // Call user-defined function with type validation
+                let (function_name_index, argc) = {
+                    let function_name_index = (instruction.operand >> 8) as u16;
+                    let argc = (instruction.operand & 0xFF) as u8;
+                    (function_name_index, argc)
+                };
+                
+                // Pop arguments from stack
+                let mut args = Vec::with_capacity(argc as usize);
+                for _ in 0..argc {
+                    args.push(self.pop()?);
+                }
+                args.reverse(); // Stack pops in reverse order
+                
+                // Get function name from constants
+                let function_name = match &self.constants[function_name_index as usize] {
+                    Value::Symbol(name) => name.clone(),
+                    _ => {
+                        return Err(VmError::TypeError {
+                            expected: "function name symbol".to_string(),
+                            actual: format!("constant at index {}", function_name_index),
+                        });
+                    }
+                };
+                
+                // Perform runtime type validation
+                self.validate_user_function_call(&function_name, &args)?;
+                
+                // Execute user-defined function
+                let result = self.execute_user_function(&function_name, &args)?;
+                self.push(result);
+                
+                self.ip += 1;
             }
             
             OpCode::LDL => {
@@ -976,6 +1021,282 @@ impl VirtualMachine {
             Value::Missing => true,
             Value::List(items) if items.is_empty() => true,
             _ => false,
+        }
+    }
+
+    /// Load type metadata and function definitions from compiler context
+    pub fn load_type_metadata(&mut self, 
+        type_metadata: HashMap<String, crate::compiler::SimpleFunctionSignature>,
+        enhanced_metadata: HashMap<String, crate::compiler::EnhancedFunctionSignature>,
+        user_functions: HashMap<String, crate::ast::Expr>
+    ) {
+        self.type_metadata = type_metadata;
+        self.enhanced_metadata = enhanced_metadata;
+        self.user_functions = user_functions;
+    }
+
+    /// Validate user function call parameters and arity
+    fn validate_user_function_call(&self, function_name: &str, args: &[Value]) -> VmResult<()> {
+        // Check if we have metadata for this function
+        if let Some(enhanced_sig) = self.enhanced_metadata.get(function_name) {
+            // Validate arity
+            if enhanced_sig.params.len() != args.len() {
+                return Err(VmError::TypeError {
+                    expected: format!("function {} with {} parameters", function_name, enhanced_sig.params.len()),
+                    actual: format!("call with {} arguments", args.len()),
+                });
+            }
+
+            // Validate each typed parameter
+            for (i, (param_name, expected_type_opt)) in enhanced_sig.params.iter().enumerate() {
+                if let Some(expected_type) = expected_type_opt {
+                    let actual_arg = &args[i];
+                    
+                    // Check if type matches or can be coerced
+                    if !self.is_type_compatible(actual_arg, expected_type)? {
+                        return Err(VmError::TypeError {
+                            expected: format!("parameter {} of type {}", param_name, expected_type),
+                            actual: format!("found {:?}", self.get_value_type_name(actual_arg)),
+                        });
+                    }
+                }
+                // Untyped parameters (None) are not validated
+            }
+        }
+        // If no metadata found, function is completely untyped - no validation
+        
+        Ok(())
+    }
+
+    /// Execute user-defined function with parameter binding
+    fn execute_user_function(&self, function_name: &str, args: &[Value]) -> VmResult<Value> {
+        // Get the function AST from user_functions
+        let function_ast = self.user_functions.get(function_name)
+            .ok_or_else(|| VmError::Runtime(format!("User function '{}' not found", function_name)))?;
+        
+        // Function AST is directly the function body (RHS), we need to get parameter names from metadata
+        let param_names: Vec<String> = if let Some(metadata) = self.enhanced_metadata.get(function_name) {
+            metadata.params.iter().map(|(name, _)| name.clone()).collect()
+        } else {
+            return Err(VmError::Runtime(format!("No metadata found for function '{}'", function_name)));
+        };
+        
+        let function_body = function_ast;
+        
+        // Check parameter count
+        if param_names.len() != args.len() {
+            return Err(VmError::Runtime(format!(
+                "Arity mismatch: function '{}' expects {} parameters, got {}", 
+                function_name, param_names.len(), args.len()
+            )));
+        }
+        
+        // Create parameter bindings (for now, we'll use simple substitution)
+        // In a full implementation, we'd need a proper environment/context stack
+        let result = self.evaluate_expression_with_bindings(function_body, &param_names, args)?;
+        
+        // Validate return type if function has return type annotation
+        if let Some(metadata) = self.enhanced_metadata.get(function_name) {
+            if let Some(return_type) = &metadata.return_type {
+                // Check if result matches expected return type
+                if !self.is_type_compatible(&result, return_type)? {
+                    let actual_type = self.get_value_type_name(&result);
+                    return Err(VmError::Runtime(format!(
+                        "Return type mismatch: function '{}' declared to return {}, but returned {}",
+                        function_name, return_type, actual_type
+                    )));
+                }
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// Evaluate an expression with parameter bindings
+    fn evaluate_expression_with_bindings(&self, expr: &crate::ast::Expr, param_names: &[String], param_values: &[Value]) -> VmResult<Value> {
+        match expr {
+            // Basic literals
+            crate::ast::Expr::Number(number) => {
+                match number {
+                    crate::ast::Number::Integer(i) => Ok(Value::Integer(*i)),
+                    crate::ast::Number::Real(r) => Ok(Value::Real(*r)),
+                }
+            }
+            crate::ast::Expr::String(s) => Ok(Value::String(s.clone())),
+            
+            // Symbol lookup with parameter binding
+            crate::ast::Expr::Symbol(symbol) => {
+                // Check if this symbol is a bound parameter
+                if let Some(index) = param_names.iter().position(|name| name == &symbol.name) {
+                    Ok(param_values[index].clone())
+                } else {
+                    // For now, treat as unbound symbol - return the symbol itself
+                    Ok(Value::Symbol(symbol.name.clone()))
+                }
+            }
+            
+            // Function calls
+            crate::ast::Expr::Function { head, args } => {
+                match head.as_ref() {
+                    crate::ast::Expr::Symbol(func_symbol) => {
+                        // Evaluate arguments
+                        let evaluated_args: Result<Vec<Value>, VmError> = args.iter()
+                            .map(|arg| self.evaluate_expression_with_bindings(arg, param_names, param_values))
+                            .collect();
+                        let evaluated_args = evaluated_args?;
+                        
+                        // Handle built-in functions
+                        match func_symbol.name.as_str() {
+                            "Plus" | "+" => {
+                                if evaluated_args.len() == 2 {
+                                    self.add_values(evaluated_args[0].clone(), evaluated_args[1].clone())
+                                } else {
+                                    Err(VmError::Runtime("Plus requires exactly 2 arguments".to_string()))
+                                }
+                            }
+                            "Times" | "*" => {
+                                if evaluated_args.len() == 2 {
+                                    self.mul_values(evaluated_args[0].clone(), evaluated_args[1].clone())
+                                } else {
+                                    Err(VmError::Runtime("Times requires exactly 2 arguments".to_string()))
+                                }
+                            }
+                            "Minus" | "-" => {
+                                if evaluated_args.len() == 2 {
+                                    self.sub_values(evaluated_args[0].clone(), evaluated_args[1].clone())
+                                } else {
+                                    Err(VmError::Runtime("Minus requires exactly 2 arguments".to_string()))
+                                }
+                            }
+                            "Length" => {
+                                if evaluated_args.len() == 1 {
+                                    match &evaluated_args[0] {
+                                        Value::List(list) => Ok(Value::Real(list.len() as f64)),
+                                        _ => Err(VmError::Runtime("Length requires a list argument".to_string()))
+                                    }
+                                } else {
+                                    Err(VmError::Runtime("Length requires exactly 1 argument".to_string()))
+                                }
+                            }
+                            _ => {
+                                // For now, return a placeholder for other functions
+                                Err(VmError::Runtime(format!("Function '{}' not implemented in interpreter", func_symbol.name)))
+                            }
+                        }
+                    }
+                    _ => Err(VmError::Runtime("Invalid function head".to_string()))
+                }
+            }
+            
+            // Lists
+            crate::ast::Expr::List(elements) => {
+                let evaluated_elements: Result<Vec<Value>, VmError> = elements.iter()
+                    .map(|elem| self.evaluate_expression_with_bindings(elem, param_names, param_values))
+                    .collect();
+                Ok(Value::List(evaluated_elements?))
+            }
+            
+            _ => {
+                // For other expressions, return a placeholder
+                Err(VmError::Runtime(format!("Expression type not implemented in interpreter: {:?}", expr)))
+            }
+        }
+    }
+
+    /// Check if a value is compatible with an expected type (including coercion)
+    fn is_type_compatible(&self, value: &Value, expected_type: &str) -> VmResult<bool> {
+        // Handle complex type expressions
+        if expected_type.contains('[') && expected_type.contains(']') {
+            return self.validate_complex_type(value, expected_type);
+        }
+        
+        let actual_type = self.get_value_type_name(value);
+        
+        // Exact type match
+        if actual_type == expected_type {
+            return Ok(true);
+        }
+        
+        // Type coercion rules
+        match (actual_type.as_str(), expected_type) {
+            // Integer can be coerced to Real
+            ("Integer", "Real") => Ok(true),
+            // Add more coercion rules as needed
+            _ => Ok(false),
+        }
+    }
+    
+    /// Validate complex type expressions like List[T], Map[K,V], etc.
+    fn validate_complex_type(&self, value: &Value, expected_type: &str) -> VmResult<bool> {
+        // Parse the complex type expression
+        if let Some((base_type, type_params)) = self.parse_complex_type(expected_type) {
+            match (base_type.as_str(), value) {
+                ("List", Value::List(list)) => {
+                    // Validate each element in the list matches the parameter type
+                    if type_params.len() != 1 {
+                        return Err(VmError::Runtime(format!("List type requires exactly 1 type parameter, got {}", type_params.len())));
+                    }
+                    let element_type = &type_params[0];
+                    
+                    // Check each element in the list
+                    for (index, element) in list.iter().enumerate() {
+                        if !self.is_type_compatible(element, element_type)? {
+                            let actual_element_type = self.get_value_type_name(element);
+                            return Err(VmError::Runtime(format!(
+                                "Type error: List[{}] element at index {} expected {}, but found {}",
+                                element_type, index, element_type, actual_element_type
+                            )));
+                        }
+                    }
+                    Ok(true)
+                }
+                // Map types would be handled via LyObj for now
+                // ("Map", Value::LyObj(_)) => { ... }
+                _ => {
+                    // Base type mismatch
+                    Ok(false)
+                }
+            }
+        } else {
+            // Failed to parse complex type
+            Err(VmError::Runtime(format!("Invalid complex type expression: {}", expected_type)))
+        }
+    }
+    
+    /// Parse complex type expressions like "List[Real]" into ("List", ["Real"])
+    fn parse_complex_type(&self, type_expr: &str) -> Option<(String, Vec<String>)> {
+        if let Some(open_bracket) = type_expr.find('[') {
+            if let Some(close_bracket) = type_expr.rfind(']') {
+                let base_type = type_expr[..open_bracket].to_string();
+                let params_str = &type_expr[open_bracket + 1..close_bracket];
+                
+                // Simple parsing - split by comma and trim
+                let type_params: Vec<String> = params_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                
+                return Some((base_type, type_params));
+            }
+        }
+        None
+    }
+
+    /// Get the type name of a value for type checking
+    fn get_value_type_name(&self, value: &Value) -> String {
+        match value {
+            Value::Integer(_) => "Integer".to_string(),
+            Value::Real(_) => "Real".to_string(),
+            Value::String(_) => "String".to_string(),
+            Value::Symbol(_) => "Symbol".to_string(),
+            Value::List(_) => "List".to_string(), // TODO: Support List[T] type checking
+            Value::Function(_) => "Function".to_string(),
+            Value::Boolean(_) => "Boolean".to_string(),
+            Value::Missing => "Missing".to_string(),
+            Value::LyObj(_) => "Object".to_string(),
+            Value::Quote(_) => "Quote".to_string(),
+            Value::Pattern(_) => "Pattern".to_string(),
         }
     }
 }

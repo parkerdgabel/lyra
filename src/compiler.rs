@@ -115,6 +115,8 @@ pub struct CompilerContext {
     pub type_metadata: HashMap<String, SimpleFunctionSignature>,
     /// Enhanced type metadata with detailed type information
     pub enhanced_metadata: HashMap<String, EnhancedFunctionSignature>,
+    /// User-defined function bodies (AST expressions)
+    pub user_functions: HashMap<String, crate::ast::Expr>,
 }
 
 impl CompilerContext {
@@ -125,6 +127,7 @@ impl CompilerContext {
             code: Vec::new(),
             type_metadata: HashMap::new(),
             enhanced_metadata: HashMap::new(),
+            user_functions: HashMap::new(),
         }
     }
 
@@ -420,6 +423,19 @@ impl Compiler {
                         return Ok(());
                     }
                     
+                    // Check if this is a user-defined function - use CallUser for type validation!
+                    if self.context.has_enhanced_metadata(&sym.name) || self.context.has_type_metadata(&sym.name) {
+                        // Compile arguments first
+                        for arg in args {
+                            self.compile_expr(arg)?;
+                        }
+                        
+                        // Emit CallUser with function name index
+                        let function_name_index = self.context.add_constant(Value::Symbol(sym.name.clone()))?;
+                        self.context.emit(OpCode::CallUser, ((function_name_index as u32) << 8) | (args.len() as u32))?;
+                        return Ok(());
+                    }
+                    
                     // Try compile-time static method resolution
                     if !args.is_empty() {
                         // Check if this method exists in any Foreign type
@@ -697,12 +713,19 @@ impl Compiler {
         // Now emit the actual function call after processing Hold arguments
         // Use the normal function compilation path since arguments are already on stack
         if let Expr::Symbol(symbol) = head {
-            // Look up the function in the registry
+            // First check if it's a stdlib function
             if let Some(function_index) = self.registry.get_stdlib_index(&symbol.name) {
                 // Emit CallStatic with proper argument count
                 let argc = args.len();
                 let operand = ((function_index as u32) << 8) | (argc as u32);
                 self.context.emit(OpCode::CallStatic, operand)?;
+                Ok(())
+            } else if self.context.has_enhanced_metadata(&symbol.name) || self.context.has_type_metadata(&symbol.name) {
+                // This is a user-defined function - emit CallUser
+                let function_name_index = self.context.add_constant(Value::Symbol(symbol.name.clone()))?;
+                let argc = args.len();
+                let operand = ((function_name_index as u32) << 8) | (argc as u32);
+                self.context.emit(OpCode::CallUser, operand)?;
                 Ok(())
             } else {
                 Err(CompilerError::UnknownFunction(symbol.name.clone()))
@@ -1001,23 +1024,81 @@ impl Compiler {
 
     /// Compile immediate assignment (=)
     fn compile_immediate_assignment(&mut self, lhs: &Expr, rhs: &Expr) -> CompilerResult<()> {
-        // For now, only support simple symbol assignments like x = value
-        if let Expr::Symbol(sym) = lhs {
-            // Compile the right-hand side expression first
-            self.compile_expr(rhs)?;
+        match lhs {
+            // Simple variable assignment: x = value
+            Expr::Symbol(sym) => {
+                // Compile the right-hand side expression first
+                self.compile_expr(rhs)?;
+                
+                // Store the symbol name in constants and get its index
+                let symbol_const_index = self.context.add_constant(Value::Symbol(sym.name.clone()))?;
+                
+                // Emit STS instruction to store the value
+                self.context.emit(OpCode::STS, symbol_const_index as u32)?;
+                
+                Ok(())
+            }
             
-            // Store the symbol name in constants and get its index
-            let symbol_const_index = self.context.add_constant(Value::Symbol(sym.name.clone()))?;
+            // Typed function assignment: f[x: Integer]: Integer = x + 1
+            Expr::TypedFunction { head, params, return_type } => {
+                // Extract function name from head
+                if let Expr::Symbol(func_symbol) = head.as_ref() {
+                    // Store type information in enhanced metadata
+                    self.store_typed_function_metadata(&func_symbol.name, params, return_type)?;
+                    
+                    // Store the function body AST for later execution (instead of compiling)
+                    self.context.user_functions.insert(func_symbol.name.clone(), rhs.clone());
+                    
+                    // For now, just emit a placeholder constant to maintain the instruction flow
+                    let placeholder_index = self.context.add_constant(Value::Integer(0))?;
+                    self.context.emit(OpCode::LDC, placeholder_index as u32)?;
+                    
+                    // Store the function in global symbols
+                    let symbol_const_index = self.context.add_constant(Value::Symbol(func_symbol.name.clone()))?;
+                    self.context.emit(OpCode::STS, symbol_const_index as u32)?;
+                    
+                    Ok(())
+                } else {
+                    Err(CompilerError::UnsupportedExpression(format!(
+                        "TypedFunction head must be a symbol, found: {:?}", 
+                        head
+                    )))
+                }
+            }
             
-            // Emit STS instruction to store the value
-            self.context.emit(OpCode::STS, symbol_const_index as u32)?;
+            // Function assignment with mixed parameters: f[x: Integer, y] = value
+            Expr::Function { head, args } => {
+                // Extract function name from head
+                if let Expr::Symbol(func_symbol) = head.as_ref() {
+                    // Store type information for mixed function (some typed, some untyped parameters)
+                    self.store_function_metadata(&func_symbol.name, args)?;
+                    
+                    // Store the function body AST for later execution (instead of compiling)
+                    self.context.user_functions.insert(func_symbol.name.clone(), rhs.clone());
+                    
+                    // Emit a placeholder constant to maintain the instruction flow
+                    let placeholder_index = self.context.add_constant(Value::Integer(0))?;
+                    self.context.emit(OpCode::LDC, placeholder_index as u32)?;
+                    
+                    // Store the function in global symbols
+                    let symbol_const_index = self.context.add_constant(Value::Symbol(func_symbol.name.clone()))?;
+                    self.context.emit(OpCode::STS, symbol_const_index as u32)?;
+                    
+                    Ok(())
+                } else {
+                    Err(CompilerError::UnsupportedExpression(format!(
+                        "Function head must be a symbol, found: {:?}", 
+                        head
+                    )))
+                }
+            }
             
-            Ok(())
-        } else {
-            Err(CompilerError::UnsupportedExpression(format!(
-                "Complex assignment patterns not yet supported: {:?}", 
-                lhs
-            )))
+            _ => {
+                Err(CompilerError::UnsupportedExpression(format!(
+                    "Complex assignment patterns not yet supported: {:?}", 
+                    lhs
+                )))
+            }
         }
     }
 
@@ -1111,6 +1192,114 @@ impl Compiler {
         
         // Compile as a regular function call
         self.compile_function_call(head, params)
+    }
+
+    /// Store type metadata for a typed function assignment
+    fn store_typed_function_metadata(&mut self, function_name: &str, params: &[Expr], return_type: &Expr) -> CompilerResult<()> {
+        // Create simple function signature
+        let signature = SimpleFunctionSignature {
+            name: function_name.to_string(),
+            param_count: params.len(),
+            is_typed: true, // This came from a TypedFunction expression
+        };
+        
+        // Store the type signature
+        self.context.register_type_signature(signature);
+
+        // Extract type information for enhanced signature
+        let mut enhanced_params = Vec::new();
+        let mut is_fully_typed = true;
+
+        for param in params {
+            let (param_name, param_type) = match param {
+                Expr::Pattern(Pattern::Typed { name, type_pattern }) => {
+                    let type_str = self.extract_type_from_expr(type_pattern);
+                    (name.clone(), type_str)
+                }
+                Expr::Symbol(sym) => {
+                    // Untyped parameter - just a symbol
+                    is_fully_typed = false;
+                    (sym.name.clone(), None)
+                }
+                _ => {
+                    // Other parameter types - treat as untyped for now
+                    is_fully_typed = false;
+                    ("unknown".to_string(), None)
+                }
+            };
+            enhanced_params.push((param_name, param_type));
+        }
+
+        // Extract return type
+        let return_type_str = self.extract_type_from_expr(return_type);
+
+        // Create enhanced function signature
+        let enhanced_signature = EnhancedFunctionSignature {
+            name: function_name.to_string(),
+            params: enhanced_params,
+            return_type: return_type_str,
+            is_typed: is_fully_typed,
+            location: Some((0, 0)), // TODO: Add actual location tracking
+        };
+
+        // Store the enhanced signature
+        self.context.register_enhanced_signature(enhanced_signature);
+        
+        Ok(())
+    }
+
+    /// Store metadata for a function assignment (untyped or mixed typed/untyped)
+    fn store_function_metadata(&mut self, function_name: &str, args: &[Expr]) -> CompilerResult<()> {
+        // Create simple function signature
+        let signature = SimpleFunctionSignature {
+            name: function_name.to_string(),
+            param_count: args.len(),
+            is_typed: false, // Regular Function expressions are considered untyped
+        };
+        
+        // Store the type signature
+        self.context.register_type_signature(signature);
+
+        // Extract type information for enhanced signature
+        let mut enhanced_params = Vec::new();
+        let mut is_fully_typed = true;
+
+        for arg in args {
+            let (param_name, param_type) = match arg {
+                Expr::Pattern(Pattern::Typed { name, type_pattern }) => {
+                    let type_str = self.extract_type_from_expr(type_pattern);
+                    (name.clone(), type_str)
+                }
+                Expr::Symbol(sym) => {
+                    // Untyped parameter - just a symbol
+                    is_fully_typed = false;
+                    (sym.name.clone(), None)
+                }
+                _ => {
+                    // Other parameter types - treat as untyped for now
+                    is_fully_typed = false;
+                    ("unknown".to_string(), None)
+                }
+            };
+            enhanced_params.push((param_name, param_type));
+        }
+
+        // No return type for Function expressions (unlike TypedFunction)
+        let return_type_str = None;
+
+        // Create enhanced function signature
+        let enhanced_signature = EnhancedFunctionSignature {
+            name: function_name.to_string(),
+            params: enhanced_params,
+            return_type: return_type_str,
+            is_typed: is_fully_typed,
+            location: Some((0, 0)), // TODO: Add actual location tracking
+        };
+
+        // Store the enhanced signature
+        self.context.register_enhanced_signature(enhanced_signature);
+        
+        Ok(())
     }
 
     /// Validate function call against stored type metadata

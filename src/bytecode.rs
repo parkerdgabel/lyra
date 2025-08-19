@@ -47,8 +47,9 @@ pub enum OpCode {
     JMP = 0x30,   // Unconditional jump
     JIF = 0x31,   // Jump if true
     
-    // Calls (2)
+    // Calls (3)
     CallStatic = 0x42,  // Call static function (registry_index, argc encoded in operand)
+    CallUser = 0x43,    // Call user-defined function with type validation
     RET = 0x41,   // Return from function
     
     // Stack (2) - Reduced by 1: SWAP can be implemented with DUP operations
@@ -176,7 +177,7 @@ impl OpCode {
             Self::ADD => "ADD", Self::SUB => "SUB", Self::MUL => "MUL", 
             Self::DIV => "DIV", Self::POW => "POW",
             Self::JMP => "JMP", Self::JIF => "JIF",
-            Self::CallStatic => "CallStatic", Self::RET => "RET",
+            Self::CallStatic => "CallStatic", Self::CallUser => "CallUser", Self::RET => "RET",
             Self::POP => "POP", Self::DUP => "DUP",
             Self::SYS => "SYS",
         }

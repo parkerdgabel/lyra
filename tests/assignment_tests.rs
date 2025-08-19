@@ -47,7 +47,7 @@ fn test_delayed_assignment_basic() {
     
     let assignment = &statements[0];
     if let Expr::Assignment { lhs, rhs, delayed } = assignment {
-        assert!(*delayed); // Should be delayed assignment
+        assert!(delayed); // Should be delayed assignment
         assert!(matches!(lhs.as_ref(), Expr::Symbol(_)));
         assert!(matches!(rhs.as_ref(), Expr::Number(Number::Integer(42))));
     } else {
@@ -193,7 +193,7 @@ fn test_assignment_parsing() {
     // Test delayed assignment  
     let delayed = parse_statements("g[x_] := RandomReal[]").expect("Failed to parse delayed function definition");
     if let Expr::Assignment { delayed, .. } = &delayed[0] {
-        assert!(*delayed);
+        assert!(delayed);
     } else {
         panic!("Expected Assignment");
     }
