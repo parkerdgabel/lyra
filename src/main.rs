@@ -24,6 +24,12 @@ enum Commands {
     /// Dump intermediate representation
     DumpIr { file: PathBuf },
 
+    /// Package management commands
+    Pkg {
+        #[command(subcommand)]
+        command: PkgCommands,
+    },
+
     /// Format Lyra source files and Rust (optional)
     Fmt {
         /// Check mode: exit non-zero if any file would be reformatted
@@ -54,6 +60,103 @@ enum Commands {
     Ci,
 }
 
+#[derive(Subcommand)]
+enum PkgCommands {
+    /// Initialize a new package
+    Init {
+        /// Package name
+        name: Option<String>,
+        /// Package directory
+        #[arg(short, long)]
+        path: Option<PathBuf>,
+    },
+    
+    /// Build the current package
+    Build {
+        /// Build in release mode
+        #[arg(short, long)]
+        release: bool,
+    },
+    
+    /// Run package tests
+    Test {
+        /// Run only specific test
+        #[arg(short, long)]
+        test: Option<String>,
+    },
+    
+    /// Install a package
+    Install {
+        /// Package name
+        package: String,
+        /// Version constraint
+        #[arg(short, long)]
+        version: Option<String>,
+        /// Install as development dependency
+        #[arg(long)]
+        dev: bool,
+    },
+    
+    /// Update packages
+    Update {
+        /// Specific package to update
+        package: Option<String>,
+    },
+    
+    /// Remove a package
+    Remove {
+        /// Package name
+        package: String,
+    },
+    
+    /// Search for packages
+    Search {
+        /// Search query
+        query: String,
+        /// Limit number of results
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    
+    /// Show package information
+    Info {
+        /// Package name
+        package: String,
+        /// Show specific version
+        #[arg(short, long)]
+        version: Option<String>,
+    },
+    
+    /// List installed packages
+    List {
+        /// Show only outdated packages
+        #[arg(long)]
+        outdated: bool,
+    },
+    
+    /// Show dependency tree
+    Tree {
+        /// Package to show tree for
+        package: Option<String>,
+        /// Maximum depth
+        #[arg(short, long)]
+        depth: Option<usize>,
+    },
+    
+    /// Check package health
+    Check,
+    
+    /// Publish package to registry
+    Publish {
+        /// Registry to publish to
+        #[arg(short, long)]
+        registry: Option<String>,
+        /// Authentication token
+        #[arg(short, long)]
+        token: Option<String>,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -62,6 +165,7 @@ fn main() -> Result<()> {
         Commands::Run { file } => run_file(&file),
         Commands::Build { file } => build_file(&file),
         Commands::DumpIr { file } => dump_ir(&file),
+        Commands::Pkg { command } => run_pkg_command(command),
         Commands::Fmt { check, all, path } => fmt_cmd(check, all, path),
         Commands::Lint { json } => lint_cmd(json),
         Commands::Check => {
@@ -71,6 +175,40 @@ fn main() -> Result<()> {
         Commands::Fix => fix_cmd(),
         Commands::Ci => ci_cmd(),
     }
+}
+
+/// Handle package management commands
+fn run_pkg_command(pkg_cmd: PkgCommands) -> Result<()> {
+    use lyra::modules::cli::{PackageCli, PackageCommand, default_cache_dir};
+    
+    // Convert clap command to our package command enum
+    let command = match pkg_cmd {
+        PkgCommands::Init { name, path } => PackageCommand::Init { name, path },
+        PkgCommands::Build { release } => PackageCommand::Build { release },
+        PkgCommands::Test { test } => PackageCommand::Test { test_name: test },
+        PkgCommands::Install { package, version, dev } => PackageCommand::Install { package, version, dev },
+        PkgCommands::Update { package } => PackageCommand::Update { package },
+        PkgCommands::Remove { package } => PackageCommand::Remove { package },
+        PkgCommands::Search { query, limit } => PackageCommand::Search { query, limit },
+        PkgCommands::Info { package, version } => PackageCommand::Info { package, version },
+        PkgCommands::List { outdated } => PackageCommand::List { outdated },
+        PkgCommands::Tree { package, depth } => PackageCommand::Tree { package, depth },
+        PkgCommands::Check => PackageCommand::Check,
+        PkgCommands::Publish { registry, token } => PackageCommand::Publish { registry, token },
+    };
+    
+    // Create and run CLI
+    let rt = tokio::runtime::Runtime::new().map_err(|e| lyra::Error::Runtime {
+        message: format!("Failed to create async runtime: {}", e),
+    })?;
+    
+    let mut cli = PackageCli::new(default_cache_dir());
+    
+    rt.block_on(async {
+        cli.execute(command).await.map_err(|e| lyra::Error::Runtime {
+            message: format!("Package command failed: {}", e),
+        })
+    })
 }
 
 /// Run the interactive REPL
@@ -293,12 +431,6 @@ fn format_value(value: &lyra::vm::Value) -> String {
         }
         lyra::vm::Value::Function(name) => format!("Function[{}]", name),
         lyra::vm::Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
-        lyra::vm::Value::Tensor(tensor) => {
-            // Legacy tensor display (will be removed)
-            format!("Tensor[shape: {:?}, elements: {}]", 
-                    tensor.shape(), 
-                    tensor.len())
-        }
         lyra::vm::Value::Missing => "Missing[]".to_string(),
         lyra::vm::Value::LyObj(obj) => {
             // Enhanced display for tensor foreign objects

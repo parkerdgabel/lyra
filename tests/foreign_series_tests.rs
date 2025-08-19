@@ -1,6 +1,7 @@
 use lyra::{
     foreign::{Foreign, ForeignError, LyObj},
-    vm::{Value, SeriesType, VmError, VmResult},
+    vm::{Value, VmError, VmResult},
+    stdlib::data::SeriesType,
 };
 use std::any::Any;
 use std::sync::Arc;

@@ -435,6 +435,46 @@ impl FunctionRegistry {
         Ok(())
     }
     
+    /// Register a namespaced function in the registry
+    pub fn register_namespaced_function(
+        &mut self,
+        qualified_name: &str,
+        function_ptr: StdlibFunction,
+        arity: u8,
+        attributes: Vec<FunctionAttribute>,
+    ) -> Result<(), LinkerError> {
+        // Check for duplicate registration
+        if self.functions.contains_key(qualified_name) {
+            return Err(LinkerError::RegistryError {
+                message: format!("Function {} already registered", qualified_name),
+            });
+        }
+        
+        // Assign function index
+        let function_index = self.next_function_index;
+        self.next_function_index += 1;
+        
+        // Create function signature with namespace information
+        let signature = FunctionSignature::with_attributes("Module", qualified_name, arity, attributes.clone());
+        
+        // Create function entry
+        let entry = FunctionEntry::new_stdlib(signature, function_ptr, function_index);
+        
+        // Add to functions map
+        self.functions.insert(qualified_name.to_string(), entry);
+        
+        // Add to function indices map
+        self.function_indices.insert(qualified_name.to_string(), function_index);
+        
+        // Register function attributes
+        self.register_function_attributes(qualified_name, attributes);
+        
+        // Update stats
+        self.stats.total_functions += 1;
+        
+        Ok(())
+    }
+
     /// Register a stdlib function in the registry (indices 32+)
     pub fn register_stdlib_function(
         &mut self,
@@ -635,6 +675,100 @@ impl FunctionRegistry {
     /// Get all Listable functions (for compiler optimization)
     pub fn get_listable_functions(&self) -> Vec<String> {
         self.get_functions_with_attribute(&FunctionAttribute::Listable)
+    }
+    
+    /// Register all functions from a module with their namespace
+    pub fn register_module_functions(
+        &mut self,
+        namespace: &str,
+        functions: &std::collections::HashMap<String, crate::modules::FunctionExport>,
+    ) -> Result<(), LinkerError> {
+        for (name, export) in functions {
+            let qualified_name = format!("{}::{}", namespace, name);
+            
+            match &export.implementation {
+                crate::modules::FunctionImplementation::Native(func_ptr) => {
+                    // Infer arity from function signature or use default
+                    let arity = export.signature.arity;
+                    
+                    self.register_namespaced_function(
+                        &qualified_name,
+                        *func_ptr,
+                        arity,
+                        export.attributes.clone(),
+                    )?;
+                },
+                crate::modules::FunctionImplementation::Foreign { type_name, method_name } => {
+                    // Handle foreign function registration
+                    // For now, we'll add a placeholder entry
+                    let function_index = self.next_function_index;
+                    self.next_function_index += 1;
+                    
+                    let signature = FunctionSignature::with_attributes(
+                        type_name,
+                        method_name,
+                        export.signature.arity,
+                        export.attributes.clone(),
+                    );
+                    
+                    // Create a placeholder entry - in practice this would need proper foreign function handling
+                    self.function_indices.insert(qualified_name.clone(), function_index);
+                    self.stats.total_functions += 1;
+                },
+                crate::modules::FunctionImplementation::Lyra { .. } => {
+                    // Handle Lyra-defined functions
+                    // For now, skip these as they need special handling
+                    continue;
+                },
+                crate::modules::FunctionImplementation::External { .. } => {
+                    // Handle external functions
+                    // For now, skip these as they need FFI integration
+                    continue;
+                },
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Get all functions in a specific namespace
+    pub fn get_namespace_functions(&self, namespace: &str) -> Vec<String> {
+        let prefix = format!("{}::", namespace);
+        self.functions
+            .keys()
+            .filter(|name| name.starts_with(&prefix))
+            .map(|name| name.strip_prefix(&prefix).unwrap_or(name).to_string())
+            .collect()
+    }
+    
+    /// Check if a namespace has any registered functions
+    pub fn has_namespace(&self, namespace: &str) -> bool {
+        let prefix = format!("{}::", namespace);
+        self.functions.keys().any(|name| name.starts_with(&prefix))
+    }
+    
+    /// Get all registered namespaces
+    pub fn get_namespaces(&self) -> Vec<String> {
+        let mut namespaces = std::collections::HashSet::new();
+        
+        for function_name in self.functions.keys() {
+            if let Some(pos) = function_name.rfind("::") {
+                let namespace = &function_name[..pos];
+                namespaces.insert(namespace.to_string());
+            }
+        }
+        
+        namespaces.into_iter().collect()
+    }
+    
+    /// Resolve a qualified function name to its index
+    pub fn resolve_qualified_function(&self, qualified_name: &str) -> Option<u16> {
+        self.function_indices.get(qualified_name).copied()
+    }
+    
+    /// Get function entry by qualified name
+    pub fn get_function_entry(&self, qualified_name: &str) -> Option<&FunctionEntry> {
+        self.functions.get(qualified_name)
     }
     
     /// Get all Orderless functions (for compiler optimization)
@@ -1529,8 +1663,8 @@ mod tests {
         assert!(type_names.contains(&"Series".to_string()));
         assert!(type_names.contains(&"Table".to_string()));
         
-        // Check total function count (15 Tensor + 8 Series + 9 Table = 32)
-        assert_eq!(registry.stats.total_functions, 32);
+        // Check total function count (expanded standard library now has 91 functions)
+        assert_eq!(registry.stats.total_functions, 91);
     }
     
     #[test]
@@ -1616,7 +1750,7 @@ mod tests {
         
         // Should have all types and methods
         assert_eq!(registry.get_type_names().len(), 3);
-        assert_eq!(registry.stats.total_functions, 32);
+        assert_eq!(registry.stats.total_functions, 91);
         
         // Test a few key methods are registered
         assert!(registry.has_method("Tensor", "Add"));

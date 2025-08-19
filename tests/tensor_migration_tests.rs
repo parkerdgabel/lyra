@@ -45,12 +45,12 @@ fn test_tensor_arithmetic_with_foreign_objects() {
 fn test_mixed_tensor_arithmetic() {
     use lyra::stdlib::tensor::{tensor_add};
     
-    // Test legacy tensor + foreign tensor
-    let legacy_tensor = Value::Tensor(ArrayD::from_shape_vec(IxDyn(&[2]), vec![1.0, 2.0]).unwrap());
-    let foreign_tensor = array_to_lyobj(ArrayD::from_shape_vec(IxDyn(&[2]), vec![3.0, 4.0]).unwrap());
+    // Test foreign tensor + foreign tensor (no more legacy tensors)
+    let tensor_a = array_to_lyobj(ArrayD::from_shape_vec(IxDyn(&[2]), vec![1.0, 2.0]).unwrap());
+    let tensor_b = array_to_lyobj(ArrayD::from_shape_vec(IxDyn(&[2]), vec![3.0, 4.0]).unwrap());
     
-    // This should still work during the migration period
-    let result = tensor_add(&legacy_tensor, &foreign_tensor);
+    // Both tensors are now foreign objects
+    let result = tensor_add(&tensor_a, &tensor_b);
     
     // Result should always be foreign object format
     match result {

@@ -600,11 +600,6 @@ The REPL showcases Lyra's symbolic computation optimizations:
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),
-            Value::Tensor(tensor) => {
-                format!("Tensor[shape: {:?}, elements: {}]", 
-                        tensor.shape(), 
-                        tensor.len())
-            }
         }
     }
     

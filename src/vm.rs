@@ -41,9 +41,8 @@ pub enum Value {
     List(Vec<Value>),
     Function(String), // Built-in function name for now
     Boolean(bool),
-    Tensor(ArrayD<f64>), // N-dimensional tensor with floating point values
     Missing,            // Missing/unknown value (distinct from Null)
-    LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema)
+    LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema, Tensor)
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
     Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
 }
@@ -82,19 +81,11 @@ impl std::hash::Hash for Value {
                 6u8.hash(state);
                 b.hash(state);
             },
-            Value::Tensor(tensor) => {
-                7u8.hash(state);
-                // Hash tensor shape and data
-                tensor.shape().hash(state);
-                for &val in tensor.as_slice().unwrap_or(&[]) {
-                    val.to_bits().hash(state);
-                }
-            },
             Value::Missing => {
-                8u8.hash(state);
+                7u8.hash(state);
             },
             Value::LyObj(obj) => {
-                9u8.hash(state);
+                8u8.hash(state);
                 // Hash type name and debug representation for now
                 // Foreign objects could implement custom hashing
                 obj.type_name().hash(state);
@@ -124,10 +115,6 @@ impl PartialEq for Value {
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Function(a), Value::Function(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
-            (Value::Tensor(a), Value::Tensor(b)) => {
-                // Compare tensors element-wise
-                a.shape() == b.shape() && a.iter().zip(b.iter()).all(|(x, y)| x == y)
-            }
             (Value::Missing, Value::Missing) => true,
             (Value::LyObj(a), Value::LyObj(b)) => a == b,
             (Value::Quote(a), Value::Quote(b)) => {
@@ -261,12 +248,19 @@ impl VirtualMachine {
 
         match instruction.opcode {
             OpCode::LDC => {
-                let const_index = instruction.operand as usize;
-                if const_index >= self.constants.len() {
-                    return Err(VmError::InvalidConstantIndex(const_index));
+                let operand = instruction.operand;
+                
+                // Heuristic: if operand >= constants.len(), treat as immediate integer
+                // This handles the case where small integers are embedded directly
+                if operand as usize >= self.constants.len() {
+                    // Treat as immediate integer value
+                    self.push(Value::Integer(operand as i64));
+                } else {
+                    // Treat as constant pool index
+                    let const_index = operand as usize;
+                    let value = self.constants[const_index].clone();
+                    self.push(value);
                 }
-                let value = self.constants[const_index].clone();
-                self.push(value);
                 self.ip += 1;
             }
             OpCode::LOAD_QUOTE => {
@@ -655,13 +649,8 @@ impl VirtualMachine {
             return Ok(Value::Missing);
         }
         
-        // Check if either operand is a tensor
+        // Scalar arithmetic
         match (&a, &b) {
-            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
-                // Use tensor arithmetic
-                tensor_add(&a, &b)
-            }
-            // Original scalar arithmetic
             (Value::Integer(_), Value::Integer(_)) => match (a, b) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
                 _ => unreachable!(),
@@ -692,13 +681,8 @@ impl VirtualMachine {
             return Ok(Value::Missing);
         }
         
-        // Check if either operand is a tensor
+        // Scalar arithmetic
         match (&a, &b) {
-            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
-                // Use tensor arithmetic
-                tensor_sub(&a, &b)
-            }
-            // Original scalar arithmetic
             (Value::Integer(_), Value::Integer(_)) => match (a, b) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
                 _ => unreachable!(),
@@ -729,13 +713,8 @@ impl VirtualMachine {
             return Ok(Value::Missing);
         }
         
-        // Check if either operand is a tensor
+        // Scalar arithmetic
         match (&a, &b) {
-            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
-                // Use tensor arithmetic
-                tensor_mul(&a, &b)
-            }
-            // Original scalar arithmetic
             (Value::Integer(_), Value::Integer(_)) => match (a, b) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
                 _ => unreachable!(),
@@ -766,13 +745,8 @@ impl VirtualMachine {
             return Ok(Value::Missing);
         }
         
-        // Check if either operand is a tensor
+        // Scalar arithmetic
         match (&a, &b) {
-            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
-                // Use tensor arithmetic
-                tensor_div(&a, &b)
-            }
-            // Original scalar arithmetic
             (Value::Integer(_), Value::Integer(_)) => match (a, b) {
                 (Value::Integer(a), Value::Integer(b)) => {
                     if b == 0 {
@@ -828,13 +802,8 @@ impl VirtualMachine {
             return Ok(Value::Missing);
         }
         
-        // Check if either operand is a tensor
+        // Scalar arithmetic
         match (&a, &b) {
-            (Value::Tensor(_), _) | (_, Value::Tensor(_)) => {
-                // Use tensor arithmetic
-                tensor_pow(&a, &b)
-            }
-            // Original scalar arithmetic
             (Value::Integer(_), Value::Integer(_)) => match (a, b) {
                 (Value::Integer(a), Value::Integer(b)) => {
                     if b >= 0 {

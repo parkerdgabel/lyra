@@ -343,11 +343,35 @@ impl ForeignTensor {
                 let result_nd = result.into_dyn();
                 Ok(Self::new(result_nd))
             },
+            (1, 2) => {
+                // Vector-matrix multiplication: [1,2] * [[3,4],[5,6]] = [13,16]
+                if self.shape[0] != other.shape[0] {
+                    return Err(VmError::TypeError {
+                        expected: format!("vector with {} elements for {}x{} matrix", other.shape[0], other.shape[0], other.shape[1]),
+                        actual: format!("vector with {} elements", self.shape[0]),
+                    });
+                }
+                let self_1d = (*self.data).clone().into_dimensionality::<ndarray::Ix1>()
+                    .map_err(|e| VmError::TypeError {
+                        expected: "1D vector".to_string(),
+                        actual: format!("conversion error: {}", e),
+                    })?;
+                let other_2d = (*other.data).clone().into_dimensionality::<ndarray::Ix2>()
+                    .map_err(|e| VmError::TypeError {
+                        expected: "2D matrix".to_string(),
+                        actual: format!("conversion error: {}", e),
+                    })?;
+                
+                // Vector-matrix multiplication: transpose the matrix and multiply
+                let result = other_2d.t().dot(&self_1d);
+                let result_nd = result.into_dyn();
+                Ok(Self::new(result_nd))
+            },
             (2, 2) => {
                 // Matrix-matrix multiplication
                 if self.shape[1] != other.shape[0] {
                     return Err(VmError::TypeError {
-                        expected: format!("{}x{} matrix for multiplication with {}x{}", 
+                        expected: format!("{}x{} matrix for multiplication with {}x{} matrix", 
                             other.shape[0], other.shape[1], self.shape[0], self.shape[1]),
                         actual: format!("{}x{} matrix", other.shape[0], other.shape[1]),
                     });
@@ -436,40 +460,117 @@ impl ForeignTensor {
     
     // Helper methods for broadcasting and operations
     fn is_broadcastable_with(&self, other: &ForeignTensor) -> bool {
-        // Simplified broadcasting rules (can be extended for full NumPy compatibility)
-        self.shape == other.shape || 
-        other.shape == vec![1] || 
-        self.shape == vec![1] ||
-        (self.ndim == 0 || other.ndim == 0) // scalar broadcasting
+        // NumPy-style broadcasting rules
+        if self.shape == other.shape {
+            return true;
+        }
+        
+        // Scalar broadcasting
+        if self.ndim == 0 || other.ndim == 0 {
+            return true;
+        }
+        
+        // Shape [1] can broadcast with anything
+        if self.shape == vec![1] || other.shape == vec![1] {
+            return true;
+        }
+        
+        // Check dimension-wise compatibility from the right
+        let max_dims = self.ndim.max(other.ndim);
+        for i in 0..max_dims {
+            let self_dim = if i < self.ndim { self.shape[self.ndim - 1 - i] } else { 1 };
+            let other_dim = if i < other.ndim { other.shape[other.ndim - 1 - i] } else { 1 };
+            
+            // Dimensions are compatible if they're equal or one of them is 1
+            if self_dim != other_dim && self_dim != 1 && other_dim != 1 {
+                return false;
+            }
+        }
+        
+        true
     }
     
     fn broadcast_op<F>(&self, other: &ForeignTensor, op: F) -> VmResult<Self>
     where
         F: Fn(f64, f64) -> f64,
     {
-        // Simplified broadcasting implementation
-        if other.shape == vec![1] || other.ndim == 0 {
-            let scalar = if other.ndim == 0 {
-                other.data[&IxDyn(&[])]
-            } else {
-                other.data[&IxDyn(&[0])]
-            };
+        // Handle scalar cases first (most common)
+        if other.ndim == 0 {
+            let scalar = other.data[&IxDyn(&[])];
             let result = self.data.mapv(|x| op(x, scalar));
-            Ok(Self::new(result))
-        } else if self.shape == vec![1] || self.ndim == 0 {
-            let scalar = if self.ndim == 0 {
-                self.data[&IxDyn(&[])]
-            } else {
-                self.data[&IxDyn(&[0])]
-            };
-            let result = other.data.mapv(|x| op(scalar, x));
-            Ok(Self::new(result))
-        } else {
-            Err(VmError::TypeError {
-                expected: "broadcastable tensor shapes".to_string(),
-                actual: format!("shapes {:?} and {:?}", self.shape, other.shape),
-            })
+            return Ok(Self::new(result));
         }
+        
+        if self.ndim == 0 {
+            let scalar = self.data[&IxDyn(&[])];
+            let result = other.data.mapv(|x| op(scalar, x));
+            return Ok(Self::new(result));
+        }
+        
+        // Handle shape [1] broadcasting
+        if other.shape == vec![1] {
+            let scalar = other.data[&IxDyn(&[0])];
+            let result = self.data.mapv(|x| op(x, scalar));
+            return Ok(Self::new(result));
+        }
+        
+        if self.shape == vec![1] {
+            let scalar = self.data[&IxDyn(&[0])];
+            let result = other.data.mapv(|x| op(scalar, x));
+            return Ok(Self::new(result));
+        }
+        
+        // General broadcasting case
+        // For now, handle the specific case we need: [2,2] with [2]
+        if self.ndim == 2 && other.ndim == 1 && self.shape[1] == other.shape[0] {
+            // Matrix [2,2] with vector [2] - broadcast across rows
+            let mut result_data = Vec::new();
+            let result_shape = self.shape.clone();
+            
+            for i in 0..self.shape[0] {
+                for j in 0..self.shape[1] {
+                    let self_val = self.data[[i, j]];
+                    let other_val = other.data[[j]];
+                    result_data.push(op(self_val, other_val));
+                }
+            }
+            
+            let result_array = ArrayD::from_shape_vec(IxDyn(&result_shape), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid broadcast result".to_string(),
+                    actual: format!("broadcasting error: {}", e),
+                })?;
+            
+            return Ok(Self::new(result_array));
+        }
+        
+        // Handle reverse case: [2] with [2,2]
+        if other.ndim == 2 && self.ndim == 1 && other.shape[1] == self.shape[0] {
+            // Vector [2] with matrix [2,2] - broadcast across rows  
+            let mut result_data = Vec::new();
+            let result_shape = other.shape.clone();
+            
+            for i in 0..other.shape[0] {
+                for j in 0..other.shape[1] {
+                    let self_val = self.data[[j]];
+                    let other_val = other.data[[i, j]];
+                    result_data.push(op(self_val, other_val));
+                }
+            }
+            
+            let result_array = ArrayD::from_shape_vec(IxDyn(&result_shape), result_data)
+                .map_err(|e| VmError::TypeError {
+                    expected: "valid broadcast result".to_string(),
+                    actual: format!("broadcasting error: {}", e),
+                })?;
+            
+            return Ok(Self::new(result_array));
+        }
+        
+        Err(VmError::TypeError {
+            expected: "supported broadcast pattern".to_string(),
+            actual: format!("shapes {:?} and {:?}", self.shape, other.shape),
+        })
     }
     
     /// Convert Value to ndarray (recursive for nested lists)

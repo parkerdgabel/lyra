@@ -423,7 +423,7 @@ mod tests {
         let load_store_count = minimal_opcodes.iter()
             .filter(|op| op.is_load_store())
             .count();
-        assert_eq!(load_store_count, 4);
+        assert_eq!(load_store_count, 5); // LDC, LDL, STL, STS, LOAD_QUOTE
     }
 
     #[test]

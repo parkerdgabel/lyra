@@ -26,11 +26,33 @@ ndarray = "0.16"
 rand = "0.8"
 dashmap = "6.1"
 rayon = "1.10"
+toml = "0.8"
+async-trait = "0.1"
+tokio = { version = "1.0", features = ["full"] }
+parking_lot = "0.12"
+crossbeam = "0.8"
+crossbeam-channel = "0.5"
+crossbeam-deque = "0.8"
+crossbeam-utils = "0.8"
+flume = "0.11"
+once_cell = "1.19"
+num_cpus = "1.16"
+# Serialization dependencies
+rkyv = "0.8"
+postcard = { version = "1.0", features = ["alloc"] }
+memmap2 = "0.9"
+lz4_flex = "0.11"
+zstd = "0.13"
+bincode = "1.3"
+byteorder = "1.5"
+rmp-serde = "1.1"
 
 [dev-dependencies]
 insta = { version = "1.34", features = ["yaml"] }
 pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.0"
+futures = "0.3"
 
 [lib]
 name = "lyra"
@@ -42,4 +64,16 @@ harness = false
 
 [[bench]]
 name = "rule_ordering_benchmarks"
+harness = false
+
+[[bench]]
+name = "type_system_benchmarks"
+harness = false
+
+[[bench]]
+name = "concurrency_benchmarks"
+harness = false
+
+[[bench]]
+name = "serialization_benchmarks"
 harness = false
