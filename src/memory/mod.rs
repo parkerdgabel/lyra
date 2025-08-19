@@ -23,6 +23,7 @@ pub mod interner;
 pub mod pools;
 pub mod arena;
 pub mod managed_value;
+pub mod managed_vm;
 pub mod stats;
 
 use std::sync::Arc;
