@@ -533,6 +533,140 @@ impl Dual {
         
         Ok(Dual::new(gamma_val, gamma_deriv))
     }
+    
+    // ===== ADVANCED ACTIVATION FUNCTIONS =====
+    
+    /// Mish activation: x * tanh(softplus(x))
+    /// More smooth than ReLU and provides better gradient flow
+    pub fn mish(self) -> Dual {
+        let softplus = self.softplus();
+        let tanh_softplus = softplus.tanh();
+        
+        let mish_val = self.value * tanh_softplus.value;
+        
+        // Mish derivative: d/dx[x * tanh(softplus(x))]
+        // = tanh(softplus(x)) + x * sech²(softplus(x)) * sigmoid(x)
+        let softplus_val = softplus.value;
+        let sigmoid_x = self.sigmoid();
+        let sech_squared = 1.0 - tanh_softplus.value * tanh_softplus.value;
+        let mish_deriv = tanh_softplus.value + self.value * sech_squared * sigmoid_x.value;
+        
+        Dual::new(mish_val, mish_deriv * self.derivative)
+    }
+    
+    /// Hardswish activation: x * ReLU6(x + 3) / 6
+    /// Efficient approximation of Swish for mobile devices
+    pub fn hardswish(self) -> Dual {
+        let x_plus_3 = self.value + 3.0;
+        let relu6_val = x_plus_3.max(0.0).min(6.0);
+        let hardswish_val = self.value * relu6_val / 6.0;
+        
+        // Hardswish derivative
+        let hardswish_deriv = if x_plus_3 <= 0.0 {
+            0.0
+        } else if x_plus_3 >= 6.0 {
+            1.0
+        } else {
+            relu6_val / 6.0 + self.value / 6.0
+        };
+        
+        Dual::new(hardswish_val, hardswish_deriv * self.derivative)
+    }
+    
+    /// GELU exact implementation using error function
+    /// GELU(x) = 0.5 * x * (1 + erf(x / √2))
+    pub fn gelu_exact(self) -> Dual {
+        let x_over_sqrt2 = self / Dual::constant(2.0_f64.sqrt());
+        let erf_x = x_over_sqrt2.erf();
+        let one_plus_erf = Dual::constant(1.0) + erf_x;
+        let half_x = self * Dual::constant(0.5);
+        
+        half_x * one_plus_erf
+    }
+    
+    /// Parametric ReLU (PReLU): max(alpha * x, x)
+    /// where alpha is a learnable parameter
+    pub fn prelu(self, alpha: Dual) -> Dual {
+        if self.value > 0.0 {
+            self
+        } else {
+            alpha * self
+        }
+    }
+    
+    /// Gated Linear Unit (GLU): GLU(a, b) = a * sigmoid(b)
+    /// Used in transformer architectures
+    pub fn glu(self, gate: Dual) -> Dual {
+        let sigmoid_gate = gate.sigmoid();
+        self * sigmoid_gate
+    }
+    
+    /// ReLU6 activation: min(max(0, x), 6)
+    /// Bounded ReLU commonly used in quantized networks
+    pub fn relu6(self) -> Dual {
+        let relu6_val = self.value.max(0.0).min(6.0);
+        let relu6_deriv = if self.value <= 0.0 || self.value >= 6.0 {
+            0.0
+        } else {
+            1.0
+        };
+        
+        Dual::new(relu6_val, relu6_deriv * self.derivative)
+    }
+    
+    /// Hardtanh activation: clamp(x, -1, 1)
+    /// Linear approximation of tanh
+    pub fn hardtanh(self) -> Dual {
+        let hardtanh_val = self.value.max(-1.0).min(1.0);
+        let hardtanh_deriv = if self.value < -1.0 || self.value > 1.0 {
+            0.0
+        } else {
+            1.0
+        };
+        
+        Dual::new(hardtanh_val, hardtanh_deriv * self.derivative)
+    }
+    
+    /// Tanhshrink activation: x - tanh(x)
+    /// Shrinking version of tanh
+    pub fn tanhshrink(self) -> Dual {
+        let tanh_x = self.tanh();
+        self - tanh_x
+    }
+    
+    /// Softshrink activation: sign(x) * max(|x| - lambda, 0)
+    /// Soft thresholding function
+    pub fn softshrink(self, lambda: f64) -> Dual {
+        let abs_x = self.value.abs();
+        if abs_x <= lambda {
+            Dual::constant(0.0)
+        } else {
+            let sign = if self.value >= 0.0 { 1.0 } else { -1.0 };
+            let softshrink_val = sign * (abs_x - lambda);
+            let softshrink_deriv = sign;
+            Dual::new(softshrink_val, softshrink_deriv * self.derivative)
+        }
+    }
+    
+    /// Hardshrink activation: x if |x| > lambda else 0
+    /// Hard thresholding function
+    pub fn hardshrink(self, lambda: f64) -> Dual {
+        if self.value.abs() > lambda {
+            self
+        } else {
+            Dual::constant(0.0)
+        }
+    }
+    
+    /// LogSigmoid activation: log(sigmoid(x))
+    /// Numerically stable version of log(1/(1+exp(-x)))
+    pub fn logsigmoid(self) -> Dual {
+        // Use log-sum-exp trick for numerical stability
+        // log(sigmoid(x)) = log(1/(1+exp(-x))) = -log(1+exp(-x)) = -softplus(-x)
+        let neg_x = -self;
+        let neg_softplus = neg_x.softplus();
+        -neg_softplus
+    }
 }
 
 impl Add for Dual {
@@ -1149,5 +1283,260 @@ mod tests {
         assert!(exp_m1_result.value > 0.0);
         // For exp_m1, derivative is exp(x), which at x=1e-10 should be ≈ 1.0
         assert!(approx_eq(exp_m1_result.derivative, (1e-10_f64).exp())); // Should be close to 1
+    }
+    
+    // ===== TESTS FOR ADVANCED ACTIVATION FUNCTIONS =====
+    
+    #[test]
+    fn test_mish_activation() {
+        // Test Mish: x * tanh(softplus(x))
+        let x = Dual::variable(1.0);
+        let mish_result = x.mish();
+        
+        // Expected value: 1.0 * tanh(ln(1 + e^1))
+        let softplus_1 = (1.0_f64 + 1.0_f64.exp()).ln();
+        let expected_value = 1.0 * softplus_1.tanh();
+        assert!(approx_eq(mish_result.value, expected_value));
+        
+        // Derivative should be positive and reasonable
+        assert!(mish_result.derivative > 0.0);
+        assert!(mish_result.derivative < 2.0);
+        
+        // Test at x = 0
+        let x_zero = Dual::variable(0.0);
+        let mish_zero = x_zero.mish();
+        assert!(approx_eq(mish_zero.value, 0.0));
+        
+        // Test negative input
+        let x_neg = Dual::variable(-1.0);
+        let mish_neg = x_neg.mish();
+        assert!(mish_neg.value < 0.0); // Mish preserves sign
+    }
+    
+    #[test]
+    fn test_hardswish_activation() {
+        // Test Hardswish: x * ReLU6(x + 3) / 6
+        
+        // Test positive region (x > 3): should be linear
+        let x_pos = Dual::variable(4.0);
+        let hardswish_pos = x_pos.hardswish();
+        assert!(approx_eq(hardswish_pos.value, 4.0)); // Should equal x
+        assert!(approx_eq(hardswish_pos.derivative, 1.0)); // Should be 1
+        
+        // Test negative region (x < -3): should be 0
+        let x_neg = Dual::variable(-4.0);
+        let hardswish_neg = x_neg.hardswish();
+        assert!(approx_eq(hardswish_neg.value, 0.0));
+        assert!(approx_eq(hardswish_neg.derivative, 0.0));
+        
+        // Test middle region (-3 < x < 3)
+        let x_mid = Dual::variable(0.0);
+        let hardswish_mid = x_mid.hardswish();
+        let expected_val = 0.0 * 3.0 / 6.0; // x * (x+3) / 6
+        let expected_deriv = 3.0 / 6.0 + 0.0 / 6.0; // (x+3)/6 + x/6
+        assert!(approx_eq(hardswish_mid.value, expected_val));
+        assert!(approx_eq(hardswish_mid.derivative, expected_deriv));
+    }
+    
+    #[test]
+    fn test_gelu_exact() {
+        // Test GELU exact: 0.5 * x * (1 + erf(x / √2))
+        let x = Dual::variable(0.0);
+        let gelu_result = x.gelu_exact();
+        
+        // GELU(0) should be 0
+        assert!(approx_eq(gelu_result.value, 0.0));
+        
+        // GELU'(0) should be approximately 0.5
+        // Due to our erf approximation, allow some tolerance 
+        assert!((gelu_result.derivative - 0.5).abs() < 0.1);
+        
+        // Test positive input
+        let x_pos = Dual::variable(1.0);
+        let gelu_pos = x_pos.gelu_exact();
+        assert!(gelu_pos.value > 0.0);
+        assert!(gelu_pos.value < 1.0);
+        assert!(gelu_pos.derivative > 0.5);
+    }
+    
+    #[test]
+    fn test_prelu_activation() {
+        // Test PReLU: max(alpha * x, x)
+        let alpha = Dual::constant(0.1);
+        
+        // Test positive input
+        let x_pos = Dual::variable(2.0);
+        let prelu_pos = x_pos.prelu(alpha);
+        assert_eq!(prelu_pos.value, 2.0); // Should equal x
+        assert_eq!(prelu_pos.derivative, 1.0); // Should be 1
+        
+        // Test negative input
+        let x_neg = Dual::variable(-1.0);
+        let prelu_neg = x_neg.prelu(alpha);
+        assert_eq!(prelu_neg.value, -0.1); // Should equal alpha * x
+        assert_eq!(prelu_neg.derivative, 0.1); // Should be alpha
+    }
+    
+    #[test]
+    fn test_glu_activation() {
+        // Test GLU: a * sigmoid(b)
+        let a = Dual::variable(2.0);
+        let b = Dual::variable(1.0);
+        let glu_result = a.glu(b);
+        
+        let expected_sigmoid = 1.0 / (1.0 + (-1.0_f64).exp());
+        let expected_value = 2.0 * expected_sigmoid;
+        assert!(approx_eq(glu_result.value, expected_value));
+        
+        // Derivative computation is more complex due to product rule
+        assert!(glu_result.derivative > 0.0);
+    }
+    
+    #[test]
+    fn test_relu6_activation() {
+        // Test ReLU6: min(max(0, x), 6)
+        
+        // Test negative input
+        let x_neg = Dual::variable(-1.0);
+        let relu6_neg = x_neg.relu6();
+        assert_eq!(relu6_neg.value, 0.0);
+        assert_eq!(relu6_neg.derivative, 0.0);
+        
+        // Test positive input within range
+        let x_pos = Dual::variable(3.0);
+        let relu6_pos = x_pos.relu6();
+        assert_eq!(relu6_pos.value, 3.0);
+        assert_eq!(relu6_pos.derivative, 1.0);
+        
+        // Test input above 6
+        let x_high = Dual::variable(8.0);
+        let relu6_high = x_high.relu6();
+        assert_eq!(relu6_high.value, 6.0);
+        assert_eq!(relu6_high.derivative, 0.0);
+    }
+    
+    #[test]
+    fn test_hardtanh_activation() {
+        // Test Hardtanh: clamp(x, -1, 1)
+        
+        // Test within range
+        let x_mid = Dual::variable(0.5);
+        let hardtanh_mid = x_mid.hardtanh();
+        assert_eq!(hardtanh_mid.value, 0.5);
+        assert_eq!(hardtanh_mid.derivative, 1.0);
+        
+        // Test above range
+        let x_high = Dual::variable(2.0);
+        let hardtanh_high = x_high.hardtanh();
+        assert_eq!(hardtanh_high.value, 1.0);
+        assert_eq!(hardtanh_high.derivative, 0.0);
+        
+        // Test below range
+        let x_low = Dual::variable(-2.0);
+        let hardtanh_low = x_low.hardtanh();
+        assert_eq!(hardtanh_low.value, -1.0);
+        assert_eq!(hardtanh_low.derivative, 0.0);
+    }
+    
+    #[test]
+    fn test_shrinking_activations() {
+        // Test Tanhshrink: x - tanh(x)
+        let x = Dual::variable(1.0);
+        let tanhshrink_result = x.tanhshrink();
+        let expected_value = 1.0 - 1.0_f64.tanh();
+        assert!(approx_eq(tanhshrink_result.value, expected_value));
+        
+        // Test Softshrink: sign(x) * max(|x| - lambda, 0)
+        let lambda = 0.5;
+        
+        // Test above threshold
+        let x_pos = Dual::variable(1.0);
+        let softshrink_pos = x_pos.softshrink(lambda);
+        assert_eq!(softshrink_pos.value, 0.5); // 1.0 - 0.5
+        assert_eq!(softshrink_pos.derivative, 1.0);
+        
+        // Test below threshold
+        let x_small = Dual::variable(0.3);
+        let softshrink_small = x_small.softshrink(lambda);
+        assert_eq!(softshrink_small.value, 0.0);
+        assert_eq!(softshrink_small.derivative, 0.0);
+        
+        // Test Hardshrink: x if |x| > lambda else 0
+        let hardshrink_pos = x_pos.hardshrink(lambda);
+        assert_eq!(hardshrink_pos.value, 1.0);
+        assert_eq!(hardshrink_pos.derivative, 1.0);
+        
+        let hardshrink_small = x_small.hardshrink(lambda);
+        assert_eq!(hardshrink_small.value, 0.0);
+        assert_eq!(hardshrink_small.derivative, 0.0);
+    }
+    
+    #[test]
+    fn test_logsigmoid_activation() {
+        // Test LogSigmoid: log(sigmoid(x))
+        let x = Dual::variable(0.0);
+        let logsigmoid_result = x.logsigmoid();
+        
+        // log(sigmoid(0)) = log(0.5) = -ln(2)
+        let expected_value = -2.0_f64.ln();
+        assert!(approx_eq(logsigmoid_result.value, expected_value));
+        
+        // Derivative at x=0 should be 0.5
+        assert!(approx_eq(logsigmoid_result.derivative, 0.5));
+        
+        // Test positive input
+        let x_pos = Dual::variable(2.0);
+        let logsigmoid_pos = x_pos.logsigmoid();
+        assert!(logsigmoid_pos.value > expected_value); // Should be less negative
+        assert!(logsigmoid_pos.derivative > 0.0);
+        assert!(logsigmoid_pos.derivative < 1.0);
+    }
+    
+    #[test]
+    fn test_activation_composition() {
+        // Test composing different activation functions
+        let x = Dual::variable(0.5);
+        
+        // Compose ReLU and Sigmoid
+        let relu_result = x.relu();
+        let sigmoid_relu = relu_result.sigmoid();
+        assert!(sigmoid_relu.value > 0.5); // sigmoid(0.5) > 0.5
+        assert!(sigmoid_relu.derivative > 0.0);
+        
+        // Compose Softplus and Tanh
+        let softplus_result = x.softplus();
+        let tanh_softplus = softplus_result.tanh();
+        assert!(tanh_softplus.value > 0.0);
+        assert!(tanh_softplus.value < 1.0);
+        assert!(tanh_softplus.derivative > 0.0);
+    }
+    
+    #[test]
+    fn test_activation_edge_cases() {
+        // Test activations at boundary values
+        
+        // Test at exactly 0
+        let zero = Dual::variable(0.0);
+        assert_eq!(zero.relu().value, 0.0);
+        assert_eq!(zero.relu().derivative, 0.0);
+        assert_eq!(zero.relu6().value, 0.0);
+        assert_eq!(zero.relu6().derivative, 0.0); // ReLU6 has derivative 0 at x=0 (boundary)
+        
+        // Test ReLU6 in the linear region (0 < x < 6)
+        let positive = Dual::variable(3.0);
+        assert_eq!(positive.relu6().value, 3.0);
+        assert_eq!(positive.relu6().derivative, 1.0); // ReLU6 has derivative 1 in (0,6)
+        
+        // Test symmetry for odd functions
+        let x = Dual::variable(1.0);
+        let neg_x = Dual::variable(-1.0);
+        
+        let tanh_pos = x.tanh();
+        let tanh_neg = neg_x.tanh();
+        assert!(approx_eq(tanh_pos.value, -tanh_neg.value)); // tanh is odd
+        
+        let tanhshrink_pos = x.tanhshrink();
+        let tanhshrink_neg = neg_x.tanhshrink();
+        assert!(approx_eq(tanhshrink_pos.value, -tanhshrink_neg.value)); // tanhshrink is odd
     }
 }
