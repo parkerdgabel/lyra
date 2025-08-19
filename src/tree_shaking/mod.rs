@@ -12,6 +12,7 @@ pub mod eliminator;
 pub mod import_analyzer;
 pub mod selective_resolver;
 pub mod compile_time_resolver;
+pub mod import_statement_generator;
 
 pub use dependency_graph::{DependencyGraph, DependencyNode, DependencyEdge, DependencyType, 
                            CallContext as DependencyCallContext, FunctionMetadata, 
@@ -36,6 +37,10 @@ pub use selective_resolver::{
 pub use compile_time_resolver::{
     CompileTimeResolver, CompileTimeResolverConfig, CompileTimeResolutionResults,
     ResolvedDependency, DependencyResolutionType, LoadPriority
+};
+pub use import_statement_generator::{
+    ImportStatementGenerator, StatementGeneratorConfig, ImportGenerationResults,
+    OutputFormat, FormatGenerator, GenerationMetrics
 };
 
 use crate::modules::registry::ModuleRegistry;
@@ -69,6 +74,9 @@ pub struct TreeShaker {
     
     /// Compile-time dependency resolver
     compile_time_resolver: CompileTimeResolver,
+    
+    /// Import statement generator
+    import_statement_generator: ImportStatementGenerator,
 }
 
 impl TreeShaker {
@@ -84,6 +92,7 @@ impl TreeShaker {
             import_analyzer: ImportAnalyzer::new(),
             selective_resolver: SelectiveImportResolver::new(),
             compile_time_resolver: CompileTimeResolver::new(),
+            import_statement_generator: ImportStatementGenerator::new(),
         }
     }
     
@@ -113,11 +122,18 @@ impl TreeShaker {
         )?;
         
         // Step 7: Perform compile-time dependency resolution
-        let _compile_time_results = self.compile_time_resolver.resolve_compile_time_dependencies(
+        let compile_time_results = self.compile_time_resolver.resolve_compile_time_dependencies(
             &resolution_results,
             &self.dependency_graph,
             &self.usage_tracker,
             module_registry
+        )?;
+        
+        // Step 8: Generate optimized import statements
+        let _import_statements = self.import_statement_generator.generate_import_statements(
+            &resolution_results,
+            &compile_time_results,
+            None, // Use default format
         )?;
         
         Ok(())
@@ -284,6 +300,56 @@ impl TreeShaker {
     /// Clear compile-time resolver caches
     pub fn clear_compile_time_caches(&mut self) {
         self.compile_time_resolver.clear_caches();
+    }
+    
+    /// Generate import statements from resolved imports
+    pub fn generate_import_statements(
+        &mut self,
+        module_registry: &ModuleRegistry,
+        target_format: Option<OutputFormat>,
+    ) -> Result<ImportGenerationResults, TreeShakeError> {
+        // First get selective import resolution results
+        let resolution_results = self.selective_resolver.resolve_imports(
+            &self.import_analyzer,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )?;
+        
+        // Then get compile-time resolution results
+        let compile_time_results = self.compile_time_resolver.resolve_compile_time_dependencies(
+            &resolution_results,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )?;
+        
+        // Finally generate import statements
+        self.import_statement_generator.generate_import_statements(
+            &resolution_results,
+            &compile_time_results,
+            target_format,
+        )
+    }
+    
+    /// Get import statement generator performance metrics
+    pub fn get_import_generation_metrics(&self) -> &GenerationMetrics {
+        self.import_statement_generator.get_performance_metrics()
+    }
+    
+    /// Configure import statement generator
+    pub fn configure_import_generator(&mut self, config: StatementGeneratorConfig) {
+        self.import_statement_generator.configure(config);
+    }
+    
+    /// Add custom format generator to import statement generator
+    pub fn add_custom_format_generator(&mut self, format: OutputFormat, generator: Box<dyn FormatGenerator>) {
+        self.import_statement_generator.add_format_generator(format, generator);
+    }
+    
+    /// Clear import statement generator caches
+    pub fn clear_import_generator_caches(&mut self) {
+        self.import_statement_generator.clear_caches();
     }
 }
 
