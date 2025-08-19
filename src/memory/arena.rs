@@ -189,11 +189,13 @@ impl ComputationArena {
         if let Some(scope_id) = current_scope_id {
             let mut scopes = self.scopes.write();
             if let Some(scope) = scopes.get_mut(&scope_id) {
+                // Get memory size before moving value
+                let memory_size = value.memory_size();
                 scope.alloc(value);
                 
                 // Update global statistics
                 let mut stats = self.stats.write();
-                stats.total_allocated += value.memory_size();
+                stats.total_allocated += memory_size;
                 
                 return Some(scope_id);
             }
@@ -262,7 +264,7 @@ impl ComputationArena {
     
     /// Get comprehensive arena statistics
     pub fn stats(&self) -> ArenaStats {
-        *self.stats.read()
+        self.stats.read().clone()
     }
     
     /// Clear all scopes (for testing/cleanup)

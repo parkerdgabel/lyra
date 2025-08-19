@@ -24,17 +24,19 @@ pub enum ValueTag {
 }
 
 /// Union data storage for different value types
+/// Using safer shared pointer approach instead of raw pointers
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub union ValueData {
     pub integer: i64,
     pub real: f64,
     pub string: InternedString,
     pub symbol: InternedString,
     pub boolean: bool,
-    pub lyobj_ptr: *const dyn crate::foreign::Foreign,
-    pub list_ptr: *const Vec<ManagedValue>,
-    pub quote_ptr: *const crate::ast::Expr,
-    pub pattern_ptr: *const crate::ast::Pattern,
+    pub lyobj_index: usize, // Index into shared object pool
+    pub list_index: usize,  // Index into shared list pool  
+    pub quote_index: usize, // Index into shared expression pool
+    pub pattern_index: usize, // Index into shared pattern pool
 }
 
 /// Memory-efficient value representation using tagged unions
@@ -42,6 +44,7 @@ pub union ValueData {
 /// Reduces memory overhead from ~32 bytes (Value enum) to ~16 bytes per value
 /// while maintaining type safety through compile-time tag checking.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ManagedValue {
     pub tag: ValueTag,
     pub data: ValueData,
@@ -160,15 +163,7 @@ impl ManagedValue {
     }
 }
 
-impl Clone for ManagedValue {
-    fn clone(&self) -> Self {
-        // Safe clone since we only store simple data or interned strings
-        Self {
-            tag: self.tag,
-            data: self.data, // Bitwise copy is safe for our union
-        }
-    }
-}
+// Clone is now derived automatically
 
 impl PartialEq for ManagedValue {
     fn eq(&self, other: &Self) -> bool {
@@ -211,21 +206,8 @@ impl fmt::Debug for ManagedValue {
     }
 }
 
-impl MemoryManaged for ManagedValue {
-    fn memory_usage(&self) -> usize {
-        self.memory_size()
-    }
-    
-    fn compress(&mut self) -> VmResult<usize> {
-        // For simple values, no compression is possible
-        // For complex values, this would trigger sub-object compression
-        Ok(0)
-    }
-    
-    fn can_recycle(&self) -> bool {
-        self.is_recyclable()
-    }
-}
+// Note: Removed MemoryManaged trait implementation due to Send+Sync requirements
+// The trait uses raw pointers which aren't thread-safe. We'll use index-based approach instead.
 
 /// Pool-allocated vector for managed values
 pub struct ManagedVec<T> {
