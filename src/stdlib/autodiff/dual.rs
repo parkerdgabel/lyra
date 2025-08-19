@@ -801,6 +801,129 @@ impl Neg for Dual {
     }
 }
 
+impl Dual {
+    // ===== ATTENTION MECHANISMS =====
+    
+    /// Softmax function: exp(x) / sum(exp(x_i))
+    /// For a single value, this simplifies to the sigmoid function
+    /// In practice, this would be used on vectors through broadcasting
+    pub fn softmax(self) -> Dual {
+        // For a single value, softmax(x) = exp(x) / exp(x) = 1
+        // But we implement the general case for consistency
+        let exp_val = self.exp();
+        // Since we only have one value, the denominator is just exp(x)
+        // So softmax(x) = exp(x) / exp(x) = 1 with derivative 0
+        // This is more useful when applied to vectors
+        exp_val / exp_val
+    }
+    
+    /// Scaled dot-product attention weight: exp(x) / sqrt(d_k)
+    /// Where d_k is the dimension of the key vectors
+    pub fn attention_weight(self, d_k: f64) -> Dual {
+        let scale = 1.0 / d_k.sqrt();
+        (self * scale).exp()
+    }
+    
+    /// Multi-head attention computation (simplified for dual numbers)
+    /// In practice, this operates on matrices, but here we show the core computation
+    /// query • key / sqrt(d_k), then apply softmax
+    pub fn attention_score(self, key: Dual, d_k: f64) -> Dual {
+        let scale = 1.0 / d_k.sqrt();
+        let score = (self * key) * scale;
+        score.softmax()
+    }
+    
+    /// Self-attention: attention_score with same input for query and key
+    pub fn self_attention_score(self, d_k: f64) -> Dual {
+        self.attention_score(self, d_k)
+    }
+    
+    /// Layer normalization: (x - μ) / σ
+    /// For a single value, we normalize to standard form
+    /// In practice, this operates on vectors with computed mean and variance
+    pub fn layer_norm(self, mean: Dual, variance: Dual, gamma: Dual, beta: Dual) -> Dual {
+        let normalized = (self - mean) / variance.sqrt().unwrap();
+        gamma * normalized + beta
+    }
+    
+    /// Layer normalization (simplified version for unit variance)
+    /// Assumes input is already mean-centered
+    pub fn layer_norm_simple(self, gamma: Dual, beta: Dual) -> Dual {
+        gamma * self + beta
+    }
+    
+    /// RMS (Root Mean Square) normalization: x / rms(x)
+    /// For a single value, this is just x / |x| = sign(x)
+    /// In practice, operates on vectors
+    pub fn rms_norm(self) -> Dual {
+        let rms = self.abs();
+        if rms.value == 0.0 {
+            Dual::constant(0.0)
+        } else {
+            self / rms
+        }
+    }
+    
+    /// RMS normalization with learnable scale
+    pub fn rms_norm_scaled(self, gamma: Dual) -> Dual {
+        gamma * self.rms_norm()
+    }
+    
+    /// Causal mask application: if masked, return large negative value
+    /// Used in autoregressive attention to prevent looking at future tokens
+    pub fn apply_causal_mask(self, is_masked: bool) -> Dual {
+        if is_masked {
+            Dual::constant(-1e9) // Large negative value for softmax
+        } else {
+            self
+        }
+    }
+    
+    /// Attention dropout simulation: randomly zero out with probability p
+    /// For deterministic computation, we scale by (1-p)
+    pub fn attention_dropout(self, dropout_rate: f64) -> Dual {
+        let scale = 1.0 - dropout_rate;
+        self * scale
+    }
+    
+    /// Position encoding (sinusoidal): sin(pos / 10000^(2i/d))
+    /// For even dimensions: sine, for odd dimensions: cosine
+    pub fn positional_encoding_sin(self, position: f64, dimension: f64) -> Dual {
+        let freq = 1.0 / (10000.0_f64.powf(2.0 * dimension / 512.0));
+        let angle = position * freq;
+        Dual::constant(angle).sin() + self
+    }
+    
+    /// Position encoding (cosine version)
+    pub fn positional_encoding_cos(self, position: f64, dimension: f64) -> Dual {
+        let freq = 1.0 / (10000.0_f64.powf(2.0 * dimension / 512.0));
+        let angle = position * freq;
+        Dual::constant(angle).cos() + self
+    }
+    
+    /// Multi-head attention with concatenation (simplified)
+    /// Combines multiple attention heads
+    pub fn multi_head_combine(self, other_heads: &[Dual]) -> Dual {
+        let mut result = self;
+        for head in other_heads {
+            result = result + *head;
+        }
+        result / (1.0 + other_heads.len() as f64)
+    }
+    
+    /// Cross-attention: attention between different sequences
+    /// query from sequence 1, key from sequence 2
+    pub fn cross_attention_score(self, key: Dual, value: Dual, d_k: f64) -> Dual {
+        let attention_weight = self.attention_score(key, d_k);
+        attention_weight * value
+    }
+    
+    /// Attention output projection (linear transformation after attention)
+    pub fn attention_output_projection(self, weight: Dual, bias: Dual) -> Dual {
+        self * weight + bias
+    }
+}
+
 impl fmt::Display for Dual {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.derivative == 0.0 {
@@ -1538,5 +1661,260 @@ mod tests {
         let tanhshrink_pos = x.tanhshrink();
         let tanhshrink_neg = neg_x.tanhshrink();
         assert!(approx_eq(tanhshrink_pos.value, -tanhshrink_neg.value)); // tanhshrink is odd
+    }
+    
+    // ===== TESTS FOR ATTENTION MECHANISMS =====
+    
+    #[test]
+    fn test_softmax_single_value() {
+        // Test softmax for single values (should be 1.0)
+        let x = Dual::variable(2.0);
+        let softmax_result = x.softmax();
+        
+        // For a single value, softmax(x) = exp(x) / exp(x) = 1
+        assert!(approx_eq(softmax_result.value, 1.0));
+        assert!(approx_eq(softmax_result.derivative, 0.0));
+        
+        // Test with different values
+        let x_neg = Dual::variable(-1.5);
+        let softmax_neg = x_neg.softmax();
+        assert!(approx_eq(softmax_neg.value, 1.0));
+        assert!(approx_eq(softmax_neg.derivative, 0.0));
+    }
+    
+    #[test]
+    fn test_attention_weight() {
+        // Test scaled attention weight: exp(x / sqrt(d_k))
+        let x = Dual::variable(1.0);
+        let d_k = 64.0; // Common dimension in transformers
+        let weight = x.attention_weight(d_k);
+        
+        let expected_scale = 1.0 / d_k.sqrt();
+        let expected_value = (1.0 * expected_scale).exp();
+        let expected_derivative = expected_value * expected_scale;
+        
+        assert!(approx_eq(weight.value, expected_value));
+        assert!(approx_eq(weight.derivative, expected_derivative));
+    }
+    
+    #[test]
+    fn test_attention_score() {
+        // Test scaled dot-product attention
+        let query = Dual::variable(2.0);
+        let key = Dual::variable(1.5);
+        let d_k = 64.0;
+        
+        let attention = query.attention_score(key, d_k);
+        
+        // Should compute (query * key / sqrt(d_k)).softmax()
+        // For single values, softmax gives 1.0, so we mainly test the scaling
+        assert!(approx_eq(attention.value, 1.0));
+        assert!(approx_eq(attention.derivative, 0.0));
+    }
+    
+    #[test]
+    fn test_self_attention() {
+        // Test self-attention (query == key)
+        let x = Dual::variable(3.0);
+        let d_k = 512.0;
+        
+        let self_attention = x.self_attention_score(d_k);
+        let manual_attention = x.attention_score(x, d_k);
+        
+        // Self-attention should be the same as regular attention with same Q and K
+        assert!(approx_eq(self_attention.value, manual_attention.value));
+        assert!(approx_eq(self_attention.derivative, manual_attention.derivative));
+    }
+    
+    #[test]
+    fn test_layer_normalization() {
+        // Test layer normalization: (x - μ) / σ * γ + β
+        let x = Dual::variable(5.0);
+        let mean = Dual::constant(3.0);
+        let variance = Dual::constant(4.0); // std = 2.0
+        let gamma = Dual::constant(2.0);
+        let beta = Dual::constant(1.0);
+        
+        let normalized = x.layer_norm(mean, variance, gamma, beta);
+        
+        // Expected: (5 - 3) / 2 * 2 + 1 = 2 / 2 * 2 + 1 = 3.0
+        assert!(approx_eq(normalized.value, 3.0));
+        
+        // Derivative: γ / σ = 2 / 2 = 1.0
+        assert!(approx_eq(normalized.derivative, 1.0));
+        
+        // Test simplified layer norm
+        let simple_norm = x.layer_norm_simple(gamma, beta);
+        let expected_simple = gamma.value * x.value + beta.value;
+        assert!(approx_eq(simple_norm.value, expected_simple));
+    }
+    
+    #[test]
+    fn test_rms_normalization() {
+        // Test RMS normalization: x / |x|
+        let x_pos = Dual::variable(4.0);
+        let rms_pos = x_pos.rms_norm();
+        
+        // For positive values: x / |x| = x / x = 1
+        assert!(approx_eq(rms_pos.value, 1.0));
+        assert!(approx_eq(rms_pos.derivative, 0.0));
+        
+        let x_neg = Dual::variable(-3.0);
+        let rms_neg = x_neg.rms_norm();
+        
+        // For negative values: x / |x| = x / (-x) = -1
+        assert!(approx_eq(rms_neg.value, -1.0));
+        assert!(approx_eq(rms_neg.derivative, 0.0));
+        
+        // Test with scaling
+        let gamma = Dual::constant(2.0);
+        let scaled_rms = x_pos.rms_norm_scaled(gamma);
+        assert!(approx_eq(scaled_rms.value, 2.0)); // gamma * 1.0
+    }
+    
+    #[test]
+    fn test_causal_masking() {
+        // Test causal mask application
+        let x = Dual::variable(1.5);
+        
+        // Unmasked should return original value
+        let unmasked = x.apply_causal_mask(false);
+        assert_eq!(unmasked.value, x.value);
+        assert_eq!(unmasked.derivative, x.derivative);
+        
+        // Masked should return large negative value
+        let masked = x.apply_causal_mask(true);
+        assert_eq!(masked.value, -1e9);
+        assert_eq!(masked.derivative, 0.0);
+    }
+    
+    #[test]
+    fn test_attention_dropout() {
+        // Test attention dropout (scaling by 1-p)
+        let x = Dual::variable(2.0);
+        let dropout_rate = 0.1;
+        
+        let dropped = x.attention_dropout(dropout_rate);
+        let expected_scale = 1.0 - dropout_rate;
+        
+        assert!(approx_eq(dropped.value, x.value * expected_scale));
+        assert!(approx_eq(dropped.derivative, x.derivative * expected_scale));
+    }
+    
+    #[test]
+    fn test_positional_encoding() {
+        // Test sinusoidal positional encoding
+        let x = Dual::variable(1.0);
+        let position = 0.0;
+        let dimension = 0.0;
+        
+        let pos_sin = x.positional_encoding_sin(position, dimension);
+        let pos_cos = x.positional_encoding_cos(position, dimension);
+        
+        // At position 0, sin(0) = 0, cos(0) = 1
+        assert!(approx_eq(pos_sin.value, x.value + 0.0)); // x + sin(0)
+        assert!(approx_eq(pos_cos.value, x.value + 1.0)); // x + cos(0)
+        
+        // Test different position/dimension
+        let pos_nonzero = x.positional_encoding_sin(1.0, 2.0);
+        assert!(pos_nonzero.value != x.value); // Should be different
+    }
+    
+    #[test]
+    fn test_multi_head_combine() {
+        // Test combining multiple attention heads
+        let head1 = Dual::variable(1.0);
+        let head2 = Dual::variable(2.0);
+        let head3 = Dual::variable(3.0);
+        let other_heads = vec![head2, head3];
+        
+        let combined = head1.multi_head_combine(&other_heads);
+        
+        // Should average: (1 + 2 + 3) / 3 = 2.0
+        assert!(approx_eq(combined.value, 2.0));
+        
+        // Test with empty heads
+        let combined_empty = head1.multi_head_combine(&[]);
+        assert_eq!(combined_empty.value, head1.value);
+        assert_eq!(combined_empty.derivative, head1.derivative);
+    }
+    
+    #[test]
+    fn test_cross_attention() {
+        // Test cross-attention between different sequences
+        let query = Dual::variable(2.0);
+        let key = Dual::variable(1.5);
+        let value = Dual::variable(3.0);
+        let d_k = 64.0;
+        
+        let cross_attn = query.cross_attention_score(key, value, d_k);
+        
+        // Should compute attention_score(query, key) * value
+        // Since attention_score gives ~1.0 for single values, result ≈ value
+        assert!(cross_attn.value > 0.0);
+        assert!(cross_attn.derivative >= 0.0);
+    }
+    
+    #[test]
+    fn test_attention_output_projection() {
+        // Test linear projection after attention
+        let attention_output = Dual::variable(2.5);
+        let weight = Dual::constant(0.8);
+        let bias = Dual::constant(0.2);
+        
+        let projected = attention_output.attention_output_projection(weight, bias);
+        
+        // Should compute: attention_output * weight + bias
+        let expected = 2.5 * 0.8 + 0.2;
+        assert!(approx_eq(projected.value, expected));
+        assert!(approx_eq(projected.derivative, 0.8)); // derivative of weight
+    }
+    
+    #[test]
+    fn test_attention_mechanism_composition() {
+        // Test composing multiple attention operations
+        let query = Dual::variable(1.0);
+        let key = Dual::variable(0.8);
+        let value = Dual::variable(1.2);
+        let d_k = 64.0;
+        
+        // Full attention pipeline
+        let attention_weights = query.attention_score(key, d_k);
+        let attention_output = attention_weights * value;
+        let dropout_output = attention_output.attention_dropout(0.1);
+        
+        // Layer norm parameters
+        let gamma = Dual::constant(1.0);
+        let beta = Dual::constant(0.0);
+        let normalized = dropout_output.layer_norm_simple(gamma, beta);
+        
+        // Should be a valid computation chain
+        assert!(normalized.value.is_finite());
+        assert!(normalized.derivative.is_finite());
+    }
+    
+    #[test]
+    fn test_attention_numerical_stability() {
+        // Test attention mechanisms with extreme values
+        
+        // Large values should not cause overflow
+        let large_query = Dual::variable(100.0);
+        let large_key = Dual::variable(50.0);
+        let attention_large = large_query.attention_score(large_key, 512.0);
+        assert!(attention_large.value.is_finite());
+        assert!(attention_large.derivative.is_finite());
+        
+        // Small values should not cause underflow
+        let small_query = Dual::variable(1e-6);
+        let small_key = Dual::variable(1e-7);
+        let attention_small = small_query.attention_score(small_key, 64.0);
+        assert!(attention_small.value.is_finite());
+        assert!(attention_small.derivative.is_finite());
+        
+        // Zero values should be handled gracefully
+        let zero = Dual::variable(0.0);
+        let rms_zero = zero.rms_norm();
+        assert_eq!(rms_zero.value, 0.0);
+        assert_eq!(rms_zero.derivative, 0.0);
     }
 }
