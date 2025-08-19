@@ -18,7 +18,8 @@ pub mod registry;
 pub mod resolver;
 pub mod package;
 pub mod cli;
-pub mod compiler_integration;
+// TODO: Temporarily disabled due to missing AST variants
+// pub mod compiler_integration;
 
 /// Errors that can occur in the module system
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -56,7 +57,7 @@ pub enum ModuleError {
 }
 
 /// Semantic versioning implementation
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -105,7 +106,7 @@ impl std::fmt::Display for Version {
 }
 
 /// Version constraint specifications
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VersionConstraint {
     Exact(Version),           // =1.2.3
     GreaterThan(Version),     // >1.2.3

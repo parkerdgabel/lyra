@@ -554,18 +554,7 @@ impl PackageRegistry for LocalRegistry {
             
             if dir_name.starts_with(&format!("{}-", name)) {
                 if let Some(version_str) = dir_name.strip_prefix(&format!("{}-", name)) {
-                    if let Ok(version) = version_str.parse::<String>().and_then(|v| {
-                        let parts: Vec<&str> = v.split('.').collect();
-                        if parts.len() == 3 {
-                            Ok(Version::new(
-                                parts[0].parse().map_err(|_| "parse error")?,
-                                parts[1].parse().map_err(|_| "parse error")?,
-                                parts[2].parse().map_err(|_| "parse error")?,
-                            ))
-                        } else {
-                            Err("invalid format")
-                        }
-                    }) {
+                    if let Ok(version) = Self::parse_version(version_str) {
                         versions.push(version);
                     }
                 }
@@ -574,6 +563,22 @@ impl PackageRegistry for LocalRegistry {
         
         versions.sort();
         Ok(versions)
+    }
+    
+}
+
+impl LocalRegistry {
+    /// Helper method to parse version strings
+    fn parse_version(version_str: &str) -> Result<Version, &'static str> {
+        let parts: Vec<&str> = version_str.split('.').collect();
+        if parts.len() == 3 {
+            let major = parts[0].parse().map_err(|_| "invalid major version")?;
+            let minor = parts[1].parse().map_err(|_| "invalid minor version")?;
+            let patch = parts[2].parse().map_err(|_| "invalid patch version")?;
+            Ok(Version::new(major, minor, patch))
+        } else {
+            Err("invalid version format")
+        }
     }
 }
 

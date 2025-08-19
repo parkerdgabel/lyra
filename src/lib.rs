@@ -9,9 +9,9 @@ pub mod format;
 pub mod lexer;
 pub mod linker;
 pub mod memory;
-// TODO: Temporarily disabled due to compilation conflicts
-// pub mod modules;
+pub mod modules;
 pub mod parser;
+pub mod tree_shaking;
 pub mod pattern_matcher;
 pub mod repl;
 pub mod rules_engine;

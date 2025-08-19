@@ -494,16 +494,14 @@ MIT
         
         if !matching_installed.is_empty() {
             println!("📦 Installed packages:");
-            for pkg in matching_installed {
+            for pkg in &matching_installed {
                 println!("  {} v{} - {}", pkg.name, pkg.version, pkg.description);
                 if !pkg.keywords.is_empty() {
                     println!("    🏷️ {}", pkg.keywords.join(", "));
                 }
             }
-        }
-        
-        // TODO: Search through remote registries
-        if matching_installed.is_empty() {
+        } else {
+            // TODO: Search through remote registries
             println!("❌ No packages found matching '{}'", query);
             println!("💡 Try searching with different keywords or check spelling");
         }

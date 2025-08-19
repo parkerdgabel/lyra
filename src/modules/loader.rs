@@ -77,7 +77,7 @@ pub struct ModuleLoader {
 }
 
 /// Loading statistics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LoaderStats {
     pub loads_attempted: usize,
     pub loads_successful: usize,
@@ -219,7 +219,7 @@ impl ModuleLoader {
     
     /// Get cache statistics
     pub fn get_stats(&self) -> LoaderStats {
-        self.stats.read().unwrap().clone()
+        (*self.stats.read().unwrap()).clone()
     }
     
     /// Clear module cache

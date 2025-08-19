@@ -12,11 +12,12 @@ pub mod training;
 pub mod losses;
 pub mod optimizers;
 pub mod metrics;
+pub mod wrapper;
 
 // Re-export main types for convenience
 pub use netchain::NetChain;
 pub use netgraph::NetGraph;
-pub use layers::*;
+pub use layers::*;  // This includes the Tensor type from layers.rs
 pub use training::NetTrain;
 
 /// Result type for ML operations

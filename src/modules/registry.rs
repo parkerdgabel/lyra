@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Global module registry for the Lyra system
+#[derive(Debug)]
 pub struct ModuleRegistry {
     /// Loaded modules indexed by namespace
     modules: RwLock<HashMap<String, Arc<Module>>>,
@@ -20,7 +21,7 @@ pub struct ModuleRegistry {
     function_registry: Arc<RwLock<FunctionRegistry>>,
     
     /// Namespace resolver for function lookup
-    resolver: NamespaceResolver,
+    resolver: RwLock<NamespaceResolver>,
     
     /// Standard library integration
     stdlib: Arc<StandardLibrary>,
@@ -33,7 +34,7 @@ impl ModuleRegistry {
         let mut registry = ModuleRegistry {
             modules: RwLock::new(HashMap::new()),
             function_registry,
-            resolver: NamespaceResolver::new(),
+            resolver: RwLock::new(NamespaceResolver::new()),
             stdlib,
         };
         
@@ -92,7 +93,7 @@ impl ModuleRegistry {
         }
         
         // Register in namespace resolver
-        self.resolver.register_namespace(namespace, &module)?;
+        self.resolver.write().unwrap().register_namespace(namespace, &module)?;
         
         // Store module
         self.modules.write().unwrap().insert(namespace.to_string(), Arc::new(module));
@@ -212,6 +213,22 @@ impl ModuleRegistry {
             "Power", crate::stdlib::math::power, vec![FunctionAttribute::Listable],
             "Power function - computes base^exponent"
         ))?;
+        math_module.add_export(super::stdlib_to_export_with_docs(
+            "Divide", crate::stdlib::math::divide, vec![FunctionAttribute::Listable],
+            "Division function - computes a/b for numeric inputs"
+        ))?;
+        math_module.add_export(super::stdlib_to_export_with_docs(
+            "Minus", crate::stdlib::math::minus, vec![FunctionAttribute::Listable],
+            "Subtraction function - computes a-b for numeric inputs"
+        ))?;
+        math_module.add_export(super::stdlib_to_export_with_docs(
+            "TestHold", crate::stdlib::math::test_hold, vec![FunctionAttribute::Hold(vec![1])],
+            "Test function for Hold attribute support"
+        ))?;
+        math_module.add_export(super::stdlib_to_export_with_docs(
+            "TestHoldMultiple", crate::stdlib::math::test_hold_multiple, vec![FunctionAttribute::Hold(vec![1, 2])],
+            "Test function for Hold attribute with multiple arguments"
+        ))?;
         
         self.register_module("std::math", math_module)?;
         
@@ -249,6 +266,14 @@ impl ModuleRegistry {
         list_module.add_export(super::stdlib_to_export_with_docs(
             "Flatten", crate::stdlib::list::flatten, vec![],
             "Flattens nested lists into a single list"
+        ))?;
+        list_module.add_export(super::stdlib_to_export_with_docs(
+            "Map", crate::stdlib::list::map, vec![],
+            "Applies a function to each element of a list"
+        ))?;
+        list_module.add_export(super::stdlib_to_export_with_docs(
+            "Apply", crate::stdlib::list::apply, vec![],
+            "Applies a function to arguments"
         ))?;
         
         self.register_module("std::list", list_module)?;
@@ -318,10 +343,250 @@ impl ModuleRegistry {
             "Maximum", crate::stdlib::tensor::maximum, vec![],
             "Element-wise maximum of tensors"
         ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "ArrayDimensions", crate::stdlib::tensor::array_dimensions, vec![],
+            "Returns the dimensions of a tensor"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "ArrayRank", crate::stdlib::tensor::array_rank, vec![],
+            "Returns the rank (number of dimensions) of a tensor"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "ArrayReshape", crate::stdlib::tensor::array_reshape, vec![],
+            "Reshapes a tensor to new dimensions"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "ArrayFlatten", crate::stdlib::tensor::array_flatten, vec![],
+            "Flattens a tensor to 1D"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "Sigmoid", crate::stdlib::tensor::sigmoid, vec![FunctionAttribute::Listable],
+            "Sigmoid activation function"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "Tanh", crate::stdlib::tensor::tanh, vec![FunctionAttribute::Listable],
+            "Hyperbolic tangent activation function"
+        ))?;
+        tensor_module.add_export(super::stdlib_to_export_with_docs(
+            "Softmax", crate::stdlib::tensor::softmax, vec![],
+            "Softmax activation function"
+        ))?;
         
         self.register_module("std::tensor", tensor_module)?;
         
-        println!("✅ Registered {} standard library modules", 4);
+        // Create std::ml::core module for core ML types and utilities
+        let mut ml_core_module = Module::new(super::ModuleMetadata {
+            name: "std::ml::core".to_string(),
+            version: Version::new(0, 1, 0),
+            description: "Core ML framework utilities and tensor operations".to_string(),
+            authors: vec!["Lyra Team".to_string()],
+            license: "MIT".to_string(),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            keywords: vec!["ml", "machine-learning", "tensor", "utilities"].into_iter().map(String::from).collect(),
+            categories: vec!["machine-learning".to_string()],
+        });
+        
+        // Add tensor utility functions to ml core
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "TensorShape", crate::stdlib::ml::wrapper::tensor_shape, vec![],
+            "Returns the shape of a tensor as a list"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "TensorRank", crate::stdlib::ml::wrapper::tensor_rank, vec![],
+            "Returns the number of dimensions of a tensor"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "TensorSize", crate::stdlib::ml::wrapper::tensor_size, vec![],
+            "Returns the total number of elements in a tensor"
+        ))?;
+        
+        self.register_module("std::ml::core", ml_core_module)?;
+        
+        // Create std::ml::layers module for neural network layers
+        let mut ml_layers_module = Module::new(super::ModuleMetadata {
+            name: "std::ml::layers".to_string(),
+            version: Version::new(0, 1, 0),
+            description: "Neural network layers for deep learning".to_string(),
+            authors: vec!["Lyra Team".to_string()],
+            license: "MIT".to_string(),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            keywords: vec!["ml", "neural-networks", "layers", "deep-learning"].into_iter().map(String::from).collect(),
+            categories: vec!["machine-learning".to_string()],
+        });
+        
+        // Add spatial layer functions
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "FlattenLayer", crate::stdlib::ml::wrapper::flatten_layer, vec![],
+            "Flattens multi-dimensional tensors to 1D or specified dimensions"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "ReshapeLayer", crate::stdlib::ml::wrapper::reshape_layer, vec![],
+            "Reshapes tensors to new dimensions (supports -1 for auto-inference)"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "PermuteLayer", crate::stdlib::ml::wrapper::permute_layer, vec![],
+            "Reorders tensor dimensions according to permutation"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "TransposeLayer", crate::stdlib::ml::wrapper::transpose_layer, vec![],
+            "Transposes 2D tensors (swaps first two dimensions)"
+        ))?;
+        
+        // Add layer composition functions
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Sequential", crate::stdlib::ml::wrapper::sequential_layer, vec![],
+            "Composes multiple layers sequentially"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Identity", crate::stdlib::ml::wrapper::identity_layer, vec![],
+            "Identity layer that returns input unchanged"
+        ))?;
+        
+        self.register_module("std::ml::layers", ml_layers_module)?;
+        
+        // Create std::rules module for pattern matching and replacement
+        let mut rules_module = Module::new(super::ModuleMetadata {
+            name: "std::rules".to_string(),
+            version: Version::new(0, 1, 0),
+            description: "Pattern matching and replacement rules".to_string(),
+            authors: vec!["Lyra Team".to_string()],
+            license: "MIT".to_string(),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            keywords: vec!["pattern", "rules", "matching", "replacement"].into_iter().map(String::from).collect(),
+            categories: vec!["pattern-matching".to_string()],
+        });
+        
+        // Add rule functions
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "MatchQ", crate::stdlib::rules::match_q, vec![],
+            "Tests whether an expression matches a pattern"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "Cases", crate::stdlib::rules::cases, vec![],
+            "Extracts elements that match a pattern"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "CountPattern", crate::stdlib::rules::count_pattern, vec![],
+            "Counts elements that match a pattern"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "Position", crate::stdlib::rules::position, vec![],
+            "Finds positions of elements matching a pattern"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "ReplaceAll", crate::stdlib::rules::replace_all, vec![],
+            "Applies replacement rules to all matching subexpressions"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "ReplaceRepeated", crate::stdlib::rules::replace_repeated, vec![],
+            "Repeatedly applies replacement rules until no more changes"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "Rule", crate::stdlib::rules::rule, vec![],
+            "Creates a replacement rule"
+        ))?;
+        rules_module.add_export(super::stdlib_to_export_with_docs(
+            "RuleDelayed", crate::stdlib::rules::rule_delayed, vec![],
+            "Creates a delayed replacement rule"
+        ))?;
+        
+        self.register_module("std::rules", rules_module)?;
+        
+        // Create std::table module for data manipulation
+        let mut table_module = Module::new(super::ModuleMetadata {
+            name: "std::table".to_string(),
+            version: Version::new(0, 1, 0),
+            description: "Data table and series manipulation functions".to_string(),
+            authors: vec!["Lyra Team".to_string()],
+            license: "MIT".to_string(),
+            repository: None,
+            homepage: None,
+            documentation: None,
+            keywords: vec!["table", "data", "series", "database"].into_iter().map(String::from).collect(),
+            categories: vec!["data-manipulation".to_string()],
+        });
+        
+        // Add legacy table functions
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "GroupBy", crate::stdlib::table::group_by, vec![],
+            "Groups table rows by specified columns"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Aggregate", crate::stdlib::table::aggregate, vec![],
+            "Applies aggregation functions to grouped data"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Count", crate::stdlib::table::count, vec![],
+            "Counts occurrences or rows in data"
+        ))?;
+        
+        // Add foreign table constructors
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Table", crate::stdlib::table::table, vec![],
+            "Creates a table from data"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "TableFromRows", crate::stdlib::table::table_from_rows, vec![],
+            "Creates a table from row data"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "EmptyTable", crate::stdlib::table::empty_table, vec![],
+            "Creates an empty table with specified schema"
+        ))?;
+        
+        // Add foreign series constructors
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Series", crate::stdlib::table::series, vec![],
+            "Creates a data series"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Range", crate::stdlib::table::range, vec![],
+            "Creates a range of values"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Zeros", crate::stdlib::table::zeros, vec![],
+            "Creates a series of zeros"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Ones", crate::stdlib::table::ones, vec![],
+            "Creates a series of ones"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "ConstantSeries", crate::stdlib::table::constant_series, vec![],
+            "Creates a series with constant values"
+        ))?;
+        
+        // Add foreign tensor constructors
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "Tensor", crate::stdlib::table::tensor, vec![],
+            "Creates a foreign tensor object"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "ZerosTensor", crate::stdlib::table::zeros_tensor, vec![],
+            "Creates a tensor filled with zeros"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "OnesTensor", crate::stdlib::table::ones_tensor, vec![],
+            "Creates a tensor filled with ones"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "EyeTensor", crate::stdlib::table::eye_tensor, vec![],
+            "Creates an identity tensor"
+        ))?;
+        table_module.add_export(super::stdlib_to_export_with_docs(
+            "RandomTensor", crate::stdlib::table::random_tensor, vec![],
+            "Creates a tensor with random values"
+        ))?;
+        
+        self.register_module("std::table", table_module)?;
+        
+        println!("✅ Registered {} standard library modules with complete stdlib coverage", 8);
         Ok(())
     }
     
@@ -329,11 +594,32 @@ impl ModuleRegistry {
     fn infer_function_arity(&self, function_name: &str) -> u8 {
         match function_name {
             // 0-arity functions
-            "Length" | "Head" | "Tail" | "Flatten" | "StringLength" => 0,
+            "Length" | "Head" | "Tail" | "Flatten" | "StringLength" | "EmptyTable" => 0,
+            
             // 1-arity functions  
-            "Sin" | "Cos" | "Tan" | "Exp" | "Log" | "Sqrt" | "StringTake" | "StringDrop" | "Array" | "Transpose" => 1,
+            "Sin" | "Cos" | "Tan" | "Exp" | "Log" | "Sqrt" | "StringTake" | "StringDrop" | 
+            "Array" | "Transpose" | "ArrayDimensions" | "ArrayRank" | "ArrayFlatten" |
+            "Sigmoid" | "Tanh" | "Softmax" | "TestHold" | "TestHoldMultiple" |
+            "Series" | "Range" | "Zeros" | "Ones" | "ZerosTensor" | "OnesTensor" |
+            "EyeTensor" | "RandomTensor" | "Tensor" | "ConstantSeries" => 1,
+            
+            // ML 1-arity functions
+            "TensorShape" | "TensorRank" | "TensorSize" | "TransposeLayer" | "Identity" | "Sequential" => 1,
+            
             // 2-arity functions
-            "Plus" | "Times" | "Power" | "Append" | "StringJoin" | "Dot" | "Maximum" => 2,
+            "Plus" | "Times" | "Power" | "Divide" | "Minus" | "Append" | "StringJoin" | 
+            "Dot" | "Maximum" | "Map" | "Apply" | "ArrayReshape" | "MatchQ" | "Cases" |
+            "CountPattern" | "Position" | "Rule" | "RuleDelayed" | "Table" | "TableFromRows" => 2,
+            
+            // ML 2-arity functions
+            "ReshapeLayer" | "PermuteLayer" => 2,
+            
+            // 3-arity functions
+            "ReplaceAll" | "ReplaceRepeated" | "GroupBy" | "Aggregate" | "Count" => 3,
+            
+            // ML variable arity functions (can take 1-3 arguments)
+            "FlattenLayer" => 3,
+            
             // Default to 1
             _ => 1,
         }
@@ -497,10 +783,12 @@ mod tests {
         assert!(registry.has_module("std::list"));
         assert!(registry.has_module("std::string"));
         assert!(registry.has_module("std::tensor"));
+        assert!(registry.has_module("std::ml::core"));
+        assert!(registry.has_module("std::ml::layers"));
         
         // Test module listing
         let modules = registry.list_modules();
-        assert!(modules.len() >= 4);
+        assert!(modules.len() >= 6);
         
         // Test module search
         let search_results = registry.search_modules("math");
@@ -522,5 +810,21 @@ mod tests {
         assert!(!list_exports.is_empty());
         assert!(list_exports.contains(&"Length".to_string()));
         assert!(list_exports.contains(&"Head".to_string()));
+        
+        // Test ML module exports
+        let ml_core_exports = registry.get_module_exports("std::ml::core");
+        assert!(!ml_core_exports.is_empty());
+        assert!(ml_core_exports.contains(&"TensorShape".to_string()));
+        assert!(ml_core_exports.contains(&"TensorRank".to_string()));
+        assert!(ml_core_exports.contains(&"TensorSize".to_string()));
+        
+        let ml_layers_exports = registry.get_module_exports("std::ml::layers");
+        assert!(!ml_layers_exports.is_empty());
+        assert!(ml_layers_exports.contains(&"FlattenLayer".to_string()));
+        assert!(ml_layers_exports.contains(&"ReshapeLayer".to_string()));
+        assert!(ml_layers_exports.contains(&"PermuteLayer".to_string()));
+        assert!(ml_layers_exports.contains(&"TransposeLayer".to_string()));
+        assert!(ml_layers_exports.contains(&"Sequential".to_string()));
+        assert!(ml_layers_exports.contains(&"Identity".to_string()));
     }
 }

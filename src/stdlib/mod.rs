@@ -43,6 +43,7 @@ impl StandardLibrary {
         stdlib.register_rule_functions();
         stdlib.register_table_functions();
         stdlib.register_tensor_functions();
+        stdlib.register_ml_functions();
 
         stdlib
     }
@@ -158,6 +159,23 @@ impl StandardLibrary {
         self.register("Tanh", tensor::tanh);
         self.register("Softmax", tensor::softmax);
     }
+
+    fn register_ml_functions(&mut self) {
+        // Spatial layer functions for tree-shaking optimized ML framework
+        self.register("FlattenLayer", ml::wrapper::flatten_layer);
+        self.register("ReshapeLayer", ml::wrapper::reshape_layer);
+        self.register("PermuteLayer", ml::wrapper::permute_layer);
+        self.register("TransposeLayer", ml::wrapper::transpose_layer);
+        
+        // Layer composition functions
+        self.register("Sequential", ml::wrapper::sequential_layer);
+        self.register("Identity", ml::wrapper::identity_layer);
+        
+        // Tensor utility functions
+        self.register("TensorShape", ml::wrapper::tensor_shape);
+        self.register("TensorRank", ml::wrapper::tensor_rank);
+        self.register("TensorSize", ml::wrapper::tensor_size);
+    }
 }
 
 impl Default for StandardLibrary {
@@ -212,5 +230,25 @@ mod tests {
 
         // Test invalid lookup
         assert!(stdlib.get_function("NonexistentFunction").is_none());
+    }
+
+    #[test]
+    fn test_ml_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test spatial layer functions
+        assert!(stdlib.get_function("FlattenLayer").is_some());
+        assert!(stdlib.get_function("ReshapeLayer").is_some());
+        assert!(stdlib.get_function("PermuteLayer").is_some());
+        assert!(stdlib.get_function("TransposeLayer").is_some());
+        
+        // Test layer composition functions
+        assert!(stdlib.get_function("Sequential").is_some());
+        assert!(stdlib.get_function("Identity").is_some());
+        
+        // Test tensor utility functions
+        assert!(stdlib.get_function("TensorShape").is_some());
+        assert!(stdlib.get_function("TensorRank").is_some());
+        assert!(stdlib.get_function("TensorSize").is_some());
     }
 }
