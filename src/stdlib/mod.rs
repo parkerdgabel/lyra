@@ -10,6 +10,7 @@
 use crate::vm::{Value, VmResult};
 use std::collections::HashMap;
 
+pub mod autodiff;
 pub mod data;
 pub mod list;
 pub mod math;
