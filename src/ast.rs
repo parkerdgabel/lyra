@@ -52,6 +52,11 @@ pub enum Expr {
         params: Vec<String>,
         body: Box<Expr>,
     },
+    TypedFunction {
+        head: Box<Expr>,
+        params: Vec<Expr>,
+        return_type: Box<Expr>,
+    },
     InterpolatedString(Vec<InterpolationPart>),
 }
 
@@ -208,6 +213,16 @@ impl fmt::Display for Expr {
                     write!(f, "{}", param)?;
                 }
                 write!(f, ") => {}", body)
+            }
+            Expr::TypedFunction { head, params, return_type } => {
+                write!(f, "{}[", head)?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, "]: {}", return_type)
             }
             Expr::InterpolatedString(parts) => {
                 write!(f, "\"")?;
@@ -392,6 +407,14 @@ impl Expr {
         Expr::ArrowFunction {
             params,
             body: Box::new(body),
+        }
+    }
+
+    pub fn typed_function(head: Expr, params: Vec<Expr>, return_type: Expr) -> Self {
+        Expr::TypedFunction {
+            head: Box::new(head),
+            params,
+            return_type: Box::new(return_type),
         }
     }
 

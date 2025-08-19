@@ -18,18 +18,19 @@ pub struct Instruction {
     pub operand: u32, // 24-bit operand (0..16777215)
 }
 
-/// Minimal opcode set for simplified VM (20 opcodes after adding MAP_CALL_STATIC)
+/// Minimal opcode set for simplified VM (21 opcodes after adding STSD)
 /// Designed to push complexity into compiler and stdlib
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OpCode {
-    // Load/Store (6) - LDS removed: symbols loaded via LDC  
+    // Load/Store (7) - LDS removed: symbols loaded via LDC  
     LDC = 0x01,   // Load constant from pool (includes symbols)
     LDL = 0x02,   // Load local variable
     STL = 0x03,   // Store local variable  
-    STS = 0x04,   // Store symbol value
-    LOAD_QUOTE = 0x05, // Load quoted expression for Hold attributes
-    MAP_CALL_STATIC = 0x06, // Apply function to lists for Listable attributes
+    STS = 0x04,   // Store symbol value (immediate assignment)
+    STSD = 0x05,  // Store symbol delayed (delayed assignment)
+    LoadQuote = 0x06, // Load quoted expression for Hold attributes
+    MapCallStatic = 0x07, // Apply function to lists for Listable attributes
     
     // Aggregates (2)
     NEWLIST = 0x10,  // Create new list from n stack items
@@ -47,7 +48,7 @@ pub enum OpCode {
     JIF = 0x31,   // Jump if true
     
     // Calls (2)
-    CALL_STATIC = 0x42,  // Call static function (registry_index, argc encoded in operand)
+    CallStatic = 0x42,  // Call static function (registry_index, argc encoded in operand)
     RET = 0x41,   // Return from function
     
     // Stack (2) - Reduced by 1: SWAP can be implemented with DUP operations
@@ -75,11 +76,11 @@ impl Instruction {
         Self::new(OpCode::SYS, operand)
     }
     
-    /// Create a CALL_STATIC instruction with function registry index and argument count
+    /// Create a CallStatic instruction with function registry index and argument count
     /// Encoding: function_index in high 16 bits, argc in low 8 bits
     pub fn new_call_static(function_index: u16, argc: u8) -> Result<Self> {
         let operand = ((function_index as u32) << 8) | (argc as u32);
-        Self::new(OpCode::CALL_STATIC, operand)
+        Self::new(OpCode::CallStatic, operand)
     }
     
     
@@ -90,7 +91,7 @@ impl Instruction {
         (sys_op, argc)
     }
     
-    /// Decode CALL_STATIC instruction to get function index and argument count
+    /// Decode CallStatic instruction to get function index and argument count
     pub fn decode_call_static(&self) -> (u16, u8) {
         let function_index = (self.operand >> 8) as u16;
         let argc = (self.operand & 0xFF) as u8;
@@ -116,12 +117,12 @@ impl OpCode {
     pub fn from_u8(value: u8) -> Result<Self> {
         match value {
             0x01 => Ok(Self::LDC), 0x02 => Ok(Self::LDL), 0x03 => Ok(Self::STL),
-            0x04 => Ok(Self::STS), 0x05 => Ok(Self::LOAD_QUOTE), 0x06 => Ok(Self::MAP_CALL_STATIC),
+            0x04 => Ok(Self::STS), 0x05 => Ok(Self::STSD), 0x06 => Ok(Self::LoadQuote), 0x07 => Ok(Self::MapCallStatic),
             0x10 => Ok(Self::NEWLIST), 0x11 => Ok(Self::NEWASSOC),
             0x20 => Ok(Self::ADD), 0x21 => Ok(Self::SUB), 0x22 => Ok(Self::MUL),
             0x23 => Ok(Self::DIV), 0x24 => Ok(Self::POW),
             0x30 => Ok(Self::JMP), 0x31 => Ok(Self::JIF),
-            0x41 => Ok(Self::RET), 0x42 => Ok(Self::CALL_STATIC),
+            0x41 => Ok(Self::RET), 0x42 => Ok(Self::CallStatic),
             0x50 => Ok(Self::POP), 0x51 => Ok(Self::DUP),
             0x60 => Ok(Self::SYS),
             _ => Err(BytecodeError::InvalidOpcode(value)),
@@ -131,11 +132,11 @@ impl OpCode {
     /// Get all opcodes for validation and testing
     pub fn all_opcodes() -> Vec<OpCode> {
         vec![
-            Self::LDC, Self::LDL, Self::STL, Self::STS, Self::LOAD_QUOTE, Self::MAP_CALL_STATIC,
+            Self::LDC, Self::LDL, Self::STL, Self::STS, Self::STSD, Self::LoadQuote, Self::MapCallStatic,
             Self::NEWLIST, Self::NEWASSOC,
             Self::ADD, Self::SUB, Self::MUL, Self::DIV, Self::POW,
             Self::JMP, Self::JIF,
-            Self::CALL_STATIC, Self::RET,
+            Self::CallStatic, Self::RET,
             Self::POP, Self::DUP,
             Self::SYS,
         ]
@@ -143,7 +144,7 @@ impl OpCode {
     
     /// Check if opcode is a load/store operation
     pub fn is_load_store(&self) -> bool {
-        matches!(self, Self::LDC | Self::LDL | Self::STL | Self::STS | Self::LOAD_QUOTE)
+        matches!(self, Self::LDC | Self::LDL | Self::STL | Self::STS | Self::STSD | Self::LoadQuote)
     }
     
     /// Check if opcode creates aggregates
@@ -163,19 +164,19 @@ impl OpCode {
     
     /// Check if opcode is a function call operation
     pub fn is_call(&self) -> bool {
-        matches!(self, Self::CALL_STATIC | Self::MAP_CALL_STATIC | Self::RET)
+        matches!(self, Self::CallStatic | Self::MapCallStatic | Self::RET)
     }
     
     /// Get opcode name for debugging
     pub fn name(&self) -> &'static str {
         match self {
-            Self::LDC => "LDC", Self::LOAD_QUOTE => "LOAD_QUOTE", Self::MAP_CALL_STATIC => "MAP_CALL_STATIC",
-            Self::LDL => "LDL", Self::STL => "STL", Self::STS => "STS",
+            Self::LDC => "LDC", Self::LoadQuote => "LoadQuote", Self::MapCallStatic => "MapCallStatic",
+            Self::LDL => "LDL", Self::STL => "STL", Self::STS => "STS", Self::STSD => "STSD",
             Self::NEWLIST => "NEWLIST", Self::NEWASSOC => "NEWASSOC",
             Self::ADD => "ADD", Self::SUB => "SUB", Self::MUL => "MUL", 
             Self::DIV => "DIV", Self::POW => "POW",
             Self::JMP => "JMP", Self::JIF => "JIF",
-            Self::CALL_STATIC => "CALL_STATIC", Self::RET => "RET",
+            Self::CallStatic => "CallStatic", Self::RET => "RET",
             Self::POP => "POP", Self::DUP => "DUP",
             Self::SYS => "SYS",
         }
@@ -295,12 +296,12 @@ mod tests {
     
     #[test]
     fn test_call_static_instruction_encoding() {
-        // Test CALL_STATIC opcode encoding: function_index in high 16 bits, argc in low 8 bits
+        // Test CallStatic opcode encoding: function_index in high 16 bits, argc in low 8 bits
         let function_index = 15; // Function registry index
         let argc = 2;
         
         let call_static_inst = Instruction::new_call_static(function_index, argc).unwrap();
-        assert_eq!(call_static_inst.opcode, OpCode::CALL_STATIC);
+        assert_eq!(call_static_inst.opcode, OpCode::CallStatic);
         
         let (decoded_function_index, decoded_argc) = call_static_inst.decode_call_static();
         assert_eq!(decoded_function_index, function_index);
@@ -309,13 +310,13 @@ mod tests {
     
     #[test]
     fn test_minimal_opcode_count() {
-        // Test that we have exactly 20 opcodes (18 minimal + LOAD_QUOTE + MAP_CALL_STATIC)
+        // Test that we have exactly 21 opcodes (18 minimal + LoadQuote + MapCallStatic + STSD)
         let minimal_opcodes = OpCode::all_opcodes();
-        assert_eq!(minimal_opcodes.len(), 20, "Opcode set must have exactly 20 opcodes (18 minimal + LOAD_QUOTE + MAP_CALL_STATIC)");
+        assert_eq!(minimal_opcodes.len(), 21, "Opcode set must have exactly 21 opcodes (18 minimal + LoadQuote + MapCallStatic + STSD)");
         
         // Verify each category has the expected count
         let loads_stores = minimal_opcodes.iter().filter(|op| op.is_load_store()).count();
-        assert_eq!(loads_stores, 5, "Should have 5 load/store opcodes (including LOAD_QUOTE)");
+        assert_eq!(loads_stores, 6, "Should have 6 load/store opcodes (including LoadQuote and STSD)");
         
         let aggregates = minimal_opcodes.iter().filter(|op| op.is_aggregate()).count();
         assert_eq!(aggregates, 2, "Should have 2 aggregate opcodes");
@@ -327,7 +328,7 @@ mod tests {
         assert_eq!(control, 2, "Should have 2 control opcodes");
         
         let calls = minimal_opcodes.iter().filter(|op| op.is_call()).count();
-        assert_eq!(calls, 3, "Should have 3 call opcodes (CALL_STATIC, MAP_CALL_STATIC, RET)");
+        assert_eq!(calls, 3, "Should have 3 call opcodes (CallStatic, MapCallStatic, RET)");
         
         let stack = minimal_opcodes.iter().filter(|op| matches!(op, OpCode::POP | OpCode::DUP)).count();
         assert_eq!(stack, 2, "Should have 2 stack opcodes");
@@ -423,7 +424,7 @@ mod tests {
         let load_store_count = minimal_opcodes.iter()
             .filter(|op| op.is_load_store())
             .count();
-        assert_eq!(load_store_count, 5); // LDC, LDL, STL, STS, LOAD_QUOTE
+        assert_eq!(load_store_count, 6); // LDC, LDL, STL, STS, STSD, LoadQuote
     }
 
     #[test]

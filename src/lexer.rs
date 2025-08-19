@@ -202,13 +202,39 @@ impl<'a> Lexer<'a> {
                                     length: 3,
                                 })
                             } else {
-                                // Just // (Postfix)
-                                self.advance();
-                                Ok(Token {
-                                    kind: TokenKind::Postfix,
-                                    position: start_pos,
-                                    length: 2,
-                                })
+                                // Check if this looks like a comment
+                                // Only treat as comment if followed by whitespace, !, alphanumeric, or end of input/line
+                                let next_char = self.input.chars().nth(self.char_position() + 1);
+                                let is_comment = match next_char {
+                                    None => true, // End of input
+                                    Some('\n') | Some('\r') => true, // End of line
+                                    Some('!') => true, // Documentation comment
+                                    Some(c) if c.is_alphanumeric() => true, // Followed by text
+                                    Some(' ') | Some('\t') => {
+                                        // Only treat as comment if followed by whitespace + text/end
+                                        // This handles "// comment text" but not "// @" 
+                                        let following_char = self.input.chars().nth(self.char_position() + 2);
+                                        match following_char {
+                                            None => true, // "// " at end
+                                            Some('\n') | Some('\r') => true, // "// \n"
+                                            Some(c) if c.is_alphanumeric() => true, // "// text"
+                                            _ => false, // "// @" should be postfix + prefix
+                                        }
+                                    },
+                                    _ => false, // Postfix operator (followed by other symbols)
+                                };
+                                
+                                if is_comment {
+                                    self.read_line_comment(start_pos)
+                                } else {
+                                    // Just // (Postfix)
+                                    self.advance();
+                                    Ok(Token {
+                                        kind: TokenKind::Postfix,
+                                        position: start_pos,
+                                        length: 2,
+                                    })
+                                }
                             }
                         } else if self.current_char == Some('.') {
                             self.advance();
@@ -242,11 +268,16 @@ impl<'a> Lexer<'a> {
                     }
                     '(' => {
                         self.advance();
-                        Ok(Token {
-                            kind: TokenKind::LeftParen,
-                            position: start_pos,
-                            length: 1,
-                        })
+                        if self.current_char == Some('*') {
+                            // This is a block comment (* *)
+                            self.read_block_comment(start_pos)
+                        } else {
+                            Ok(Token {
+                                kind: TokenKind::LeftParen,
+                                position: start_pos,
+                                length: 1,
+                            })
+                        }
                     }
                     ')' => {
                         self.advance();
@@ -849,6 +880,91 @@ impl<'a> Lexer<'a> {
             length: self.position - start_pos,
         })
     }
+
+    fn read_line_comment(&mut self, start_pos: usize) -> Result<Token> {
+        self.advance(); // consume second '/'
+        let mut comment_text = String::new();
+
+        // Check if this is a documentation comment (//!)
+        let is_doc_comment = if self.current_char == Some('!') {
+            self.advance();
+            comment_text.push('!');
+            true
+        } else {
+            false
+        };
+
+        // Read the rest of the line
+        while let Some(ch) = self.current_char {
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+            comment_text.push(ch);
+            self.advance();
+        }
+
+        // Optionally consume the newline
+        if matches!(self.current_char, Some('\n') | Some('\r')) {
+            self.advance();
+        }
+
+        let comment_content = if is_doc_comment {
+            format!("!{}", comment_text)
+        } else {
+            comment_text
+        };
+
+        Ok(Token {
+            kind: TokenKind::Comment(comment_content),
+            position: start_pos,
+            length: self.position - start_pos,
+        })
+    }
+
+    fn read_block_comment(&mut self, start_pos: usize) -> Result<Token> {
+        self.advance(); // consume '*' after '('
+        let mut comment_text = String::new();
+        let mut nesting_level = 1;
+
+        while let Some(ch) = self.current_char {
+            if ch == '(' {
+                comment_text.push(ch);
+                self.advance();
+                if self.current_char == Some('*') {
+                    comment_text.push('*');
+                    self.advance();
+                    nesting_level += 1;
+                }
+            } else if ch == '*' {
+                comment_text.push(ch);
+                self.advance();
+                if self.current_char == Some(')') {
+                    comment_text.push(')');
+                    self.advance();
+                    nesting_level -= 1;
+                    if nesting_level == 0 {
+                        break;
+                    }
+                }
+            } else {
+                comment_text.push(ch);
+                self.advance();
+            }
+        }
+
+        if nesting_level > 0 {
+            return Err(Error::Lexer {
+                message: "Unterminated block comment".to_string(),
+                position: start_pos,
+            });
+        }
+
+        Ok(Token {
+            kind: TokenKind::Comment(comment_text),
+            position: start_pos,
+            length: self.position - start_pos,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1232,6 +1348,209 @@ mod tests {
                 TokenKind::Integer(2),
                 TokenKind::Eof
             ]
+        );
+    }
+
+    #[test]
+    fn test_line_comments() {
+        // Basic line comment
+        let result = tokenize_string("1 + 2 // this is a comment").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Integer(1),
+                TokenKind::Plus,
+                TokenKind::Integer(2),
+                TokenKind::Eof
+            ]
+        );
+
+        // Comment at start of line
+        let result = tokenize_string("// comment\n3 + 4").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Integer(3),
+                TokenKind::Plus,
+                TokenKind::Integer(4),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_documentation_comments() {
+        // Documentation comment
+        let result = tokenize_string("//! This is documentation\n1 + 1").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Integer(1),
+                TokenKind::Plus,
+                TokenKind::Integer(1),
+                TokenKind::Eof
+            ]
+        );
+
+        // Multiple doc comments
+        let result = tokenize_string("//! Doc 1\n//! Doc 2\n5").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Integer(5), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn test_block_comments() {
+        // Basic block comment
+        let result = tokenize_string("1 (* comment *) + 2").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Integer(1),
+                TokenKind::Plus,
+                TokenKind::Integer(2),
+                TokenKind::Eof
+            ]
+        );
+
+        // Multi-line block comment
+        let result = tokenize_string("x (* this is a\nmulti-line comment *) + y").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Plus,
+                TokenKind::Symbol("y".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_nested_block_comments() {
+        // Nested block comments
+        let result = tokenize_string("a (* outer (* inner *) comment *) b").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Symbol("a".to_string()),
+                TokenKind::Symbol("b".to_string()),
+                TokenKind::Eof
+            ]
+        );
+
+        // Multiple nesting levels
+        let result = tokenize_string("x (* 1 (* 2 (* 3 *) 2 *) 1 *) y").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Symbol("y".to_string()),
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_replace_repeated_vs_comment() {
+        // Ensure //. is still parsed as ReplaceRepeated, not a comment
+        let result = tokenize_string("x //.").unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::ReplaceRepeated,
+                TokenKind::Eof
+            ]
+        );
+
+        // But // followed by space should be a comment
+        let result = tokenize_string("x // comment").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Symbol("x".to_string()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn test_mixed_comments() {
+        let result = tokenize_string("//! Documentation\n(* Block comment *)\n// Line comment\n42").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Integer(42), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn test_comment_with_code() {
+        // Comments mixed with various code constructs
+        let result = tokenize_string(
+            r#"f[x_] = x^2 (* function definition *)
+               // Calculate result
+               result = f[5] (* should be 25 *)"#
+        ).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                TokenKind::Symbol("f".to_string()),
+                TokenKind::LeftBracket,
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Blank,
+                TokenKind::RightBracket,
+                TokenKind::Set,
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Power,
+                TokenKind::Integer(2),
+                TokenKind::Symbol("result".to_string()),
+                TokenKind::Set,
+                TokenKind::Symbol("f".to_string()),
+                TokenKind::LeftBracket,
+                TokenKind::Integer(5),
+                TokenKind::RightBracket,
+                TokenKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn test_comment_error_cases() {
+        // Unterminated block comment should error
+        let result = tokenize_string("1 (* unterminated comment");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Lexer { message, .. } => {
+                assert!(message.contains("Unterminated block comment"));
+            }
+            _ => panic!("Expected lexer error"),
+        }
+
+        // Unterminated nested comment should error
+        let result = tokenize_string("1 (* outer (* inner *) unterminated");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_comments() {
+        // Empty line comment
+        let result = tokenize_string("//\n42").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Integer(42), TokenKind::Eof]
+        );
+
+        // Empty block comment
+        let result = tokenize_string("(* *) 42").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Integer(42), TokenKind::Eof]
+        );
+
+        // Empty doc comment
+        let result = tokenize_string("//!\n42").unwrap();
+        assert_eq!(
+            result,
+            vec![TokenKind::Integer(42), TokenKind::Eof]
         );
     }
 }

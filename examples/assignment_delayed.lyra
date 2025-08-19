@@ -1,0 +1,30 @@
+# Delayed Assignment Examples  
+# Demonstrates delayed assignment (:=) behavior
+
+# Delayed assignment - stores the expression, evaluates each time it's used
+a = 5
+b := a + 10
+
+# Check the value of b (should be 15)
+b
+
+# Now change a and check b again - b should update because it's delayed
+a = 20
+b
+
+# Compare with immediate assignment
+c = a + 10  # This evaluates now with a=20, so c=30
+c
+
+# Change a again
+a = 100
+
+# b updates (delayed), c doesn't (immediate)  
+b
+c
+
+# Another delayed assignment example
+counter := 0
+counter
+counter
+counter

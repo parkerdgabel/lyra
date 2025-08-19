@@ -1,0 +1,25 @@
+(* Basic Test - Simple Mathematical Operations *)
+
+(* Basic arithmetic *)
+2 + 3
+5 * 4
+10 - 3
+8 / 2
+
+(* Power operations *)
+2^3
+3^2
+
+(* Basic function calls *)
+Sin[0]
+Cos[0]
+Exp[1]
+Log[1]
+
+(* Simple lists *)
+{1, 2, 3, 4, 5}
+
+(* Variables *)
+x = 42
+y = x * 2
+y

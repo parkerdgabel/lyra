@@ -17,7 +17,7 @@ use crate::error::{Error, Result};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, RwLock, OnceLock};
+use std::sync::{Arc, OnceLock};
 use dashmap::DashMap;
 
 /// String interning for common variable names to reduce allocations

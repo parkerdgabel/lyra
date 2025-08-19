@@ -3,7 +3,7 @@
 use crate::vm::{Value, VmError, VmResult};
 use crate::pattern_matcher::{PatternMatcher, MatchResult};
 use crate::ast::{Pattern, Expr};
-use crate::rules_engine::{RuleEngine, Rule, RuleType};
+use crate::rules_engine::{RuleEngine, Rule};
 
 /// Test whether an expression matches a pattern
 /// Usage: MatchQ[expr, pattern] returns True if expr matches pattern, False otherwise
@@ -414,7 +414,7 @@ fn parse_rule_from_value(value: &Value) -> VmResult<Rule> {
 }
 
 /// Parse a rule from string representation (simplified parser)
-fn parse_rule_from_string(rule_str: &str, delayed: bool) -> VmResult<Rule> {
+fn parse_rule_from_string(_rule_str: &str, delayed: bool) -> VmResult<Rule> {
     // For now, return a simple identity rule to avoid complex parsing
     // TODO: Implement proper string parsing for rules
     let pattern = Pattern::Named {

@@ -487,7 +487,7 @@ impl Dual {
         let denom = 1.0 + abs_x;
         let softsign_val = self.value / denom;
         
-        let sign = if self.value >= 0.0 { 1.0 } else { -1.0 };
+        let _sign = if self.value >= 0.0 { 1.0 } else { -1.0 };
         let softsign_deriv = self.derivative / (denom * denom);
         
         Dual::new(softsign_val, softsign_deriv)
@@ -527,7 +527,7 @@ impl Dual {
         
         // Mish derivative: d/dx[x * tanh(softplus(x))]
         // = tanh(softplus(x)) + x * sech²(softplus(x)) * sigmoid(x)
-        let softplus_val = softplus.value;
+        let _softplus_val = softplus.value;
         let sigmoid_x = self.sigmoid();
         let sech_squared = 1.0 - tanh_softplus.value * tanh_softplus.value;
         let mish_deriv = tanh_softplus.value + self.value * sech_squared * sigmoid_x.value;
@@ -1004,7 +1004,7 @@ impl Dual {
     
     /// Triplet Loss for metric learning
     /// Anchor-positive distance should be smaller than anchor-negative distance
-    pub fn triplet_loss(self, positive_dist: Dual, negative_dist: Dual, margin: f64) -> Dual {
+    pub fn triplet_loss(self, _positive_dist: Dual, negative_dist: Dual, margin: f64) -> Dual {
         let margin_dual = Dual::constant(margin);
         let zero = Dual::constant(0.0);
         
@@ -1068,7 +1068,7 @@ impl Dual {
     }
     
     /// Adam optimizer: bias-corrected exponential moving averages
-    pub fn adam_update(self, m: Dual, v: Dual, beta1: f64, beta2: f64, step: f64) -> (Dual, Dual) {
+    pub fn adam_update(self, m: Dual, v: Dual, beta1: f64, beta2: f64, _step: f64) -> (Dual, Dual) {
         let beta1_dual = Dual::constant(beta1);
         let beta2_dual = Dual::constant(beta2);
         let one_minus_beta1 = Dual::constant(1.0 - beta1);
@@ -1384,7 +1384,7 @@ impl Dual {
     /// erf(x) ≈ (2/√π) * Σ((-1)^n * x^(2n+1) / (n! * (2n+1)))
     pub fn erf(self) -> AutodiffResult<Dual> {
         let sqrt_pi = Dual::constant(std::f64::consts::PI.sqrt());
-        let coeff = Dual::constant(2.0) / sqrt_pi;
+        let _coeff = Dual::constant(2.0) / sqrt_pi;
         
         // Use approximation: erf(x) ≈ tanh(1.2 * x + 0.4 * x^3) for |x| < 3
         if self.value.abs() < 3.0 {
@@ -1895,7 +1895,7 @@ impl SparseJacobian {
     where
         F: Fn(&[Dual]) -> Vec<Dual>,
     {
-        let n_vars = x.len();
+        let _n_vars = x.len();
         let mut jacobian_values = Vec::new();
         
         // Evaluate function with each color group

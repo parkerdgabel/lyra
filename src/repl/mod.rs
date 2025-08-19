@@ -203,8 +203,8 @@ impl ReplEngine {
         }
         
         // Check if this is a function definition (assignment with pattern on LHS)
-        if let Expr::Assignment { lhs, rhs, delayed } = expr {
-            if let Expr::Function { head, args } = lhs.as_ref() {
+        if let Expr::Assignment { lhs, rhs: _, delayed } = expr {
+            if let Expr::Function { head, args: _ } = lhs.as_ref() {
                 if let Expr::Symbol(func_name) = head.as_ref() {
                     // Store function definition in environment
                     // For now, we'll store as a symbol indicating function was defined

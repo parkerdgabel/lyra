@@ -1,0 +1,157 @@
+//! Calculus Examples - Testing Symbolic Differentiation and Integration
+//! 
+//! This script demonstrates the new calculus capabilities in Lyra:
+//! - D[expr, var] for symbolic differentiation
+//! - Integrate[expr, var] for symbolic integration
+//! - IntegrateDefinite[expr, var, lower, upper] for definite integrals
+
+(* Basic Derivative Examples *)
+
+(* Power Rule: d/dx[x^n] = n*x^(n-1) *)
+D[x^2, x]           (* Expected: 2*x *)
+D[x^3, x]           (* Expected: 3*x^2 *)
+D[x^5, x]           (* Expected: 5*x^4 *)
+
+(* Constant Rule: d/dx[c] = 0 *)
+D[5, x]             (* Expected: 0 *)
+D[42, x]            (* Expected: 0 *)
+
+(* Linear Rule: d/dx[c*x] = c *)
+D[3*x, x]           (* Expected: 3 *)
+D[7*x, x]           (* Expected: 7 *)
+
+(* Sum Rule: d/dx[f + g] = f_prime + g_prime *)
+D[x^2 + x^3, x]     (* Expected: 2*x + 3*x^2 *)
+D[5*x + 3*x^2, x]   (* Expected: 5 + 6*x *)
+
+(* Product Rule: d/dx[f*g] = f_prime*g + f*g_prime *)
+D[x^2 * x^3, x]     (* Expected: 5*x^4 (simplified from 2*x*x^3 + x^2*3*x^2) *)
+
+(* Trigonometric Derivatives *)
+D[Sin[x], x]        (* Expected: Cos[x] *)
+D[Cos[x], x]        (* Expected: -Sin[x] *)
+D[Tan[x], x]        (* Expected: Sec[x]^2 or 1 + Tan[x]^2 *)
+
+(* Exponential and Logarithmic Derivatives *)
+D[Exp[x], x]        (* Expected: Exp[x] *)
+D[Log[x], x]        (* Expected: 1/x *)
+
+(* Chain Rule Examples *)
+D[Sin[x^2], x]      (* Expected: 2*x*Cos[x^2] *)
+D[Exp[3*x], x]      (* Expected: 3*Exp[3*x] *)
+D[Log[x^2], x]      (* Expected: 2/x *)
+
+(* Complex Composite Functions *)
+D[Sin[x]*Cos[x], x]         (* Expected: Cos[x]^2 - Sin[x]^2 *)
+D[x^2*Sin[x], x]            (* Expected: 2*x*Sin[x] + x^2*Cos[x] *)
+D[Exp[x^2]*Log[x], x]       (* Expected: 2*x*Exp[x^2]*Log[x] + Exp[x^2]/x *)
+
+(* Multi-variable Functions (partial derivatives) *)
+D[x^2*y, x]         (* Expected: 2*x*y *)
+D[x^2*y, y]         (* Expected: x^2 *)
+D[x^3 + y^2, x]     (* Expected: 3*x^2 *)
+D[x^3 + y^2, y]     (* Expected: 2*y *)
+
+(* Higher Order Derivatives *)
+D[D[x^4, x], x]     (* Second derivative of x^4, Expected: 12*x^2 *)
+D[D[Sin[x], x], x]  (* Second derivative of Sin[x], Expected: -Sin[x] *)
+
+(* Integration Examples *)
+
+(* Basic Antiderivatives *)
+Integrate[x, x]             (* Expected: x^2/2 *)
+Integrate[x^2, x]           (* Expected: x^3/3 *)
+Integrate[x^3, x]           (* Expected: x^4/4 *)
+
+(* Trigonometric Integrals *)
+Integrate[Sin[x], x]        (* Expected: -Cos[x] *)
+Integrate[Cos[x], x]        (* Expected: Sin[x] *)
+
+(* Exponential and Logarithmic Integrals *)
+Integrate[Exp[x], x]        (* Expected: Exp[x] *)
+Integrate[1/x, x]           (* Expected: Log[x] *)
+
+(* Polynomial Integration *)
+Integrate[3*x^2 + 2*x + 1, x]   (* Expected: x^3 + x^2 + x *)
+Integrate[5*x^4 + 3*x^2, x]     (* Expected: x^5 + x^3 *)
+
+(* Definite Integration Examples *)
+IntegrateDefinite[x, x, 0, 1]           (* Expected: 1/2 *)
+IntegrateDefinite[x^2, x, 0, 2]         (* Expected: 8/3 *)
+IntegrateDefinite[Sin[x], x, 0, 3.14159] (* Expected: 2 *)
+
+(* Fundamental Theorem of Calculus Verification *)
+(* d/dx[integralf(t)dt] = f(x) *)
+D[Integrate[x^2, x], x]     (* Should equal x^2 *)
+D[Integrate[Sin[x], x], x]  (* Should equal Sin[x] *)
+
+(* Advanced Examples - Physics Applications *)
+
+(* Position, Velocity, Acceleration *)
+position = t^3 - 2*t^2 + 5*t
+velocity = D[position, t]       (* Expected: 3*t^2 - 4*t + 5 *)
+acceleration = D[velocity, t]   (* Expected: 6*t - 4 *)
+
+(* Optimization: Finding Critical Points *)
+f = x^3 - 3*x^2 + 2
+critical_points = D[f, x]       (* Expected: 3*x^2 - 6*x *)
+(* To find zeros: solve 3*x^2 - 6*x = 0, x = 0 or x = 2 *)
+
+(* Related Rates Example *)
+(* Area of circle: A = pi*r^2 *)
+(* Rate of area change: dA/dt = 2*pi*r*dr/dt *)
+A = 3.14159 * r^2
+dA_dr = D[A, r]                 (* Expected: 2*3.14159*r = 6.28318*r *)
+
+(* Taylor Series Building Blocks *)
+f = Sin[x]
+f_prime = D[f, x]               (* Cos[x] *)
+f_double_prime = D[f_prime, x]  (* -Sin[x] *)
+f_triple_prime = D[f_double_prime, x] (* -Cos[x] *)
+
+(* Parametric Derivatives *)
+(* For x = t^2, y = t^3, find dy/dx *)
+x_param = t^2
+y_param = t^3
+dx_dt = D[x_param, t]           (* 2*t *)
+dy_dt = D[y_param, t]           (* 3*t^2 *)
+(* dy/dx = (dy/dt)/(dx/dt) = 3*t^2/(2*t) = 3*t/2 *)
+
+(* Implicit Differentiation Test *)
+(* For x^2 + y^2 = 25, find dy/dx *)
+(* d/dx[x^2 + y^2] = d/dx[25] *)
+(* 2*x + 2*y*dy/dx = 0 *)
+(* dy/dx = -x/y *)
+circle_lhs = x^2 + y^2
+circle_derivative = D[circle_lhs, x]  (* Should involve dy/dx term *)
+
+(* Engineering Examples *)
+
+(* Heat transfer: Q = k*A*dT/dx *)
+T = 100 - 2*x                   (* Temperature distribution *)
+heat_flux = D[T, x]             (* Expected: -2 *)
+
+(* Electromagnetic: V = E*d, dV/dx = E *)
+V = 5*x + 2                     (* Voltage *)
+E_field = D[V, x]               (* Expected: 5 *)
+
+(* Performance Test: Complex Expression *)
+complex_expr = Sin[x^2] * Cos[x^3] * Exp[x] * Log[x^2 + 1]
+complex_derivative = D[complex_expr, x]
+
+(* Verification Examples *)
+(* Check that integration undoes differentiation *)
+test_func = x^3 + 2*x^2 + x + 1
+derivative = D[test_func, x]
+integral = Integrate[derivative, x]
+(* integral should equal test_func (up to constant) *)
+
+(* Test Output Summary *)
+"=== Calculus Examples Complete ==="
+"- Tested basic derivatives (power, sum, product rules)"
+"- Tested trigonometric and exponential derivatives"
+"- Tested chain rule and composite functions"
+"- Tested basic integration and antiderivatives"
+"- Tested definite integrals"
+"- Demonstrated physics and engineering applications"
+"- Verified fundamental theorem of calculus"

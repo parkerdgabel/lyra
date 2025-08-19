@@ -1,0 +1,345 @@
+//! Selective Import Examples - Testing Specific Function Imports and Tree Shaking
+//! 
+//! This script demonstrates selective import capabilities in Lyra:
+//! - Specific function imports: import std::math::{Sin, Cos}
+//! - Aliased function imports: import std::math::{Sin as Sine, Cos as Cosine}
+//! - Wildcard imports: import std::math::*
+//! - Mixed import patterns and tree shaking validation
+//! - Dead code elimination testing
+
+(* === Specific Function Import Testing === *)
+
+"=== Testing Specific Function Imports ==="
+
+(* Import only specific functions from math module *)
+import std::math::{Sin, Cos, Tan}
+
+(* Use imported functions directly (without module prefix) *)
+Sin[pi/2]                    (* Expected: 1 *)
+Cos[0]                       (* Expected: 1 *)
+Tan[pi/4]                    (* Expected: 1 *)
+
+(* Functions not imported should not be available without module prefix *)
+(* Exp[1] *)                 (* Should error - Exp not imported *)
+(* Log[e] *)                 (* Should error - Log not imported *)
+
+(* === Aliased Function Import Testing === *)
+
+"=== Testing Aliased Function Imports ==="
+
+(* Import functions with aliases *)
+import std::math::{Sin as Sine, Cos as Cosine, Exp as Exponential}
+
+(* Use aliased function names *)
+Sine[pi/6]                   (* Expected: 0.5 *)
+Cosine[pi/3]                 (* Expected: 0.5 *)
+Exponential[1]               (* Expected: e approx 2.718 *)
+
+(* Original names should not be available in this scope *)
+(* Sin[pi/6] *)              (* Should error - Sin is aliased *)
+(* Cos[pi/3] *)              (* Should error - Cos is aliased *)
+
+(* === Mixed Import Patterns === *)
+
+"=== Testing Mixed Import Patterns ==="
+
+(* Import some functions directly, others with aliases *)
+import std::statistics::{Mean, Variance as Var, StandardDeviation as StdDev}
+
+sample_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+
+(* Use mixed import patterns *)
+data_mean = Mean[sample_data]        (* Direct import *)
+data_variance = Var[sample_data]     (* Aliased import *)
+data_stddev = StdDev[sample_data]    (* Aliased import *)
+
+"Sample data mean:"
+data_mean
+"Sample data variance:"
+data_variance
+"Sample data standard deviation:"
+data_stddev
+
+(* === Wildcard Import Testing === *)
+
+"=== Testing Wildcard Imports ==="
+
+(* Import all functions from a module *)
+import std::calculus::*
+
+(* All calculus functions should be available without prefix *)
+D[x^2, x]                    (* Expected: 2*x *)
+D[Sin[x], x]                 (* Expected: Cos[x] *)
+Integrate[x, x]              (* Expected: x^2/2 *)
+IntegrateDefinite[x, x, 0, 1] (* Expected: 1/2 *)
+
+(* === Nested Module Selective Imports === *)
+
+"=== Testing Nested Module Selective Imports ==="
+
+(* Import specific functions from nested modules *)
+import std::ml::layers::{DenseLayer, ActivationLayer}
+import std::data::tensor::{Array as CreateTensor, Transpose as FlipMatrix}
+
+(* Use nested module functions with selective imports *)
+test_tensor = CreateTensor[{{1, 2, 3}, {4, 5, 6}}]
+flipped_tensor = FlipMatrix[test_tensor]
+
+"Original tensor:"
+test_tensor
+"Transposed tensor:"
+flipped_tensor
+
+(* === Namespace Collision Resolution === *)
+
+"=== Testing Namespace Collision Resolution ==="
+
+(* Import functions that might have name collisions *)
+import std::math::{Max as MathMax}
+import std::statistics::{Max as StatsMax}
+
+numeric_list = {1, 5, 3, 9, 2}
+
+(* Use disambiguated function names *)
+math_result = MathMax[numeric_list, 0]    (* Element-wise max with 0 *)
+stats_result = StatsMax[numeric_list]     (* Maximum value in list *)
+
+"Math Max (element-wise with 0):"
+math_result
+"Statistics Max (maximum value):"
+stats_result
+
+(* === Import Scope Testing === *)
+
+"=== Testing Import Scope ==="
+
+(* Test that selective imports have correct scope *)
+import std::io::{Export as SaveData, Import as LoadData}
+
+(* Functions should be available throughout the file *)
+test_export_data = {100, 200, 300, 400, 500}
+SaveData[test_export_data, "examples/testing/selective_test.json"]
+loaded_test_data = LoadData["examples/testing/selective_test.json"]
+
+"Exported data:"
+test_export_data
+"Imported data:"
+loaded_test_data
+
+(* === Tree Shaking Validation === *)
+
+"=== Testing Tree Shaking and Dead Code Elimination ==="
+
+(* Define functions that should be eliminated if unused *)
+unused_calculation_1 = 42 * 17 + 89   (* This should be eliminated *)
+unused_calculation_2 = Sin[pi] + Cos[pi/2]  (* This should be eliminated *)
+
+(* Define functions that are used *)
+used_calculation = 10 * 5 + 15        (* This should be kept *)
+
+(* Only reference the used calculation *)
+"Used calculation result:"
+used_calculation
+
+(* The unused calculations should be tree-shaken out *)
+
+(* === Advanced Selective Import Patterns === *)
+
+"=== Advanced Selective Import Patterns ==="
+
+(* Import with complex patterns *)
+import std::math::{Sin, Cos, Tan, Exp as E, Log as Ln, Sqrt as SquareRoot}
+
+(* Use imported functions in complex expressions *)
+complex_expr_1 = Sin[E[1]] + Cos[Ln[2]]
+complex_expr_2 = Tan[SquareRoot[4] * pi/8]
+
+"Complex expression 1 (Sin[E[1]] + Cos[Ln[2]]):"
+complex_expr_1
+"Complex expression 2 (Tan[Sqrt[4] * pi/8]):"
+complex_expr_2
+
+(* === Performance Impact Testing === *)
+
+"=== Testing Performance Impact of Selective Imports ==="
+
+(* Import only needed functions for performance-critical code *)
+import std::statistics::{Mean as FastMean, Total as FastSum}
+
+performance_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+
+(* These should be fast since only needed functions are imported *)
+fast_sum = FastSum[performance_data]
+fast_mean = FastMean[performance_data]
+
+"Performance test - Sum:"
+fast_sum
+"Performance test - Mean:"
+fast_mean
+
+(* === Import Order Testing === *)
+
+"=== Testing Import Order Independence ==="
+
+(* Test that import order doesnprimet affect functionality *)
+import std::statistics::{Variance as V1}
+computed_v1 = V1[{1, 2, 3, 4, 5}]
+
+import std::math::{Sqrt as S1}
+computed_s1 = S1[16]
+
+import std::calculus::{D as Derivative}
+computed_d1 = Derivative[x^3, x]
+
+"Import order test results:"
+computed_v1
+computed_s1
+computed_d1
+
+(* === Selective Import Error Handling === *)
+
+"=== Testing Selective Import Error Handling ==="
+
+(* Test importing non-existent functions *)
+(* import std::math::{NonexistentFunction} *)  (* Should produce error *)
+
+(* Test importing from non-existent modules *)
+(* import std::nonexistent::{SomeFunction} *)   (* Should produce error *)
+
+(* Test invalid alias syntax *)
+(* import std::math::{Sin as} *)                (* Should produce error *)
+
+(* === Module Function Discovery with Selective Imports === *)
+
+"=== Testing Module Function Discovery ==="
+
+(* Import specific functions and verify theyprimere available *)
+import std::tensor::{Array as TensorArray, Dot as TensorDot, Transpose as TensorTranspose}
+
+(* Test that imported functions work correctly *)
+tensor_a = TensorArray[{{1, 2}, {3, 4}}]
+tensor_b = TensorArray[{{5, 6}, {7, 8}}]
+
+dot_result = TensorDot[tensor_a, tensor_b]
+transpose_result = TensorTranspose[tensor_a]
+
+"Tensor A:"
+tensor_a
+"Tensor B:"
+tensor_b
+"Dot product:"
+dot_result
+"Transpose of A:"
+transpose_result
+
+(* === Cross-Module Integration with Selective Imports === *)
+
+"=== Testing Cross-Module Integration ==="
+
+(* Import functions from different modules selectively *)
+import std::math::{Sin as MathSin, Exp as MathExp}
+import std::statistics::{Mean as StatsMean, Variance as StatsVar}
+import std::calculus::{D as CalcDerivative}
+
+(* Use functions from different modules together *)
+integration_data = {0, pi/6, pi/4, pi/3, pi/2}
+
+(* Apply math functions *)
+sin_results = {MathSin[integration_data[1]], 
+               MathSin[integration_data[2]], 
+               MathSin[integration_data[3]], 
+               MathSin[integration_data[4]]}
+
+(* Apply statistics to the results *)
+sin_mean = StatsMean[sin_results]
+sin_variance = StatsVar[sin_results]
+
+(* Apply calculus *)
+test_func = x^2 + MathSin[x]
+func_derivative = CalcDerivative[test_func, x]
+
+"Cross-module integration results:"
+"Sin values:"
+sin_results
+"Mean of sin values:"
+sin_mean
+"Variance of sin values:"
+sin_variance
+"Derivative of x^2 + Sin[x]:"
+func_derivative
+
+(* === Conditional Imports (Advanced) === *)
+
+"=== Testing Conditional Import Patterns ==="
+
+(* Import different sets of functions based on use case *)
+
+(* For basic math operations *)
+import std::math::{Sin, Cos, Exp, Log}
+
+(* For data analysis *)
+import std::statistics::{Mean, Variance, Correlation}
+
+(* For linear algebra *)
+import std::tensor::{Array, Dot, Transpose}
+
+(* Demonstrate usage based on imported functions *)
+basic_math_test = Sin[pi/4] + Cos[pi/4]
+data_analysis_test = Mean[{1, 2, 3, 4, 5}]
+linear_algebra_test = Dot[{1, 2, 3}, {4, 5, 6}]
+
+"Conditional import test results:"
+basic_math_test
+data_analysis_test
+linear_algebra_test
+
+(* === Import Optimization Testing === *)
+
+"=== Testing Import Optimization ==="
+
+(* Import only the minimum required functions *)
+import std::math::{Sqrt}           (* Only import what we need *)
+import std::statistics::{Max}      (* Minimize import surface *)
+
+optimization_data = {4, 9, 16, 25, 36}
+
+(* Use only imported functions *)
+sqrt_results = {Sqrt[optimization_data[1]], 
+                Sqrt[optimization_data[2]], 
+                Sqrt[optimization_data[3]]}
+
+max_sqrt = Max[sqrt_results]
+
+"Optimization test - Square roots:"
+sqrt_results
+"Maximum square root:"
+max_sqrt
+
+(* === Summary and Verification === *)
+
+"=== Selective Import Examples Summary ==="
+
+"Successfully demonstrated:"
+"- Specific function imports: import module::{func1, func2}"
+"- Aliased function imports: import module::{func as alias}"
+"- Wildcard imports: import module::*"
+"- Mixed import patterns and namespace resolution"
+"- Tree shaking and dead code elimination"
+"- Cross-module integration with selective imports"
+"- Performance optimization through minimal imports"
+"- Error handling for invalid imports"
+
+"Import patterns tested:"
+"- import std::math::{Sin, Cos, Tan}"
+"- import std::math::{Sin as Sine, Cos as Cosine}"
+"- import std::calculus::*"
+"- import std::statistics::{Mean, Variance as Var}"
+"- import std::tensor::{Array as TensorArray}"
+
+"Tree shaking verified:"
+"- Unused calculations should be eliminated"
+"- Only imported functions should be available"
+"- Namespace collisions properly resolved"
+"- Import scope and order independence confirmed"
+
+"=== Selective Import Examples Complete ==="

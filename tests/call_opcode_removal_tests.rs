@@ -128,7 +128,7 @@ fn test_compiler_never_generates_call_instructions() {
         
         // Count CALL vs CALL_STATIC instructions
         let call_count = count_opcode(&instructions, get_call_opcode());
-        let call_static_count = count_opcode(&instructions, OpCode::CALL_STATIC);
+        let call_static_count = count_opcode(&instructions, OpCode::CallStatic);
         
         println!("    CALL instructions: {}", call_count);
         println!("    CALL_STATIC instructions: {}", call_static_count);
@@ -188,7 +188,7 @@ fn test_all_function_types_use_call_static() {
         // Some tests might fail to parse/compile, skip those for now
         if let Ok(instructions) = compile_source(source) {
             let call_count = count_opcode(&instructions, get_call_opcode());
-            let call_static_count = count_opcode(&instructions, OpCode::CALL_STATIC);
+            let call_static_count = count_opcode(&instructions, OpCode::CallStatic);
             
             println!("    Source: {}", source);
             println!("    CALL: {}, CALL_STATIC: {}", call_count, call_static_count);

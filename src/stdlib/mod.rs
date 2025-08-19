@@ -6,19 +6,36 @@
 //! - String operations  
 //! - Math functions
 //! - Pattern matching and rules
+//! - Graph theory and network analysis
 
 use crate::vm::{Value, VmResult};
 use std::collections::HashMap;
 
 pub mod autodiff;
+pub mod calculus;
+pub mod clustering;
 pub mod data;
+pub mod diffeq;
+pub mod graph;
+pub mod image;
+pub mod interp;
+pub mod io;
+pub mod linalg;
 pub mod list;
 pub mod math;
 pub mod ml;
+pub mod optimization;
+pub mod result;
 pub mod rules;
+pub mod signal;
+// pub mod sparse;
+// pub mod spatial;
+pub mod special;
+pub mod statistics;
 pub mod string;
 pub mod table;
 pub mod tensor;
+pub mod timeseries;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -40,10 +57,26 @@ impl StandardLibrary {
         stdlib.register_list_functions();
         stdlib.register_string_functions();
         stdlib.register_math_functions();
+        stdlib.register_calculus_functions();
+        stdlib.register_statistics_functions();
         stdlib.register_rule_functions();
         stdlib.register_table_functions();
         stdlib.register_tensor_functions();
         stdlib.register_ml_functions();
+        stdlib.register_io_functions();
+        stdlib.register_linalg_functions();
+        stdlib.register_diffeq_functions();
+        stdlib.register_interp_functions();
+        stdlib.register_special_functions();
+        stdlib.register_graph_functions();
+        stdlib.register_optimization_functions();
+        stdlib.register_signal_functions();
+        stdlib.register_image_functions();
+        stdlib.register_timeseries_functions();
+        stdlib.register_clustering_functions();
+        // stdlib.register_sparse_functions();
+        // stdlib.register_spatial_functions();
+        stdlib.register_result_functions();
 
         stdlib
     }
@@ -102,6 +135,38 @@ impl StandardLibrary {
         // Test functions for Hold attribute support
         self.register("TestHold", math::test_hold);
         self.register("TestHoldMultiple", math::test_hold_multiple);
+    }
+
+    fn register_calculus_functions(&mut self) {
+        // Symbolic differentiation
+        self.register("D", calculus::d);
+        
+        // Symbolic integration
+        self.register("Integrate", calculus::integrate);
+        self.register("IntegrateDefinite", calculus::integrate_definite);
+    }
+
+    fn register_statistics_functions(&mut self) {
+        // Descriptive statistics
+        self.register("Mean", statistics::mean);
+        self.register("Variance", statistics::variance);
+        self.register("StandardDeviation", statistics::standard_deviation);
+        self.register("Median", statistics::median);
+        self.register("Mode", statistics::mode);
+        self.register("Quantile", statistics::quantile);
+        
+        // Min/Max and aggregation
+        self.register("Min", statistics::min);
+        self.register("Max", statistics::max);
+        self.register("Total", statistics::total);
+        
+        // Random number generation
+        self.register("RandomReal", statistics::random_real);
+        self.register("RandomInteger", statistics::random_integer);
+        
+        // Correlation and covariance
+        self.register("Correlation", statistics::correlation);
+        self.register("Covariance", statistics::covariance);
     }
 
     fn register_rule_functions(&mut self) {
@@ -176,6 +241,316 @@ impl StandardLibrary {
         self.register("TensorRank", ml::wrapper::tensor_rank);
         self.register("TensorSize", ml::wrapper::tensor_size);
     }
+
+    fn register_io_functions(&mut self) {
+        // I/O operations
+        self.register("Import", io::import);
+        self.register("Export", io::export);
+    }
+
+    fn register_linalg_functions(&mut self) {
+        // Matrix decompositions
+        self.register("SVD", linalg::svd);
+        self.register("QRDecomposition", linalg::qr_decomposition);
+        self.register("LUDecomposition", linalg::lu_decomposition);
+        self.register("CholeskyDecomposition", linalg::cholesky_decomposition);
+        
+        // Eigenvalue computations
+        self.register("EigenDecomposition", linalg::eigen_decomposition);
+        self.register("SchurDecomposition", linalg::schur_decomposition);
+        
+        // Linear systems
+        self.register("LinearSolve", linalg::linear_solve);
+        self.register("LeastSquares", linalg::least_squares);
+        self.register("PseudoInverse", linalg::pseudo_inverse);
+        
+        // Matrix functions
+        self.register("MatrixPower", linalg::matrix_power);
+        self.register("MatrixFunction", linalg::matrix_function);
+        self.register("MatrixTrace", linalg::matrix_trace);
+        
+        // Matrix analysis
+        self.register("MatrixRank", linalg::matrix_rank);
+        self.register("MatrixCondition", linalg::matrix_condition);
+        self.register("MatrixNorm", linalg::matrix_norm);
+        self.register("Determinant", linalg::determinant);
+    }
+
+    fn register_diffeq_functions(&mut self) {
+        // Ordinary Differential Equations
+        self.register("NDSolve", diffeq::nd_solve);
+        self.register("DSolve", diffeq::d_solve);
+        self.register("DEigensystem", diffeq::d_eigensystem);
+        
+        // Partial Differential Equations
+        self.register("PDSolve", diffeq::pd_solve);
+        self.register("LaplacianFilter", diffeq::laplacian_filter);
+        self.register("WaveEquation", diffeq::wave_equation);
+        
+        // Vector Calculus
+        self.register("VectorCalculus", diffeq::vector_calculus);
+        self.register("Gradient", diffeq::gradient);
+        self.register("Divergence", diffeq::divergence);
+        self.register("Curl", diffeq::curl);
+        
+        // Numerical Methods
+        self.register("RungeKutta", diffeq::runge_kutta);
+        self.register("AdamsBashforth", diffeq::adams_bashforth);
+        self.register("BDF", diffeq::bdf);
+        
+        // Special Functions
+        self.register("BesselJ", diffeq::bessel_j);
+        self.register("HermiteH", diffeq::hermite_h);
+        self.register("LegendreP", diffeq::legendre_p);
+        
+        // Transform Methods
+        self.register("LaplaceTransform", diffeq::laplace_transform);
+        self.register("ZTransform", diffeq::z_transform);
+        self.register("HankelTransform", diffeq::hankel_transform);
+    }
+
+    fn register_interp_functions(&mut self) {
+        // Interpolation Methods
+        self.register("Interpolation", interp::interpolation);
+        self.register("SplineInterpolation", interp::spline_interpolation);
+        self.register("PolynomialInterpolation", interp::polynomial_interpolation);
+        
+        // Numerical Integration
+        self.register("NIntegrateAdvanced", interp::n_integrate_advanced);
+        self.register("GaussLegendre", interp::gauss_legendre);
+        self.register("AdaptiveQuadrature", interp::adaptive_quadrature_wrapper);
+        
+        // Root Finding
+        self.register("FindRootAdvanced", interp::find_root_advanced);
+        self.register("BrentMethod", interp::brent_method_wrapper);
+        self.register("NewtonRaphson", interp::newton_raphson_wrapper);
+        
+        // Curve Fitting
+        self.register("NonlinearFit", interp::nonlinear_fit);
+        self.register("LeastSquaresFit", interp::least_squares_fit);
+        self.register("SplineFit", interp::spline_fit);
+        
+        // Numerical Differentiation
+        self.register("NDerivative", interp::n_derivative);
+        self.register("FiniteDifference", interp::finite_difference_wrapper);
+        self.register("RichardsonExtrapolation", interp::richardson_extrapolation);
+        
+        // Error Analysis
+        self.register("ErrorEstimate", interp::error_estimate);
+        self.register("RichardsonExtrapolationError", interp::richardson_extrapolation_error);
+        self.register("AdaptiveMethod", interp::adaptive_method);
+    }
+
+    fn register_special_functions(&mut self) {
+        // Mathematical Constants
+        self.register("Pi", special::pi_constant);
+        self.register("E", special::e_constant);
+        self.register("EulerGamma", special::euler_gamma);
+        self.register("GoldenRatio", special::golden_ratio);
+        
+        // Gamma Functions
+        self.register("Gamma", special::gamma_function);
+        self.register("LogGamma", special::log_gamma);
+        self.register("Digamma", special::digamma);
+        self.register("Polygamma", special::polygamma);
+        
+        // Hypergeometric Functions
+        self.register("Hypergeometric0F1", special::hypergeometric_0f1);
+        self.register("Hypergeometric1F1", special::hypergeometric_1f1);
+        
+        // Elliptic Functions
+        self.register("EllipticK", special::elliptic_k);
+        self.register("EllipticE", special::elliptic_e);
+        self.register("EllipticTheta", special::elliptic_theta);
+        
+        // Orthogonal Polynomials
+        self.register("ChebyshevT", special::chebyshev_t);
+        self.register("ChebyshevU", special::chebyshev_u);
+        self.register("GegenbauerC", special::gegenbauer_c);
+        
+        // Error Functions
+        self.register("Erf", special::erf_function);
+        self.register("Erfc", special::erfc_function);
+        self.register("InverseErf", special::inverse_erf);
+        self.register("FresnelC", special::fresnel_c);
+        self.register("FresnelS", special::fresnel_s);
+    }
+
+    fn register_graph_functions(&mut self) {
+        // Graph creation functions
+        self.register("Graph", graph::graph);
+        self.register("DirectedGraph", graph::directed_graph);
+        self.register("AdjacencyMatrix", graph::adjacency_matrix);
+        
+        // Graph traversal algorithms
+        self.register("DepthFirstSearch", graph::depth_first_search);
+        self.register("BreadthFirstSearch", graph::breadth_first_search);
+        
+        // Shortest path algorithms
+        self.register("Dijkstra", graph::dijkstra);
+        
+        // Connectivity analysis
+        self.register("ConnectedComponents", graph::connected_components);
+        
+        // Graph properties
+        self.register("GraphProperties", graph::graph_properties);
+    }
+
+    fn register_optimization_functions(&mut self) {
+        // Root finding algorithms
+        self.register("FindRoot", optimization::find_root);
+        self.register("Newton", optimization::newton_method_wrapper);
+        self.register("Bisection", optimization::bisection_method_wrapper);
+        self.register("Secant", optimization::secant_method_wrapper);
+        
+        // Optimization algorithms
+        self.register("Minimize", optimization::minimize);
+        self.register("Maximize", optimization::maximize);
+        
+        // Numerical integration
+        self.register("NIntegrate", optimization::n_integrate);
+        self.register("GaussianQuadrature", optimization::gaussian_quadrature);
+        self.register("MonteCarlo", optimization::monte_carlo_integration);
+    }
+
+    fn register_signal_functions(&mut self) {
+        // Fourier transform functions
+        self.register("FFT", signal::fft);
+        self.register("IFFT", signal::ifft);
+        self.register("DCT", signal::dct);
+        self.register("PowerSpectrum", signal::power_spectrum);
+        
+        // Spectral analysis functions
+        self.register("Periodogram", signal::periodogram);
+        self.register("Spectrogram", signal::spectrogram);
+        self.register("PSDEstimate", signal::psd_estimate);
+        
+        // Windowing functions
+        self.register("HammingWindow", signal::hamming_window);
+        self.register("HanningWindow", signal::hanning_window);
+        self.register("BlackmanWindow", signal::blackman_window);
+        self.register("ApplyWindow", signal::apply_window);
+        
+        // Convolution and correlation
+        self.register("Convolve", signal::convolve);
+        self.register("CrossCorrelation", signal::cross_correlation);
+        self.register("AutoCorrelation", signal::auto_correlation);
+        
+        // Digital filtering
+        self.register("LowPassFilter", signal::low_pass_filter);
+        self.register("HighPassFilter", signal::high_pass_filter);
+        self.register("MedianFilter", signal::median_filter);
+        
+        // Advanced processing
+        self.register("Hilbert", signal::hilbert_transform);
+        self.register("ZeroPadding", signal::zero_padding);
+        self.register("PhaseUnwrap", signal::phase_unwrap);
+    }
+
+    fn register_image_functions(&mut self) {
+        // Phase 6A: Core Infrastructure  
+        self.register("ImageImport", image::core::image_import);
+        self.register("ImageExport", image::core::image_export);
+        self.register("ImageInfo", image::core::image_info);
+        self.register("ImageResize", image::core::image_resize);
+        self.register("ImageHistogram", image::core::image_histogram);
+        
+        // Phase 6B: Filtering & Enhancement
+        self.register("GaussianFilter", image::filters::gaussian_filter);
+        self.register("MedianFilter", image::filters::median_filter);
+        self.register("SobelFilter", image::filters::sobel_filter);
+        self.register("CannyEdgeDetection", image::filters::canny_edge_detection);
+        self.register("ImageRotate", image::filters::image_rotate);
+        
+        // Phase 6C: Morphological Operations
+        self.register("Erosion", image::morphology::erosion);
+        self.register("Dilation", image::morphology::dilation);
+        self.register("Opening", image::morphology::opening);
+        self.register("Closing", image::morphology::closing);
+        
+        // Phase 6D: Advanced Analysis
+        self.register("AffineTransform", image::analysis::affine_transform);
+        self.register("PerspectiveTransform", image::analysis::perspective_transform);
+        self.register("ContourDetection", image::analysis::contour_detection);
+        self.register("FeatureDetection", image::analysis::feature_detection);
+        self.register("TemplateMatching", image::analysis::template_matching);
+        self.register("ImageSegmentation", image::analysis::image_segmentation);
+    }
+
+    fn register_timeseries_functions(&mut self) {
+        // Core time series functions
+        self.register("TimeSeries", timeseries::core::timeseries);
+        self.register("TimeSeriesWithIndex", timeseries::core::timeseries_with_index);
+        
+        // ARIMA/SARIMA models
+        self.register("ARIMA", timeseries::arima::arima);
+        self.register("SARIMA", timeseries::arima::sarima);
+        
+        // Forecasting methods
+        self.register("ExponentialSmoothing", timeseries::forecasting::exponential_smoothing);
+        self.register("MovingAverage", timeseries::forecasting::moving_average);
+        self.register("ExponentialMovingAverage", timeseries::forecasting::exponential_moving_average);
+    }
+
+    fn register_clustering_functions(&mut self) {
+        // Core clustering infrastructure
+        self.register("ClusterData", clustering::core::cluster_data);
+        self.register("DistanceMatrix", clustering::core::distance_matrix);
+        
+        // K-means family algorithms
+        self.register("KMeans", clustering::kmeans::kmeans);
+        self.register("MiniBatchKMeans", clustering::kmeans::mini_batch_kmeans);
+    }
+
+    // fn register_sparse_functions(&mut self) {
+    //     // CSR format functions
+    //     self.register("CSRMatrix", sparse::csr::csr_matrix);
+    //     self.register("CSRFromTriplets", sparse::csr::csr_from_triplets);
+    //     self.register("CSRFromDense", sparse::csr::csr_from_dense);
+    //     
+    //     // CSC format functions
+    //     self.register("CSCMatrix", sparse::csc::csc_matrix);
+    //     self.register("CSCFromTriplets", sparse::csc::csc_from_triplets);
+    //     self.register("CSCFromDense", sparse::csc::csc_from_dense);
+    //     
+    //     // COO format functions
+    //     self.register("COOMatrix", sparse::coo::coo_matrix);
+    //     self.register("COOFromTriplets", sparse::coo::coo_from_triplets);
+    //     self.register("COOFromDense", sparse::coo::coo_from_dense);
+    // }
+
+    // fn register_spatial_functions(&mut self) {
+    //     // Core spatial tree functions
+    //     self.register("KDTree", spatial::kdtree::kdtree);
+    //     self.register("BallTree", spatial::balltree::balltree);
+    //     self.register("RTree", spatial::rtree::rtree);
+    // }
+
+    fn register_result_functions(&mut self) {
+        // Result constructors
+        self.register("Ok", result::ok_constructor);
+        self.register("Error", result::error_constructor);
+        
+        // Option constructors  
+        self.register("Some", result::some_constructor);
+        self.register("None", result::none_constructor);
+        
+        // Result methods
+        self.register("ResultIsOk", result::result_is_ok);
+        self.register("ResultIsError", result::result_is_error);
+        self.register("ResultUnwrap", result::result_unwrap);
+        self.register("ResultUnwrapOr", result::result_unwrap_or);
+        self.register("ResultMap", result::result_map);
+        self.register("ResultAndThen", result::result_and_then);
+        
+        // Option methods
+        self.register("OptionIsSome", result::option_is_some);
+        self.register("OptionIsNone", result::option_is_none);
+        self.register("OptionUnwrap", result::option_unwrap);
+        self.register("OptionUnwrapOr", result::option_unwrap_or);
+        self.register("OptionMap", result::option_map);
+        self.register("OptionAndThen", result::option_and_then);
+    }
 }
 
 impl Default for StandardLibrary {
@@ -218,7 +593,7 @@ mod tests {
         let function_count = stdlib.function_names().len();
 
         // Should have at least the core functions we're implementing
-        assert!(function_count >= 31); // 7 list + 4 string + 6 math + 3 rules + 11 tensor = 31 minimum
+        assert!(function_count >= 39); // 7 list + 4 string + 6 math + 3 rules + 11 tensor + 8 graph = 39 minimum
     }
 
     #[test]
@@ -250,5 +625,185 @@ mod tests {
         assert!(stdlib.get_function("TensorShape").is_some());
         assert!(stdlib.get_function("TensorRank").is_some());
         assert!(stdlib.get_function("TensorSize").is_some());
+    }
+
+    #[test]
+    fn test_graph_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test graph creation functions
+        assert!(stdlib.get_function("Graph").is_some());
+        assert!(stdlib.get_function("DirectedGraph").is_some());
+        assert!(stdlib.get_function("AdjacencyMatrix").is_some());
+        
+        // Test graph algorithms
+        assert!(stdlib.get_function("DepthFirstSearch").is_some());
+        assert!(stdlib.get_function("BreadthFirstSearch").is_some());
+        assert!(stdlib.get_function("Dijkstra").is_some());
+        assert!(stdlib.get_function("ConnectedComponents").is_some());
+        
+        // Test graph properties
+        assert!(stdlib.get_function("GraphProperties").is_some());
+    }
+
+    #[test]
+    fn test_linalg_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test matrix decomposition functions
+        assert!(stdlib.get_function("SVD").is_some());
+        assert!(stdlib.get_function("QRDecomposition").is_some());
+        assert!(stdlib.get_function("LUDecomposition").is_some());
+        assert!(stdlib.get_function("CholeskyDecomposition").is_some());
+        
+        // Test eigenvalue computation functions
+        assert!(stdlib.get_function("EigenDecomposition").is_some());
+        assert!(stdlib.get_function("SchurDecomposition").is_some());
+        
+        // Test linear system functions
+        assert!(stdlib.get_function("LinearSolve").is_some());
+        assert!(stdlib.get_function("LeastSquares").is_some());
+        assert!(stdlib.get_function("PseudoInverse").is_some());
+        
+        // Test matrix function operations
+        assert!(stdlib.get_function("MatrixPower").is_some());
+        assert!(stdlib.get_function("MatrixFunction").is_some());
+        assert!(stdlib.get_function("MatrixTrace").is_some());
+        
+        // Test matrix analysis functions
+        assert!(stdlib.get_function("MatrixRank").is_some());
+        assert!(stdlib.get_function("MatrixCondition").is_some());
+        assert!(stdlib.get_function("MatrixNorm").is_some());
+        assert!(stdlib.get_function("Determinant").is_some());
+    }
+
+    #[test]
+    fn test_optimization_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test root finding functions
+        assert!(stdlib.get_function("FindRoot").is_some());
+        assert!(stdlib.get_function("Newton").is_some());
+        assert!(stdlib.get_function("Bisection").is_some());
+        assert!(stdlib.get_function("Secant").is_some());
+        
+        // Test optimization functions
+        assert!(stdlib.get_function("Minimize").is_some());
+        assert!(stdlib.get_function("Maximize").is_some());
+        
+        // Test integration functions
+        assert!(stdlib.get_function("NIntegrate").is_some());
+        assert!(stdlib.get_function("GaussianQuadrature").is_some());
+        assert!(stdlib.get_function("MonteCarlo").is_some());
+    }
+
+    #[test]
+    fn test_interp_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test interpolation functions
+        assert!(stdlib.get_function("Interpolation").is_some());
+        assert!(stdlib.get_function("SplineInterpolation").is_some());
+        assert!(stdlib.get_function("PolynomialInterpolation").is_some());
+        
+        // Test numerical integration functions
+        assert!(stdlib.get_function("NIntegrateAdvanced").is_some());
+        assert!(stdlib.get_function("GaussLegendre").is_some());
+        assert!(stdlib.get_function("AdaptiveQuadrature").is_some());
+        
+        // Test root finding functions
+        assert!(stdlib.get_function("FindRootAdvanced").is_some());
+        assert!(stdlib.get_function("BrentMethod").is_some());
+        assert!(stdlib.get_function("NewtonRaphson").is_some());
+        
+        // Test curve fitting functions
+        assert!(stdlib.get_function("NonlinearFit").is_some());
+        assert!(stdlib.get_function("LeastSquaresFit").is_some());
+        assert!(stdlib.get_function("SplineFit").is_some());
+        
+        // Test numerical differentiation functions
+        assert!(stdlib.get_function("NDerivative").is_some());
+        assert!(stdlib.get_function("FiniteDifference").is_some());
+        assert!(stdlib.get_function("RichardsonExtrapolation").is_some());
+        
+        // Test error analysis functions
+        assert!(stdlib.get_function("ErrorEstimate").is_some());
+        assert!(stdlib.get_function("RichardsonExtrapolationError").is_some());
+        assert!(stdlib.get_function("AdaptiveMethod").is_some());
+    }
+
+    #[test]
+    fn test_signal_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test Fourier transform functions
+        assert!(stdlib.get_function("FFT").is_some());
+        assert!(stdlib.get_function("IFFT").is_some());
+        assert!(stdlib.get_function("DCT").is_some());
+        assert!(stdlib.get_function("PowerSpectrum").is_some());
+        
+        // Test spectral analysis functions
+        assert!(stdlib.get_function("Periodogram").is_some());
+        assert!(stdlib.get_function("Spectrogram").is_some());
+        assert!(stdlib.get_function("PSDEstimate").is_some());
+        
+        // Test windowing functions
+        assert!(stdlib.get_function("HammingWindow").is_some());
+        assert!(stdlib.get_function("HanningWindow").is_some());
+        assert!(stdlib.get_function("BlackmanWindow").is_some());
+        assert!(stdlib.get_function("ApplyWindow").is_some());
+        
+        // Test convolution functions
+        assert!(stdlib.get_function("Convolve").is_some());
+        assert!(stdlib.get_function("CrossCorrelation").is_some());
+        assert!(stdlib.get_function("AutoCorrelation").is_some());
+        
+        // Test filtering functions
+        assert!(stdlib.get_function("LowPassFilter").is_some());
+        assert!(stdlib.get_function("HighPassFilter").is_some());
+        assert!(stdlib.get_function("MedianFilter").is_some());
+        
+        // Test advanced processing functions
+        assert!(stdlib.get_function("Hilbert").is_some());
+        assert!(stdlib.get_function("ZeroPadding").is_some());
+        assert!(stdlib.get_function("PhaseUnwrap").is_some());
+    }
+
+    #[test]
+    fn test_special_functions_registered() {
+        let stdlib = StandardLibrary::new();
+        
+        // Test mathematical constants
+        assert!(stdlib.get_function("Pi").is_some());
+        assert!(stdlib.get_function("E").is_some());
+        assert!(stdlib.get_function("EulerGamma").is_some());
+        assert!(stdlib.get_function("GoldenRatio").is_some());
+        
+        // Test gamma functions
+        assert!(stdlib.get_function("Gamma").is_some());
+        assert!(stdlib.get_function("LogGamma").is_some());
+        assert!(stdlib.get_function("Digamma").is_some());
+        assert!(stdlib.get_function("Polygamma").is_some());
+        
+        // Test hypergeometric functions
+        assert!(stdlib.get_function("Hypergeometric0F1").is_some());
+        assert!(stdlib.get_function("Hypergeometric1F1").is_some());
+        
+        // Test elliptic functions
+        assert!(stdlib.get_function("EllipticK").is_some());
+        assert!(stdlib.get_function("EllipticE").is_some());
+        assert!(stdlib.get_function("EllipticTheta").is_some());
+        
+        // Test orthogonal polynomials
+        assert!(stdlib.get_function("ChebyshevT").is_some());
+        assert!(stdlib.get_function("ChebyshevU").is_some());
+        assert!(stdlib.get_function("GegenbauerC").is_some());
+        
+        // Test error functions
+        assert!(stdlib.get_function("Erf").is_some());
+        assert!(stdlib.get_function("Erfc").is_some());
+        assert!(stdlib.get_function("InverseErf").is_some());
+        assert!(stdlib.get_function("FresnelC").is_some());
+        assert!(stdlib.get_function("FresnelS").is_some());
     }
 }

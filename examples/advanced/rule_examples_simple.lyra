@@ -1,0 +1,104 @@
+//! Simple Rule System Examples - Testing Basic Rule[] and RuleDelayed[] Functions
+
+(* === Basic Rule Creation === *)
+
+(* Rule[] - Immediate evaluation of RHS *)
+basic_rule = Rule[x, 42]
+
+(* RuleDelayed[] - Deferred evaluation of RHS *)
+delayed_rule = RuleDelayed[y, 3.14]
+
+(* Multiple basic rules *)
+substitution_rules = {
+    Rule[a, 1],
+    Rule[b, 2], 
+    Rule[c, 3]
+}
+
+(* === Rule Application === *)
+
+(* ReplaceAll - Apply rules to expression *)
+expr1 = x + y + z
+result1 = ReplaceAll[expr1, Rule[x, 10]]
+
+(* Multiple rule applications *)
+expr2 = a + b + c + d
+result2 = ReplaceAll[expr2, substitution_rules]
+
+(* === Mathematical Transformation Rules === *)
+
+(* Algebraic simplification rules *)
+zero_rule = Rule[x + 0, x]
+one_rule = Rule[x * 1, x]
+identity_rules = {zero_rule, one_rule}
+
+(* Test algebraic rules *)
+messy_expr = (a + 0) * 1 + (b * 1) + 0
+clean_result = ReplaceAll[messy_expr, identity_rules]
+
+(* === Power Rules === *)
+power_zero = Rule[x^0, 1]
+power_one = Rule[x^1, x]
+power_rules = {power_zero, power_one}
+
+power_expr = a^0 + b^1 + c^2
+power_result = ReplaceAll[power_expr, power_rules]
+
+(* === Pattern-Based Rules === *)
+
+(* Rules with patterns *)
+pattern_rule1 = Rule[f[x_], g[x]]
+pattern_rule2 = Rule[h[x_, y_], x + y]
+
+(* Test pattern rules *)
+pattern_expr1 = f[42]
+pattern_result1 = ReplaceAll[pattern_expr1, pattern_rule1]
+
+pattern_expr2 = h[3, 7]
+pattern_result2 = ReplaceAll[pattern_expr2, pattern_rule2]
+
+(* === List Transformation Rules === *)
+
+(* List processing rules *)
+empty_list = Rule[{}, 0]
+single_element = Rule[{x_}, x]
+pair_rule = Rule[{x_, y_}, {y, x}]
+
+list_rules = {empty_list, single_element, pair_rule}
+
+(* Test list rules *)
+test_empty = {}
+empty_result = ReplaceAll[test_empty, empty_list]
+
+test_single = {42}
+single_result = ReplaceAll[test_single, single_element]
+
+test_pair = {1, 2}
+pair_result = ReplaceAll[test_pair, pair_rule]
+
+(* === Function Definition Rules === *)
+
+(* Transform function calls *)
+square_rule = Rule[square[x_], x^2]
+double_rule = Rule[double[x_], 2*x]
+
+function_rules = {square_rule, double_rule}
+
+(* Test function rules *)
+func_expr1 = square[5]
+func_result1 = ReplaceAll[func_expr1, square_rule]
+
+func_expr2 = double[7]
+func_result2 = ReplaceAll[func_expr2, double_rule]
+
+(* === Summary === *)
+
+"=== Simple Rule System Examples Complete ==="
+"- Basic Rule[] and RuleDelayed[] creation tested"
+"- ReplaceAll[] application with single and multiple rules tested"
+"- Mathematical transformation rules tested"
+"- Pattern-based rules with wildcards tested"
+"- List transformation rules tested"
+"- Function definition rules tested"
+
+"Rule system basic functionality validated"

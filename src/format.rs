@@ -104,6 +104,18 @@ fn format_expr(e: &Expr, level: usize, cfg: &FormatterConfig, out: &mut String) 
             write!(out, ") => ")?;
             format_expr(body, level, cfg, out)
         }
+        Expr::TypedFunction { head, params, return_type } => {
+            format_expr(head, level, cfg, out)?;
+            write!(out, "[")?;
+            for (i, param) in params.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                format_expr(param, level, cfg, out)?;
+            }
+            write!(out, "]: ")?;
+            format_expr(return_type, level, cfg, out)
+        }
         Expr::InterpolatedString(parts) => {
             write!(out, "\"")?;
             for part in parts {

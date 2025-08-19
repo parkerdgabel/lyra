@@ -329,7 +329,15 @@ impl Parser {
                         &TokenKind::RightBracket,
                         "Expected ']' after function arguments",
                     )?;
-                    expr = Expr::function(expr, args);
+                    
+                    // Check for return type annotation: f[args]: ReturnType
+                    if self.check(&TokenKind::Colon) {
+                        self.advance(); // consume ':'
+                        let return_type = self.or()?; // Parse return type expression
+                        expr = Expr::typed_function(expr, args, return_type);
+                    } else {
+                        expr = Expr::function(expr, args);
+                    }
                 }
             } else if self.match_token(&TokenKind::Dot) {
                 // This is a dot-call obj.method[args]

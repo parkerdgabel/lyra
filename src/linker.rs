@@ -8,13 +8,13 @@
 //!
 //! **Previous (Split System):**
 //! ```
-//! Foreign methods: CALL_STATIC -> 1000x+ speedup ✅
+//! Foreign methods: CallStatic -> 1000x+ speedup ✅
 //! Stdlib functions: CALL -> HashMap lookup -> slow ❌
 //! ```
 //! 
 //! **Target (Unified System):**
 //! ```
-//! ALL functions: CALL_STATIC -> direct function pointer -> 1000x+ speedup ✅
+//! ALL functions: CallStatic -> direct function pointer -> 1000x+ speedup ✅
 //! ```
 //!
 //! ## Unified Function Index Space
@@ -32,7 +32,7 @@
 //! - Target: Zero runtime function resolution cost
 
 use crate::{
-    vm::{Value, VmResult, VmError},
+    vm::Value,
     foreign::{ForeignError, LyObj},
     stdlib::StdlibFunction,
 };
@@ -244,7 +244,7 @@ pub struct FunctionEntry {
     /// The unified function (Foreign method or stdlib function)
     pub function: UnifiedFunction,
     
-    /// The static function index for CALL_STATIC
+    /// The static function index for CallStatic
     pub function_index: u16,
     
     /// Optional documentation for debugging
@@ -314,7 +314,7 @@ impl FunctionEntry {
         self.function.call(object, args)
     }
     
-    /// Get the function index for CALL_STATIC
+    /// Get the function index for CallStatic
     pub fn get_function_index(&self) -> u16 {
         self.function_index
     }
@@ -323,7 +323,7 @@ impl FunctionEntry {
 /// Unified registry of ALL functions (Foreign methods + stdlib functions) for static dispatch
 /// 
 /// This registry combines both Foreign object methods and stdlib functions into a single
-/// index space, allowing the compiler to resolve ALL function calls to CALL_STATIC instructions
+/// index space, allowing the compiler to resolve ALL function calls to CallStatic instructions
 /// with direct function indices, eliminating all dynamic dispatch overhead.
 ///
 /// ## Function Index Space:
@@ -335,7 +335,7 @@ pub struct FunctionRegistry {
     /// Map from function signature to function entry
     functions: HashMap<String, FunctionEntry>,
     
-    /// Map from function name to function index (for CALL_STATIC)
+    /// Map from function name to function index (for CallStatic)
     function_indices: HashMap<String, u16>,
     
     /// Map from type name to list of available methods (for introspection)
@@ -574,7 +574,7 @@ impl FunctionRegistry {
         self.stdlib_indices.get(function_name).copied()
     }
     
-    /// Get stdlib function by index (for VM CALL_STATIC execution)
+    /// Get stdlib function by index (for VM CallStatic execution)
     pub fn get_stdlib_function(&self, function_index: u16) -> Option<StdlibFunction> {
         // Find the function name that corresponds to this index
         for (name, &index) in &self.stdlib_indices {
@@ -1666,8 +1666,8 @@ mod tests {
         assert!(type_names.contains(&"Series".to_string()));
         assert!(type_names.contains(&"Table".to_string()));
         
-        // Check total function count (registry reports 100 total functions)
-        assert_eq!(registry.stats.total_functions, 100);
+        // Check total function count (registry reports 100 total functions + 2 I/O functions)
+        assert_eq!(registry.stats.total_functions, 118);
     }
     
     #[test]
@@ -1751,9 +1751,9 @@ mod tests {
     fn test_global_registry_creation() {
         let registry = registry::create_global_registry().unwrap();
         
-        // Should have all types and methods
+        // Should have all types and methods (+ 2 I/O functions)
         assert_eq!(registry.get_type_names().len(), 3);
-        assert_eq!(registry.stats.total_functions, 100);
+        assert_eq!(registry.stats.total_functions, 118);
         
         // Test a few key methods are registered
         assert!(registry.has_method("Tensor", "Add"));

@@ -7,14 +7,58 @@ pub mod unification;
 pub mod inference;
 pub mod checker;
 pub mod integration;
+pub mod metadata;
 
 pub use unification::*;
 pub use inference::*;
 pub use checker::*;
 pub use integration::*;
+pub use metadata::*;
 
 /// Type variable identifier for generic types (α, β, γ, etc.)
 pub type TypeVar = u32;
+
+/// Function attributes for symbolic computation and optimization
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FunctionAttribute {
+    /// Function holds its arguments (delayed evaluation)
+    Hold,
+    /// Function is listable (automatically threads over lists)
+    Listable,
+    /// Function is pure (no side effects)
+    Pure,
+    /// Function is associative: f[f[a,b],c] = f[a,f[b,c]]
+    Associative,
+    /// Function is commutative: f[a,b] = f[b,a]
+    Commutative,
+    /// Function has arbitrary precision
+    NumericFunction,
+    /// Function is protected (cannot be redefined)
+    Protected,
+    /// Custom attribute with name and optional parameters
+    Custom(String, Vec<String>),
+}
+
+/// Type classes for constraining type variables (similar to Haskell type classes)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TypeClass {
+    /// Numeric types (Integer, Real, Complex, Rational)
+    Numeric,
+    /// Ordered types (can be compared with <, >, etc.)
+    Ordered,
+    /// Equality comparable types
+    Equatable, 
+    /// Types that support addition
+    Additive,
+    /// Types that support multiplication
+    Multiplicative,
+    /// Types that can be iterated over
+    Iterable,
+    /// Types that can be indexed
+    Indexable,
+    /// Custom type class
+    Custom(String),
+}
 
 /// Shape information for tensors
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,6 +141,10 @@ pub enum LyraType {
     Integer,
     /// Real number type  
     Real,
+    /// Complex number type
+    Complex,
+    /// Rational number type
+    Rational,
     /// String type
     String,
     /// Boolean type
@@ -114,6 +162,8 @@ pub enum LyraType {
     Function {
         params: Vec<LyraType>,
         return_type: Box<LyraType>,
+        /// Function attributes for symbolic computation
+        attributes: Vec<FunctionAttribute>,
     },
     /// Pattern type for pattern matching
     Pattern(Box<LyraType>),
@@ -122,20 +172,44 @@ pub enum LyraType {
         lhs_type: Box<LyraType>,
         rhs_type: Box<LyraType>,
     },
+    /// Union type for sum types (T | U)
+    Union(Vec<LyraType>),
+    /// Tuple type for product types
+    Tuple(Vec<LyraType>),
+    /// Association type (key-value pairs)
+    Association {
+        key_type: Box<LyraType>,
+        value_type: Box<LyraType>,
+    },
     /// Type variable for generic types
     TypeVar(TypeVar),
-    /// Unknown type for inference
+    /// Constrained type variable with type class constraints
+    ConstrainedTypeVar(TypeVar, Vec<TypeClass>),
+    /// Unknown type for gradual typing
     Unknown,
+    /// Any type (top type) 
+    Any,
+    /// Never type (bottom type)
+    Never,
     /// Unit type for expressions that don't return a value
     Unit,
-    /// Error type for type errors
-    Error(String),
+    /// Module type for namespacing
+    Module(String),
+    /// Effect type for algebraic effects (future)
+    Effect(String),
+    /// Custom type for user-defined types and aliases
+    Custom(String),
 }
 
 impl LyraType {
     /// Check if this type is a numeric type
     pub fn is_numeric(&self) -> bool {
-        matches!(self, LyraType::Integer | LyraType::Real)
+        matches!(self, 
+            LyraType::Integer | 
+            LyraType::Real | 
+            LyraType::Complex | 
+            LyraType::Rational
+        )
     }
     
     /// Check if this type is a tensor type
@@ -148,19 +222,66 @@ impl LyraType {
         matches!(self, LyraType::Function { .. })
     }
     
+    /// Check if this type is a collection type
+    pub fn is_collection(&self) -> bool {
+        matches!(self, 
+            LyraType::List(_) | 
+            LyraType::Tuple(_) | 
+            LyraType::Association { .. }
+        )
+    }
+    
+    /// Check if this type is gradually typed (Unknown or Any)
+    pub fn is_gradual(&self) -> bool {
+        matches!(self, LyraType::Unknown | LyraType::Any)
+    }
+    
+    /// Check if this type satisfies a type class constraint
+    pub fn satisfies_constraint(&self, constraint: &TypeClass) -> bool {
+        match constraint {
+            TypeClass::Numeric => self.is_numeric(),
+            TypeClass::Ordered => matches!(self, 
+                LyraType::Integer | LyraType::Real | 
+                LyraType::String | LyraType::Boolean
+            ),
+            TypeClass::Equatable => !matches!(self, LyraType::Never),
+            TypeClass::Additive => self.is_numeric() || matches!(self, 
+                LyraType::String | LyraType::List(_)
+            ),
+            TypeClass::Multiplicative => self.is_numeric(),
+            TypeClass::Iterable => matches!(self, 
+                LyraType::List(_) | LyraType::Tuple(_) | 
+                LyraType::Association { .. } | LyraType::String
+            ),
+            TypeClass::Indexable => matches!(self, 
+                LyraType::List(_) | LyraType::Tuple(_) | 
+                LyraType::Association { .. } | LyraType::String |
+                LyraType::Tensor { .. }
+            ),
+            TypeClass::Custom(_) => false, // TODO: implement custom type classes
+        }
+    }
+    
     /// Check if this type contains type variables
     pub fn contains_type_vars(&self) -> bool {
         match self {
-            LyraType::TypeVar(_) => true,
+            LyraType::TypeVar(_) | LyraType::ConstrainedTypeVar(_, _) => true,
             LyraType::List(elem_type) => elem_type.contains_type_vars(),
             LyraType::Tensor { element_type, .. } => element_type.contains_type_vars(),
-            LyraType::Function { params, return_type } => {
+            LyraType::Function { params, return_type, .. } => {
                 params.iter().any(|p| p.contains_type_vars()) || return_type.contains_type_vars()
             }
             LyraType::Pattern(inner) => inner.contains_type_vars(),
             LyraType::Rule { lhs_type, rhs_type } => {
                 lhs_type.contains_type_vars() || rhs_type.contains_type_vars()
             }
+            LyraType::Union(types) | LyraType::Tuple(types) => {
+                types.iter().any(|t| t.contains_type_vars())
+            }
+            LyraType::Association { key_type, value_type } => {
+                key_type.contains_type_vars() || value_type.contains_type_vars()
+            }
+            LyraType::Custom(_) => false,
             _ => false,
         }
     }
@@ -174,12 +295,12 @@ impl LyraType {
     
     fn collect_type_vars(&self, vars: &mut HashSet<TypeVar>) {
         match self {
-            LyraType::TypeVar(var) => {
+            LyraType::TypeVar(var) | LyraType::ConstrainedTypeVar(var, _) => {
                 vars.insert(*var);
             }
             LyraType::List(elem_type) => elem_type.collect_type_vars(vars),
             LyraType::Tensor { element_type, .. } => element_type.collect_type_vars(vars),
-            LyraType::Function { params, return_type } => {
+            LyraType::Function { params, return_type, .. } => {
                 for param in params {
                     param.collect_type_vars(vars);
                 }
@@ -189,6 +310,18 @@ impl LyraType {
             LyraType::Rule { lhs_type, rhs_type } => {
                 lhs_type.collect_type_vars(vars);
                 rhs_type.collect_type_vars(vars);
+            }
+            LyraType::Union(types) | LyraType::Tuple(types) => {
+                for ty in types {
+                    ty.collect_type_vars(vars);
+                }
+            }
+            LyraType::Association { key_type, value_type } => {
+                key_type.collect_type_vars(vars);
+                value_type.collect_type_vars(vars);
+            }
+            LyraType::Custom(_) => {
+                // Custom types don't contain type variables directly
             }
             _ => {}
         }
@@ -200,6 +333,11 @@ impl LyraType {
             LyraType::TypeVar(var) => {
                 substitution.get(*var).unwrap_or_else(|| self.clone())
             }
+            LyraType::ConstrainedTypeVar(var, constraints) => {
+                substitution.get(*var).unwrap_or_else(|| 
+                    LyraType::ConstrainedTypeVar(*var, constraints.clone())
+                )
+            }
             LyraType::List(elem_type) => {
                 LyraType::List(Box::new(elem_type.substitute(substitution)))
             }
@@ -207,9 +345,10 @@ impl LyraType {
                 element_type: Box::new(element_type.substitute(substitution)),
                 shape: shape.clone(),
             },
-            LyraType::Function { params, return_type } => LyraType::Function {
+            LyraType::Function { params, return_type, attributes } => LyraType::Function {
                 params: params.iter().map(|p| p.substitute(substitution)).collect(),
                 return_type: Box::new(return_type.substitute(substitution)),
+                attributes: attributes.clone(),
             },
             LyraType::Pattern(inner) => {
                 LyraType::Pattern(Box::new(inner.substitute(substitution)))
@@ -218,6 +357,17 @@ impl LyraType {
                 lhs_type: Box::new(lhs_type.substitute(substitution)),
                 rhs_type: Box::new(rhs_type.substitute(substitution)),
             },
+            LyraType::Union(types) => LyraType::Union(
+                types.iter().map(|t| t.substitute(substitution)).collect()
+            ),
+            LyraType::Tuple(types) => LyraType::Tuple(
+                types.iter().map(|t| t.substitute(substitution)).collect()
+            ),
+            LyraType::Association { key_type, value_type } => LyraType::Association {
+                key_type: Box::new(key_type.substitute(substitution)),
+                value_type: Box::new(value_type.substitute(substitution)),
+            },
+            LyraType::Custom(_) => self.clone(),
             _ => self.clone(),
         }
     }
@@ -240,6 +390,8 @@ impl fmt::Display for LyraType {
         match self {
             LyraType::Integer => write!(f, "Integer"),
             LyraType::Real => write!(f, "Real"),
+            LyraType::Complex => write!(f, "Complex"),
+            LyraType::Rational => write!(f, "Rational"),
             LyraType::String => write!(f, "String"),
             LyraType::Boolean => write!(f, "Boolean"),
             LyraType::Symbol => write!(f, "Symbol"),
@@ -251,7 +403,7 @@ impl fmt::Display for LyraType {
                     write!(f, "Tensor[{}]", element_type)
                 }
             }
-            LyraType::Function { params, return_type } => {
+            LyraType::Function { params, return_type, .. } => {
                 write!(f, "(")?;
                 for (i, param) in params.iter().enumerate() {
                     if i > 0 {
@@ -265,10 +417,43 @@ impl fmt::Display for LyraType {
             LyraType::Rule { lhs_type, rhs_type } => {
                 write!(f, "Rule[{} -> {}]", lhs_type, rhs_type)
             }
+            LyraType::Union(types) => {
+                for (i, ty) in types.iter().enumerate() {
+                    if i > 0 { write!(f, " | ")?; }
+                    write!(f, "{}", ty)?;
+                }
+                Ok(())
+            }
+            LyraType::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, ty) in types.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", ty)?;
+                }
+                write!(f, ")")
+            }
+            LyraType::Association { key_type, value_type } => {
+                write!(f, "Association[{}, {}]", key_type, value_type)
+            }
             LyraType::TypeVar(var) => write!(f, "α{}", var),
+            LyraType::ConstrainedTypeVar(var, constraints) => {
+                write!(f, "α{}", var)?;
+                if !constraints.is_empty() {
+                    write!(f, " where ")?;
+                    for (i, constraint) in constraints.iter().enumerate() {
+                        if i > 0 { write!(f, " & ")?; }
+                        write!(f, "{:?}", constraint)?;
+                    }
+                }
+                Ok(())
+            }
             LyraType::Unknown => write!(f, "?"),
+            LyraType::Any => write!(f, "Any"),
+            LyraType::Never => write!(f, "Never"),
             LyraType::Unit => write!(f, "()"),
-            LyraType::Error(msg) => write!(f, "Error[{}]", msg),
+            LyraType::Module(name) => write!(f, "Module[{}]", name),
+            LyraType::Effect(name) => write!(f, "Effect[{}]", name),
+            LyraType::Custom(name) => write!(f, "{}", name),
         }
     }
 }
@@ -518,6 +703,7 @@ mod tests {
         let function = LyraType::Function {
             params: vec![LyraType::Integer, LyraType::Real],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         assert!(function.is_function());
     }
@@ -532,6 +718,7 @@ mod tests {
         let ty = LyraType::Function {
             params: vec![LyraType::TypeVar(var1), LyraType::Integer],
             return_type: Box::new(LyraType::TypeVar(var2)),
+            attributes: vec![],
         };
         
         assert!(ty.contains_type_vars());
@@ -550,12 +737,14 @@ mod tests {
         let ty = LyraType::Function {
             params: vec![LyraType::TypeVar(0)],
             return_type: Box::new(LyraType::TypeVar(1)),
+            attributes: vec![],
         };
         
         let result = ty.substitute(&substitution);
         let expected = LyraType::Function {
             params: vec![LyraType::Integer],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         assert_eq!(result, expected);
@@ -609,6 +798,7 @@ mod tests {
             LyraType::Function {
                 params: vec![LyraType::TypeVar(var)],
                 return_type: Box::new(LyraType::TypeVar(var)),
+                attributes: vec![],
             }
         );
         
@@ -655,6 +845,7 @@ mod tests {
         let function = LyraType::Function {
             params: vec![LyraType::Integer, LyraType::Real],
             return_type: Box::new(LyraType::Boolean),
+            attributes: vec![],
         };
         assert_eq!(format!("{}", function), "(Integer, Real) -> Boolean");
         

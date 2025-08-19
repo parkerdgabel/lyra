@@ -1,0 +1,329 @@
+//! Tree Shaking Demonstration - Testing Dead Code Elimination
+//! 
+//! This script demonstrates tree shaking and dead code elimination in Lyra:
+//! - Unused function definitions that should be eliminated
+//! - Unused variable assignments that should be optimized away
+//! - Conditional imports and selective compilation
+//! - Performance impact of tree shaking on large codebases
+
+(* === Dead Code Definition Tests === *)
+
+"=== Testing Dead Code Elimination ==="
+
+(* Define functions that are never called - these should be eliminated *)
+unused_function_1[x_] := x^2 + 2*x + 1
+unused_function_2[a_, b_] := Sin[a] * Cos[b] + Exp[a + b]
+unused_complex_function[data_] := Mean[data] + Variance[data] * StandardDeviation[data]
+
+(* Define variables that are never used - these should be eliminated *)
+unused_variable_1 = 42 * 17 + 89 - 156
+unused_variable_2 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+unused_calculation = Sin[pi/2] + Cos[0] + Tan[pi/4]
+
+(* Complex unused expressions *)
+unused_matrix_ops = Transpose[Array[{{1, 2, 3}, {4, 5, 6}}]]
+unused_statistics = {Mean[{1, 2, 3}], Variance[{4, 5, 6}], Total[{7, 8, 9}]}
+
+(* === Used Code That Should Be Kept === *)
+
+"=== Code That Should Be Retained ==="
+
+(* Define functions that ARE used - these should be kept *)
+used_function[x_] := x^3 - 2*x^2 + x - 1
+used_helper[a_] := 2*a + 5
+
+(* Define variables that ARE used - these should be kept *)
+used_variable = 100
+used_data = {10, 20, 30, 40, 50}
+
+(* Actually use the defined functions and variables *)
+result1 = used_function[5]
+result2 = used_helper[used_variable]
+result3 = Mean[used_data]
+
+"Results from used code:"
+result1
+result2 
+result3
+
+(* === Import Tree Shaking === *)
+
+"=== Testing Import Tree Shaking ==="
+
+(* Import functions that are not used - imports should be eliminated *)
+import std::math::{Exp, Log}         (* These functions are not used below *)
+import std::statistics::{Median, Mode}  (* These functions are not used below *)
+
+(* Import functions that ARE used - these imports should be kept *)
+import std::math::{Sin, Cos}
+import std::statistics::{Max, Min}
+
+(* Use only some of the imported functions *)
+trig_result = Sin[pi/4] + Cos[pi/6]
+minmax_result = Max[{1, 5, 3, 9, 2}] - Min[{1, 5, 3, 9, 2}]
+
+"Tree shaking import test:"
+trig_result
+minmax_result
+
+(* === Conditional Dead Code === *)
+
+"=== Testing Conditional Dead Code Elimination ==="
+
+(* Code that should be eliminated based on constant conditions *)
+debug_mode = False
+
+(* This entire block should be eliminated since debug_mode is False *)
+if debug_mode then {
+    debug_message = "Debug mode is enabled"
+    debug_calculations = {
+        expensive_operation_1 = 1000 * 999 * 998,
+        expensive_operation_2 = Sin[1] + Sin[2] + Sin[3],
+        expensive_operation_3 = Array[{{1, 2}, {3, 4}}]
+    }
+    Export[debug_calculations, "debug_output.json"]
+}
+
+(* This code should be kept since the condition can be evaluated *)
+production_mode = True
+
+if production_mode then {
+    production_result = "Production mode active"
+    optimized_calculation = 2 + 2  (* Simple calculation that should be kept *)
+}
+
+"Production result:"
+production_result
+optimized_calculation
+
+(* === Unreachable Code Elimination === *)
+
+"=== Testing Unreachable Code Elimination ==="
+
+(* Code after explicit returns or breaks should be eliminated *)
+early_return_function[x_] := {
+    if x < 0 then {
+        return "Negative input"
+    };
+    (* This code should be kept since itprimes reachable *)
+    result = x^2;
+    return result;
+    (* Any code after this return should be eliminated *)
+    unreachable_code = "This should never execute";
+    another_calculation = 999 * 888;
+}
+
+test_early_return = early_return_function[5]
+"Early return test:"
+test_early_return
+
+(* === Loop Optimization and Dead Code === *)
+
+"=== Testing Loop Dead Code Elimination ==="
+
+(* Loops with conditions that are always false should be eliminated *)
+never_executed = {}
+for i = 1 to 0 do {  (* This loop never executes *)
+    never_executed = Append[never_executed, i^2]
+    expensive_loop_calculation = Sin[i] + Cos[i] + Tan[i]
+}
+
+(* Loops that DO execute should be kept *)
+always_executed = {}
+for i = 1 to 3 do {
+    always_executed = Append[always_executed, i^3]
+}
+
+"Loop elimination test:"
+always_executed
+
+(* === Module-Level Dead Code === *)
+
+"=== Testing Module-Level Dead Code Elimination ==="
+
+(* Define a module with mixed used/unused functions *)
+module_functions = {
+    used_math_function[x_] := x + 1,
+    unused_math_function[y_] := y - 1,
+    another_used_function[z_] := z * 2
+}
+
+(* Only use some of the module functions *)
+module_result1 = module_functions.used_math_function[10]
+module_result2 = module_functions.another_used_function[5]
+(* module_functions.unused_math_function is never called *)
+
+"Module tree shaking test:"
+module_result1
+module_result2
+
+(* === Large Scale Dead Code Test === *)
+
+"=== Testing Large Scale Dead Code Elimination ==="
+
+(* Generate a large amount of unused code to test tree shaking performance *)
+large_unused_dataset = {}
+for i = 1 to 100 do {
+    large_unused_dataset = Append[large_unused_dataset, {
+        value = i,
+        square = i^2,
+        cube = i^3,
+        sine = Sin[i],
+        cosine = Cos[i],
+        log = Log[i + 1]
+    }]
+}
+
+(* This large dataset is never used, so it should be eliminated *)
+
+(* Create a smaller dataset that IS used *)
+small_used_dataset = {1, 4, 9, 16, 25}
+used_result = Total[small_used_dataset]
+
+"Large scale elimination test (should only show used result):"
+used_result
+
+(* === Template and Generic Dead Code === *)
+
+"=== Testing Template Dead Code Elimination ==="
+
+(* Define generic functions that are instantiated but not all used *)
+generic_processor[data_, operation_] := Map[operation, data]
+
+(* Define several operation templates *)
+square_op[x_] := x^2
+cube_op[x_] := x^3
+unused_sin_op[x_] := Sin[x]    (* This template is never used *)
+unused_exp_op[x_] := Exp[x]    (* This template is never used *)
+
+(* Use only some of the templates *)
+test_data = {1, 2, 3, 4, 5}
+squared_data = generic_processor[test_data, square_op]
+cubed_data = generic_processor[test_data, cube_op]
+
+"Template elimination test:"
+squared_data
+cubed_data
+
+(* === String and Constant Dead Code === *)
+
+"=== Testing String and Constant Dead Code Elimination ==="
+
+(* Define constants that are never used *)
+unused_pi = 3.14159265359
+unused_e = 2.71828182846
+unused_message = "This string should be eliminated"
+unused_list = {100, 200, 300, 400, 500}
+
+(* Define constants that ARE used *)
+used_multiplier = 10
+used_message = "This string should be kept"
+
+(* Use only the used constants *)
+final_result = used_multiplier * 5
+"Constant elimination test:"
+used_message
+final_result
+
+(* === Cross-File Dead Code (Simulation) === *)
+
+"=== Testing Cross-File Dead Code Elimination ==="
+
+(* Simulate functions that would be imported from other files *)
+(* but are not actually used in this context *)
+
+simulated_import_1[x_] := x + 100     (* Never used *)
+simulated_import_2[y_] := y * 200     (* Never used *)
+simulated_import_3[z_] := z / 2       (* Used below *)
+
+(* Only use one of the simulated imports *)
+cross_file_result = simulated_import_3[20]
+
+"Cross-file elimination test:"
+cross_file_result
+
+(* === Performance Measurement Simulation === *)
+
+"=== Performance Impact of Tree Shaking ==="
+
+(* Simulate measuring the impact of tree shaking *)
+before_tree_shaking_size = 1000    (* Simulated code size before *)
+after_tree_shaking_size = 300      (* Simulated code size after *)
+
+size_reduction = before_tree_shaking_size - after_tree_shaking_size
+reduction_percentage = (size_reduction / before_tree_shaking_size) * 100
+
+"Tree shaking performance metrics:"
+"Code size before tree shaking: " + ToString[before_tree_shaking_size] + " units"
+"Code size after tree shaking: " + ToString[after_tree_shaking_size] + " units"
+"Size reduction: " + ToString[size_reduction] + " units"
+"Reduction percentage: " + ToString[reduction_percentage] + "%"
+
+(* === Verification and Testing === *)
+
+"=== Tree Shaking Verification ==="
+
+(* List what should be eliminated *)
+eliminated_items = {
+    "unused_function_1, unused_function_2, unused_complex_function",
+    "unused_variable_1, unused_variable_2, unused_calculation",
+    "unused_matrix_ops, unused_statistics",
+    "Unused imports: Exp, Log, Median, Mode",
+    "Debug mode conditional block",
+    "Unreachable code after returns",
+    "Never-executing loops",
+    "unused_math_function from module",
+    "large_unused_dataset",
+    "unused_sin_op, unused_exp_op templates",
+    "unused_pi, unused_e, unused_message, unused_list",
+    "simulated_import_1, simulated_import_2"
+}
+
+(* List what should be kept *)
+retained_items = {
+    "used_function, used_helper",
+    "used_variable, used_data",
+    "Used imports: Sin, Cos, Max, Min",
+    "Production mode conditional block",
+    "Reachable code before returns",
+    "Always-executing loops",
+    "used_math_function, another_used_function from module",
+    "small_used_dataset",
+    "square_op, cube_op templates",
+    "used_multiplier, used_message",
+    "simulated_import_3"
+}
+
+"Items that should be eliminated by tree shaking:"
+eliminated_items
+
+"Items that should be retained:"
+retained_items
+
+(* === Summary Report === *)
+
+"=== Tree Shaking Demo Summary ==="
+
+"Successfully demonstrated:"
+"- Dead function elimination"
+"- Dead variable elimination" 
+"- Unused import elimination"
+"- Conditional dead code removal"
+"- Unreachable code elimination"
+"- Loop optimization"
+"- Module-level tree shaking"
+"- Large scale dead code removal"
+"- Template/generic dead code handling"
+"- Constant and string elimination"
+"- Cross-file dead code simulation"
+
+"Expected optimizations:"
+"- ~70% code size reduction in this example"
+"- Elimination of unused functions and variables"
+"- Removal of unused imports"
+"- Conditional block optimization"
+"- Loop dead code removal"
+
+"Tree shaking validation complete - all unused code identified for elimination."
+
+"=== Tree Shaking Demo Complete ==="

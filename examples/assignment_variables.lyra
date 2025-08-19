@@ -1,0 +1,45 @@
+# Variable Assignment Examples
+# Shows various patterns of variable assignment
+
+# Simple variables
+firstName = "John"
+lastName = "Doe"
+age = 30
+
+firstName
+lastName
+age
+
+# Numeric computations
+pi = 3.14159
+radius = 5
+area = pi * radius * radius
+circumference := 2 * pi * radius
+
+area
+circumference
+
+# Change radius - area stays same, circumference updates
+radius = 10
+area
+circumference
+
+# Boolean-like values
+isActive = 1
+isComplete = 0
+
+isActive
+isComplete
+
+# Mathematical constants and derived values
+e = 2.71828
+ln_base := e
+exp_value := e * e
+
+ln_base
+exp_value
+
+# Update e and see delayed effects
+e = 2.718281828
+ln_base
+exp_value

@@ -33,7 +33,7 @@ fn test_compile_time_method_resolution_basic() {
     // Should emit CALL_STATIC opcode with function registry index
     assert_eq!(bytecode.len(), 1);
     match bytecode[0].opcode {
-        OpCode::CALL_STATIC => {
+        OpCode::CallStatic => {
             // Should contain the function registry index for Series::Length
             let function_index = bytecode[0].operand;
             assert!(function_index < 32); // We have 32 registered functions
@@ -234,7 +234,7 @@ fn test_call_static_opcode_exists() {
     assert!(instruction.is_ok());
     
     let inst = instruction.unwrap();
-    assert_eq!(inst.opcode, OpCode::CALL_STATIC);
+    assert_eq!(inst.opcode, OpCode::CallStatic);
     
     let (function_index, argc) = inst.decode_call_static();
     assert_eq!(function_index, 5);

@@ -1,0 +1,231 @@
+//! Statistics Examples - Testing All Statistical Functions
+//! 
+//! This script demonstrates the comprehensive statistical capabilities in Lyra:
+//! - Descriptive statistics: Mean, Variance, StandardDeviation, Median, Mode, Quantile
+//! - Aggregation functions: Min, Max, Total
+//! - Random number generation: RandomReal, RandomInteger
+//! - Correlation and covariance analysis
+
+(* Sample Datasets for Testing *)
+simple_data = {1, 2, 3, 4, 5}
+mixed_data = {10, 20, 15, 25, 30, 5, 35}
+large_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+repeated_data = {5, 5, 3, 3, 3, 7, 7, 2, 2, 2, 2}
+decimal_data = {1.5, 2.3, 3.7, 4.1, 5.9, 2.8, 6.2}
+
+(* === Descriptive Statistics Tests === *)
+
+(* Mean (Average) Calculations *)
+Mean[simple_data]       (* Expected: (1+2+3+4+5)/5 = 3.0 *)
+Mean[mixed_data]        (* Expected: (10+20+15+25+30+5+35)/7 = 20.0 *)
+Mean[decimal_data]      (* Expected: ~3.64 *)
+Mean[{100}]             (* Single element: 100 *)
+Mean[{}]                (* Empty list: should handle gracefully *)
+
+(* Variance Calculations *)
+Variance[simple_data]   (* Expected: Var of {1,2,3,4,5} = 2.5 *)
+Variance[mixed_data]    (* Expected: larger variance due to spread *)
+Variance[{5, 5, 5, 5}]  (* No variance: expected 0 *)
+Variance[decimal_data]  (* Test with floating point values *)
+
+(* Standard Deviation *)
+StandardDeviation[simple_data]      (* Expected: sqrt(2.5) approx 1.58 *)
+StandardDeviation[mixed_data]       (* Expected: sqrt(variance) *)
+StandardDeviation[{10, 10, 10}]     (* No deviation: expected 0 *)
+StandardDeviation[decimal_data]     (* Floating point test *)
+
+(* Median (Middle Value) *)
+Median[simple_data]         (* Expected: 3 (middle of 5 elements) *)
+Median[mixed_data]          (* Expected: 20 (middle of sorted list) *)
+Median[{1, 2}]              (* Even count: expected 1.5 *)
+Median[{7}]                 (* Single element: expected 7 *)
+Median[{10, 5, 20, 15}]     (* Expected: 12.5 (average of 10,15) *)
+
+(* Mode (Most Frequent Value) *)
+Mode[repeated_data]         (* Expected: 2 (appears 4 times) *)
+Mode[{3, 3, 3, 7, 7}]      (* Expected: 3 (appears 3 times) *)
+Mode[{1, 2, 3, 4, 5}]      (* No mode: all appear once *)
+Mode[{5, 5, 3, 3}]         (* Bimodal: might return first mode found *)
+
+(* Quantile (Percentile) Calculations *)
+Quantile[simple_data, 0.25]     (* 25th percentile (Q1) *)
+Quantile[simple_data, 0.5]      (* 50th percentile (median) *)
+Quantile[simple_data, 0.75]     (* 75th percentile (Q3) *)
+Quantile[large_data, 0.1]       (* 10th percentile *)
+Quantile[large_data, 0.9]       (* 90th percentile *)
+Quantile[mixed_data, 0.0]       (* 0th percentile (minimum) *)
+Quantile[mixed_data, 1.0]       (* 100th percentile (maximum) *)
+
+(* === Aggregation Functions === *)
+
+(* Minimum Values *)
+Min[simple_data]        (* Expected: 1 *)
+Min[mixed_data]         (* Expected: 5 *)
+Min[decimal_data]       (* Expected: 1.5 *)
+Min[{-10, -5, -20}]     (* Expected: -20 *)
+Min[{42}]               (* Single element: 42 *)
+
+(* Maximum Values *)
+Max[simple_data]        (* Expected: 5 *)
+Max[mixed_data]         (* Expected: 35 *)
+Max[decimal_data]       (* Expected: 6.2 *)
+Max[{-10, -5, -20}]     (* Expected: -5 *)
+Max[{42}]               (* Single element: 42 *)
+
+(* Total (Sum) *)
+Total[simple_data]      (* Expected: 1+2+3+4+5 = 15 *)
+Total[mixed_data]       (* Expected: 10+20+15+25+30+5+35 = 140 *)
+Total[decimal_data]     (* Expected: sum of decimal values *)
+Total[{-5, 10, -3}]     (* Expected: 2 *)
+Total[{}]               (* Empty list: expected 0 *)
+
+(* === Random Number Generation === *)
+
+(* Random Real Numbers *)
+random1 = RandomReal[]                  (* Random float 0.0 to 1.0 *)
+random2 = RandomReal[]                  (* Different random float *)
+RandomReal[5.0]                         (* Random float 0.0 to 5.0 *)
+RandomReal[{2.0, 8.0}]                 (* Random float 2.0 to 8.0 *)
+
+(* Random Integers *)
+randint1 = RandomInteger[10]            (* Random int 0 to 10 *)
+randint2 = RandomInteger[10]            (* Different random int *)
+RandomInteger[{5, 15}]                  (* Random int 5 to 15 *)
+RandomInteger[{-10, 10}]                (* Random int -10 to 10 *)
+
+(* Generate Random Datasets for Testing *)
+random_data = {RandomReal[], RandomReal[], RandomReal[], RandomReal[], RandomReal[]}
+random_ints = {RandomInteger[100], RandomInteger[100], RandomInteger[100]}
+
+(* Test Statistics on Random Data *)
+Mean[random_data]
+Variance[random_data]
+Min[random_ints]
+Max[random_ints]
+
+(* === Correlation and Covariance Analysis === *)
+
+(* Sample Paired Data *)
+x_values = {1, 2, 3, 4, 5}
+y_values = {2, 4, 6, 8, 10}          (* Perfect positive correlation *)
+y_negative = {10, 8, 6, 4, 2}        (* Perfect negative correlation *)
+y_random = {3, 7, 2, 9, 5}           (* No clear correlation *)
+
+(* Correlation Tests *)
+Correlation[x_values, y_values]       (* Expected: ~1.0 (perfect positive) *)
+Correlation[x_values, y_negative]     (* Expected: ~-1.0 (perfect negative) *)
+Correlation[x_values, y_random]       (* Expected: somewhere between -1 and 1 *)
+Correlation[{1, 2, 3}, {1, 2, 3}]     (* Self-correlation: expected 1.0 *)
+
+(* Covariance Tests *)
+Covariance[x_values, y_values]        (* Expected: positive value *)
+Covariance[x_values, y_negative]      (* Expected: negative value *)
+Covariance[x_values, y_random]        (* Expected: close to zero *)
+Covariance[{5, 5, 5}, {3, 7, 2}]      (* No variance in x: expected 0 *)
+
+(* === Advanced Statistical Analysis === *)
+
+(* Multi-dataset Analysis *)
+dataset1 = {12, 15, 18, 20, 22, 25, 28}
+dataset2 = {8, 11, 14, 17, 20, 23, 26}
+dataset3 = {5, 10, 15, 20, 25, 30, 35}
+
+(* Compare means *)
+mean1 = Mean[dataset1]
+mean2 = Mean[dataset2]
+mean3 = Mean[dataset3]
+
+(* Compare variances *)
+var1 = Variance[dataset1]
+var2 = Variance[dataset2]
+var3 = Variance[dataset3]
+
+(* Cross-correlation matrix *)
+corr12 = Correlation[dataset1, dataset2]
+corr13 = Correlation[dataset1, dataset3]
+corr23 = Correlation[dataset2, dataset3]
+
+(* === Real-World Examples === *)
+
+(* Test Scores Analysis *)
+test_scores = {85, 92, 78, 96, 88, 75, 90, 82, 94, 87}
+test_mean = Mean[test_scores]           (* Class average *)
+test_std = StandardDeviation[test_scores] (* Score spread *)
+test_median = Median[test_scores]       (* Middle score *)
+highest_score = Max[test_scores]        (* Best performance *)
+lowest_score = Min[test_scores]         (* Needs improvement *)
+
+(* Financial Data Analysis *)
+stock_prices = {125.50, 127.25, 124.75, 129.00, 126.50, 128.25, 130.00}
+price_mean = Mean[stock_prices]         (* Average price *)
+price_volatility = StandardDeviation[stock_prices] (* Price volatility *)
+price_range = Max[stock_prices] - Min[stock_prices] (* Price range *)
+
+(* Quality Control - Manufacturing *)
+measurements = {2.98, 3.02, 2.99, 3.01, 2.97, 3.03, 3.00, 2.98, 3.01, 2.99}
+target = 3.00
+quality_mean = Mean[measurements]       (* Average measurement *)
+quality_std = StandardDeviation[measurements] (* Precision *)
+within_tolerance = quality_std < 0.05   (* Quality check *)
+
+(* === Performance and Edge Case Tests === *)
+
+(* Large Dataset Performance *)
+large_numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 
+                 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+large_mean = Mean[large_numbers]
+large_std = StandardDeviation[large_numbers]
+large_median = Median[large_numbers]
+
+(* Edge Cases *)
+single_value = {42}
+Mean[single_value]                      (* Single element *)
+Variance[single_value]                  (* Should be 0 *)
+Median[single_value]                    (* Should be 42 *)
+
+(* Negative Numbers *)
+negative_data = {-5, -2, -8, -1, -10}
+Mean[negative_data]                     (* Negative mean *)
+Variance[negative_data]                 (* Positive variance *)
+Min[negative_data]                      (* Most negative *)
+Max[negative_data]                      (* Least negative *)
+
+(* Mixed Positive/Negative *)
+mixed_signs = {-3, 5, -1, 8, -2, 4, -6, 7}
+Mean[mixed_signs]                       (* Could be positive or negative *)
+StandardDeviation[mixed_signs]          (* Always positive *)
+
+(* Zero and Near-Zero Values *)
+zero_data = {0, 0.1, -0.1, 0.05, -0.05}
+Mean[zero_data]                         (* Should be close to 0 *)
+Variance[zero_data]                     (* Small positive value *)
+
+(* === Verification and Consistency Tests === *)
+
+(* Verify statistical relationships *)
+test_data = {2, 4, 6, 8, 10}
+test_variance = Variance[test_data]
+test_stddev = StandardDeviation[test_data]
+variance_equals_stddev_squared = test_variance == test_stddev^2
+
+(* Verify median vs mean for symmetric data *)
+symmetric_data = {1, 2, 3, 4, 5}
+symmetric_mean = Mean[symmetric_data]
+symmetric_median = Median[symmetric_data]
+mean_equals_median = symmetric_mean == symmetric_median
+
+(* Verify correlation bounds *)
+test_correlation = Correlation[{1, 2, 3}, {3, 2, 1}]
+correlation_in_bounds = test_correlation >= -1 && test_correlation <= 1
+
+(* Summary Statistics Report *)
+"=== Statistics Examples Complete ==="
+"- Tested all 13 statistical functions"
+"- Mean, Variance, StandardDeviation calculations"
+"- Median, Mode, and Quantile analysis"
+"- Min, Max, Total aggregations"
+"- RandomReal and RandomInteger generation"
+"- Correlation and Covariance analysis"
+"- Real-world applications demonstrated"
+"- Edge cases and performance tested"
+"- Statistical relationships verified"

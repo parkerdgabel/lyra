@@ -42,10 +42,10 @@ impl<T: Clone + Default> TypedPool<T> {
     }
     
     /// Return an item to the pool for reuse
-    pub fn recycle(&mut self, mut item: T) {
+    pub fn recycle(&mut self, _item: T) {
         if self.available.len() < self.max_size {
             // Reset item to default state if possible
-            item = T::default();
+            let item = T::default();
             self.available.push(item);
             self.stats.available_items = self.available.len();
             self.stats.current_size = self.available.len();

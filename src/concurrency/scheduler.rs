@@ -32,7 +32,7 @@ pub struct Task {
     /// Task priority
     pub priority: TaskPriority,
     /// The actual computation to perform
-    pub computation: Box<dyn ConcurrentExecutable<Output = Value, Error = VmError>>,
+    pub computation: Box<dyn ConcurrentExecutable<Output = Value, Error = VmError> + Send>,
     /// When the task was created
     pub created_at: Instant,
     /// Dependencies that must complete before this task
@@ -42,6 +42,10 @@ pub struct Task {
     /// Estimated cost for load balancing
     pub cost_estimate: usize,
 }
+
+// Ensure Task can be safely sent between threads
+unsafe impl Send for Task {}
+unsafe impl Sync for Task {}
 
 /// Unique identifier for tasks
 pub type TaskId = usize;

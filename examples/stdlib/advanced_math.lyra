@@ -1,0 +1,302 @@
+//! Advanced Mathematics Examples - Testing Mathematical Functions
+//! 
+//! This script demonstrates the mathematical function capabilities in Lyra:
+//! - Trigonometric functions: Sin, Cos, Tan
+//! - Exponential and logarithmic functions: Exp, Log, Sqrt
+//! - Power operations and complex mathematical expressions
+//! - Mathematical constants and precision tests
+
+(* === Mathematical Constants === *)
+pi = 3.14159265359
+e = 2.71828182846
+sqrt2 = 1.41421356237
+golden_ratio = 1.61803398875
+
+(* === Basic Trigonometric Functions === *)
+
+(* Sine Function Tests *)
+Sin[0]                  (* Expected: 0 *)
+Sin[pi/2]              (* Expected: 1 *)
+Sin[pi]                (* Expected: 0 *)
+Sin[3*pi/2]            (* Expected: -1 *)
+Sin[2*pi]              (* Expected: 0 *)
+Sin[-pi/2]             (* Expected: -1 *)
+
+(* Cosine Function Tests *)
+Cos[0]                 (* Expected: 1 *)
+Cos[pi/2]              (* Expected: 0 *)
+Cos[pi]                (* Expected: -1 *)
+Cos[3*pi/2]            (* Expected: 0 *)
+Cos[2*pi]              (* Expected: 1 *)
+Cos[-pi]               (* Expected: -1 *)
+
+(* Tangent Function Tests *)
+Tan[0]                 (* Expected: 0 *)
+Tan[pi/4]              (* Expected: 1 *)
+Tan[pi]                (* Expected: 0 *)
+Tan[-pi/4]             (* Expected: -1 *)
+
+(* Special Angle Values *)
+Sin[pi/6]              (* Expected: 0.5 *)
+Cos[pi/6]              (* Expected: sqrt(3)/2 approx 0.866 *)
+Sin[pi/4]              (* Expected: sqrt(2)/2 approx 0.707 *)
+Cos[pi/4]              (* Expected: sqrt(2)/2 approx 0.707 *)
+Sin[pi/3]              (* Expected: sqrt(3)/2 approx 0.866 *)
+Cos[pi/3]              (* Expected: 0.5 *)
+
+(* === Exponential and Logarithmic Functions === *)
+
+(* Exponential Function Tests *)
+Exp[0]                 (* Expected: 1 *)
+Exp[1]                 (* Expected: e approx 2.718 *)
+Exp[2]                 (* Expected: e^2 approx 7.389 *)
+Exp[-1]                (* Expected: 1/e approx 0.368 *)
+Exp[0.5]               (* Expected: sqrt(e) approx 1.649 *)
+
+(* Natural Logarithm Tests *)
+Log[1]                 (* Expected: 0 *)
+Log[e]                 (* Expected: 1 *)
+Log[e^2]               (* Expected: 2 *)
+Log[e^3]               (* Expected: 3 *)
+Log[Exp[5]]            (* Expected: 5 *)
+
+(* Square Root Tests *)
+Sqrt[0]                (* Expected: 0 *)
+Sqrt[1]                (* Expected: 1 *)
+Sqrt[4]                (* Expected: 2 *)
+Sqrt[9]                (* Expected: 3 *)
+Sqrt[16]               (* Expected: 4 *)
+Sqrt[25]               (* Expected: 5 *)
+Sqrt[2]                (* Expected: approx 1.414 *)
+Sqrt[0.25]             (* Expected: 0.5 *)
+
+(* === Power Operations === *)
+
+(* Integer Powers *)
+2^1                    (* Expected: 2 *)
+2^2                    (* Expected: 4 *)
+2^3                    (* Expected: 8 *)
+2^4                    (* Expected: 16 *)
+2^10                   (* Expected: 1024 *)
+
+(* Fractional Powers *)
+4^0.5                  (* Expected: 2 (square root) *)
+8^(1/3)                (* Expected: 2 (cube root) *)
+27^(1/3)               (* Expected: 3 *)
+16^0.25                (* Expected: 2 (fourth root) *)
+
+(* Negative Powers *)
+2^(-1)                 (* Expected: 0.5 *)
+2^(-2)                 (* Expected: 0.25 *)
+3^(-1)                 (* Expected: 1/3 approx 0.333 *)
+
+(* Zero Power *)
+5^0                    (* Expected: 1 *)
+(-3)^0                 (* Expected: 1 *)
+0.5^0                  (* Expected: 1 *)
+
+(* === Trigonometric Identities === *)
+
+(* Pythagorean Identity: sin²(x) + cos²(x) = 1 *)
+x = pi/6
+Sin[x]^2 + Cos[x]^2    (* Expected: 1 *)
+
+x = pi/4
+Sin[x]^2 + Cos[x]^2    (* Expected: 1 *)
+
+x = pi/3
+Sin[x]^2 + Cos[x]^2    (* Expected: 1 *)
+
+(* Angle Addition Formulas *)
+(* sin(A + B) = sin(A)cos(B) + cos(A)sin(B) *)
+A = pi/6
+B = pi/4
+Sin[A + B]             (* Direct calculation *)
+Sin[A]*Cos[B] + Cos[A]*Sin[B]  (* Identity formula *)
+
+(* cos(A + B) = cos(A)cos(B) - sin(A)sin(B) *)
+Cos[A + B]             (* Direct calculation *)
+Cos[A]*Cos[B] - Sin[A]*Sin[B]  (* Identity formula *)
+
+(* Double Angle Formulas *)
+(* sin(2x) = 2*sin(x)*cos(x) *)
+x = pi/8
+Sin[2*x]               (* Direct calculation *)
+2*Sin[x]*Cos[x]        (* Double angle formula *)
+
+(* cos(2x) = cos²(x) - sin²(x) *)
+Cos[2*x]               (* Direct calculation *)
+Cos[x]^2 - Sin[x]^2    (* Double angle formula *)
+
+(* === Exponential and Logarithmic Identities === *)
+
+(* Exponential Laws *)
+(* e^(a+b) = e^a * e^b *)
+a = 2
+b = 3
+Exp[a + b]             (* Expected: e^5 *)
+Exp[a] * Exp[b]        (* Expected: e^2 * e^3 = e^5 *)
+
+(* e^(a-b) = e^a / e^b *)
+Exp[a - b]             (* Expected: e^(-1) *)
+Exp[a] / Exp[b]        (* Expected: e^2 / e^3 = e^(-1) *)
+
+(* (e^a)^b = e^(a*b) *)
+Exp[a]^b               (* Expected: (e^2)^3 = e^6 *)
+Exp[a * b]             (* Expected: e^6 *)
+
+(* Logarithmic Laws *)
+(* log(xy) = log(x) + log(y) *)
+x = 2
+y = 3
+Log[x * y]             (* Expected: log(6) *)
+Log[x] + Log[y]        (* Expected: log(2) + log(3) *)
+
+(* log(x/y) = log(x) - log(y) *)
+Log[x / y]             (* Expected: log(2/3) *)
+Log[x] - Log[y]        (* Expected: log(2) - log(3) *)
+
+(* log(x^n) = n*log(x) *)
+n = 4
+Log[x^n]               (* Expected: log(2^4) = log(16) *)
+n * Log[x]             (* Expected: 4*log(2) *)
+
+(* === Inverse Function Properties === *)
+
+(* Exp and Log are inverses *)
+test_val = 2.5
+Exp[Log[test_val]]     (* Expected: 2.5 *)
+Log[Exp[test_val]]     (* Expected: 2.5 *)
+
+test_val = 10
+Exp[Log[test_val]]     (* Expected: 10 *)
+Log[Exp[test_val]]     (* Expected: 10 *)
+
+(* === Complex Mathematical Expressions === *)
+
+(* Harmonic Oscillator *)
+t = 1.5
+omega = 2.0
+A = 5.0
+phi = pi/4
+position = A * Sin[omega * t + phi]
+
+(* Exponential Decay *)
+lambda = 0.5
+t = 2.0
+N0 = 100
+N = N0 * Exp[-lambda * t]
+
+(* Gaussian Function *)
+x = 1.0
+mu = 0.0
+sigma = 1.0
+gaussian = Exp[-(x - mu)^2 / (2 * sigma^2)] / Sqrt[2 * pi * sigma^2]
+
+(* Compound Interest *)
+P = 1000        (* Principal *)
+r = 0.05        (* Interest rate *)
+n = 12          (* Compounding frequency *)
+t = 5           (* Time in years *)
+A = P * (1 + r/n)^(n*t)
+
+(* === Numerical Analysis Examples === *)
+
+(* Taylor Series Approximations *)
+(* sin(x) approx x - x³/6 + x⁵/120 for small x *)
+small_x = 0.1
+exact_sin = Sin[small_x]
+taylor_sin = small_x - small_x^3/6 + small_x^5/120
+
+(* e^x approx 1 + x + x²/2 + x³/6 for small x *)
+small_x = 0.5
+exact_exp = Exp[small_x]
+taylor_exp = 1 + small_x + small_x^2/2 + small_x^3/6
+
+(* ln(1+x) approx x - x²/2 + x³/3 for small x *)
+small_x = 0.1
+exact_log = Log[1 + small_x]
+taylor_log = small_x - small_x^2/2 + small_x^3/3
+
+(* === Engineering Applications === *)
+
+(* Signal Processing - Sinusoidal Wave *)
+frequency = 50          (* Hz *)
+amplitude = 10          (* Volts *)
+phase = pi/3           (* Phase shift *)
+time = 0.01            (* Seconds *)
+signal = amplitude * Sin[2 * pi * frequency * time + phase]
+
+(* Electrical Engineering - AC Power *)
+voltage_rms = 120      (* RMS Voltage *)
+voltage_peak = voltage_rms * Sqrt[2]
+current_rms = 10       (* RMS Current *)
+power = voltage_rms * current_rms
+
+(* Mechanical Engineering - Pendulum *)
+L = 1.0                (* Length in meters *)
+g = 9.81               (* Gravity *)
+theta0 = 0.1           (* Small angle in radians *)
+period = 2 * pi * Sqrt[L / g]
+
+(* === Physics Applications === *)
+
+(* Quantum Mechanics - Wave Function *)
+x = 1.0
+L = 2.0
+n = 1
+psi = Sqrt[2/L] * Sin[n * pi * x / L]
+
+(* Relativity - Time Dilation *)
+v = 0.8                (* Velocity as fraction of c *)
+c = 1                  (* Speed of light (normalized) *)
+gamma = 1 / Sqrt[1 - v^2/c^2]
+
+(* Thermodynamics - Maxwell-Boltzmann Distribution *)
+m = 1.0                (* Mass *)
+k = 1.0                (* Boltzmann constant *)
+T = 300                (* Temperature *)
+v = 500                (* Velocity *)
+f = (m/(2*pi*k*T))^(3/2) * Exp[-m*v^2/(2*k*T)]
+
+(* === Precision and Error Analysis === *)
+
+(* Test numerical precision *)
+very_small = 1e-10
+Sin[very_small]        (* Should be approx very_small for small angles *)
+Exp[very_small]        (* Should be approx 1 + very_small *)
+Log[1 + very_small]    (* Should be approx very_small *)
+
+(* Test with larger numbers *)
+large_exp = Exp[10]    (* e^10 approx 22026 *)
+large_log = Log[22026] (* Should be approx 10 *)
+
+(* Test boundary conditions *)
+Sqrt[0]                (* Minimum valid input *)
+Log[0.0001]            (* Very small positive number *)
+Exp[10]                (* Large exponent *)
+
+(* === Performance Tests === *)
+
+(* Chain of operations *)
+result1 = Sin[Cos[Tan[pi/8]]]
+result2 = Exp[Log[Sqrt[16]]]
+result3 = Log[Exp[Sin[pi/6]]]
+
+(* Nested function calls *)
+complex_result = Sin[Exp[Log[Cos[pi/4]]]]
+
+(* Mathematical expressions *)
+polynomial = 3*x^4 + 2*x^3 - 5*x^2 + x - 7
+trig_poly = Sin[x]^2 + Cos[x]^2 + Tan[x/2]
+
+(* Summary Report *)
+"=== Advanced Mathematics Examples Complete ==="
+"- Tested trigonometric functions (Sin, Cos, Tan)"
+"- Tested exponential and logarithmic functions (Exp, Log)"
+"- Tested power operations and square roots"
+"- Verified mathematical identities and relationships"
+"- Demonstrated engineering and physics applications"
+"- Tested numerical precision and boundary conditions"
+"- Validated inverse function properties"
+"- Performance tested with complex expressions"

@@ -91,7 +91,7 @@ fn test_compiler_emits_call_static_for_stdlib_functions() {
     
     // Should emit CALL_STATIC instruction, not CALL
     let last_instruction = compiler.context.code.last().unwrap();
-    assert_eq!(last_instruction.opcode, OpCode::CALL_STATIC, 
+    assert_eq!(last_instruction.opcode, OpCode::CallStatic, 
               "Stdlib functions should use CALL_STATIC for static dispatch");
     
     // Should have function index >= 32 (stdlib range)
@@ -160,7 +160,7 @@ fn test_eliminate_old_call_opcode() {
         
         // At least one CALL_STATIC should be emitted
         let call_static_count = compiler.context.code.iter()
-            .filter(|inst| inst.opcode == OpCode::CALL_STATIC)
+            .filter(|inst| inst.opcode == OpCode::CallStatic)
             .count();
         assert!(call_static_count > 0, 
                "Function {} should emit at least one CALL_STATIC", func_name);
@@ -229,7 +229,7 @@ fn test_end_to_end_stdlib_static_dispatch() {
     
     // ✅ SUCCESS: CALL opcode has been removed - only CALL_STATIC exists now
     let call_static_count = compiler.context.code.iter()
-        .filter(|inst| inst.opcode == OpCode::CALL_STATIC)
+        .filter(|inst| inst.opcode == OpCode::CallStatic)
         .count();
     println!("✅ Found {} CALL_STATIC instructions (CALL opcode eliminated)", call_static_count);
     

@@ -15,7 +15,7 @@ use crate::{
 /// Convert a stdlib Value to a Tensor for ML operations
 fn value_to_tensor(value: &Value) -> MLResult<Tensor> {
     match value {
-        Value::LyObj(obj) => {
+        Value::LyObj(_obj) => {
             // Try to extract tensor from LyObj
             // For now, this is a placeholder - we would need proper type checking
             Err(MLError::DataError {

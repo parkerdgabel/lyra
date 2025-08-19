@@ -1,0 +1,610 @@
+warning: `/Users/parkergabel/.cargo/config` is deprecated in favor of `config.toml`
+note: if you need to support cargo 1.38 or earlier, you can symlink `config` to `config.toml`
+   Compiling serde_derive v1.0.219
+   Compiling ptr_meta_derive v0.3.0
+   Compiling bytecheck_derive v0.8.1
+   Compiling thiserror-impl v2.0.15
+   Compiling clap_derive v4.5.45
+   Compiling zstd-safe v7.2.4
+   Compiling ppv-lite86 v0.2.21
+   Compiling zstd-sys v2.0.15+zstd.1.5.7
+   Compiling munge_macro v0.4.6
+   Compiling hash32 v0.2.1
+   Compiling nibble_vec v0.1.0
+   Compiling toml_write v0.1.2
+   Compiling thiserror v1.0.69
+   Compiling winnow v0.7.12
+   Compiling endian-type v0.1.2
+   Compiling rawpointer v0.2.1
+   Compiling ptr_meta v0.3.0
+   Compiling stable_deref_trait v1.2.0
+   Compiling same-file v1.0.6
+   Compiling adler2 v2.0.1
+   Compiling munge v0.4.6
+   Compiling miniz_oxide v0.8.9
+   Compiling walkdir v2.5.0
+   Compiling matrixmultiply v0.3.10
+   Compiling rancor v0.1.0
+   Compiling bytecheck v0.8.1
+   Compiling radix_trie v0.2.1
+   Compiling thiserror v2.0.15
+   Compiling rand_chacha v0.3.1
+   Compiling rayon v1.11.0
+   Compiling rmp v0.8.14
+   Compiling clap v4.5.45
+   Compiling rend v0.5.2
+   Compiling cobs v0.3.0
+   Compiling crc32fast v1.5.0
+   Compiling parking_lot v0.12.4
+   Compiling fd-lock v4.0.4
+   Compiling spin v0.9.8
+   Compiling nanorand v0.7.0
+   Compiling thiserror-impl v1.0.69
+   Compiling num-complex v0.4.6
+   Compiling rkyv_derive v0.8.11
+   Compiling num-integer v0.1.46
+   Compiling tokio-macros v2.5.0
+   Compiling serde v1.0.219
+   Compiling crossbeam-queue v0.3.12
+   Compiling signal-hook-registry v1.4.6
+   Compiling nix v0.27.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling mio v1.0.4
+   Compiling socket2 v0.6.0
+   Compiling home v0.5.11
+   Compiling unicode-segmentation v1.12.0
+   Compiling minimal-lexical v0.2.1
+   Compiling twox-hash v2.1.1
+   Compiling hashbrown v0.14.5
+   Compiling unicode-width v0.1.14
+   Compiling log v0.4.27
+   Compiling bytes v1.10.1
+   Compiling nom v7.1.3
+   Compiling lz4_flex v0.11.5
+   Compiling crossbeam v0.8.4
+   Compiling ndarray v0.16.1
+   Compiling flume v0.11.1
+   Compiling tokio v1.47.1
+   Compiling dashmap v6.1.0
+   Compiling rustyline v13.0.0
+   Compiling flate2 v1.1.2
+   Compiling rkyv v0.8.11
+   Compiling rand v0.8.5
+   Compiling serde_json v1.0.142
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling heapless v0.7.17
+   Compiling rmp-serde v1.3.0
+   Compiling bincode v1.3.3
+   Compiling postcard v1.1.3
+   Compiling zstd v0.13.3
+   Compiling futures-channel v0.3.31
+   Compiling futures-macro v0.3.31
+   Compiling async-trait v0.1.89
+   Compiling memmap2 v0.9.7
+   Compiling num_cpus v1.17.0
+   Compiling half v2.6.0
+   Compiling getrandom v0.3.3
+   Compiling plotters-backend v0.3.7
+   Compiling ciborium-io v0.2.2
+   Compiling futures-io v0.3.31
+   Compiling pin-utils v0.1.0
+   Compiling regex-syntax v0.8.5
+   Compiling futures-task v0.3.31
+   Compiling slab v0.4.11
+   Compiling plotters-svg v0.3.7
+   Compiling futures-util v0.3.31
+   Compiling toml v0.8.23
+   Compiling ciborium-ll v0.2.2
+   Compiling itertools v0.10.5
+   Compiling cast v0.3.0
+   Compiling regex-automata v0.4.9
+   Compiling ciborium v0.2.2
+   Compiling plotters v0.3.7
+   Compiling lyra v0.1.0 (/Users/parkergabel/Development/rust/lyra)
+   Compiling criterion-plot v0.5.0
+warning: variant `LOAD_QUOTE` should have an upper camel case name
+  --> src/bytecode.rs:31:5
+   |
+31 |     LOAD_QUOTE = 0x05, // Load quoted expression for Hold attributes
+   |     ^^^^^^^^^^ help: convert the identifier to upper camel case: `LoadQuote`
+   |
+   = note: `#[warn(non_camel_case_types)]` on by default
+
+warning: variant `MAP_CALL_STATIC` should have an upper camel case name
+  --> src/bytecode.rs:32:5
+   |
+32 |     MAP_CALL_STATIC = 0x06, // Apply function to lists for Listable attributes
+   |     ^^^^^^^^^^^^^^^ help: convert the identifier to upper camel case: `MapCallStatic`
+
+warning: variant `CALL_STATIC` should have an upper camel case name
+  --> src/bytecode.rs:50:5
+   |
+50 |     CALL_STATIC = 0x42,  // Call static function (registry_index, argc encoded in operand)
+   |     ^^^^^^^^^^^ help: convert the identifier to upper camel case: `CallStatic`
+
+warning: unused import: `Pattern`
+ --> src/compiler.rs:2:25
+  |
+2 |     ast::{Expr, Number, Pattern},
+  |                         ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `VmError` and `VmResult`
+  --> src/linker.rs:35:17
+   |
+35 |     vm::{Value, VmResult, VmError},
+   |                 ^^^^^^^^  ^^^^^^^
+
+warning: unused import: `RwLock`
+  --> src/pattern_matcher.rs:20:22
+   |
+20 | use std::sync::{Arc, RwLock, OnceLock};
+   |                      ^^^^^^
+
+warning: unused import: `HashSet`
+ --> src/stdlib/autodiff/graph.rs:8:43
+  |
+8 | use std::collections::{HashMap, VecDeque, HashSet};
+  |                                           ^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+  --> src/stdlib/autodiff/graph.rs:10:17
+   |
+10 | use std::sync::{Arc, Mutex};
+   |                 ^^^  ^^^^^
+
+warning: unused import: `Dual`
+ --> src/stdlib/autodiff/operations.rs:6:46
+  |
+6 | use super::{AutodiffResult, GradientContext, Dual, Operation};
+  |                                              ^^^^
+
+warning: unused import: `SeriesType`
+ --> src/stdlib/data/table.rs:3:35
+  |
+3 |     stdlib::data::{ForeignSeries, SeriesType},
+  |                                   ^^^^^^^^^^
+
+warning: unused import: `RuleType`
+ --> src/stdlib/rules.rs:6:45
+  |
+6 | use crate::rules_engine::{RuleEngine, Rule, RuleType};
+  |                                             ^^^^^^^^
+
+warning: unused import: `SeriesType`
+ --> src/stdlib/table.rs:3:64
+  |
+3 |     stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor, SeriesType},
+  |                                                                ^^^^^^^^^^
+
+warning: unused imports: `tensor_add`, `tensor_div`, `tensor_mul`, `tensor_pow`, and `tensor_sub`
+ --> src/vm.rs:5:29
+  |
+5 | use crate::stdlib::tensor::{tensor_add, tensor_sub, tensor_mul, tensor_div, tensor_pow};
+  |                             ^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `ndarray::ArrayD`
+ --> src/vm.rs:8:5
+  |
+8 | use ndarray::ArrayD;
+  |     ^^^^^^^^^^^^^^^
+
+   Compiling futures-executor v0.3.31
+   Compiling regex v1.11.1
+   Compiling tinytemplate v1.2.1
+   Compiling console v0.15.11
+   Compiling is-terminal v0.4.16
+   Compiling similar v2.7.0
+warning: value passed to `item` is never read
+  --> src/memory/pools.rs:45:35
+   |
+45 |     pub fn recycle(&mut self, mut item: T) {
+   |                                   ^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` on by default
+
+   Compiling yansi v1.0.1
+warning: unused variable: `rhs`
+   --> src/repl/mod.rs:206:40
+    |
+206 |         if let Expr::Assignment { lhs, rhs, delayed } = expr {
+    |                                        ^^^ help: try ignoring the field: `rhs: _`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `args`
+   --> src/repl/mod.rs:207:43
+    |
+207 |             if let Expr::Function { head, args } = lhs.as_ref() {
+    |                                           ^^^^ help: try ignoring the field: `args: _`
+
+warning: unused variable: `sign`
+   --> src/stdlib/autodiff/dual.rs:490:13
+    |
+490 |         let sign = if self.value >= 0.0 { 1.0 } else { -1.0 };
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_sign`
+
+warning: unused variable: `softplus_val`
+   --> src/stdlib/autodiff/dual.rs:530:13
+    |
+530 |         let softplus_val = softplus.value;
+    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_softplus_val`
+
+warning: unused variable: `positive_dist`
+    --> src/stdlib/autodiff/dual.rs:1007:31
+     |
+1007 |     pub fn triplet_loss(self, positive_dist: Dual, negative_dist: Dual, margin: f64) -> Dual {
+     |                               ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_positive_dist`
+
+warning: unused variable: `step`
+    --> src/stdlib/autodiff/dual.rs:1071:72
+     |
+1071 |     pub fn adam_update(self, m: Dual, v: Dual, beta1: f64, beta2: f64, step: f64) -> (Dual, Dual) {
+     |                                                                        ^^^^ help: if this is intentional, prefix it with an underscore: `_step`
+
+warning: unused variable: `coeff`
+    --> src/stdlib/autodiff/dual.rs:1387:13
+     |
+1387 |         let coeff = Dual::constant(2.0) / sqrt_pi;
+     |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_coeff`
+
+warning: unused variable: `n_vars`
+    --> src/stdlib/autodiff/dual.rs:1898:13
+     |
+1898 |         let n_vars = x.len();
+     |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_n_vars`
+
+warning: unused variable: `canonical_id`
+    --> src/stdlib/autodiff/graph.rs:1186:53
+     |
+1186 |     fn merge_nodes(&mut self, duplicate_id: NodeId, canonical_id: NodeId) -> AutodiffResult<()> {
+     |                                                     ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_canonical_id`
+
+warning: unused variable: `node`
+    --> src/stdlib/autodiff/graph.rs:1197:21
+     |
+1197 |         if let Some(node) = node {
+     |                     ^^^^ help: if this is intentional, prefix it with an underscore: `_node`
+
+warning: unused variable: `diff_var`
+   --> src/stdlib/autodiff/operations.rs:288:13
+    |
+288 |         let diff_var = format!("{}_diff", loss_var);
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_diff_var`
+
+   Compiling diff v0.1.13
+   Compiling anes v0.1.6
+warning: unused variable: `obj`
+  --> src/stdlib/ml/wrapper.rs:18:22
+   |
+18 |         Value::LyObj(obj) => {
+   |                      ^^^ help: if this is intentional, prefix it with an underscore: `_obj`
+
+warning: unused variable: `rule_str`
+   --> src/stdlib/rules.rs:417:27
+    |
+417 | fn parse_rule_from_string(rule_str: &str, delayed: bool) -> VmResult<Rule> {
+    |                           ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rule_str`
+
+warning: unused variable: `foreign_table`
+   --> src/stdlib/table.rs:284:9
+    |
+284 |     let foreign_table = match &args[0] {
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_foreign_table`
+
+warning: unused variable: `foreign_table`
+   --> src/stdlib/table.rs:334:9
+    |
+334 |     let foreign_table = match &args[0] {
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_foreign_table`
+
+warning: unused variable: `foreign_table`
+   --> src/stdlib/table.rs:427:9
+    |
+427 |     let foreign_table = match &args[0] {
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_foreign_table`
+
+   Compiling fastrand v2.3.0
+warning: unused variable: `sys_op`
+   --> src/vm.rs:393:22
+    |
+393 |                 let (sys_op, argc) = {
+    |                      ^^^^^^ help: if this is intentional, prefix it with an underscore: `_sys_op`
+
+warning: type `MatchFrame` is more private than the item `MatchingContext::match_stack`
+   --> src/pattern_matcher.rs:119:5
+    |
+119 |     pub match_stack: Vec<MatchFrame>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `MatchingContext::match_stack` is reachable at visibility `pub`
+    |
+note: but type `MatchFrame` is only usable at visibility `pub(self)`
+   --> src/pattern_matcher.rs:103:1
+    |
+103 | struct MatchFrame {
+    | ^^^^^^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: fields `level` and `sequence_pos` are never read
+   --> src/pattern_matcher.rs:105:5
+    |
+103 | struct MatchFrame {
+    |        ---------- fields in this struct
+104 |     /// Current nesting level in expression tree
+105 |     level: usize,
+    |     ^^^^^
+106 |     /// Position in sequence matching (for __ and ___ patterns)
+107 |     sequence_pos: Option<usize>,
+    |     ^^^^^^^^^^^^
+    |
+    = note: `MatchFrame` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` on by default
+
+warning: function `hash_pattern` is never used
+    --> src/pattern_matcher.rs:1868:4
+     |
+1868 | fn hash_pattern(pattern: &Pattern) -> u64 {
+     |    ^^^^^^^^^^^^
+
+warning: field `vm` is never read
+  --> src/repl/mod.rs:86:5
+   |
+84 | pub struct ReplEngine {
+   |            ---------- field in this struct
+85 |     /// Virtual machine for expression evaluation
+86 |     vm: VirtualMachine,
+   |     ^^
+
+warning: methods `extract_assignment` and `extract_function_definition` are never used
+   --> src/repl/mod.rs:319:8
+    |
+102 | impl ReplEngine {
+    | --------------- methods in this implementation
+...
+319 |     fn extract_assignment(&self, _expr: &Expr) -> Option<(String, Expr)> {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+326 |     fn extract_function_definition(&self, _expr: &Expr) -> Option<(String, String)> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `add_symbolic_rule` is never used
+   --> src/rules_engine.rs:353:8
+    |
+171 | impl RuleEngine {
+    | --------------- method in this implementation
+...
+353 |     fn add_symbolic_rule(&mut self, pattern: Pattern, replacement: Expr) {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: fields `enhanced_nodes` and `max_depth` are never read
+   --> src/stdlib/autodiff/graph.rs:319:5
+    |
+315 | pub struct ComputationGraph {
+    |            ---------------- fields in this struct
+...
+319 |     enhanced_nodes: HashMap<NodeId, EnhancedGraphNode>,
+    |     ^^^^^^^^^^^^^^
+...
+325 |     max_depth: usize,
+    |     ^^^^^^^^^
+    |
+    = note: `ComputationGraph` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `compute_binary_value` and `compute_unary_value` are never used
+   --> src/stdlib/autodiff/graph.rs:918:8
+    |
+338 | impl ComputationGraph {
+    | --------------------- methods in this implementation
+...
+918 |     fn compute_binary_value(&self, op: &Operation, left: f64, right: f64) -> AutodiffResult<f64> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+...
+943 |     fn compute_unary_value(&self, op: &Operation, input: f64) -> AutodiffResult<f64> {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: field `name` is never read
+  --> src/stdlib/ml/encoders.rs:16:5
+   |
+15 | pub struct ImageEncoder {
+   |            ------------ field in this struct
+16 |     name: String,
+   |     ^^^^
+   |
+   = note: `ImageEncoder` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `classes` is never read
+  --> src/stdlib/ml/decoders.rs:16:5
+   |
+15 | pub struct ClassDecoder {
+   |            ------------ field in this struct
+16 |     classes: Vec<String>,
+   |     ^^^^^^^
+   |
+   = note: `ClassDecoder` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `name` is never read
+  --> src/stdlib/ml/training.rs:11:5
+   |
+10 | pub struct NetTrain {
+   |            -------- field in this struct
+11 |     name: String,
+   |     ^^^^
+
+warning: field `learning_rate` is never read
+  --> src/stdlib/ml/optimizers.rs:16:5
+   |
+15 | pub struct Adam {
+   |            ---- field in this struct
+16 |     learning_rate: f64,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `Adam` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> src/memory/managed_value.rs:245:17
+    |
+245 |     pub fn iter(&self) -> std::slice::Iter<T> {
+    |                 ^^^^^     ------------------- the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+245 |     pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    |                                            +++
+
+   Compiling oorandom v11.1.5
+   Compiling pretty_assertions v1.4.1
+   Compiling criterion v0.5.1
+   Compiling tempfile v3.20.0
+   Compiling insta v1.43.1
+   Compiling futures v0.3.31
+warning: `lyra` (lib) generated 45 warnings (run `cargo fix --lib -p lyra` to apply 11 suggestions)
+warning: unused imports: `MatchResult` and `vm::Value`
+ --> debug_test.rs:3:39
+  |
+3 |     pattern_matcher::{PatternMatcher, MatchResult},
+  |                                       ^^^^^^^^^^^
+4 |     vm::Value,
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `ast::Expr`
+  --> benches/performance_validation.rs:14:5
+   |
+14 |     ast::Expr,
+   |     ^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+  --> benches/performance_validation.rs:29:33
+   |
+29 |         let bytecode = compiler.compile(&statements).unwrap();
+   |                                 ^^^^^^^
+   |
+help: there is a method `compile_expr` with a similar name
+   |
+29 |         let bytecode = compiler.compile_expr(&statements).unwrap();
+   |                                        +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+  --> benches/performance_validation.rs:33:16
+   |
+33 |             vm.execute(black_box(&bytecode))
+   |                ^^^^^^^ method not found in `VirtualMachine`
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+  --> benches/performance_validation.rs:43:33
+   |
+43 |         let bytecode = compiler.compile(&statements).unwrap();
+   |                                 ^^^^^^^
+   |
+help: there is a method `compile_expr` with a similar name
+   |
+43 |         let bytecode = compiler.compile_expr(&statements).unwrap();
+   |                                        +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+  --> benches/performance_validation.rs:47:16
+   |
+47 |             vm.execute(black_box(&bytecode))
+   |                ^^^^^^^ method not found in `VirtualMachine`
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+  --> benches/performance_validation.rs:57:33
+   |
+57 |         let bytecode = compiler.compile(&statements).unwrap();
+   |                                 ^^^^^^^
+   |
+help: there is a method `compile_expr` with a similar name
+   |
+57 |         let bytecode = compiler.compile_expr(&statements).unwrap();
+   |                                        +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+  --> benches/performance_validation.rs:61:16
+   |
+61 |             vm.execute(black_box(&bytecode))
+   |                ^^^^^^^ method not found in `VirtualMachine`
+
+error[E0599]: no method named `try_match` found for struct `PatternMatcher` in the current scope
+  --> benches/performance_validation.rs:88:25
+   |
+88 |                 matcher.try_match(black_box(test_expr), black_box(&statements[0]))
+   |                         ^^^^^^^^^ method not found in `PatternMatcher`
+
+error[E0599]: no method named `try_match` found for struct `PatternMatcher` in the current scope
+   --> benches/performance_validation.rs:108:25
+    |
+108 |                 matcher.try_match(black_box(test_expr), black_box(&statements[0]))
+    |                         ^^^^^^^^^ method not found in `PatternMatcher`
+
+error[E0599]: no method named `unwrap` found for struct `StandardLibrary` in the current scope
+   --> benches/performance_validation.rs:123:45
+    |
+123 |         let stdlib = StandardLibrary::new().unwrap();
+    |                                             ^^^^^^ method not found in `StandardLibrary`
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+   --> benches/performance_validation.rs:144:33
+    |
+144 |         let bytecode = compiler.compile(&statements).unwrap();
+    |                                 ^^^^^^^
+    |
+help: there is a method `compile_expr` with a similar name
+    |
+144 |         let bytecode = compiler.compile_expr(&statements).unwrap();
+    |                                        +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+   --> benches/performance_validation.rs:148:16
+    |
+148 |             vm.execute(black_box(&bytecode))
+    |                ^^^^^^^ method not found in `VirtualMachine`
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+   --> benches/performance_validation.rs:217:33
+    |
+217 |         let bytecode = compiler.compile(&statements).unwrap();
+    |                                 ^^^^^^^
+    |
+help: there is a method `compile_expr` with a similar name
+    |
+217 |         let bytecode = compiler.compile_expr(&statements).unwrap();
+    |                                        +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+   --> benches/performance_validation.rs:221:16
+    |
+221 |             vm.execute(black_box(&bytecode))
+    |                ^^^^^^^ method not found in `VirtualMachine`
+
+error[E0599]: no method named `compile` found for struct `Compiler` in the current scope
+   --> benches/performance_validation.rs:283:41
+    |
+283 |                 let bytecode = compiler.compile(&statements).unwrap();
+    |                                         ^^^^^^^
+    |
+help: there is a method `compile_expr` with a similar name
+    |
+283 |                 let bytecode = compiler.compile_expr(&statements).unwrap();
+    |                                                +++++
+
+error[E0599]: no method named `execute` found for struct `VirtualMachine` in the current scope
+   --> benches/performance_validation.rs:286:30
+    |
+286 |                 black_box(vm.execute(&bytecode));
+    |                              ^^^^^^^ method not found in `VirtualMachine`
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `lyra` (bench "performance_validation") generated 1 warning
+error: could not compile `lyra` (bench "performance_validation") due to 15 previous errors; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+warning: `lyra` (bin "debug_test") generated 1 warning (run `cargo fix --bin "debug_test"` to apply 1 suggestion)

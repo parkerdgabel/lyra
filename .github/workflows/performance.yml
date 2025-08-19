@@ -1,0 +1,134 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run benchmarks daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for comparison
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache Dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Run Performance Benchmarks
+      run: |
+        mkdir -p benchmark_results
+        ./scripts/benchmark_runner.sh all
+    
+    - name: Upload Benchmark Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results-${{ github.sha }}
+        path: |
+          benchmark_results/
+          target/criterion/*/report/
+        retention-days: 30
+    
+    - name: Performance Regression Check
+      run: |
+        # Check if any critical performance regressions occurred
+        if grep -r "regression" benchmark_results/ || grep -r "slower" benchmark_results/; then
+          echo "⚠️ Performance regression detected!"
+          exit 1
+        else
+          echo "✅ No performance regressions detected"
+        fi
+    
+    - name: Comment Performance Results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Find the latest summary file
+          const resultsDir = 'benchmark_results';
+          const files = fs.readdirSync(resultsDir);
+          const summaryFiles = files.filter(f => f.includes('performance_summary'));
+          
+          if (summaryFiles.length > 0) {
+            const latestSummary = summaryFiles[summaryFiles.length - 1];
+            const summaryContent = fs.readFileSync(path.join(resultsDir, latestSummary), 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Performance Benchmark Results\n\n${summaryContent}\n\n[View detailed reports in artifacts]`
+            });
+          }
+  
+  speedup-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache Dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-speedup-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Validate Speedup Claims
+      run: |
+        ./scripts/benchmark_runner.sh speedup
+    
+    - name: Analyze Speedup Results
+      run: |
+        echo "🔍 Analyzing speedup validation results..."
+        
+        # Extract key metrics from benchmark results  
+        if [ -f "benchmark_results/speedup_claims_validation_*.log" ]; then
+          echo "📊 Speedup validation completed"
+          
+          # Look for actual vs claimed speedup ratios
+          grep -i "speedup\|ratio\|improvement" benchmark_results/speedup_claims_validation_*.log || echo "No speedup metrics found"
+        else
+          echo "❌ Speedup validation results not found"
+          exit 1
+        fi
+    
+    - name: Upload Speedup Analysis
+      uses: actions/upload-artifact@v3
+      with:
+        name: speedup-validation-${{ github.sha }}
+        path: |
+          benchmark_results/speedup_claims_validation_*.log
+          target/criterion/speedup_claims_validation/report/
+        retention-days: 90  # Keep speedup validation longer

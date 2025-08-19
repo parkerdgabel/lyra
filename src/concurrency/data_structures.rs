@@ -42,18 +42,45 @@ impl<T> AtomicRc<T> {
     }
     
     /// Load the current value
-    pub fn load(&self) -> Option<Arc<T>> {
-        let ptr = self.ptr.load(Ordering::Acquire);
-        if ptr.is_null() {
-            return None;
-        }
-        
-        unsafe {
-            let rc_box = &*ptr;
-            rc_box.ref_count.fetch_add(1, Ordering::Relaxed);
+    pub fn load(&self) -> Option<Arc<T>> where T: Clone {
+        // Use a retry loop to handle races safely
+        loop {
+            let ptr = self.ptr.load(Ordering::Acquire);
+            if ptr.is_null() {
+                return None;
+            }
             
-            // Create an Arc-like wrapper
-            Some(Arc::new(std::ptr::read(&rc_box.value)))
+            unsafe {
+                let rc_box = &*ptr;
+                
+                // Try to increment reference count, checking that it's not zero
+                let old_count = rc_box.ref_count.load(Ordering::Acquire);
+                if old_count == 0 {
+                    // Another thread is dropping this value, retry
+                    continue;
+                }
+                
+                // Try to increment using compare-and-swap to avoid races
+                if rc_box.ref_count.compare_exchange_weak(
+                    old_count,
+                    old_count + 1,
+                    Ordering::Acquire,
+                    Ordering::Relaxed
+                ).is_err() {
+                    // Another thread modified the ref count, retry
+                    continue;
+                }
+                
+                // Verify the pointer is still valid
+                if self.ptr.load(Ordering::Acquire) != ptr {
+                    // Pointer changed, decrement and retry
+                    rc_box.ref_count.fetch_sub(1, Ordering::Release);
+                    continue;
+                }
+                
+                // Safe to create Arc from cloned value
+                return Some(Arc::new(rc_box.value.clone()));
+            }
         }
     }
     
@@ -70,7 +97,10 @@ impl<T> AtomicRc<T> {
         if !old_ptr.is_null() {
             unsafe {
                 let rc_box = &*old_ptr;
-                if rc_box.ref_count.fetch_sub(1, Ordering::Relaxed) == 1 {
+                // Use Release ordering to ensure all prior operations are visible
+                if rc_box.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                    // Ensure we have exclusive access before dropping
+                    std::sync::atomic::fence(Ordering::Acquire);
                     Box::from_raw(old_ptr);
                 }
             }
@@ -80,17 +110,24 @@ impl<T> AtomicRc<T> {
 
 impl<T> Drop for AtomicRc<T> {
     fn drop(&mut self) {
-        let ptr = self.ptr.load(Ordering::Relaxed);
+        let ptr = self.ptr.load(Ordering::Acquire);
         if !ptr.is_null() {
             unsafe {
                 let rc_box = &*ptr;
-                if rc_box.ref_count.fetch_sub(1, Ordering::Relaxed) == 1 {
+                // Use Release ordering for the decrement
+                if rc_box.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                    // Acquire fence to synchronize with other decrements
+                    std::sync::atomic::fence(Ordering::Acquire);
                     Box::from_raw(ptr);
                 }
             }
         }
     }
 }
+
+// Ensure proper Send/Sync bounds for thread safety
+unsafe impl<T: Send + Sync> Send for AtomicRc<T> {}
+unsafe impl<T: Send + Sync> Sync for AtomicRc<T> {}
 
 /// Lock-free value storage with atomic updates
 pub struct LockFreeValue {

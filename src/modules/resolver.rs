@@ -271,7 +271,9 @@ impl ImportParser {
         let import_part = trimmed.strip_prefix("import ").unwrap().trim();
         
         // Check for aliased import: `import std::math::Sin as Sine`
-        if import_part.contains(" as ") {
+        // But make sure it's not a specific import with aliases like {Sin, Cos as Cosine}
+        // Also catch incomplete aliases like "import std::math::Sin as"
+        if (import_part.contains(" as ") || import_part.ends_with(" as")) && !import_part.contains('{') {
             return Self::parse_aliased_import(import_part);
         }
         
@@ -282,7 +284,13 @@ impl ImportParser {
         }
         
         // Check for specific imports: `import std::math::{Sin, Cos}`
-        if import_part.contains('{') && import_part.contains('}') {
+        if import_part.contains('{') {
+            // Must also have closing brace for valid specific import
+            if !import_part.contains('}') {
+                return Err(ModuleError::ParseError {
+                    message: "Missing closing brace in specific import".to_string(),
+                });
+            }
             return Self::parse_specific_imports(import_part);
         }
         
@@ -299,15 +307,29 @@ impl ImportParser {
     }
     
     fn parse_aliased_import(import_part: &str) -> Result<ImportStatement, ModuleError> {
+        // Handle the case where the input ends with " as" (incomplete alias)
+        if import_part.ends_with(" as") {
+            return Err(ModuleError::ParseError {
+                message: "Invalid aliased import syntax - missing alias after 'as'".to_string(),
+            });
+        }
+        
         let parts: Vec<&str> = import_part.split(" as ").collect();
         if parts.len() != 2 {
             return Err(ModuleError::ParseError {
-                message: "Invalid aliased import syntax".to_string(),
+                message: "Invalid aliased import syntax - missing alias after 'as'".to_string(),
             });
         }
         
         let qualified_name = parts[0];
-        let alias = parts[1].to_string();
+        let alias = parts[1].trim().to_string();
+        
+        // Validate that alias is not empty
+        if alias.is_empty() {
+            return Err(ModuleError::ParseError {
+                message: "Alias cannot be empty".to_string(),
+            });
+        }
         
         // Parse namespace and function
         let name_parts: Vec<&str> = qualified_name.split("::").collect();

@@ -3,7 +3,7 @@
 //! This module provides high-level operations for automatic differentiation
 //! that integrate with Lyra's expression system and VM.
 
-use super::{AutodiffResult, GradientContext, Dual, Operation};
+use super::{AutodiffResult, GradientContext, Operation};
 
 /// Trait for types that support automatic differentiation operations
 pub trait AutodiffOps {
@@ -285,7 +285,7 @@ impl MLOps {
         // MSE = (pred - target)^2
         
         // First compute difference: diff = pred - target
-        let diff_var = format!("{}_diff", loss_var);
+        let _diff_var = format!("{}_diff", loss_var);
         match ctx.mode() {
             super::AutodiffMode::Forward => {
                 let pred = ctx.get_variable(pred_var)?;

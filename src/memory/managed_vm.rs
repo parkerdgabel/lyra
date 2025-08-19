@@ -193,7 +193,7 @@ impl ManagedVirtualMachine {
                 self.ip += 1;
             }
             
-            OpCode::CALL_STATIC => {
+            OpCode::CallStatic => {
                 let argc = instruction.operand as usize;
                 self.execute_function_call(argc)?;
             }

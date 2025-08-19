@@ -5,9 +5,8 @@
 //! dynamic construction during forward computation and reverse-mode gradient
 //! computation with optimal memory usage.
 
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use super::{AutodiffError, AutodiffResult, constants::MAX_GRAPH_DEPTH};
 
 /// Unique identifier for computation graph nodes
@@ -1183,7 +1182,7 @@ impl ComputationGraph {
     }
     
     /// Merge duplicate nodes (simplified implementation)
-    fn merge_nodes(&mut self, duplicate_id: NodeId, canonical_id: NodeId) -> AutodiffResult<()> {
+    fn merge_nodes(&mut self, duplicate_id: NodeId, _canonical_id: NodeId) -> AutodiffResult<()> {
         // In a full implementation, this would update all references
         // For now, just remove the duplicate
         self.nodes.remove(&duplicate_id);
@@ -1194,7 +1193,7 @@ impl ComputationGraph {
     fn should_checkpoint(&self, node_id: NodeId) -> bool {
         // Simple heuristic: checkpoint nodes with high fan-out
         let node = self.nodes.get(&node_id);
-        if let Some(node) = node {
+        if let Some(_node) = node {
             // Count how many nodes depend on this one
             let dependents = self.nodes.values()
                 .filter(|n| n.inputs.contains(&node_id))

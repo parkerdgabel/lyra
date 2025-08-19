@@ -1,6 +1,6 @@
 use crate::{
     foreign::{Foreign, ForeignError, LyObj},
-    stdlib::data::{ForeignSeries, SeriesType},
+    stdlib::data::ForeignSeries,
     vm::{Value, VmError, VmResult},
 };
 use std::any::Any;

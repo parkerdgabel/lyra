@@ -2,12 +2,13 @@ use crate::bytecode::{Instruction, OpCode};
 use crate::foreign::LyObj;
 use crate::linker::{registry::create_global_registry, FunctionRegistry};
 use crate::stdlib::StandardLibrary;
-use crate::stdlib::tensor::{tensor_add, tensor_sub, tensor_mul, tensor_div, tensor_pow};
+// Tensor operations imported when needed
 use std::collections::HashMap;
 use thiserror::Error;
-use ndarray::ArrayD;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+// ArrayD imported when needed for tensor operations
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Serialize, Deserialize)]
 pub enum VmError {
     #[error("Stack underflow")]
     StackUnderflow,
@@ -27,6 +28,8 @@ pub enum VmError {
     NotCallable,
     #[error("Index {index} out of bounds for length {length}")]
     IndexError { index: i64, length: usize },
+    #[error("Runtime error: {0}")]
+    Runtime(String),
 }
 
 pub type VmResult<T> = std::result::Result<T, VmError>;
@@ -45,6 +48,75 @@ pub enum Value {
     LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema, Tensor)
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
     Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
+}
+
+// Use simpler derive-based serialization with a custom implementation for LyObj
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", content = "value")]
+enum ValueSerde {
+    Integer(i64),
+    Real(f64),
+    String(String),
+    Symbol(String),
+    List(Vec<Value>),
+    Function(String),
+    Boolean(bool),
+    Missing,
+    LyObjPlaceholder { type_name: String }, // Simplified LyObj representation  
+    Quote(Box<crate::ast::Expr>),
+    Pattern(crate::ast::Pattern),
+}
+
+// Custom serialization for Value enum to handle LyObj
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let serde_value = match self {
+            Value::Integer(n) => ValueSerde::Integer(*n),
+            Value::Real(f) => ValueSerde::Real(*f),
+            Value::String(s) => ValueSerde::String(s.clone()),
+            Value::Symbol(s) => ValueSerde::Symbol(s.clone()),
+            Value::List(items) => ValueSerde::List(items.clone()),
+            Value::Function(name) => ValueSerde::Function(name.clone()),
+            Value::Boolean(b) => ValueSerde::Boolean(*b),
+            Value::Missing => ValueSerde::Missing,
+            Value::LyObj(obj) => ValueSerde::LyObjPlaceholder { 
+                type_name: obj.type_name().to_string() 
+            },
+            Value::Quote(expr) => ValueSerde::Quote(expr.clone()),
+            Value::Pattern(pat) => ValueSerde::Pattern(pat.clone()),
+        };
+        serde_value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let serde_value = ValueSerde::deserialize(deserializer)?;
+        let value = match serde_value {
+            ValueSerde::Integer(n) => Value::Integer(n),
+            ValueSerde::Real(f) => Value::Real(f),
+            ValueSerde::String(s) => Value::String(s),
+            ValueSerde::Symbol(s) => Value::Symbol(s),
+            ValueSerde::List(items) => Value::List(items),
+            ValueSerde::Function(name) => Value::Function(name),
+            ValueSerde::Boolean(b) => Value::Boolean(b),
+            ValueSerde::Missing => Value::Missing,
+            ValueSerde::LyObjPlaceholder { type_name: _ } => {
+                // For now, deserialize LyObj placeholders as Missing
+                // Real implementation would need registry-based reconstruction
+                Value::Missing
+            }
+            ValueSerde::Quote(expr) => Value::Quote(expr),
+            ValueSerde::Pattern(pat) => Value::Pattern(pat),
+        };
+        Ok(value)
+    }
 }
 
 impl Eq for Value {}
@@ -151,6 +223,10 @@ pub struct VirtualMachine {
     pub constants: Vec<Value>,
     /// Symbol table (name -> index)
     pub symbols: HashMap<String, usize>,
+    /// Global symbol values for immediate assignments (=)
+    pub global_symbols: HashMap<String, Value>,
+    /// Delayed symbol definitions for delayed assignments (:=)
+    pub delayed_definitions: HashMap<String, crate::ast::Expr>,
     /// Bytecode instructions
     pub code: Vec<Instruction>,
     /// Maximum call stack depth
@@ -170,6 +246,8 @@ impl VirtualMachine {
             call_stack: Vec::new(),
             constants: Vec::new(),
             symbols: HashMap::new(),
+            global_symbols: HashMap::new(),
+            delayed_definitions: HashMap::new(),
             code: Vec::new(),
             max_call_depth: 1000,
             stdlib: StandardLibrary::new(),
@@ -259,12 +337,33 @@ impl VirtualMachine {
                     // Treat as constant pool index
                     let const_index = operand as usize;
                     let value = self.constants[const_index].clone();
-                    self.push(value);
+                    
+                    // Check if this is a symbol and if it has a resolved value
+                    if let Value::Symbol(symbol_name) = &value {
+                        // Check immediate assignments first
+                        if let Some(resolved_value) = self.global_symbols.get(symbol_name) {
+                            self.push(resolved_value.clone());
+                        }
+                        // Check delayed assignments
+                        else if let Some(delayed_expr) = self.delayed_definitions.get(symbol_name) {
+                            // For delayed assignments, we need to compile and evaluate the expression
+                            // For now, store the expression and mark for evaluation
+                            // TODO: Implement delayed expression evaluation
+                            self.push(Value::Quote(Box::new(delayed_expr.clone())));
+                        }
+                        // No assignment found, push the symbol as-is
+                        else {
+                            self.push(value);
+                        }
+                    } else {
+                        // Not a symbol, push the value as-is
+                        self.push(value);
+                    }
                 }
                 self.ip += 1;
             }
-            OpCode::LOAD_QUOTE => {
-                // LOAD_QUOTE expects the AST expression to be stored in constants pool
+            OpCode::LoadQuote => {
+                // LoadQuote expects the AST expression to be stored in constants pool
                 let const_index = instruction.operand as usize;
                 if const_index >= self.constants.len() {
                     return Err(VmError::InvalidConstantIndex(const_index));
@@ -353,10 +452,43 @@ impl VirtualMachine {
                 self.ip += 1;
             }
             OpCode::STS => {
-                // Store symbol value (placeholder implementation)
-                let _symbol_index = instruction.operand as usize;
-                let _value = self.pop()?;
-                // For now, just discard - full implementation needs symbol table
+                // Store symbol value (immediate assignment)
+                let symbol_index = instruction.operand as usize;
+                let value = self.pop()?;
+                
+                // Get symbol name from constants pool (should be a Symbol value)
+                if let Some(Value::Symbol(symbol_name)) = self.constants.get(symbol_index) {
+                    self.global_symbols.insert(symbol_name.clone(), value);
+                } else {
+                    return Err(VmError::Runtime(format!(
+                        "Invalid symbol index {} for STS instruction", 
+                        symbol_index
+                    )));
+                }
+                self.ip += 1;
+            }
+            OpCode::STSD => {
+                // Store symbol delayed (delayed assignment)
+                let symbol_index = instruction.operand as usize;
+                let expr_value = self.pop()?;
+                
+                // Get symbol name from constants pool
+                if let Some(Value::Symbol(symbol_name)) = self.constants.get(symbol_index) {
+                    // The expression should be stored as a Quote value (unevaluated Expr)
+                    if let Value::Quote(expr) = expr_value {
+                        self.delayed_definitions.insert(symbol_name.clone(), *expr);
+                    } else {
+                        return Err(VmError::Runtime(format!(
+                            "Expected Quote value for delayed assignment, got {:?}",
+                            expr_value
+                        )));
+                    }
+                } else {
+                    return Err(VmError::Runtime(format!(
+                        "Invalid symbol index {} for STSD instruction", 
+                        symbol_index
+                    )));
+                }
                 self.ip += 1;
             }
             OpCode::NEWLIST => {
@@ -390,7 +522,7 @@ impl VirtualMachine {
             }
             OpCode::SYS => {
                 // System call (placeholder implementation)
-                let (sys_op, argc) = {
+                let (_sys_op, argc) = {
                     let sys_op = (instruction.operand >> 8) as u16;
                     let argc = (instruction.operand & 0xFF) as u8;
                     (sys_op, argc)
@@ -407,7 +539,7 @@ impl VirtualMachine {
                 self.ip += 1;
             }
             
-            OpCode::CALL_STATIC => {
+            OpCode::CallStatic => {
                 // Decode function index and argument count
                 let (function_index, argc) = {
                     let function_index = (instruction.operand >> 8) as u16;
@@ -505,8 +637,8 @@ impl VirtualMachine {
                 self.ip += 1;
             }
             
-            OpCode::MAP_CALL_STATIC => {
-                // MAP_CALL_STATIC: Apply function to lists for Listable attributes
+            OpCode::MapCallStatic => {
+                // MAP_CallStatic: Apply function to lists for Listable attributes
                 let (function_index, argc) = {
                     let function_index = (instruction.operand >> 8) as u16;
                     let argc = (instruction.operand & 0xFF) as u8;
@@ -540,7 +672,7 @@ impl VirtualMachine {
                     }
                 }
                 
-                // If no lists found, this is an error - MAP_CALL_STATIC should only be used with Listable functions that have list arguments
+                // If no lists found, this is an error - MAP_CallStatic should only be used with Listable functions that have list arguments
                 if list_indices.is_empty() {
                     return Err(VmError::TypeError {
                         expected: "at least one list argument for Listable function".to_string(),
@@ -573,7 +705,7 @@ impl VirtualMachine {
                     let element_result = if needs_object {
                         // Foreign method call
                         if let Some(Value::LyObj(ref lyobj)) = object {
-                            // Map function_index to method name (same mapping as CALL_STATIC)
+                            // Map function_index to method name (same mapping as CallStatic)
                             let method_name = match function_index {
                                 0 => "Length", 1 => "Type", 2 => "ToList", 3 => "IsEmpty",
                                 4 => "Get", 5 => "Append", 6 => "Set", 7 => "Slice",

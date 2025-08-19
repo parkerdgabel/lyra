@@ -1,0 +1,21 @@
+(* Basic Assignment Examples *)
+(* Demonstrates immediate assignment (=) vs delayed assignment (:=) *)
+
+(* Immediate assignment - evaluates right side now *)
+x = 42
+y = x + 8
+z = y * 2
+
+(* Show the values *)
+x
+y  
+z
+
+(* Reassignment *)
+x = 100
+x
+
+(* The previously assigned y and z do not change when x changes *)
+(* because they were evaluated when assigned *)
+y
+z

@@ -1,6 +1,6 @@
 use crate::{
     foreign::LyObj,
-    stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor, SeriesType},
+    stdlib::data::{ForeignTable, ForeignSeries, ForeignTensor},
     vm::{Value, VmError, VmResult},
 };
 use std::collections::HashMap;
@@ -281,7 +281,7 @@ pub fn group_by(args: &[Value]) -> VmResult<Value> {
     }
     
     // Extract ForeignTable from LyObj
-    let foreign_table = match &args[0] {
+    let _foreign_table = match &args[0] {
         Value::LyObj(obj) => {
             if let Some(table) = obj.downcast_ref::<ForeignTable>() {
                 table
@@ -331,7 +331,7 @@ pub fn aggregate(args: &[Value]) -> VmResult<Value> {
     }
     
     // Extract ForeignTable from LyObj
-    let foreign_table = match &args[0] {
+    let _foreign_table = match &args[0] {
         Value::LyObj(obj) => {
             if let Some(table) = obj.downcast_ref::<ForeignTable>() {
                 table
@@ -424,7 +424,7 @@ pub fn count(args: &[Value]) -> VmResult<Value> {
     }
     
     // Extract ForeignTable from LyObj
-    let foreign_table = match &args[0] {
+    let _foreign_table = match &args[0] {
         Value::LyObj(obj) => {
             if let Some(table) = obj.downcast_ref::<ForeignTable>() {
                 table
