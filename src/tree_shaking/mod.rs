@@ -10,6 +10,8 @@ pub mod module_deps;
 pub mod usage_tracker;
 pub mod eliminator;
 pub mod import_analyzer;
+pub mod selective_resolver;
+pub mod compile_time_resolver;
 
 pub use dependency_graph::{DependencyGraph, DependencyNode, DependencyEdge, DependencyType, 
                            CallContext as DependencyCallContext, FunctionMetadata, 
@@ -26,6 +28,14 @@ pub use import_analyzer::{
     ImportAnalyzer, ImportAnalyzerConfig, ImportPattern, ImportPatternType,
     ImportOptimizationType, OptimizationSuggestion, ImportOptimizationImpact, 
     ModuleImportOptimization, ImportDependencyGraph
+};
+pub use selective_resolver::{
+    SelectiveImportResolver, SelectiveResolverConfig, ResolvedImport, ResolvedImportType,
+    ImportResolutionResults, ResolutionStrategy, OptimizationLevel, ValidationStatus
+};
+pub use compile_time_resolver::{
+    CompileTimeResolver, CompileTimeResolverConfig, CompileTimeResolutionResults,
+    ResolvedDependency, DependencyResolutionType, LoadPriority
 };
 
 use crate::modules::registry::ModuleRegistry;
@@ -53,6 +63,12 @@ pub struct TreeShaker {
     
     /// Import optimization analyzer
     import_analyzer: ImportAnalyzer,
+    
+    /// Selective import resolver
+    selective_resolver: SelectiveImportResolver,
+    
+    /// Compile-time dependency resolver
+    compile_time_resolver: CompileTimeResolver,
 }
 
 impl TreeShaker {
@@ -66,6 +82,8 @@ impl TreeShaker {
             graph_analyzer: GraphAnalyzer::new(),
             eliminator: Eliminator::new(),
             import_analyzer: ImportAnalyzer::new(),
+            selective_resolver: SelectiveImportResolver::new(),
+            compile_time_resolver: CompileTimeResolver::new(),
         }
     }
     
@@ -85,6 +103,22 @@ impl TreeShaker {
         
         // Step 5: Analyze import patterns and optimize imports
         self.import_analyzer.analyze_imports(&self.dependency_graph, &self.usage_tracker, module_registry)?;
+        
+        // Step 6: Resolve selective imports based on analysis
+        let resolution_results = self.selective_resolver.resolve_imports(
+            &self.import_analyzer, 
+            &self.dependency_graph, 
+            &self.usage_tracker, 
+            module_registry
+        )?;
+        
+        // Step 7: Perform compile-time dependency resolution
+        let _compile_time_results = self.compile_time_resolver.resolve_compile_time_dependencies(
+            &resolution_results,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry
+        )?;
         
         Ok(())
     }
@@ -175,6 +209,81 @@ impl TreeShaker {
     /// Configure import analysis settings
     pub fn configure_import_analysis(&mut self, config: ImportAnalyzerConfig) {
         self.import_analyzer = ImportAnalyzer::with_config(config);
+    }
+    
+    /// Resolve selective imports and get results
+    pub fn resolve_selective_imports(
+        &mut self,
+        module_registry: &ModuleRegistry,
+    ) -> Result<ImportResolutionResults, TreeShakeError> {
+        self.selective_resolver.resolve_imports(
+            &self.import_analyzer,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )
+    }
+    
+    /// Get selective resolver performance metrics
+    pub fn get_resolver_metrics(&self) -> &selective_resolver::ResolverMetrics {
+        self.selective_resolver.get_performance_metrics()
+    }
+    
+    /// Get import resolution cache statistics
+    pub fn get_resolver_cache_stats(&self) -> &selective_resolver::CacheStats {
+        self.selective_resolver.get_cache_stats()
+    }
+    
+    /// Configure selective import resolver
+    pub fn configure_selective_resolver(&mut self, config: SelectiveResolverConfig) {
+        self.selective_resolver.configure(config);
+    }
+    
+    /// Clear selective import resolution cache
+    pub fn clear_resolver_cache(&mut self) {
+        self.selective_resolver.clear_cache();
+    }
+    
+    /// Perform compile-time dependency resolution
+    pub fn resolve_compile_time_dependencies(
+        &mut self,
+        module_registry: &ModuleRegistry,
+    ) -> Result<CompileTimeResolutionResults, TreeShakeError> {
+        // First get selective import resolution results
+        let resolution_results = self.selective_resolver.resolve_imports(
+            &self.import_analyzer,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )?;
+        
+        // Then perform compile-time resolution
+        self.compile_time_resolver.resolve_compile_time_dependencies(
+            &resolution_results,
+            &self.dependency_graph,
+            &self.usage_tracker,
+            module_registry,
+        )
+    }
+    
+    /// Get compile-time resolver performance metrics
+    pub fn get_compile_time_metrics(&self) -> &compile_time_resolver::ResolverPerformanceMetrics {
+        self.compile_time_resolver.get_performance_metrics()
+    }
+    
+    /// Get compile-time resolver cache statistics
+    pub fn get_compile_time_cache_stats(&self) -> &compile_time_resolver::CacheStatistics {
+        self.compile_time_resolver.get_cache_statistics()
+    }
+    
+    /// Configure compile-time resolver
+    pub fn configure_compile_time_resolver(&mut self, config: CompileTimeResolverConfig) {
+        self.compile_time_resolver.configure(config);
+    }
+    
+    /// Clear compile-time resolver caches
+    pub fn clear_compile_time_caches(&mut self) {
+        self.compile_time_resolver.clear_caches();
     }
 }
 
