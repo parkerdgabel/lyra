@@ -14,6 +14,7 @@ pub mod autodiff;
 pub mod data;
 pub mod list;
 pub mod math;
+pub mod ml;
 pub mod rules;
 pub mod string;
 pub mod table;
