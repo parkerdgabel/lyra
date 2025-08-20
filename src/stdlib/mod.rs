@@ -38,6 +38,7 @@ pub mod string;
 pub mod table;
 pub mod tensor;
 pub mod timeseries;
+pub mod numerical;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -76,6 +77,7 @@ impl StandardLibrary {
         stdlib.register_image_functions();
         stdlib.register_timeseries_functions();
         stdlib.register_clustering_functions();
+        stdlib.register_numerical_functions();
         // stdlib.register_sparse_functions();
         // stdlib.register_spatial_functions();
         stdlib.register_result_functions();
@@ -528,6 +530,41 @@ impl StandardLibrary {
     //     self.register("BallTree", spatial::balltree::balltree);
     //     self.register("RTree", spatial::rtree::rtree);
     // }
+
+    fn register_numerical_functions(&mut self) {
+        // Root finding and equation solving
+        self.register("Bisection", numerical::roots::bisection);
+        self.register("NewtonRaphson", numerical::roots::newton_raphson);
+        self.register("Secant", numerical::roots::secant);
+        self.register("Brent", numerical::roots::brent);
+        self.register("FixedPoint", numerical::roots::fixed_point);
+        
+        // Numerical integration
+        self.register("Trapezoidal", numerical::integration::trapezoidal);
+        self.register("Simpson", numerical::integration::simpson);
+        self.register("Romberg", numerical::integration::romberg);
+        self.register("GaussQuadrature", numerical::integration::gauss_quadrature_fn);
+        self.register("MonteCarlo", numerical::integration::monte_carlo);
+        
+        // Numerical differentiation
+        self.register("FiniteDifference", numerical::differentiation::finite_difference);
+        self.register("RichardsonExtrapolation", numerical::differentiation::richardson_extrapolation_fn);
+        
+        // Mesh generation (placeholders)
+        self.register("DelaunayMesh", numerical::mesh::delaunay_mesh);
+        self.register("VoronoiMesh", numerical::mesh::voronoi_mesh);
+        self.register("UniformMesh", numerical::mesh::uniform_mesh);
+        
+        // Finite element components (placeholders)
+        self.register("StiffnessMatrix", numerical::fem::stiffness_matrix);
+        self.register("MassMatrix", numerical::fem::mass_matrix);
+        self.register("LoadVector", numerical::fem::load_vector);
+        
+        // ODE/PDE solvers (placeholders)
+        self.register("RungeKutta4", numerical::solvers::runge_kutta4);
+        self.register("AdaptiveRK", numerical::solvers::adaptive_rk);
+        self.register("CrankNicolson", numerical::solvers::crank_nicolson);
+    }
 
     fn register_result_functions(&mut self) {
         // Result constructors
