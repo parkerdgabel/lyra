@@ -35,6 +35,7 @@ pub mod signal;
 pub mod special;
 pub mod statistics;
 pub mod string;
+pub mod string_advanced;
 pub mod table;
 pub mod tensor;
 pub mod timeseries;
@@ -44,6 +45,10 @@ pub mod number_theory;
 pub mod combinatorics;
 pub mod geometry;
 pub mod topology;
+pub mod data_processing;
+pub mod temporal;
+pub mod developer_tools;
+pub mod system;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -64,6 +69,7 @@ impl StandardLibrary {
         // Register all function categories
         stdlib.register_list_functions();
         stdlib.register_string_functions();
+        stdlib.register_string_advanced_functions();
         stdlib.register_math_functions();
         stdlib.register_calculus_functions();
         stdlib.register_statistics_functions();
@@ -92,6 +98,10 @@ impl StandardLibrary {
         stdlib.register_combinatorics_functions();
         stdlib.register_geometry_functions();
         stdlib.register_topology_functions();
+        stdlib.register_data_processing_functions();
+        stdlib.register_temporal_functions();
+        stdlib.register_developer_tools_functions();
+        stdlib.register_system_functions();
 
         stdlib
     }
@@ -129,6 +139,43 @@ impl StandardLibrary {
         self.register("StringLength", string::string_length);
         self.register("StringTake", string::string_take);
         self.register("StringDrop", string::string_drop);
+    }
+
+    fn register_string_advanced_functions(&mut self) {
+        // String template and regex operations
+        self.register("StringTemplate", string_advanced::string_template);
+        self.register("RegularExpression", string_advanced::regular_expression);
+        self.register("StringMatch", string_advanced::string_match);
+        self.register("StringExtract", string_advanced::string_extract);
+        self.register("StringReplace", string_advanced::string_replace);
+        
+        // Core string utilities
+        self.register("StringSplit", string_advanced::string_split);
+        self.register("StringTrim", string_advanced::string_trim);
+        self.register("StringContains", string_advanced::string_contains);
+        self.register("StringStartsWith", string_advanced::string_starts_with);
+        self.register("StringEndsWith", string_advanced::string_ends_with);
+        self.register("StringReverse", string_advanced::string_reverse);
+        self.register("StringRepeat", string_advanced::string_repeat);
+        
+        // Case operations
+        self.register("ToUpperCase", string_advanced::to_upper_case);
+        self.register("ToLowerCase", string_advanced::to_lower_case);
+        self.register("TitleCase", string_advanced::title_case);
+        self.register("CamelCase", string_advanced::camel_case);
+        self.register("SnakeCase", string_advanced::snake_case);
+        
+        // Encoding/Decoding functions
+        self.register("Base64Encode", string_advanced::base64_encode);
+        self.register("Base64Decode", string_advanced::base64_decode);
+        self.register("URLEncode", string_advanced::url_encode);
+        self.register("URLDecode", string_advanced::url_decode);
+        self.register("HTMLEscape", string_advanced::html_escape);
+        self.register("HTMLUnescape", string_advanced::html_unescape);
+        self.register("JSONEscape", string_advanced::json_escape);
+        
+        // String formatting
+        self.register("StringFormat", string_advanced::string_format);
     }
 
     fn register_math_functions(&mut self) {
@@ -841,6 +888,214 @@ impl StandardLibrary {
         // Topological Analysis (2 functions)
         self.register("TopologicalFeatures", topology::analysis::topological_features_fn);
         self.register("MapperAlgorithm", topology::analysis::mapper_algorithm_fn);
+    }
+    
+    fn register_data_processing_functions(&mut self) {
+        // Agent 2: Data Manipulation & ETL System (20+ functions)
+        
+        // JSON Processing Functions (5 functions)
+        self.register("JSONParse", data_processing::json_parse);
+        self.register("JSONStringify", data_processing::json_stringify);
+        self.register("JSONQuery", data_processing::json_query);
+        self.register("JSONMerge", data_processing::json_merge);
+        self.register("JSONValidate", data_processing::json_validate);
+        
+        // CSV Processing Functions (4 functions)
+        self.register("CSVParse", data_processing::csv_parse);
+        self.register("CSVStringify", data_processing::csv_stringify);
+        self.register("CSVToTable", data_processing::csv_to_table);
+        self.register("TableToCSV", data_processing::table_to_csv);
+        
+        // Data Transformation Functions (7 functions)
+        self.register("DataTransform", data_processing::data_transform);
+        self.register("DataFilter", data_processing::data_filter);
+        self.register("DataGroup", data_processing::data_group);
+        self.register("DataJoin", data_processing::data_join);
+        self.register("DataSort", data_processing::data_sort);
+        self.register("DataSelect", data_processing::data_select);
+        self.register("DataRename", data_processing::data_rename);
+        
+        // Schema Operations Functions (4 functions)
+        self.register("ValidateData", data_processing::validate_data);
+        self.register("InferSchema", data_processing::infer_schema);
+        self.register("ConvertTypes", data_processing::convert_types);
+        self.register("NormalizeData", data_processing::normalize_data);
+        
+        // Query Engine Functions (3 functions)
+        self.register("DataQuery", data_processing::data_query);
+        self.register("DataIndex", data_processing::data_index);
+        self.register("DataAggregate", data_processing::data_aggregate);
+    }
+
+    fn register_temporal_functions(&mut self) {
+        // Agent 3: Date/Time & Temporal Operations System (30+ functions)
+        
+        // Core Date/Time Types
+        self.register("Date", temporal::date);
+        self.register("DateTime", temporal::datetime);
+        self.register("Duration", temporal::duration);
+        self.register("TimeZone", temporal::timezone);
+        
+        // Current Time Functions
+        self.register("Now", temporal::now);
+        self.register("Today", temporal::today);
+        self.register("UTCNow", temporal::utc_now);
+        self.register("UnixTimestamp", temporal::unix_timestamp);
+        
+        // Date Construction
+        self.register("DateParse", temporal::date_parse);
+        self.register("DateFromUnix", temporal::date_from_unix);
+        self.register("DateFromDays", temporal::date_from_days);
+        self.register("DateFromISOWeek", temporal::date_from_iso_week);
+        
+        // Date Manipulation
+        self.register("DateAdd", temporal::date_add);
+        self.register("DateSubtract", temporal::date_subtract);
+        self.register("DateDifference", temporal::date_difference);
+        self.register("DateTruncate", temporal::date_truncate);
+        self.register("DateRound", temporal::date_round);
+        self.register("DateRange", temporal::date_range);
+        
+        // Date Formatting
+        self.register("DateFormat", temporal::date_format);
+        self.register("DateFormatISO", temporal::date_format_iso);
+        self.register("DateFormatLocal", temporal::date_format_local);
+        self.register("DateToString", temporal::date_to_string);
+        
+        // Date Components
+        self.register("Year", temporal::year);
+        self.register("Month", temporal::month);
+        self.register("Day", temporal::day);
+        self.register("Hour", temporal::hour);
+        self.register("Minute", temporal::minute);
+        self.register("Second", temporal::second);
+        self.register("DayOfWeek", temporal::day_of_week);
+        self.register("DayOfYear", temporal::day_of_year);
+        self.register("WeekOfYear", temporal::week_of_year);
+        self.register("Quarter", temporal::quarter);
+        
+        // Time Zone Operations
+        self.register("TimeZoneConvert", temporal::timezone_convert);
+        self.register("TimeZoneList", temporal::timezone_list);
+        self.register("LocalTimeZone", temporal::local_timezone);
+        self.register("IsDST", temporal::is_dst);
+        
+        // Calendar Operations
+        self.register("BusinessDays", temporal::business_days);
+        self.register("AddBusinessDays", temporal::add_business_days);
+        self.register("IsBusinessDay", temporal::is_business_day);
+        self.register("IsWeekend", temporal::is_weekend);
+        self.register("IsLeapYear", temporal::is_leap_year_fn);
+        
+        // Duration Operations
+        self.register("DurationToSeconds", temporal::duration_to_seconds);
+        self.register("DurationToMinutes", temporal::duration_to_minutes);
+        self.register("DurationToHours", temporal::duration_to_hours);
+        self.register("DurationToDays", temporal::duration_to_days);
+        self.register("DurationAdd", temporal::duration_add);
+        self.register("DurationSubtract", temporal::duration_subtract);
+    }
+
+    fn register_developer_tools_functions(&mut self) {
+        // Agent 4: Developer Experience & Debugging System (25+ functions)
+        
+        // Debugging Tools (5 functions)
+        self.register("Inspect", developer_tools::inspect);
+        self.register("Debug", developer_tools::debug);
+        self.register("Trace", developer_tools::trace_execution);
+        self.register("DebugBreak", developer_tools::debug_break);
+        self.register("StackTrace", developer_tools::stack_trace);
+        
+        // Performance Tools (5 functions)
+        self.register("Timing", developer_tools::timing);
+        self.register("MemoryUsage", developer_tools::memory_usage);
+        self.register("ProfileFunction", developer_tools::profile_function);
+        self.register("Benchmark", developer_tools::benchmark);
+        self.register("BenchmarkCompare", developer_tools::benchmark_compare);
+        
+        // Error Handling (5 functions)
+        self.register("Try", developer_tools::try_catch);
+        self.register("Assert", developer_tools::assert);
+        self.register("Validate", developer_tools::validate);
+        self.register("ErrorMessage", developer_tools::error_message);
+        self.register("ThrowError", developer_tools::throw_error);
+        
+        // Testing Framework (5 functions)
+        self.register("Test", developer_tools::test);
+        self.register("TestSuite", developer_tools::test_suite);
+        self.register("MockData", developer_tools::mock_data);
+        self.register("BenchmarkSuite", developer_tools::benchmark_suite);
+        self.register("TestReport", developer_tools::test_report);
+        
+        // Logging System (5 functions)
+        self.register("Log", developer_tools::log);
+        self.register("LogLevel", developer_tools::log_level);
+        self.register("LogToFile", developer_tools::log_to_file);
+        self.register("LogFilter", developer_tools::log_filter);
+        self.register("LogHistory", developer_tools::log_history);
+        
+        // Introspection & Reflection (6 functions)
+        self.register("FunctionInfo", developer_tools::function_info);
+        self.register("FunctionList", developer_tools::function_list);
+        self.register("Help", developer_tools::help);
+        self.register("TypeOf", developer_tools::type_of);
+        self.register("SizeOf", developer_tools::size_of);
+        self.register("Dependencies", developer_tools::dependencies);
+    }
+
+    fn register_system_functions(&mut self) {
+        // Agent 5: System Integration & Environment System (39+ functions)
+        
+        // Environment Variables (5 functions)
+        self.register("Environment", system::environment);
+        self.register("SetEnvironment", system::set_environment);
+        self.register("UnsetEnvironment", system::unset_environment);
+        self.register("EnvironmentList", system::environment_list);
+        self.register("SystemInfo", system::system_info);
+        
+        // File System Operations (8 functions)
+        self.register("FileExists", system::file_exists);
+        self.register("DirectoryExists", system::directory_exists);
+        self.register("DirectoryList", system::directory_list);
+        self.register("CreateDirectory", system::create_directory);
+        self.register("DeleteFile", system::delete_file);
+        self.register("DeleteDirectory", system::delete_directory);
+        self.register("CopyFile", system::copy_file);
+        self.register("MoveFile", system::move_file);
+        
+        // File Information (7 functions)
+        self.register("FileSize", system::file_size);
+        self.register("FileModificationTime", system::file_modification_time);
+        self.register("FilePermissions", system::file_permissions);
+        self.register("SetFilePermissions", system::set_file_permissions);
+        self.register("IsFile", system::is_file);
+        self.register("IsDirectory", system::is_directory);
+        self.register("IsSymbolicLink", system::is_symbolic_link);
+        
+        // Process Management (6 functions)
+        self.register("RunCommand", system::run_command);
+        self.register("ProcessStart", system::process_start);
+        self.register("ProcessList", system::process_list);
+        self.register("ProcessKill", system::process_kill);
+        self.register("CurrentPID", system::current_pid);
+        self.register("ProcessExists", system::process_exists);
+        
+        // Path Operations (7 functions)
+        self.register("AbsolutePath", system::absolute_path);
+        self.register("RelativePath", system::relative_path);
+        self.register("PathJoin", system::path_join);
+        self.register("PathSplit", system::path_split);
+        self.register("FileName", system::file_name);
+        self.register("FileExtension", system::file_extension);
+        self.register("DirectoryName", system::directory_name);
+        
+        // System Information (6 functions)
+        self.register("CurrentDirectory", system::current_directory);
+        self.register("SetCurrentDirectory", system::set_current_directory);
+        self.register("HomeDirectory", system::home_directory);
+        self.register("TempDirectory", system::temp_directory);
+        self.register("CurrentUser", system::current_user);
+        self.register("SystemArchitecture", system::system_architecture);
     }
 }
 
