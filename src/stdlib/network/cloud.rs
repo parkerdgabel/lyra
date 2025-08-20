@@ -5,6 +5,7 @@ use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::process::{Command, Stdio};
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::time::SystemTime;
@@ -210,6 +211,310 @@ impl Foreign for Container {
     }
     fn clone_boxed(&self) -> Box<dyn Foreign> { Box::new(self.clone()) }
     fn as_any(&self) -> &dyn Any { self }
+}
+
+/// Docker client for container operations
+#[derive(Debug, Clone)]
+pub struct DockerClient {
+    pub docker_host: String,
+    pub api_version: String,
+}
+
+impl DockerClient {
+    pub fn new() -> Self {
+        DockerClient {
+            docker_host: "unix:///var/run/docker.sock".to_string(),
+            api_version: "1.41".to_string(),
+        }
+    }
+
+    /// Execute docker command via CLI
+    pub fn exec_docker_command(&self, args: &[&str]) -> Result<String, DockerError> {
+        let output = Command::new("docker")
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| DockerError::CommandFailed(format!("Failed to execute docker: {}", e)))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(DockerError::CommandFailed(
+                String::from_utf8_lossy(&output.stderr).to_string()
+            ))
+        }
+    }
+
+    /// Pull container image
+    pub fn pull_image(&self, image: &str) -> Result<String, DockerError> {
+        self.exec_docker_command(&["pull", image])
+    }
+
+    /// Run container with configuration
+    pub fn run_container(&self, config: &ContainerConfig) -> Result<String, DockerError> {
+        let mut args = vec!["run", "-d"];
+        let mut port_strs = Vec::new();
+        let mut env_strs = Vec::new();
+        let mut vol_strs = Vec::new();
+        
+        // Add name if specified
+        if let Some(name) = &config.name {
+            args.extend(&["--name", name]);
+        }
+        
+        // Add port mappings
+        for port_map in &config.port_mappings {
+            let port_str = format!("{}:{}", port_map.host_port, port_map.container_port);
+            port_strs.push(port_str);
+        }
+        for port_str in &port_strs {
+            args.extend(&["-p", port_str]);
+        }
+        
+        // Add environment variables
+        for (key, value) in &config.environment {
+            let env_str = format!("{}={}", key, value);
+            env_strs.push(env_str);
+        }
+        for env_str in &env_strs {
+            args.extend(&["-e", env_str]);
+        }
+        
+        // Add volume mounts
+        for volume in &config.volumes {
+            let vol_str = format!("{}:{}", volume.host_path, volume.container_path);
+            vol_strs.push(vol_str);
+        }
+        for vol_str in &vol_strs {
+            args.extend(&["-v", vol_str]);
+        }
+        
+        // Add resource limits
+        if let Some(memory) = &config.memory_limit {
+            args.extend(&["-m", memory]);
+        }
+        if let Some(cpus) = &config.cpu_limit {
+            args.extend(&["--cpus", cpus]);
+        }
+        
+        // Add image
+        args.push(&config.image);
+        
+        // Add command if specified
+        if let Some(cmd) = &config.command {
+            args.extend(cmd.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        }
+        
+        self.exec_docker_command(&args)
+    }
+
+    /// Stop container
+    pub fn stop_container(&self, container_id: &str) -> Result<String, DockerError> {
+        self.exec_docker_command(&["stop", container_id])
+    }
+
+    /// Remove container
+    pub fn remove_container(&self, container_id: &str, force: bool) -> Result<String, DockerError> {
+        if force {
+            self.exec_docker_command(&["rm", "-f", container_id])
+        } else {
+            self.exec_docker_command(&["rm", container_id])
+        }
+    }
+
+    /// Get container logs
+    pub fn get_logs(&self, container_id: &str, tail: Option<u32>) -> Result<String, DockerError> {
+        let mut args = vec!["logs"];
+        let tail_str;
+        if let Some(n) = tail {
+            tail_str = n.to_string();
+            args.extend(&["--tail", &tail_str]);
+        }
+        args.push(container_id);
+        self.exec_docker_command(&args)
+    }
+
+    /// Inspect container
+    pub fn inspect_container(&self, container_id: &str) -> Result<String, DockerError> {
+        self.exec_docker_command(&["inspect", container_id])
+    }
+
+    /// List running containers
+    pub fn list_containers(&self, all: bool) -> Result<String, DockerError> {
+        if all {
+            self.exec_docker_command(&["ps", "-a"])
+        } else {
+            self.exec_docker_command(&["ps"])
+        }
+    }
+
+    /// Execute command in container
+    pub fn exec_in_container(&self, container_id: &str, command: &[String]) -> Result<String, DockerError> {
+        let mut args = vec!["exec", container_id];
+        args.extend(command.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        self.exec_docker_command(&args)
+    }
+}
+
+/// Docker container configuration
+#[derive(Debug, Clone)]
+pub struct ContainerConfig {
+    pub image: String,
+    pub name: Option<String>,
+    pub command: Option<Vec<String>>,
+    pub environment: HashMap<String, String>,
+    pub port_mappings: Vec<PortMapping>,
+    pub volumes: Vec<VolumeMount>,
+    pub memory_limit: Option<String>,
+    pub cpu_limit: Option<String>,
+    pub network_mode: Option<String>,
+    pub restart_policy: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PortMapping {
+    pub host_port: u16,
+    pub container_port: u16,
+    pub protocol: String, // tcp, udp
+}
+
+#[derive(Debug, Clone)]
+pub struct VolumeMount {
+    pub host_path: String,
+    pub container_path: String,
+    pub read_only: bool,
+}
+
+/// Docker operation errors
+#[derive(Debug, Clone)]
+pub enum DockerError {
+    CommandFailed(String),
+    ContainerNotFound(String),
+    ImageNotFound(String),
+    InvalidConfiguration(String),
+    NetworkError(String),
+}
+
+/// Docker container runtime information
+#[derive(Debug, Clone)]
+pub struct ContainerRuntime {
+    pub container_id: String,
+    pub image: String,
+    pub status: ContainerStatus,
+    pub created: SystemTime,
+    pub ports: Vec<PortMapping>,
+    pub environment: HashMap<String, String>,
+    pub docker_client: DockerClient,
+}
+
+#[derive(Debug, Clone)]
+pub enum ContainerStatus {
+    Running,
+    Stopped,
+    Paused,
+    Restarting,
+    Removing,
+    Dead,
+    Created,
+}
+
+impl Foreign for ContainerRuntime {
+    fn type_name(&self) -> &'static str {
+        "ContainerRuntime"
+    }
+    
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+        match method {
+            "ContainerID" => Ok(Value::String(self.container_id.clone())),
+            "Image" => Ok(Value::String(self.image.clone())),
+            "Status" => Ok(Value::String(format!("{:?}", self.status))),
+            "PortCount" => Ok(Value::Integer(self.ports.len() as i64)),
+            "EnvironmentCount" => Ok(Value::Integer(self.environment.len() as i64)),
+            
+            "Stop" => {
+                match self.docker_client.stop_container(&self.container_id) {
+                    Ok(_) => Ok(Value::Boolean(true)),
+                    Err(_) => Ok(Value::Boolean(false)),
+                }
+            },
+            
+            "Remove" => {
+                let force = if args.len() > 0 {
+                    matches!(args[0], Value::Boolean(true))
+                } else {
+                    false
+                };
+                match self.docker_client.remove_container(&self.container_id, force) {
+                    Ok(_) => Ok(Value::Boolean(true)),
+                    Err(_) => Ok(Value::Boolean(false)),
+                }
+            },
+            
+            "Logs" => {
+                let tail = if args.len() > 0 {
+                    match &args[0] {
+                        Value::Integer(n) => Some(*n as u32),
+                        _ => None,
+                    }
+                } else {
+                    Some(100) // Default to last 100 lines
+                };
+                match self.docker_client.get_logs(&self.container_id, tail) {
+                    Ok(logs) => Ok(Value::String(logs)),
+                    Err(e) => Err(ForeignError::InvalidArgument(format!("Failed to get logs: {:?}", e))),
+                }
+            },
+            
+            "Inspect" => {
+                match self.docker_client.inspect_container(&self.container_id) {
+                    Ok(inspect_json) => Ok(Value::String(inspect_json)),
+                    Err(e) => Err(ForeignError::InvalidArgument(format!("Failed to inspect: {:?}", e))),
+                }
+            },
+            
+            "Exec" => {
+                if args.is_empty() {
+                    return Err(ForeignError::InvalidArity {
+                        method: method.to_string(),
+                        expected: 1,
+                        actual: 0,
+                    });
+                }
+                let command = match &args[0] {
+                    Value::String(cmd) => vec![cmd.clone()],
+                    Value::List(items) => {
+                        let mut cmd_parts = Vec::new();
+                        for item in items {
+                            if let Value::String(s) = item {
+                                cmd_parts.push(s.clone());
+                            }
+                        }
+                        cmd_parts
+                    },
+                    _ => return Err(ForeignError::InvalidArgument("Command must be string or list of strings".to_string())),
+                };
+                
+                match self.docker_client.exec_in_container(&self.container_id, &command) {
+                    Ok(output) => Ok(Value::String(output)),
+                    Err(e) => Err(ForeignError::InvalidArgument(format!("Failed to exec: {:?}", e))),
+                }
+            },
+            
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: self.type_name().to_string(),
+                method: method.to_string(),
+            }),
+        }
+    }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 // =============================================================================
@@ -492,14 +797,308 @@ pub fn container_run(args: &[Value]) -> VmResult<Value> {
         }),
     };
     
-    let container = Container {
+    // Parse configuration if provided
+    let mut config = ContainerConfig {
         image: image.clone(),
-        name: format!("container-{}", image.replace(':', "-")),
-        ports: vec![8080],
+        name: None,
+        command: None,
         environment: HashMap::new(),
+        port_mappings: Vec::new(),
+        volumes: Vec::new(),
+        memory_limit: None,
+        cpu_limit: None,
+        network_mode: None,
+        restart_policy: None,
     };
     
-    Ok(Value::LyObj(LyObj::new(Box::new(container))))
+    if args.len() == 2 {
+        match &args[1] {
+            Value::List(config_items) => {
+                for item in config_items {
+                    match item {
+                        Value::Rule { lhs, rhs } => {
+                            if let Value::String(key) = lhs.as_ref() {
+                                match key.as_str() {
+                                    "Name" => {
+                                        if let Value::String(name) = rhs.as_ref() {
+                                            config.name = Some(name.clone());
+                                        }
+                                    },
+                                    "Command" => {
+                                        match rhs.as_ref() {
+                                            Value::String(cmd) => config.command = Some(vec![cmd.clone()]),
+                                            Value::List(items) => {
+                                                let mut cmd_parts = Vec::new();
+                                                for cmd_item in items {
+                                                    if let Value::String(s) = cmd_item {
+                                                        cmd_parts.push(s.clone());
+                                                    }
+                                                }
+                                                config.command = Some(cmd_parts);
+                                            },
+                                            _ => {}
+                                        }
+                                    },
+                                    "Memory" => {
+                                        if let Value::String(mem) = rhs.as_ref() {
+                                            config.memory_limit = Some(mem.clone());
+                                        }
+                                    },
+                                    "CPU" => {
+                                        if let Value::String(cpu) = rhs.as_ref() {
+                                            config.cpu_limit = Some(cpu.clone());
+                                        }
+                                    },
+                                    "Ports" => {
+                                        if let Value::List(port_items) = rhs.as_ref() {
+                                            for port_item in port_items {
+                                                if let Value::String(port_spec) = port_item {
+                                                    // Parse "host:container" format
+                                                    let parts: Vec<&str> = port_spec.split(':').collect();
+                                                    if parts.len() == 2 {
+                                                        if let (Ok(host), Ok(container)) = (parts[0].parse::<u16>(), parts[1].parse::<u16>()) {
+                                                            config.port_mappings.push(PortMapping {
+                                                                host_port: host,
+                                                                container_port: container,
+                                                                protocol: "tcp".to_string(),
+                                                            });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "Environment" => {
+                                        if let Value::List(env_items) = rhs.as_ref() {
+                                            for env_item in env_items {
+                                                if let Value::Rule { lhs: env_key, rhs: env_value } = env_item {
+                                                    if let (Value::String(k), Value::String(v)) = (env_key.as_ref(), env_value.as_ref()) {
+                                                        config.environment.insert(k.clone(), v.clone());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => return Err(VmError::TypeError {
+                expected: "List of configuration rules".to_string(),
+                actual: format!("{:?}", args[1]),
+            }),
+        }
+    }
+    
+    // Create Docker client and run container
+    let docker_client = DockerClient::new();
+    
+    match docker_client.run_container(&config) {
+        Ok(container_output) => {
+            // Parse container ID from output (typically first 12 characters)
+            let container_id = container_output.trim().to_string();
+            
+            let runtime = ContainerRuntime {
+                container_id: container_id.clone(),
+                image: config.image.clone(),
+                status: ContainerStatus::Running,
+                created: SystemTime::now(),
+                ports: config.port_mappings.clone(),
+                environment: config.environment.clone(),
+                docker_client,
+            };
+            
+            Ok(Value::LyObj(LyObj::new(Box::new(runtime))))
+        },
+        Err(e) => Err(VmError::Runtime(format!("Failed to run container: {:?}", e))),
+    }
+}
+
+/// ContainerStop[container] - Stop running container
+pub fn container_stop(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (container)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let container = match &args[0] {
+        Value::LyObj(obj) => obj.downcast_ref::<ContainerRuntime>()
+            .ok_or_else(|| VmError::TypeError {
+                expected: "ContainerRuntime object".to_string(),
+                actual: format!("{:?}", args[0]),
+            })?,
+        _ => return Err(VmError::TypeError {
+            expected: "ContainerRuntime object".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+    
+    match container.docker_client.stop_container(&container.container_id) {
+        Ok(_) => Ok(Value::Boolean(true)),
+        Err(e) => {
+            eprintln!("Failed to stop container: {:?}", e);
+            Ok(Value::Boolean(false))
+        }
+    }
+}
+
+/// ContainerLogs[container, options] - Retrieve container logs
+pub fn container_logs(args: &[Value]) -> VmResult<Value> {
+    if args.len() < 1 || args.len() > 2 {
+        return Err(VmError::TypeError {
+            expected: "1-2 arguments (container, [options])".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let container = match &args[0] {
+        Value::LyObj(obj) => obj.downcast_ref::<ContainerRuntime>()
+            .ok_or_else(|| VmError::TypeError {
+                expected: "ContainerRuntime object".to_string(),
+                actual: format!("{:?}", args[0]),
+            })?,
+        _ => return Err(VmError::TypeError {
+            expected: "ContainerRuntime object".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+    
+    let tail = if args.len() == 2 {
+        match &args[1] {
+            Value::Integer(n) => Some(*n as u32),
+            _ => Some(100),
+        }
+    } else {
+        Some(100)
+    };
+    
+    match container.docker_client.get_logs(&container.container_id, tail) {
+        Ok(logs) => Ok(Value::String(logs)),
+        Err(e) => Err(VmError::Runtime(format!("Failed to get logs: {:?}", e))),
+    }
+}
+
+/// ContainerInspect[container] - Get container metadata/status
+pub fn container_inspect(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (container)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let container = match &args[0] {
+        Value::LyObj(obj) => obj.downcast_ref::<ContainerRuntime>()
+            .ok_or_else(|| VmError::TypeError {
+                expected: "ContainerRuntime object".to_string(),
+                actual: format!("{:?}", args[0]),
+            })?,
+        _ => return Err(VmError::TypeError {
+            expected: "ContainerRuntime object".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+    
+    match container.docker_client.inspect_container(&container.container_id) {
+        Ok(inspect_json) => Ok(Value::String(inspect_json)),
+        Err(e) => Err(VmError::Runtime(format!("Failed to inspect container: {:?}", e))),
+    }
+}
+
+/// ContainerExec[container, command] - Execute commands in container
+pub fn container_exec(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (container, command)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let container = match &args[0] {
+        Value::LyObj(obj) => obj.downcast_ref::<ContainerRuntime>()
+            .ok_or_else(|| VmError::TypeError {
+                expected: "ContainerRuntime object".to_string(),
+                actual: format!("{:?}", args[0]),
+            })?,
+        _ => return Err(VmError::TypeError {
+            expected: "ContainerRuntime object".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+    
+    let command = match &args[1] {
+        Value::String(cmd) => vec![cmd.clone()],
+        Value::List(items) => {
+            let mut cmd_parts = Vec::new();
+            for item in items {
+                if let Value::String(s) = item {
+                    cmd_parts.push(s.clone());
+                }
+            }
+            cmd_parts
+        },
+        _ => return Err(VmError::TypeError {
+            expected: "String or list of strings for command".to_string(),
+            actual: format!("{:?}", args[1]),
+        }),
+    };
+    
+    match container.docker_client.exec_in_container(&container.container_id, &command) {
+        Ok(output) => Ok(Value::String(output)),
+        Err(e) => Err(VmError::Runtime(format!("Failed to execute command: {:?}", e))),
+    }
+}
+
+/// ContainerList[] - List all containers
+pub fn container_list(args: &[Value]) -> VmResult<Value> {
+    if args.len() > 1 {
+        return Err(VmError::TypeError {
+            expected: "0-1 arguments ([show_all])".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let show_all = if args.len() == 1 {
+        matches!(args[0], Value::Boolean(true))
+    } else {
+        false
+    };
+    
+    let docker_client = DockerClient::new();
+    match docker_client.list_containers(show_all) {
+        Ok(container_list) => Ok(Value::String(container_list)),
+        Err(e) => Err(VmError::Runtime(format!("Failed to list containers: {:?}", e))),
+    }
+}
+
+/// ContainerPull[image] - Pull container image
+pub fn container_pull(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (image)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    
+    let image = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "String for image".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+    
+    let docker_client = DockerClient::new();
+    match docker_client.pull_image(&image) {
+        Ok(output) => Ok(Value::String(output)),
+        Err(e) => Err(VmError::Runtime(format!("Failed to pull image: {:?}", e))),
+    }
 }
 
 pub fn kubernetes_service(_args: &[Value]) -> VmResult<Value> {

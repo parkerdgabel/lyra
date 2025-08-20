@@ -699,6 +699,14 @@ impl StandardLibrary {
         self.register("CloudDelete", network::cloud_delete);
         self.register("CloudMetadata", network::cloud_metadata);
         self.register("CloudPresignedURL", network::cloud_presigned_url);
+        
+        // Docker Container API Functions
+        self.register("ContainerStop", network::container_stop);
+        self.register("ContainerLogs", network::container_logs);
+        self.register("ContainerInspect", network::container_inspect);
+        self.register("ContainerExec", network::container_exec);
+        self.register("ContainerList", network::container_list);
+        self.register("ContainerPull", network::container_pull);
     }
 
     fn register_number_theory_functions(&mut self) {
