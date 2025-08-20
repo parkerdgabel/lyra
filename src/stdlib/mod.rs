@@ -40,6 +40,7 @@ pub mod tensor;
 pub mod timeseries;
 pub mod numerical;
 pub mod network;
+pub mod number_theory;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -84,6 +85,7 @@ impl StandardLibrary {
         stdlib.register_result_functions();
         stdlib.register_async_functions();
         stdlib.register_network_functions();
+        stdlib.register_number_theory_functions();
 
         stdlib
     }
@@ -650,6 +652,43 @@ impl StandardLibrary {
         self.register("KubernetesService", network::kubernetes_service);
         self.register("CloudDeploy", network::cloud_deploy);
         self.register("CloudMonitor", network::cloud_monitor);
+    }
+
+    fn register_number_theory_functions(&mut self) {
+        // Phase 13A: Advanced Number Theory (25 functions)
+        
+        // Prime Number Algorithms (8 functions)
+        self.register("PrimeQ", number_theory::prime_q);
+        self.register("NextPrime", number_theory::next_prime);
+        self.register("PreviousPrime", number_theory::previous_prime);
+        self.register("PrimePi", number_theory::prime_pi);
+        self.register("PrimeFactorization", number_theory::prime_factorization);
+        self.register("EulerPhi", number_theory::euler_phi_fn);
+        self.register("MoebiusMu", number_theory::moebius_mu_fn);
+        self.register("DivisorSigma", number_theory::divisor_sigma_fn);
+        
+        // Algebraic Number Theory (7 functions)
+        self.register("GCD", number_theory::gcd_fn);
+        self.register("LCM", number_theory::lcm_fn);
+        self.register("ChineseRemainder", number_theory::chinese_remainder);
+        self.register("JacobiSymbol", number_theory::jacobi_symbol_fn);
+        self.register("ContinuedFraction", number_theory::continued_fraction_fn);
+        self.register("AlgebraicNumber", number_theory::algebraic_number);
+        self.register("MinimalPolynomial", number_theory::minimal_polynomial);
+        
+        // Modular Arithmetic (6 functions)
+        self.register("PowerMod", number_theory::power_mod_fn);
+        self.register("ModularInverse", number_theory::modular_inverse_fn);
+        self.register("DiscreteLog", number_theory::discrete_log_fn);
+        self.register("QuadraticResidue", number_theory::quadratic_residue_fn);
+        self.register("PrimitiveRoot", number_theory::primitive_root_fn);
+        self.register("MultOrder", number_theory::mult_order_fn);
+        
+        // Cryptographic Primitives (4 functions)
+        self.register("RSAGenerate", number_theory::rsa_generate);
+        self.register("ECPoint", number_theory::ec_point);
+        self.register("HashFunction", number_theory::hash_function);
+        self.register("RandomPrime", number_theory::random_prime);
     }
 }
 

@@ -9,6 +9,9 @@ use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime};
+use tokio::runtime::Runtime;
+use reqwest::{Client, Method, RequestBuilder};
+use url::Url;
 
 /// HTTP client configuration and state
 #[derive(Debug, Clone)]
@@ -43,44 +46,129 @@ impl HttpClient {
         }
     }
     
-    /// Execute a network request (placeholder implementation)
+    /// Execute a network request using reqwest HTTP client
     pub fn execute(&self, request: &NetworkRequest) -> Result<NetworkResponse, String> {
-        // This is a placeholder implementation
-        // In a real implementation, this would use an HTTP library like reqwest
+        let rt = Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
         
-        let start_time = Instant::now();
-        
-        // Simulate different responses based on URL
-        let (status, body) = if request.url.contains("error") {
-            (500, b"Internal Server Error".to_vec())
-        } else if request.url.contains("notfound") {
-            (404, b"Not Found".to_vec())
-        } else if request.url.contains("json") {
-            (200, br#"{"message": "Hello from Lyra!", "timestamp": 1234567890}"#.to_vec())
-        } else {
-            (200, b"Hello from Lyra HTTP client!".to_vec())
-        };
-        
-        let mut headers = HashMap::new();
-        if body.starts_with(b"{") {
-            headers.insert("Content-Type".to_string(), "application/json".to_string());
-        } else {
-            headers.insert("Content-Type".to_string(), "text/plain".to_string());
-        }
-        headers.insert("Content-Length".to_string(), body.len().to_string());
-        headers.insert("Server".to_string(), "Lyra-Mock/1.0".to_string());
-        
-        let mut response = NetworkResponse::new(status, headers, body);
-        response.response_time = start_time.elapsed().as_secs_f64() * 1000.0;
-        response.final_url = request.url.clone();
-        
-        Ok(response)
+        rt.block_on(async { self.execute_async(request).await })
     }
     
-    /// Execute multiple requests in parallel (placeholder)
+    /// Execute a network request asynchronously
+    pub async fn execute_async(&self, request: &NetworkRequest) -> Result<NetworkResponse, String> {
+        let start_time = Instant::now();
+        
+        // Build reqwest client with configuration
+        let client = Client::builder()
+            .timeout(request.timeout)
+            .redirect(if self.follow_redirects {
+                reqwest::redirect::Policy::limited(self.max_redirects as usize)
+            } else {
+                reqwest::redirect::Policy::none()
+            })
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        
+        // Convert HttpMethod to reqwest::Method
+        let method = match request.method {
+            HttpMethod::GET => Method::GET,
+            HttpMethod::POST => Method::POST,
+            HttpMethod::PUT => Method::PUT,
+            HttpMethod::DELETE => Method::DELETE,
+            HttpMethod::PATCH => Method::PATCH,
+            HttpMethod::HEAD => Method::HEAD,
+            HttpMethod::OPTIONS => Method::OPTIONS,
+            HttpMethod::TRACE => Method::TRACE,
+        };
+        
+        // Parse URL
+        let url = Url::parse(&request.url)
+            .map_err(|e| format!("Invalid URL '{}': {}", request.url, e))?;
+        
+        // Build request
+        let mut req_builder = client.request(method, url);
+        
+        // Add headers
+        let effective_headers = request.effective_headers();
+        for (key, value) in effective_headers {
+            req_builder = req_builder.header(&key, &value);
+        }
+        
+        // Add body if present
+        if let Some(ref body) = request.body {
+            req_builder = req_builder.body(body.clone());
+        }
+        
+        // Execute request with retries
+        let mut last_error = String::new();
+        for attempt in 0..=request.retries {
+            match req_builder.try_clone() {
+                Some(cloned_builder) => {
+                    match cloned_builder.send().await {
+                        Ok(response) => {
+                            let response_time = start_time.elapsed().as_secs_f64() * 1000.0;
+                            return self.convert_response(response, response_time, &request.url).await;
+                        }
+                        Err(e) => {
+                            last_error = format!("HTTP request failed (attempt {}): {}", attempt + 1, e);
+                            if attempt < request.retries {
+                                // Exponential backoff: 100ms, 200ms, 400ms, etc.
+                                let backoff_ms = 100 * (1 << attempt);
+                                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                            }
+                        }
+                    }
+                }
+                None => {
+                    return Err("Request body is not cloneable for retry".to_string());
+                }
+            }
+        }
+        
+        Err(last_error)
+    }
+    
+    /// Convert reqwest Response to NetworkResponse
+    async fn convert_response(
+        &self, 
+        response: reqwest::Response, 
+        response_time: f64,
+        original_url: &str
+    ) -> Result<NetworkResponse, String> {
+        let status = response.status().as_u16();
+        let final_url = response.url().to_string();
+        
+        // Extract headers
+        let mut headers = HashMap::new();
+        for (name, value) in response.headers() {
+            if let Ok(value_str) = value.to_str() {
+                headers.insert(name.to_string(), value_str.to_string());
+            }
+        }
+        
+        // Read body
+        let body = response.bytes().await
+            .map_err(|e| format!("Failed to read response body: {}", e))?
+            .to_vec();
+        
+        let mut network_response = NetworkResponse::new(status, headers, body);
+        network_response.response_time = response_time;
+        network_response.final_url = final_url;
+        network_response.from_cache = false; // reqwest doesn't expose cache info easily
+        
+        Ok(network_response)
+    }
+    
+    /// Execute multiple requests in parallel using async/await
     pub fn execute_parallel(&self, requests: &[NetworkRequest]) -> Vec<Result<NetworkResponse, String>> {
-        // Placeholder: In real implementation, would use async/parallel execution
-        requests.iter().map(|req| self.execute(req)).collect()
+        let rt = Runtime::new().expect("Failed to create tokio runtime");
+        
+        rt.block_on(async {
+            let futures: Vec<_> = requests.iter()
+                .map(|req| self.execute_async(req))
+                .collect();
+            
+            futures::future::join_all(futures).await
+        })
     }
 }
 
