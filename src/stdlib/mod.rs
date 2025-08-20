@@ -39,6 +39,7 @@ pub mod table;
 pub mod tensor;
 pub mod timeseries;
 pub mod numerical;
+pub mod network;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -82,6 +83,7 @@ impl StandardLibrary {
         // stdlib.register_spatial_functions();
         stdlib.register_result_functions();
         stdlib.register_async_functions();
+        stdlib.register_network_functions();
 
         stdlib
     }
@@ -595,6 +597,59 @@ impl StandardLibrary {
     fn register_async_functions(&mut self) {
         // Async operations temporarily disabled due to compilation issues
         // TODO: Re-enable after fixing thread safety issues in async_ops module
+    }
+
+    fn register_network_functions(&mut self) {
+        // Phase 12A: Core Network Primitives
+        self.register("NetworkEndpoint", network::network_endpoint);
+        self.register("NetworkRequest", network::network_request);
+        self.register("NetworkAuth", network::network_auth);
+        self.register("URLRead", network::url_read);
+        self.register("URLWrite", network::url_write);
+        self.register("URLStream", network::url_stream);
+        self.register("NetworkPing", network::network_ping);
+        self.register("DNSResolve", network::dns_resolve);
+        self.register("HttpClient", network::http_client);
+        
+        // WebSocket operations
+        self.register("WebSocket", network::websocket);
+        self.register("WebSocketConnect", network::websocket_connect);
+        self.register("WebSocketSend", network::websocket_send);
+        self.register("WebSocketReceive", network::websocket_receive);
+        self.register("WebSocketClose", network::websocket_close);
+        self.register("WebSocketPing", network::websocket_ping);
+        
+        // Phase 12B: Event-Driven Architecture (placeholders)
+        self.register("EventStream", network::event_stream);
+        self.register("EventSubscribe", network::event_subscribe);
+        self.register("EventPublish", network::event_publish);
+        self.register("MessageQueue", network::message_queue);
+        self.register("NetworkChannel", network::network_channel);
+        
+        // Phase 12C: Distributed Computing (placeholders)
+        self.register("RemoteFunction", network::remote_function);
+        self.register("DistributedMap", network::distributed_map);
+        self.register("DistributedReduce", network::distributed_reduce);
+        self.register("ServiceRegistry", network::service_registry);
+        self.register("ServiceDiscover", network::service_discover);
+        self.register("LoadBalancer", network::load_balancer);
+        self.register("ComputeCluster", network::compute_cluster);
+        
+        // Phase 12D: Network Analysis (placeholders)
+        self.register("NetworkGraph", network::network_graph);
+        self.register("NetworkFlow", network::network_flow);
+        self.register("NetworkMetrics", network::network_metrics);
+        self.register("NetworkMonitor", network::network_monitor);
+        self.register("NetworkBottlenecks", network::network_bottlenecks);
+        self.register("OptimizeTopology", network::optimize_topology);
+        
+        // Phase 12E: Cloud Integration (placeholders)
+        self.register("CloudFunction", network::cloud_function);
+        self.register("CloudStorage", network::cloud_storage);
+        self.register("ContainerRun", network::container_run);
+        self.register("KubernetesService", network::kubernetes_service);
+        self.register("CloudDeploy", network::cloud_deploy);
+        self.register("CloudMonitor", network::cloud_monitor);
     }
 }
 
