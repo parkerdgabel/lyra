@@ -686,9 +686,23 @@ impl StandardLibrary {
         
         // Phase 12E: Cloud Integration
         self.register("CloudFunction", network::cloud_function);
+        self.register("CloudFunctionDeploy", network::cloud_function_deploy);
+        self.register("CloudFunctionInvoke", network::cloud_function_invoke);
+        self.register("CloudFunctionUpdate", network::cloud_function_update);
+        self.register("CloudFunctionLogs", network::cloud_function_logs);
+        self.register("CloudFunctionMetrics", network::cloud_function_metrics);
+        self.register("CloudFunctionDelete", network::cloud_function_delete);
         self.register("CloudStorage", network::cloud_storage);
         self.register("ContainerRun", network::container_run);
         self.register("KubernetesService", network::kubernetes_service);
+        self.register("KubernetesDeploy", network::kubernetes_deploy);
+        self.register("DeploymentScale", network::deployment_scale);
+        self.register("RollingUpdate", network::rolling_update);
+        self.register("ConfigMapCreate", network::configmap_create);
+        self.register("ServiceExpose", network::service_expose);
+        self.register("PodLogs", network::pod_logs);
+        self.register("ResourceGet", network::resource_get);
+        self.register("ResourceDelete", network::resource_delete);
         self.register("CloudDeploy", network::cloud_deploy);
         self.register("CloudMonitor", network::cloud_monitor);
         

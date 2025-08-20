@@ -3,8 +3,7 @@
 use crate::security::{SecurityManager, SecurityError, SecurityResult};
 use crate::security::validation::{validate_input, Validatable};
 use crate::security::audit::SecurityEvent;
-use crate::vm::{Value, VmResult};
-use crate::error::Error;
+use crate::vm::{Value, VmResult, VmError};
 use std::time::Instant;
 use std::sync::Arc;
 
@@ -30,7 +29,7 @@ impl SecureStdlibWrapper {
         function: F,
     ) -> VmResult<Value>
     where
-        F: FnOnce(&[Value]) -> VmResult<Value>,
+        F: FnOnce(&[Value]) -> VmResult<Value> + Send,
     {
         let start_time = Instant::now();
         
@@ -42,7 +41,7 @@ impl SecureStdlibWrapper {
                 limit: 0, // Will be filled by rate limiter
                 timestamp: std::time::SystemTime::now(),
             });
-            return Err(Error::SecurityViolation(format!("Rate limit exceeded for {}: {}", function_name, e)));
+            return Err(VmError::SecurityViolation(format!("Rate limit exceeded for {}: {}", function_name, e)));
         }
         
         // 2. Input validation
@@ -54,7 +53,7 @@ impl SecureStdlibWrapper {
                     operation: function_name.to_string(),
                     timestamp: std::time::SystemTime::now(),
                 });
-                return Err(Error::SecurityViolation(format!("Invalid input for {}: {}", function_name, e)));
+                return Err(VmError::SecurityViolation(format!("Invalid input for {}: {}", function_name, e)));
             }
         }
         
@@ -64,7 +63,7 @@ impl SecureStdlibWrapper {
         // 4. Sandbox execution
         let result = self.security_manager.execute_sandboxed(&self.context_id, || {
             function(args)
-        }).map_err(|e| Error::SecurityViolation(format!("Sandbox violation in {}: {}", function_name, e)))?;
+        }).map_err(|e| VmError::SecurityViolation(format!("Sandbox violation in {}: {}", function_name, e)))?;
         
         // 5. Resource tracking
         let execution_time = start_time.elapsed().as_millis() as u64;
@@ -79,7 +78,7 @@ impl SecureStdlibWrapper {
                 context: self.context_id.clone(),
                 timestamp: std::time::SystemTime::now(),
             });
-            return Err(Error::SecurityViolation(format!("Resource limit exceeded in {}: {}", function_name, e)));
+            return Err(VmError::SecurityViolation(format!("Resource limit exceeded in {}: {}", function_name, e)));
         }
         
         result
@@ -91,7 +90,7 @@ impl SecureStdlibWrapper {
             // Tensor operations
             "Array" | "Tensor" => {
                 if args.is_empty() {
-                    return Err(Error::SecurityViolation("Array/Tensor requires at least one argument".to_string()));
+                    return Err(VmError::SecurityViolation("Array/Tensor requires at least one argument".to_string()));
                 }
                 
                 // Validate nested structure depth and size
@@ -102,13 +101,13 @@ impl SecureStdlibWrapper {
             
             "ArrayReshape" => {
                 if args.len() != 2 {
-                    return Err(Error::SecurityViolation("ArrayReshape requires exactly 2 arguments".to_string()));
+                    return Err(VmError::SecurityViolation("ArrayReshape requires exactly 2 arguments".to_string()));
                 }
                 
                 if let Value::List(shape) = &args[1] {
                     let config = self.security_manager.config();
                     if shape.len() > config.max_tensor_dimensions {
-                        return Err(Error::SecurityViolation(
+                        return Err(VmError::SecurityViolation(
                             format!("Too many dimensions for reshape: {} > {}", 
                                    shape.len(), config.max_tensor_dimensions)
                         ));
@@ -128,12 +127,12 @@ impl SecureStdlibWrapper {
                     
                     match total_size {
                         Ok(size) if size > config.max_tensor_size => {
-                            return Err(Error::SecurityViolation(
+                            return Err(VmError::SecurityViolation(
                                 format!("Reshaped tensor too large: {} > {}", size, config.max_tensor_size)
                             ));
                         }
                         Err(msg) => {
-                            return Err(Error::SecurityViolation(format!("Invalid reshape dimensions: {}", msg)));
+                            return Err(VmError::SecurityViolation(format!("Invalid reshape dimensions: {}", msg)));
                         }
                         _ => {}
                     }
@@ -148,7 +147,7 @@ impl SecureStdlibWrapper {
                     .sum();
                 
                 if total_length > config.max_string_length {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("StringJoin result too long: {} > {}", total_length, config.max_string_length)
                     ));
                 }
@@ -156,12 +155,12 @@ impl SecureStdlibWrapper {
             
             "StringTake" | "StringDrop" => {
                 if args.len() != 2 {
-                    return Err(Error::SecurityViolation(format!("{} requires exactly 2 arguments", function_name)));
+                    return Err(VmError::SecurityViolation(format!("{} requires exactly 2 arguments", function_name)));
                 }
                 
                 if let (Value::String(s), Value::Integer(n)) = (&args[0], &args[1]) {
                     if n.abs() as usize > s.len() * 2 {
-                        return Err(Error::SecurityViolation(
+                        return Err(VmError::SecurityViolation(
                             "String operation index too large relative to string length".to_string()
                         ));
                     }
@@ -171,19 +170,19 @@ impl SecureStdlibWrapper {
             // Math operations that could be expensive
             "Power" => {
                 if args.len() != 2 {
-                    return Err(Error::SecurityViolation("Power requires exactly 2 arguments".to_string()));
+                    return Err(VmError::SecurityViolation("Power requires exactly 2 arguments".to_string()));
                 }
                 
                 // Prevent extremely large exponents
                 if let Value::Integer(exp) = &args[1] {
                     if exp.abs() > 1000 {
-                        return Err(Error::SecurityViolation(
+                        return Err(VmError::SecurityViolation(
                             format!("Exponent too large: {}", exp)
                         ));
                     }
                 } else if let Value::Real(exp) = &args[1] {
                     if exp.abs() > 1000.0 {
-                        return Err(Error::SecurityViolation(
+                        return Err(VmError::SecurityViolation(
                             format!("Exponent too large: {}", exp)
                         ));
                     }
@@ -193,7 +192,7 @@ impl SecureStdlibWrapper {
             // Range operations
             "Range" => {
                 if args.is_empty() || args.len() > 3 {
-                    return Err(Error::SecurityViolation("Range requires 1-3 arguments".to_string()));
+                    return Err(VmError::SecurityViolation("Range requires 1-3 arguments".to_string()));
                 }
                 
                 // Calculate range size to prevent memory bombs
@@ -205,13 +204,13 @@ impl SecureStdlibWrapper {
                 };
                 
                 if step == 0 {
-                    return Err(Error::SecurityViolation("Range step cannot be zero".to_string()));
+                    return Err(VmError::SecurityViolation("Range step cannot be zero".to_string()));
                 }
                 
                 let range_size = ((end - start).abs() / step.abs()) as usize;
                 let config = self.security_manager.config();
                 if range_size > config.max_list_length {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Range too large: {} > {}", range_size, config.max_list_length)
                     ));
                 }
@@ -220,7 +219,7 @@ impl SecureStdlibWrapper {
             // I/O operations - require special permissions
             "Import" | "Export" | "FileOpen" => {
                 // These should be blocked in sandbox by default
-                return Err(Error::SecurityViolation(
+                return Err(VmError::SecurityViolation(
                     format!("I/O operation {} not permitted in secure context", function_name)
                 ));
             }
@@ -230,7 +229,7 @@ impl SecureStdlibWrapper {
                 if let Some(Value::List(data)) = args.first() {
                     let config = self.security_manager.config();
                     if data.len() > config.max_tensor_size / 2 {
-                        return Err(Error::SecurityViolation(
+                        return Err(VmError::SecurityViolation(
                             format!("FFT input too large: {} elements", data.len())
                         ));
                     }
@@ -247,7 +246,7 @@ impl SecureStdlibWrapper {
             _ => {
                 // Default validation for unknown functions
                 if args.len() > 100 {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Too many arguments for function {}: {}", function_name, args.len())
                     ));
                 }
@@ -262,7 +261,7 @@ impl SecureStdlibWrapper {
         const MAX_TENSOR_DEPTH: usize = 10;
         
         if depth > MAX_TENSOR_DEPTH {
-            return Err(Error::SecurityViolation(
+            return Err(VmError::SecurityViolation(
                 format!("Tensor nesting too deep: {} > {}", depth, MAX_TENSOR_DEPTH)
             ));
         }
@@ -271,7 +270,7 @@ impl SecureStdlibWrapper {
             Value::List(list) => {
                 let config = self.security_manager.config();
                 if list.len() > config.max_list_length {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Tensor dimension too large: {} > {}", list.len(), config.max_list_length)
                     ));
                 }
@@ -282,19 +281,19 @@ impl SecureStdlibWrapper {
             }
             Value::Integer(n) => {
                 if n.abs() > 1_000_000_000_000_000 { // 10^15
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Integer value too large: {}", n)
                     ));
                 }
             }
             Value::Real(f) => {
                 if !f.is_finite() {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Invalid real number: {}", f)
                     ));
                 }
                 if f.abs() > 1e100 {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("Real value too large: {}", f)
                     ));
                 }
@@ -315,7 +314,7 @@ impl SecureStdlibWrapper {
                 let max_ml_elements = config.max_tensor_size / 10; // More restrictive for ML
                 
                 if total_elements > max_ml_elements {
-                    return Err(Error::SecurityViolation(
+                    return Err(VmError::SecurityViolation(
                         format!("ML operation {} input too large: {} elements > {}", 
                                function_name, total_elements, max_ml_elements)
                     ));
@@ -339,7 +338,7 @@ impl SecureStdlibWrapper {
         match value {
             Value::Integer(n) => {
                 if n.abs() > 1_000_000_000 {
-                    Err(Error::SecurityViolation(format!("Integer too large: {}", n)))
+                    Err(VmError::SecurityViolation(format!("Integer too large: {}", n)))
                 } else {
                     Ok(*n)
                 }
@@ -348,10 +347,10 @@ impl SecureStdlibWrapper {
                 if f.fract() == 0.0 && f.abs() <= 1_000_000_000.0 {
                     Ok(*f as i64)
                 } else {
-                    Err(Error::SecurityViolation("Expected integer value".to_string()))
+                    Err(VmError::SecurityViolation("Expected integer value".to_string()))
                 }
             }
-            _ => Err(Error::SecurityViolation("Expected numeric value".to_string())),
+            _ => Err(VmError::SecurityViolation("Expected numeric value".to_string())),
         }
     }
     
@@ -374,8 +373,8 @@ impl SecureStdlibWrapper {
             Value::List(list) => {
                 24 + list.iter().map(|item| self.estimate_value_memory(item)).sum::<i64>()
             }
-            Value::Function { name, args } => {
-                name.len() as i64 + 24 + args.iter().map(|arg| self.estimate_value_memory(arg)).sum::<i64>()
+            Value::Function(name) => {
+                name.len() as i64 + 24  // Function name plus basic overhead
             }
             Value::LyObj(_) => 1000, // Conservative estimate for foreign objects
         }

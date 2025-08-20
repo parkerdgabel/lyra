@@ -30,6 +30,8 @@ pub enum VmError {
     IndexError { index: i64, length: usize },
     #[error("Runtime error: {0}")]
     Runtime(String),
+    #[error("Security violation: {0}")]
+    SecurityViolation(String),
 }
 
 pub type VmResult<T> = std::result::Result<T, VmError>;

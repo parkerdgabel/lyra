@@ -97,6 +97,27 @@ pub fn validate_list<T>(list: &[T], config: &SecurityConfig) -> SecurityResult<(
     Ok(())
 }
 
+/// Validate function name
+pub fn validate_function_name(name: &str, config: &SecurityConfig) -> SecurityResult<()> {
+    if name.len() > config.max_string_length {
+        return Err(SecurityError::InvalidInput {
+            input_type: "function_name".to_string(),
+            reason: format!("Function name too long: {} > {}", name.len(), config.max_string_length),
+        });
+    }
+    
+    // Check for potentially dangerous function names
+    let dangerous_functions = ["System", "Run", "Execute", "Import", "Export", "FileOpen", "FileWrite"];
+    if dangerous_functions.contains(&name) {
+        return Err(SecurityError::InvalidInput {
+            input_type: "function_name".to_string(),
+            reason: format!("Potentially dangerous function: {}", name),
+        });
+    }
+    
+    Ok(())
+}
+
 /// Validate nested structure depth to prevent stack overflow
 pub fn validate_nesting_depth(depth: usize) -> SecurityResult<()> {
     const MAX_NESTING_DEPTH: usize = 1000;
@@ -250,10 +271,8 @@ fn validate_value_depth(value: &Value, current_depth: usize) -> SecurityResult<(
                 validate_value_depth(item, current_depth + 1)?;
             }
         }
-        Value::Function { args, .. } => {
-            for arg in args {
-                validate_value_depth(arg, current_depth + 1)?;
-            }
+        Value::Function(_) => {
+            // Function values don't contain nested structures to validate
         }
         _ => {}
     }
@@ -337,11 +356,8 @@ impl Validatable for Value {
                     item.validate(config)?;
                 }
             }
-            Value::Function { name, args } => {
-                validate_function_params(name, args, config)?;
-                for arg in args {
-                    arg.validate(config)?;
-                }
+            Value::Function(name) => {
+                validate_function_name(name, config)?;
             }
             Value::Real(f) => {
                 if !f.is_finite() {

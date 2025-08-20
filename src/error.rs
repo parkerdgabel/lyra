@@ -244,6 +244,9 @@ pub enum Error {
 
     #[error("Type error: expected {expected}, got {actual}")]
     Type { expected: String, actual: String },
+
+    #[error("Security violation: {0}")]
+    SecurityViolation(String),
 }
 
 impl From<crate::compiler::CompilerError> for Error {
@@ -264,6 +267,7 @@ impl From<Error> for LyraError {
             Error::Io(io_err) => LyraError::Io(io_err),
             Error::UnknownSymbol { symbol } => LyraError::UnknownSymbol { symbol },
             Error::Type { expected, actual } => LyraError::Type { expected, actual },
+            Error::SecurityViolation(msg) => LyraError::Runtime { message: msg },
         }
     }
 }

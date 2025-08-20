@@ -36,6 +36,9 @@ pub enum ForeignError {
     RuntimeError {
         message: String,
     },
+    
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 /// Trait for foreign objects that can be embedded in the VM
