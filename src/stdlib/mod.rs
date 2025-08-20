@@ -41,6 +41,9 @@ pub mod timeseries;
 pub mod numerical;
 pub mod network;
 pub mod number_theory;
+pub mod combinatorics;
+pub mod geometry;
+pub mod topology;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -86,6 +89,9 @@ impl StandardLibrary {
         stdlib.register_async_functions();
         stdlib.register_network_functions();
         stdlib.register_number_theory_functions();
+        stdlib.register_combinatorics_functions();
+        stdlib.register_geometry_functions();
+        stdlib.register_topology_functions();
 
         stdlib
     }
@@ -630,28 +636,69 @@ impl StandardLibrary {
         
         // Phase 12C: Distributed Computing (placeholders)
         self.register("RemoteFunction", network::remote_function);
+        self.register("RemoteFunctionCall", network::remote_function_call);
         self.register("DistributedMap", network::distributed_map);
+        self.register("DistributedMapExecute", network::distributed_map_execute);
         self.register("DistributedReduce", network::distributed_reduce);
+        self.register("DistributedReduceExecute", network::distributed_reduce_execute);
         self.register("ServiceRegistry", network::service_registry);
         self.register("ServiceDiscover", network::service_discover);
+        self.register("ServiceHealthCheck", network::service_health_check);
         self.register("LoadBalancer", network::load_balancer);
+        self.register("LoadBalancerRequest", network::load_balancer_request);
         self.register("ComputeCluster", network::compute_cluster);
+        self.register("ClusterAddNode", network::cluster_add_node);
+        self.register("ClusterSubmitTask", network::cluster_submit_task);
+        self.register("ClusterGetStats", network::cluster_get_stats);
         
-        // Phase 12D: Network Analysis (placeholders)
+        // Phase 12D: Network Analysis (production implementations)
         self.register("NetworkGraph", network::network_graph);
+        self.register("GraphAddNode", network::graph_add_node);
+        self.register("GraphAddEdge", network::graph_add_edge);
+        self.register("GraphShortestPath", network::graph_shortest_path);
+        self.register("GraphMST", network::graph_mst);
+        self.register("GraphComponents", network::graph_components);
+        self.register("GraphMetrics", network::graph_metrics);
+        
+        // Centrality and community analysis
+        self.register("NetworkCentrality", network::network_centrality);
+        self.register("CommunityDetection", network::community_detection);
+        self.register("GraphDiameter", network::graph_diameter);
+        self.register("GraphDensity", network::graph_density);
+        self.register("ClusteringCoefficient", network::clustering_coefficient);
+        
+        // Network flow algorithms
         self.register("NetworkFlow", network::network_flow);
-        self.register("NetworkMetrics", network::network_metrics);
+        self.register("MinimumCut", network::minimum_cut);
+        self.register("FlowDecomposition", network::flow_decomposition);
+        self.register("FlowBottlenecks", network::flow_bottlenecks);
+        self.register("MaxFlowValue", network::max_flow_value);
+        
+        // Network monitoring and diagnostics
         self.register("NetworkMonitor", network::network_monitor);
+        self.register("MonitorStart", network::monitor_start);
+        self.register("MonitorStop", network::monitor_stop);
+        self.register("MonitorGetMetrics", network::monitor_get_metrics);
+        self.register("MonitorSetAlerts", network::monitor_set_alerts);
+        self.register("MonitorPing", network::monitor_ping);
         self.register("NetworkBottlenecks", network::network_bottlenecks);
         self.register("OptimizeTopology", network::optimize_topology);
         
-        // Phase 12E: Cloud Integration (placeholders)
+        // Phase 12E: Cloud Integration
         self.register("CloudFunction", network::cloud_function);
         self.register("CloudStorage", network::cloud_storage);
         self.register("ContainerRun", network::container_run);
         self.register("KubernetesService", network::kubernetes_service);
         self.register("CloudDeploy", network::cloud_deploy);
         self.register("CloudMonitor", network::cloud_monitor);
+        
+        // Cloud Storage API Functions
+        self.register("CloudUpload", network::cloud_upload);
+        self.register("CloudDownload", network::cloud_download);
+        self.register("CloudList", network::cloud_list);
+        self.register("CloudDelete", network::cloud_delete);
+        self.register("CloudMetadata", network::cloud_metadata);
+        self.register("CloudPresignedURL", network::cloud_presigned_url);
     }
 
     fn register_number_theory_functions(&mut self) {
@@ -689,6 +736,89 @@ impl StandardLibrary {
         self.register("ECPoint", number_theory::ec_point);
         self.register("HashFunction", number_theory::hash_function);
         self.register("RandomPrime", number_theory::random_prime);
+    }
+
+    fn register_combinatorics_functions(&mut self) {
+        // Phase 13B: Combinatorics and Advanced Graph Algorithms
+        
+        // Basic Combinatorial Functions (4 functions)
+        self.register("Binomial", combinatorics::binomial_fn);
+        self.register("Multinomial", combinatorics::multinomial_fn);
+        self.register("Permutations", combinatorics::permutations_fn);
+        self.register("Combinations", combinatorics::combinations_fn);
+        
+        // Advanced Combinatorial Functions (4 functions)
+        self.register("StirlingNumber", combinatorics::stirling_number_fn);
+        self.register("BellNumber", combinatorics::bell_number_fn);
+        self.register("CatalanNumber", combinatorics::catalan_number_fn);
+        self.register("Partitions", combinatorics::partitions_fn);
+        
+        // Combinatorial Sequences (5 functions)
+        self.register("FibonacciNumber", combinatorics::fibonacci_number_fn);
+        self.register("LucasNumber", combinatorics::lucas_number_fn);
+        self.register("TribonacciNumber", combinatorics::tribonacci_number_fn);
+        self.register("PellNumber", combinatorics::pell_number_fn);
+        self.register("JacobsthalNumber", combinatorics::jacobsthal_number_fn);
+        
+        // Advanced Graph Algorithms (12 functions)
+        // Connectivity algorithms
+        self.register("MinimumSpanningTree", graph::minimum_spanning_tree);
+        self.register("MaximumFlow", graph::maximum_flow);
+        self.register("ArticulationPoints", graph::articulation_points);
+        self.register("Bridges", graph::bridges);
+        
+        // Optimization algorithms
+        self.register("GraphColoring", graph::graph_coloring);
+        self.register("HamiltonianPath", graph::hamiltonian_path);
+        self.register("EulerianPath", graph::eulerian_path);
+        self.register("VertexCover", graph::vertex_cover);
+        self.register("IndependentSet", graph::independent_set);
+        
+        // Analysis algorithms
+        self.register("BetweennessCentrality", graph::betweenness_centrality);
+        self.register("ClosenessCentrality", graph::closeness_centrality);
+        self.register("PageRank", graph::pagerank);
+        self.register("HITS", graph::hits);
+        self.register("CommunityDetection", graph::community_detection);
+        self.register("GraphIsomorphism", graph::graph_isomorphism);
+    }
+
+    fn register_geometry_functions(&mut self) {
+        // Phase 13C.1: Computational Geometry (10 functions)
+        
+        // Core Geometric Primitives (4 functions)
+        self.register("ConvexHull", geometry::convex_hull::convex_hull_fn);
+        self.register("VoronoiDiagram", geometry::triangulation::voronoi_diagram_fn);
+        self.register("DelaunayTriangulation", geometry::triangulation::delaunay_triangulation_fn);
+        self.register("MinkowskiSum", geometry::operations::minkowski_sum_fn);
+        
+        // Geometric Queries & Analysis (3 functions)
+        self.register("PointInPolygon", geometry::queries::point_in_polygon_fn);
+        self.register("PolygonIntersection", geometry::queries::polygon_intersection_fn);
+        self.register("ClosestPair", geometry::queries::closest_pair_fn);
+        
+        // Advanced Geometric Operations (3 functions)
+        self.register("GeometricMedian", geometry::operations::geometric_median_fn);
+        self.register("ShapeMatching", geometry::operations::shape_matching_fn);
+        self.register("PolygonDecomposition", geometry::operations::polygon_decomposition_fn);
+    }
+
+    fn register_topology_functions(&mut self) {
+        // Phase 13C.2: Topological Data Analysis (8 functions)
+        
+        // Persistent Homology (3 functions)
+        self.register("PersistentHomology", topology::homology::persistent_homology_fn);
+        self.register("BettiNumbers", topology::homology::betti_numbers_fn);
+        self.register("PersistenceDiagram", topology::homology::persistence_diagram_fn);
+        
+        // Simplicial Complexes (3 functions)
+        self.register("SimplicialComplex", topology::complexes::simplicial_complex_fn);
+        self.register("VietorisRips", topology::complexes::vietoris_rips_fn);
+        self.register("CechComplex", topology::complexes::cech_complex_fn);
+        
+        // Topological Analysis (2 functions)
+        self.register("TopologicalFeatures", topology::analysis::topological_features_fn);
+        self.register("MapperAlgorithm", topology::analysis::mapper_algorithm_fn);
     }
 }
 
