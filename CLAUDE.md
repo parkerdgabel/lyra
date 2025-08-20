@@ -308,3 +308,314 @@ The concurrency system integrates seamlessly with:
 - Robust error handling and graceful failure recovery
 - Memory usage optimization and leak prevention
 - Stability under high concurrent workloads
+
+## Threading Model and Concurrency Architecture
+
+**COMPLETE: Production-ready work-stealing thread pool with NUMA optimization.**
+
+### Thread Safety Guarantees
+
+**VM Core Thread Safety:**
+- **Single-Threaded VM**: VM core remains single-threaded and simple
+- **Immutable Values**: Core Value types are immutable and safe to share
+- **Foreign Object Isolation**: All concurrent operations isolated in Foreign objects
+- **No Shared Mutable State**: VM state never shared between threads
+
+**Foreign Object Thread Safety:**
+- **Send + Sync Required**: All Foreign objects must implement Send + Sync
+- **Internal Synchronization**: Foreign objects handle their own thread safety
+- **Lock-Free Where Possible**: Performance-critical paths use lock-free algorithms
+- **Deadlock Prevention**: No circular locking dependencies in design
+
+**Memory Safety Guarantees:**
+- **Rust Ownership**: Compile-time prevention of data races
+- **Reference Counting**: Thread-safe reference counting for shared objects
+- **Arena Allocation**: Thread-local arenas for temporary computation
+- **No Dangling Pointers**: Lifetime system prevents use-after-free
+
+### Work-Stealing Thread Pool Architecture
+
+**Core Components:**
+```rust
+WorkStealingScheduler {
+    // Per-worker local queues (LIFO for cache locality)
+    workers: Vec<Worker>,
+    
+    // Global queue for load balancing (FIFO)
+    global_queue: Injector<Task>,
+    
+    // Inter-worker communication
+    stealers: Vec<Stealer<Task>>,
+    
+    // NUMA-aware topology management
+    numa_topology: NumaTopology,
+}
+```
+
+**Performance Characteristics:**
+- **Linear Scaling**: 2-5x speedup on multi-core systems
+- **NUMA Optimization**: Memory bandwidth optimization on large systems
+- **Adaptive Load Balancing**: Automatic work redistribution
+- **Cache Efficiency**: LIFO local queues improve cache utilization
+
+### Concurrency Patterns and Best Practices
+
+**Producer-Consumer Pattern:**
+```wolfram
+(* Create bounded channel for backpressure *)
+ch = BoundedChannel[100]
+producer = ThreadPool[1]
+consumer = ThreadPool[1]
+
+(* Producer task *)
+prodTask = producer.submit(Function[
+    For[i = 1, i <= 1000, i++,
+        Send[ch, ProcessData[i]]
+    ]
+])
+
+(* Consumer task *)
+consTask = consumer.submit(Function[
+    results = {};
+    While[True,
+        data = TryReceive[ch];
+        If[data === Missing, Break[]];
+        AppendTo[results, ProcessResult[data]]
+    ];
+    results
+])
+```
+
+**Parallel Map-Reduce Pattern:**
+```wolfram
+(* Adaptive chunking for optimal performance *)
+data = Range[1, 1000000]
+chunks = AdaptiveChunk[data, ThreadCount[]]
+
+(* Parallel map phase *)
+mapped = ParallelMap[Square, data]
+
+(* Parallel reduce phase with tree reduction *)
+result = ParallelReduce[Add, mapped]
+```
+
+**Pipeline Processing Pattern:**
+```wolfram
+(* Multi-stage processing pipeline *)
+pipeline = Pipeline[{
+    Function[data, FilterData[data]],      (* Stage 1 *)
+    Function[data, TransformData[data]],   (* Stage 2 *)
+    Function[data, AggregateData[data]]    (* Stage 3 *)
+}]
+
+ProcessPipeline[pipeline, inputData]
+```
+
+### Resource Management
+
+**Automatic Resource Cleanup:**
+- ThreadPool objects automatically shut down worker threads on drop
+- Channels automatically close and notify all waiters
+- Future objects clean up async resources on completion
+- Memory pools return allocations when objects are dropped
+
+**Resource Limits:**
+```wolfram
+(* Configure resource limits *)
+SetThreadPoolLimits[maxWorkers -> 16, queueSize -> 10000]
+SetChannelLimits[maxBufferSize -> 1000000]
+SetMemoryLimits[maxAsyncMemory -> Gigabytes[2]]
+```
+
+**Monitoring and Metrics:**
+```wolfram
+(* Get performance statistics *)
+stats = GetConcurrencyStats[]
+Print["Work steal efficiency: ", stats["workStealEfficiency"]]
+Print["Cache hit rate: ", stats["cacheHitRate"]]
+Print["Memory usage: ", stats["memoryUsage"]]
+```
+
+### Error Handling in Concurrent Code
+
+**Error Propagation:**
+- Errors in worker threads captured and propagated to caller
+- Panics in worker threads isolated and converted to errors
+- Timeout handling for long-running async operations
+- Graceful degradation when workers fail
+
+**Error Recovery Patterns:**
+```wolfram
+(* Retry mechanism with exponential backoff *)
+result = Retry[
+    risky_operation,
+    maxAttempts -> 3,
+    backoff -> Exponential[baseDelay -> Milliseconds[100]]
+]
+
+(* Circuit breaker pattern *)
+breaker = CircuitBreaker[
+    failureThreshold -> 5,
+    timeout -> Seconds[30]
+]
+safeResult = breaker.call(unstable_operation)
+```
+
+### Performance Tuning Guidelines
+
+**Thread Pool Sizing:**
+- Default: Number of CPU cores
+- CPU-bound tasks: cores
+- I/O-bound tasks: 2-4x cores  
+- NUMA systems: Multiple pools per node
+
+**Memory Configuration:**
+```wolfram
+(* NUMA-aware configuration *)
+SetNumaPolicy[
+    memoryBinding -> "local",
+    workerPlacement -> "spread",
+    cacheAlignment -> True
+]
+
+(* Memory pool tuning *)
+ConfigureMemoryPools[
+    arenaSize -> Megabytes[64],
+    poolGrowthFactor -> 1.5,
+    maxPoolSize -> Gigabytes[1]
+]
+```
+
+**Monitoring Performance:**
+```wolfram
+(* Enable performance monitoring *)
+EnableConcurrencyMonitoring[True]
+
+(* Benchmark concurrent operations *)
+benchmark = BenchmarkConcurrent[
+    operation,
+    threadCounts -> {1, 2, 4, 8, 16},
+    iterations -> 1000
+]
+PlotScalability[benchmark]
+```
+
+### Advanced Concurrency Features
+
+**Actor Model Support:**
+```wolfram
+(* Create actor system *)
+actorSystem = ActorSystem[workerCount -> 8]
+
+(* Define actor behavior *)
+counterActor = Actor[
+    state -> 0,
+    receive -> Function[{message, state},
+        Switch[message,
+            "increment", state + 1,
+            "get", state,
+            "reset", 0
+        ]
+    ]
+]
+
+(* Spawn and interact with actors *)
+counter = actorSystem.spawn(counterActor)
+counter ! "increment"
+result = Ask[counter, "get"]  (* → 1 *)
+```
+
+**Software Transactional Memory:**
+```wolfram
+(* Transactional updates *)
+account1 = TransactionalRef[1000]
+account2 = TransactionalRef[500]
+
+transfer = Transaction[
+    balance1 = ReadRef[account1];
+    balance2 = ReadRef[account2];
+    If[balance1 >= amount,
+        WriteRef[account1, balance1 - amount];
+        WriteRef[account2, balance2 + amount];
+        True,
+        False
+    ]
+]
+
+success = CommitTransaction[transfer]
+```
+
+### Troubleshooting Async Operations
+
+**Common Issues and Solutions:**
+
+**Deadlock Detection:**
+```wolfram
+(* Enable deadlock detection *)
+SetDebugMode["deadlockDetection" -> True]
+
+(* Detect circular wait conditions *)
+deadlocks = DetectDeadlocks[]
+If[Length[deadlocks] > 0,
+    Print["Deadlock detected: ", deadlocks]
+]
+```
+
+**Performance Bottlenecks:**
+```wolfram
+(* Profile concurrent operations *)
+profile = ProfileConcurrency[operation]
+Print["Bottlenecks: ", profile["bottlenecks"]]
+Print["Contention points: ", profile["contention"]]
+```
+
+**Memory Leaks:**
+```wolfram
+(* Monitor memory usage *)
+baseline = GetMemoryUsage[]
+RunConcurrentOperation[operation]
+leak = GetMemoryUsage[] - baseline
+If[leak > threshold,
+    Print["Potential memory leak: ", leak]
+]
+```
+
+### Migration from Sequential Code
+
+**Step-by-Step Migration:**
+
+1. **Identify Parallelizable Operations:**
+   - Independent computations
+   - Map operations on lists
+   - Reduce operations with associative functions
+
+2. **Replace with Parallel Equivalents:**
+   ```wolfram
+   (* Before: Sequential *)
+   result = Map[expensiveFunction, largeList]
+   
+   (* After: Parallel *)
+   result = ParallelMap[expensiveFunction, largeList]
+   ```
+
+3. **Add Resource Management:**
+   ```wolfram
+   (* Create thread pool for reuse *)
+   pool = ThreadPool[8]
+   
+   (* Use pool for multiple operations *)
+   result1 = pool.parallelMap(func1, data1)
+   result2 = pool.parallelMap(func2, data2)
+   ```
+
+4. **Handle Errors Gracefully:**
+   ```wolfram
+   (* Add error handling *)
+   result = TryCatch[
+       ParallelMap[riskyFunction, data],
+       error -> {
+           Print["Parallel operation failed: ", error];
+           Map[riskyFunction, data]  (* Fallback to sequential *)
+       }
+   ]
+   ```

@@ -73,7 +73,7 @@ impl EnhancedFunctionSignature {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum CompilerError {
     #[error("Unsupported expression: {0}")]
     UnsupportedExpression(String),

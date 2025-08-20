@@ -3,10 +3,7 @@
 //! This test suite validates that the memory management system integrates
 //! correctly with the VM and achieves the target 35% memory reduction.
 
-// TODO: Temporarily comment out memory integration tests due to compilation issues
-// These will be re-enabled once the core memory system is stabilized
-
-/*
+// Memory integration tests enabled
 use lyra::memory::{
     MemoryManager, StringInterner, ValuePools, ComputationArena, ManagedValue,
     managed_vm::ManagedVirtualMachine
@@ -368,8 +365,6 @@ fn test_string_interner_memory_usage() {
     let x_again = interner.intern("x");
     assert_eq!(x_again.as_str(), "x");
 }
-*/
-
 // Comprehensive memory management system tests
 #[test]
 fn test_memory_system_comprehensive() {

@@ -47,6 +47,8 @@ bincode = "1.3"
 byteorder = "1.5"
 rmp-serde = "1.1"
 flate2 = "1.0"
+core_affinity = "0.8"
+hwloc2 = "2.1"
 
 [dev-dependencies]
 insta = { version = "1.34", features = ["yaml"] }
@@ -54,6 +56,7 @@ pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.0"
 futures = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
 
 [lib]
 name = "lyra"
@@ -93,4 +96,28 @@ harness = false
 
 [[bench]]
 name = "regression_detection"
+harness = false
+
+[[bench]]
+name = "async_performance_benchmarks"
+harness = false
+
+[[bench]]
+name = "micro_benchmarks"
+harness = false
+
+[[bench]]
+name = "workload_simulations"
+harness = false
+
+[[bench]]
+name = "memory_profiling"
+harness = false
+
+[[bench]]
+name = "phase3b_performance_validation"
+harness = false
+
+[[bench]]
+name = "automated_performance_monitor"
 harness = false

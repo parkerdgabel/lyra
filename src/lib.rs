@@ -17,11 +17,17 @@ pub mod parser;
 pub mod pattern_matcher;
 pub mod repl;
 pub mod rules_engine;
+pub mod security;
 // TODO: Serialization module has compilation issues - temporarily disabled
 // pub mod serialization;
 pub mod stdlib;
 // TODO: Types module has compilation issues - temporarily disabled
 // pub mod types;
 pub mod vm;
+pub mod vm_components;
+pub mod compiler_components;
+pub mod unified_errors;
+pub mod common_utils;
 
 pub use error::{Error, Result};
+pub use unified_errors::{LyraUnifiedError, LyraResult};

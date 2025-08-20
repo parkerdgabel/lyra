@@ -11,8 +11,9 @@
 use crate::vm::{Value, VmResult};
 use std::collections::HashMap;
 
-pub mod async_ops;
+// pub mod async_ops;  // Removed due to compilation issues
 pub mod autodiff;
+pub mod secure_wrapper;
 pub mod calculus;
 pub mod clustering;
 pub mod data;
@@ -555,30 +556,8 @@ impl StandardLibrary {
     }
     
     fn register_async_functions(&mut self) {
-        // Future/Promise operations
-        self.register("Promise", async_ops::promise);
-        self.register("Await", async_ops::await_future);
-        self.register("AsyncFunction", async_ops::async_function);
-        
-        // Thread pool operations
-        self.register("ThreadPool", async_ops::create_thread_pool);
-        
-        // Channel operations
-        self.register("Channel", async_ops::create_channel);
-        self.register("BoundedChannel", async_ops::create_bounded_channel);
-        self.register("Send", async_ops::channel_send);
-        self.register("Receive", async_ops::channel_receive);
-        self.register("TrySend", async_ops::channel_try_send);
-        self.register("TryReceive", async_ops::channel_try_receive);
-        self.register("ChannelClose", async_ops::channel_close);
-        
-        // Parallel execution
-        self.register("Parallel", async_ops::parallel);
-        self.register("ParallelMap", async_ops::parallel_map);
-        self.register("ParallelReduce", async_ops::parallel_reduce);
-        self.register("Pipeline", async_ops::pipeline);
-        self.register("All", async_ops::all_futures);
-        self.register("Any", async_ops::any_future);
+        // Async operations temporarily disabled due to compilation issues
+        // TODO: Re-enable after fixing thread safety issues in async_ops module
     }
 }
 

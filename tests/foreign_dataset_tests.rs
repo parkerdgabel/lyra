@@ -17,7 +17,9 @@
 
 use lyra::{
     foreign::{Foreign, ForeignError},
-    vm::{Value, VmError, VmResult},
+    vm::{Value, VirtualMachine},
+    error::Error as VmError,
+    Result as VmResult,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -141,7 +143,7 @@ impl ForeignDataset {
                 } else {
                     // Infer common type from all items
                     let first_schema = Self::infer_schema(&items[0])?;
-                    let unified_schema = items.iter().skip(1).try_fold(first_schema, |acc, item| {
+                    let unified_schema = items.iter().skip(1).try_fold(first_schema, |acc, item| -> Result<DatasetSchemaType, VmError> {
                         let item_schema = Self::infer_schema(item)?;
                         Ok(Self::unify_schema_types(acc, item_schema))
                     })?;
@@ -194,45 +196,24 @@ impl ForeignDataset {
             if let Some(idx_start) = part.find('[') {
                 let key = &part[..idx_start];
                 let idx_part = &part[idx_start+1..part.len()-1];
-                let index: usize = idx_part.parse().map_err(|_| VmError::TypeError {
-                    expected: "valid array index".to_string(),
-                    actual: idx_part.to_string(),
-                })?;
+                let index: usize = idx_part.parse().map_err(|_| VmError::Runtime { message: "Invalid array index".to_string() })?;
                 
                 // Navigate to the key first
                 let key_value = match current_value {
-                    TestValue::Object(obj) => obj.get(key).ok_or_else(|| VmError::TypeError {
-                        expected: format!("key '{}'", key),
-                        actual: "key not found".to_string(),
-                    })?,
-                    _ => return Err(VmError::TypeError {
-                        expected: "object".to_string(),
-                        actual: format!("{:?}", current_value),
-                    }),
+                    TestValue::Object(obj) => obj.get(key).ok_or_else(|| VmError::Runtime { message: format!("Key '{}' not found", key) })?,
+                    _ => return Err(VmError::Runtime { message: format!("Expected object, got {:?}", current_value) }),
                 };
                 
                 // Then navigate to the index
                 current_value = match key_value {
-                    TestValue::List(list) => list.get(index).ok_or_else(|| VmError::TypeError {
-                        expected: format!("index {} to be valid", index),
-                        actual: format!("list has {} elements", list.len()),
-                    })?,
-                    _ => return Err(VmError::TypeError {
-                        expected: "list".to_string(),
-                        actual: format!("{:?}", key_value),
-                    }),
+                    TestValue::List(list) => list.get(index).ok_or_else(|| VmError::Runtime { message: format!("Index {} out of bounds for list with {} elements", index, list.len()) })?,
+                    _ => return Err(VmError::Runtime { message: format!("Expected list, got {:?}", key_value) }),
                 };
             } else {
                 // Regular key navigation
                 current_value = match current_value {
-                    TestValue::Object(obj) => obj.get(part).ok_or_else(|| VmError::TypeError {
-                        expected: format!("key '{}'", part),
-                        actual: "key not found".to_string(),
-                    })?,
-                    _ => return Err(VmError::TypeError {
-                        expected: "object".to_string(),
-                        actual: format!("{:?}", current_value),
-                    }),
+                    TestValue::Object(obj) => obj.get(part).ok_or_else(|| VmError::Runtime { message: format!("Key '{}' not found", part) })?,
+                    _ => return Err(VmError::Runtime { message: format!("Expected object, got {:?}", current_value) }),
                 };
             }
         }
@@ -255,10 +236,7 @@ impl ForeignDataset {
                     new_obj.insert(parts[0].to_string(), new_value);
                     Ok(TestValue::Object(new_obj))
                 },
-                _ => Err(VmError::TypeError {
-                    expected: "object for key assignment".to_string(),
-                    actual: format!("{:?}", current),
-                }),
+                _ => Err(VmError::Runtime { message: format!("Expected object for key assignment, got {:?}", current) }),
             }
         } else {
             // Recursive case: navigate deeper
@@ -273,10 +251,7 @@ impl ForeignDataset {
                     new_obj.insert(key.to_string(), updated_nested);
                     Ok(TestValue::Object(new_obj))
                 },
-                _ => Err(VmError::TypeError {
-                    expected: "object for nested assignment".to_string(),
-                    actual: format!("{:?}", current),
-                }),
+                _ => Err(VmError::Runtime { message: format!("Expected object for nested assignment, got {:?}", current) }),
             }
         }
     }

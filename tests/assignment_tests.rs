@@ -2,18 +2,19 @@ use lyra::{
     ast::{Expr, Number, Symbol}, 
     compiler::Compiler, 
     vm::{VirtualMachine, Value},
-    parser::parse_statements,
+    lexer::Lexer,
+    parser::Parser,
 };
 
 /// Test immediate assignment compilation and execution
 #[test]
 fn test_immediate_assignment_basic() {
     // Parse assignment: x = 42
-    let statements = parse_statements("x = 42").expect("Failed to parse assignment");
-    assert_eq!(statements.len(), 1);
-    
-    let assignment = &statements[0];
-    if let Expr::Assignment { lhs, rhs, delayed } = assignment {
+    let mut lexer = Lexer::new("x = 42");
+    let tokens = lexer.tokenize().expect("Failed to tokenize");
+    let mut parser = Parser::new(tokens);
+    let assignment = parser.parse_expression().expect("Failed to parse assignment");
+    if let Expr::Assignment { lhs, rhs, delayed } = &assignment {
         assert!(!delayed); // Should be immediate assignment
         assert!(matches!(lhs.as_ref(), Expr::Symbol(_)));
         assert!(matches!(rhs.as_ref(), Expr::Number(Number::Integer(42))));
@@ -23,7 +24,7 @@ fn test_immediate_assignment_basic() {
     
     // Test compilation and execution
     let mut compiler = Compiler::new();
-    compiler.compile_expr(assignment).expect("Failed to compile assignment");
+    compiler.compile_expr(&assignment).expect("Failed to compile assignment");
     
     let mut vm = VirtualMachine::new();
     vm.load(compiler.context.code, compiler.context.constants);
@@ -42,11 +43,11 @@ fn test_immediate_assignment_basic() {
 #[test]
 fn test_delayed_assignment_basic() {
     // Parse assignment: x := 42
-    let statements = parse_statements("x := 42").expect("Failed to parse delayed assignment");
-    assert_eq!(statements.len(), 1);
-    
-    let assignment = &statements[0];
-    if let Expr::Assignment { lhs, rhs, delayed } = assignment {
+    let mut lexer = Lexer::new("x := 42");
+    let tokens = lexer.tokenize().expect("Failed to tokenize");
+    let mut parser = Parser::new(tokens);
+    let assignment = parser.parse_expression().expect("Failed to parse delayed assignment");
+    if let Expr::Assignment { lhs, rhs, delayed } = &assignment {
         assert!(delayed); // Should be delayed assignment
         assert!(matches!(lhs.as_ref(), Expr::Symbol(_)));
         assert!(matches!(rhs.as_ref(), Expr::Number(Number::Integer(42))));
@@ -56,7 +57,7 @@ fn test_delayed_assignment_basic() {
     
     // Test compilation and execution
     let mut compiler = Compiler::new();
-    compiler.compile_expr(assignment).expect("Failed to compile delayed assignment");
+    compiler.compile_expr(&assignment).expect("Failed to compile delayed assignment");
     
     let mut vm = VirtualMachine::new();
     vm.load(compiler.context.code, compiler.context.constants);
@@ -79,11 +80,13 @@ fn test_delayed_assignment_basic() {
 #[test] 
 fn test_symbol_resolution_immediate() {
     // First assign: x = 42
-    let assignment_stmt = parse_statements("x = 42").expect("Failed to parse assignment");
-    let assignment = &assignment_stmt[0];
+    let mut lexer = Lexer::new("x = 42");
+    let tokens = lexer.tokenize().expect("Failed to tokenize");
+    let mut parser = Parser::new(tokens);
+    let assignment = parser.parse_expression().expect("Failed to parse assignment");
     
     let mut compiler = Compiler::new();
-    compiler.compile_expr(assignment).expect("Failed to compile assignment");
+    compiler.compile_expr(&assignment).expect("Failed to compile assignment");
     
     let mut vm = VirtualMachine::new();
     vm.load(compiler.context.code.clone(), compiler.context.constants.clone());
@@ -94,11 +97,13 @@ fn test_symbol_resolution_immediate() {
     }
     
     // Now test symbol resolution: compile just "x" and see if it resolves to 42
-    let symbol_stmt = parse_statements("x").expect("Failed to parse symbol");
-    let symbol_expr = &symbol_stmt[0];
+    let mut lexer2 = Lexer::new("x");
+    let tokens2 = lexer2.tokenize().expect("Failed to tokenize");
+    let mut parser2 = Parser::new(tokens2);
+    let symbol_expr = parser2.parse_expression().expect("Failed to parse symbol");
     
     let mut compiler2 = Compiler::new();
-    compiler2.compile_expr(symbol_expr).expect("Failed to compile symbol");
+    compiler2.compile_expr(&symbol_expr).expect("Failed to compile symbol");
     
     // Transfer the resolved symbols to the new VM
     let mut vm2 = VirtualMachine::new();
@@ -118,14 +123,23 @@ fn test_symbol_resolution_immediate() {
 /// Test multiple assignments
 #[test]
 fn test_multiple_assignments() {
-    let statements = parse_statements("x = 10; y = 20; z := x + y").expect("Failed to parse multiple assignments");
-    assert_eq!(statements.len(), 3);
+    // Parse multiple assignments separately
+    let assignments = vec![
+        "x = 10",
+        "y = 20", 
+        "z := x + y"
+    ];
+    assert_eq!(assignments.len(), 3);
     
     let mut compiler = Compiler::new();
     let mut vm = VirtualMachine::new();
     
     // Compile and execute each statement
-    for stmt in statements {
+    for stmt_str in assignments {
+        let mut lexer = Lexer::new(stmt_str);
+        let tokens = lexer.tokenize().expect("Failed to tokenize");
+        let mut parser = Parser::new(tokens);
+        let stmt = parser.parse_expression().expect("Failed to parse statement");
         // Reset compiler context for each statement (in reality they'd be cumulative)
         let mut stmt_compiler = Compiler::new();
         // Transfer previous constants and code
@@ -138,7 +152,7 @@ fn test_multiple_assignments() {
         stmt_vm.global_symbols = vm.global_symbols.clone();
         stmt_vm.delayed_definitions = vm.delayed_definitions.clone();
         
-        stmt_vm.load(stmt_compiler.context.code, stmt_compiler.context.constants);
+        stmt_vm.load(stmt_compiler.context.code.clone(), stmt_compiler.context.constants.clone());
         
         // Execute
         while stmt_vm.ip < stmt_vm.code.len() {
@@ -183,16 +197,22 @@ fn test_invalid_assignment_patterns() {
 #[test]
 fn test_assignment_parsing() {
     // Test immediate assignment
-    let immediate = parse_statements("f[x_] = x^2").expect("Failed to parse function definition");
-    if let Expr::Assignment { delayed, .. } = &immediate[0] {
+    let mut lexer = Lexer::new("f[x_] = x^2");
+    let tokens = lexer.tokenize().expect("Failed to tokenize");
+    let mut parser = Parser::new(tokens);
+    let immediate = parser.parse_expression().expect("Failed to parse function definition");
+    if let Expr::Assignment { delayed, .. } = &immediate {
         assert!(!delayed);
     } else {
         panic!("Expected Assignment");
     }
     
     // Test delayed assignment  
-    let delayed = parse_statements("g[x_] := RandomReal[]").expect("Failed to parse delayed function definition");
-    if let Expr::Assignment { delayed, .. } = &delayed[0] {
+    let mut lexer2 = Lexer::new("g[x_] := RandomReal[]");
+    let tokens2 = lexer2.tokenize().expect("Failed to tokenize");
+    let mut parser2 = Parser::new(tokens2);
+    let delayed = parser2.parse_expression().expect("Failed to parse delayed function definition");
+    if let Expr::Assignment { delayed, .. } = &delayed {
         assert!(delayed);
     } else {
         panic!("Expected Assignment");
