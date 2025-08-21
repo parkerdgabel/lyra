@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: lyra
+      POSTGRES_PASSWORD: dev_password_123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lyra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Lyra API Service
+  api:
+    build:
+      context: ../../
+      dockerfile: docker/api/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://lyra:dev_password_123@postgres:5432/ecommerce
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_secret_key_not_for_production
+      - LOG_LEVEL=DEBUG
+      - ENVIRONMENT=development
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../src:/app/src:ro
+
+  # Lyra Worker Service
+  worker:
+    build:
+      context: ../../
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://lyra:dev_password_123@postgres:5432/ecommerce
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=DEBUG
+      - WORKER_QUEUES=order-processing,email-notifications,inventory-sync
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../src:/app/src:ro
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.35
+    environment:
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: lyra-dev-network

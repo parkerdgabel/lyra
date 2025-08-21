@@ -329,8 +329,8 @@ impl RemoteFunction {
     /// Convert Lyra Value to JSON
     fn value_to_json(&self, value: &Value) -> Result<serde_json::Value, String> {
         match value {
-            Value::Integer(i) => Ok(serde_json::Value::Number((*i).into())),
-            Value::Real(r) => Ok(serde_json::Value::Number(
+            Value::Integer(i) => Ok(serde_json::Value::Real((*i).into())),
+            Value::Real(r) => Ok(serde_json::Value::Real(
                 serde_json::Number::from_f64(*r)
                     .ok_or("Invalid floating point number")?)),
             Value::String(s) => Ok(serde_json::Value::String(s.clone())),
@@ -351,7 +351,7 @@ impl RemoteFunction {
     /// Deserialize JSON result back to Lyra Value
     fn deserialize_result(&self, json: &serde_json::Value) -> Result<Value, String> {
         match json {
-            serde_json::Value::Number(n) => {
+            serde_json::Value::Real(n) => {
                 if let Some(i) = n.as_i64() {
                     Ok(Value::Integer(i))
                 } else if let Some(f) = n.as_f64() {
@@ -557,6 +557,26 @@ struct ServiceRegistryStats {
 }
 
 impl ServiceRegistry {
+    /// Create a new service registry with the specified backend
+    pub fn new(backend: DiscoveryBackend) -> Self {
+        Self {
+            backend,
+            service_cache: HashMap::new(),
+            health_check_interval: Duration::from_secs(30),
+            health_check_timeout: Duration::from_secs(5),
+            client: HttpClient::new(),
+            stats: ServiceRegistryStats {
+                total_services: 0,
+                healthy_services: 0,
+                unhealthy_services: 0,
+                last_discovery: None,
+                health_checks_performed: 0,
+                discovery_errors: 0,
+            },
+            notify_on_changes: false,
+        }
+    }
+    
     /// Create a new service registry with DNS discovery
     pub fn with_dns(domain: String) -> Self {
         Self {
@@ -2393,6 +2413,18 @@ impl LoadBalancer {
                     self.round_robin_index = (self.round_robin_index + 1) % available_instance_info.len();
                     instance_id
                 }
+            },
+            LoadBalancingStrategy::ResourceBased => {
+                // Select instance with best resource availability (lowest CPU/memory usage)
+                let best_instance = available_instance_info.iter()
+                    .min_by(|(_, _, cpu1, mem1), (_, _, cpu2, mem2)| {
+                        let score1 = *cpu1 as f64 + mem1; // Simple combined resource score
+                        let score2 = *cpu2 as f64 + mem2;
+                        score1.partial_cmp(&score2).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                
+                best_instance.map(|(id, _, _, _)| id.clone())
+                    .unwrap_or_else(|| available_instance_info.first().unwrap().0.clone())
             },
         };
         

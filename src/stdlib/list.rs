@@ -154,6 +154,67 @@ pub fn apply(_args: &[Value]) -> VmResult<Value> {
     })
 }
 
+/// Sum all elements in a list
+/// Usage: Total[{1, 2, 3, 4}] -> 10
+pub fn total(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    match &args[0] {
+        Value::List(items) => {
+            if items.is_empty() {
+                return Ok(Value::Integer(0));
+            }
+
+            // Determine if we're working with integers or reals
+            let mut sum_int: i64 = 0;
+            let mut sum_real: f64 = 0.0;
+            let mut has_real = false;
+
+            for item in items {
+                match item {
+                    Value::Integer(n) => {
+                        if has_real {
+                            sum_real += *n as f64;
+                        } else {
+                            sum_int += n;
+                        }
+                    }
+                    Value::Real(r) => {
+                        if !has_real {
+                            // Convert accumulated integer sum to real
+                            sum_real = sum_int as f64 + r;
+                            has_real = true;
+                        } else {
+                            sum_real += r;
+                        }
+                    }
+                    _ => {
+                        return Err(VmError::TypeError {
+                            expected: "List of numbers".to_string(),
+                            actual: format!("List containing {:?}", item),
+                        });
+                    }
+                }
+            }
+
+            if has_real {
+                Ok(Value::Real(sum_real))
+            } else {
+                Ok(Value::Integer(sum_int))
+            }
+        }
+        _ => Err(VmError::TypeError {
+            expected: "List".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

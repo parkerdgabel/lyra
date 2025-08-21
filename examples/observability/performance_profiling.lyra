@@ -1,0 +1,256 @@
+(* Performance Profiling and Analysis Example *)
+(* Demonstrates CPU/memory profiling, latency tracking, and system monitoring *)
+
+Print["Setting up comprehensive performance profiling..."]
+
+(* CPU Profiling *)
+Print["Starting CPU profiler..."]
+
+cpu_profiler = ProfilerStart["cpu", 30, 100]  (* 30 seconds, 100Hz sampling *)
+cpu_start_result = cpu_profiler.start()
+Print["CPU profiler started: " <> ToString[cpu_start_result]]
+
+(* Memory Profiling *)
+Print["Setting up memory profiler..."]
+
+memory_profiler = MemoryProfiler[
+    ProcessID[],  (* Current process *)
+    5,            (* 5 second snapshots *)
+    True          (* Enable heap analysis *)
+]
+
+Print["Memory profiler configured"]
+
+(* Latency Tracking *)
+Print["Setting up latency tracking..."]
+
+api_latency = LatencyTracker["api_requests", {50, 90, 95, 99, 99.9}, {
+    1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000
+}]
+
+computation_latency = LatencyTracker["symbolic_computation", {50, 95, 99}, {
+    10, 50, 100, 500, 1000, 5000
+}]
+
+Print["Latency trackers configured"]
+
+(* Throughput Monitoring *)
+Print["Setting up throughput monitoring..."]
+
+api_throughput = ThroughputMonitor["/api/evaluate", 60, "moving_average"]  (* 60 second window *)
+computation_throughput = ThroughputMonitor["symbolic_operations", 300, "peak"]  (* 5 minute window *)
+
+Print["Throughput monitors configured"]
+
+(* System Resource Monitoring *)
+Print["Setting up system resource monitoring..."]
+
+system_monitor = ResourceMonitor["development_machine", 
+    {"cpu", "memory", "disk", "network"}, 
+    {
+        AlertRule["cpu > 80", 80, 60, "warning"],
+        AlertRule["memory > 85", 85, 30, "warning"],
+        AlertRule["disk > 90", 90, 300, "critical"]
+    }
+]
+
+Print["System resource monitor configured"]
+
+(* Performance Baseline *)
+Print["Calculating performance baseline..."]
+
+baseline_metrics = {"cpu", "memory", "latency_p95", "throughput"}
+performance_baseline = PerformanceBaseline[baseline_metrics, {}, True]
+
+Print["Performance baseline calculated"]
+Do[
+    Print["Baseline metric: " <> baseline_metric[[1]] <> " = " <> baseline_metric[[2]]],
+    {baseline_metric, performance_baseline}
+]
+
+(* Simulation: Compute-intensive operations *)
+Print["Starting performance simulation..."]
+
+(* Take initial memory snapshot *)
+initial_snapshot = memory_profiler.takeSnapshot()
+Print["Initial memory snapshot taken: " <> StringTake[initial_snapshot, 100] <> "..."]
+
+(* Simulate API requests with latency tracking *)
+Print["Simulating API requests..."]
+
+Do[
+    (* Start latency timer *)
+    timer_id = api_latency.startTimer("request_" <> ToString[i]];
+    
+    (* Simulate computation *)
+    computation_timer = computation_latency.startTimer("compute_" <> ToString[i]];
+    
+    (* Simulate some work (in real scenario, this would be actual computation) *)
+    Pause[RandomReal[{0.01, 0.1}]];  (* Random delay 10-100ms *)
+    
+    (* End computation timer *)
+    comp_latency = computation_latency.endTimer(computation_timer, True];
+    
+    (* Record throughput *)
+    api_throughput.recordRequest[True, RandomInteger[{500, 2000}]];  (* Random response size *)
+    computation_throughput.recordRequest[True, 1];
+    
+    (* End API timer *)
+    api_latency_result = api_latency.endTimer[timer_id, True];
+    
+    (* Add sample to CPU profiler *)
+    cpu_profiler.addSample[];
+    
+    (* Print progress every 10 requests *)
+    If[Mod[i, 10] == 0,
+        Print["Processed " <> ToString[i] <> " requests, last latency: " <> ToString[api_latency_result] <> "ms"]
+    ],
+    
+    {i, 1, 50}
+]
+
+Print["API request simulation completed"]
+
+(* Take another memory snapshot *)
+mid_snapshot = memory_profiler.takeSnapshot()
+Print["Mid-simulation memory snapshot taken"]
+
+(* Simulate memory-intensive operations *)
+Print["Simulating memory-intensive operations..."]
+
+large_data = Table[RandomReal[], {i, 1, 100000}];  (* Create large dataset *)
+processed_data = Map[# * 2 &, large_data];  (* Process it *)
+
+(* Take final memory snapshot *)
+final_snapshot = memory_profiler.takeSnapshot()
+Print["Final memory snapshot taken"]
+
+(* Collect system metrics *)
+Print["Collecting system metrics..."]
+
+Do[
+    current_reading = system_monitor.collect[];
+    Print["System reading " <> ToString[i] <> ": " <> StringTake[current_reading, 50] <> "..."],
+    {i, 1, 5}
+]
+
+(* Stop CPU profiler *)
+Print["Stopping CPU profiler..."]
+cpu_profile_data = cpu_profiler.stop[]
+Print["CPU profiler stopped, data size: " <> ToString[StringLength[cpu_profile_data]] <> " characters"]
+
+(* Analyze performance data *)
+Print["Analyzing performance data..."]
+
+(* Latency analysis *)
+Print["API Latency Analysis:"]
+api_percentiles = api_latency.percentiles[]
+api_summary = api_latency.summary[]
+
+Print["API Percentiles:"]
+Do[
+    Print["  " <> percentile[[1]] <> ": " <> ToString[percentile[[2]]] <> "ms"],
+    {percentile, api_percentiles}
+]
+
+Print["API Summary:"]
+Do[
+    Print["  " <> summary_item[[1]] <> ": " <> summary_item[[2]]],
+    {summary_item, api_summary}
+]
+
+Print["Computation Latency Analysis:"]
+comp_percentiles = computation_latency.percentiles[]
+comp_summary = computation_latency.summary[]
+
+Print["Computation Percentiles:"]
+Do[
+    Print["  " <> percentile[[1]] <> ": " <> ToString[percentile[[2]]] <> "ms"],
+    {percentile, comp_percentiles}
+]
+
+(* Throughput analysis *)
+Print["Throughput Analysis:"]
+api_throughput_metrics = api_throughput.throughput[]
+comp_throughput_metrics = computation_throughput.throughput[]
+
+Print["API Throughput:"]
+Do[
+    Print["  " <> metric[[1]] <> ": " <> metric[[2]]],
+    {metric, api_throughput_metrics}
+]
+
+Print["Computation Throughput:"]
+Do[
+    Print["  " <> metric[[1]] <> ": " <> metric[[2]]],
+    {metric, comp_throughput_metrics}
+]
+
+(* Memory analysis *)
+Print["Memory Analysis:"]
+memory_snapshots = memory_profiler.snapshots[]
+memory_analysis = memory_profiler.analyze[]
+
+Print["Memory snapshots taken: " <> ToString[Length[memory_snapshots]]]
+Print["Memory analysis:"]
+Do[
+    Print["  " <> analysis_item[[1]] <> ": " <> analysis_item[[2]]],
+    {analysis_item, memory_analysis}
+]
+
+(* System resource analysis *)
+Print["System Resource Analysis:"]
+latest_reading = system_monitor.latest[]
+reading_history = system_monitor.history[10]
+triggered_alerts = system_monitor.checkAlerts[]
+
+Print["Latest system reading: " <> StringTake[latest_reading, 100] <> "..."]
+Print["System reading history count: " <> ToString[Length[reading_history]]]
+Print["Triggered alerts: " <> ToString[Length[triggered_alerts]]]
+
+If[Length[triggered_alerts] > 0,
+    Print["Alert details:"];
+    Do[
+        Print["  " <> alert],
+        {alert, triggered_alerts}
+    ]
+]
+
+(* CPU profiler analysis *)
+Print["CPU Profiler Analysis:"]
+cpu_status = cpu_profiler.status[]
+Print["CPU profiler status:"]
+Do[
+    Print["  " <> status_item[[1]] <> ": " <> status_item[[2]]],
+    {status_item, cpu_status}
+]
+
+(* Performance recommendations *)
+Print["Performance Recommendations:"]
+
+(* Check if any metrics exceed thresholds *)
+avg_latency = ToExpression[Select[api_summary, #[[1]] == "avg_latency_ms" &][[1, 2]]];
+If[avg_latency > 100,
+    Print["⚠️  Average API latency (" <> ToString[avg_latency] <> "ms) exceeds 100ms threshold"]
+];
+
+memory_growth = ToExpression[Select[memory_analysis, #[[1]] == "growth_rate_bytes_per_sec" &][[1, 2]]];
+If[memory_growth > 1000000,  (* 1MB/sec *)
+    Print["⚠️  Memory growth rate (" <> ToString[memory_growth] <> " bytes/sec) may indicate memory leak"]
+];
+
+(* Check CPU usage from latest system reading *)
+If[Length[triggered_alerts] > 0,
+    Print["⚠️  System resource alerts were triggered - investigate resource usage"]
+];
+
+Print["✅ Consider setting up continuous profiling for production monitoring"]
+Print["✅ Configure alerting based on performance thresholds"]
+Print["✅ Set up automated performance regression detection"]
+
+(* Reset throughput monitors for next session *)
+api_throughput.reset[]
+computation_throughput.reset[]
+
+Print["Performance profiling example completed successfully!"]
+Print["In production, this data would be exported to monitoring systems like Prometheus, Grafana, or APM tools."]

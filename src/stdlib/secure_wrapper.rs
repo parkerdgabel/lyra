@@ -29,7 +29,7 @@ impl SecureStdlibWrapper {
         function: F,
     ) -> VmResult<Value>
     where
-        F: FnOnce(&[Value]) -> VmResult<Value> + Send,
+        F: FnOnce(&[Value]) -> VmResult<Value> + Send + 'static,
     {
         let start_time = Instant::now();
         
@@ -61,8 +61,9 @@ impl SecureStdlibWrapper {
         self.validate_function_specific(function_name, args)?;
         
         // 4. Sandbox execution
-        let result = self.security_manager.execute_sandboxed(&self.context_id, || {
-            function(args)
+        let args_clone = args.to_vec();
+        let result = self.security_manager.execute_sandboxed(&self.context_id, move || {
+            function(&args_clone)
         }).map_err(|e| VmError::SecurityViolation(format!("Sandbox violation in {}: {}", function_name, e)))?;
         
         // 5. Resource tracking
@@ -377,6 +378,10 @@ impl SecureStdlibWrapper {
                 name.len() as i64 + 24  // Function name plus basic overhead
             }
             Value::LyObj(_) => 1000, // Conservative estimate for foreign objects
+            Value::Missing => 1,
+            Value::Quote(_) => 100, // Conservative estimate for quoted expressions
+            Value::Pattern(_) => 50, // Conservative estimate for patterns
+            Value::Rule { lhs, rhs } => 16 + self.estimate_value_memory(lhs) + self.estimate_value_memory(rhs),
         }
     }
 }

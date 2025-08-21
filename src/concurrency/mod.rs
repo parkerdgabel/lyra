@@ -66,7 +66,7 @@ impl Default for ConcurrencyConfig {
 }
 
 /// Statistics for monitoring concurrency performance
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ConcurrencyStats {
     /// Total number of tasks executed
     pub tasks_executed: AtomicUsize,
@@ -82,6 +82,20 @@ pub struct ConcurrencyStats {
     pub pattern_cache_hits: AtomicUsize,
     /// Cache miss rate for pattern matching
     pub pattern_cache_misses: AtomicUsize,
+}
+
+impl Clone for ConcurrencyStats {
+    fn clone(&self) -> Self {
+        Self {
+            tasks_executed: AtomicUsize::new(self.tasks_executed.load(Ordering::Relaxed)),
+            work_steals: AtomicUsize::new(self.work_steals.load(Ordering::Relaxed)),
+            failed_steals: AtomicUsize::new(self.failed_steals.load(Ordering::Relaxed)),
+            parallel_patterns: AtomicUsize::new(self.parallel_patterns.load(Ordering::Relaxed)),
+            parallel_evaluations: AtomicUsize::new(self.parallel_evaluations.load(Ordering::Relaxed)),
+            pattern_cache_hits: AtomicUsize::new(self.pattern_cache_hits.load(Ordering::Relaxed)),
+            pattern_cache_misses: AtomicUsize::new(self.pattern_cache_misses.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl Default for ConcurrencyStats {
@@ -171,7 +185,7 @@ impl ConcurrencySystem {
                 .worker_threads(config.worker_threads)
                 .enable_all()
                 .build()
-                .map_err(|e| crate::error::Error::Runtime(format!("Failed to create async runtime: {}", e)))?
+                .map_err(|e| crate::error::Error::Runtime { message: format!("Failed to create async runtime: {}", e) })?
         );
         
         // Create work-stealing scheduler
@@ -326,7 +340,7 @@ pub enum ConcurrencyError {
 
 impl From<ConcurrencyError> for crate::error::Error {
     fn from(err: ConcurrencyError) -> Self {
-        crate::error::Error::Runtime(err.to_string())
+        crate::error::Error::Runtime { message: err.to_string() }
     }
 }
 

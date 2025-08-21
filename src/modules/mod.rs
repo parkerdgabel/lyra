@@ -18,6 +18,7 @@ pub mod registry;
 pub mod resolver;
 pub mod package;
 pub mod cli;
+pub mod simple_cli;
 // TODO: Temporarily disabled due to missing AST variants
 // pub mod compiler_integration;
 

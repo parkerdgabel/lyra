@@ -106,6 +106,10 @@ pub enum Pattern {
         head: Box<Pattern>,
         args: Vec<Pattern>,
     },
+    // Exact match pattern for symbols, numbers, strings, etc.
+    Exact {
+        value: Box<Expr>,
+    },
     // Modern pattern extensions
     Typed {
         name: String,
@@ -283,6 +287,9 @@ impl fmt::Display for Pattern {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, "]")
+            }
+            Pattern::Exact { value } => {
+                write!(f, "{}", value)
             }
             Pattern::Typed { name, type_pattern } => {
                 write!(f, "{}:{}", name, type_pattern)

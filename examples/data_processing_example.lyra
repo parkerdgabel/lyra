@@ -1,0 +1,224 @@
+(* 
+   Lyra Data Processing & ETL Examples
+   Agent 2: Comprehensive Data Manipulation & ETL System
+   
+   This file demonstrates all 23 functions in the data processing system:
+   - 5 JSON Processing Functions
+   - 4 CSV Processing Functions  
+   - 7 Data Transformation Functions
+   - 4 Schema Operations Functions
+   - 3 Query Engine Functions
+*)
+
+(* ========================================
+   JSON Processing Examples
+   ======================================== *)
+
+(* Basic JSON parsing *)
+data = JSONParse["{\"users\": [{\"name\": \"Alice\", \"age\": 30}, {\"name\": \"Bob\", \"age\": 25}]}"]
+
+(* Query JSON data using JSONPath *)
+aliceName = JSONQuery[data, "$.users[0].name"]    (* → "Alice" *)
+allNames = JSONQuery[data, "$.users[*].name"]     (* → ["Alice", "Bob"] *)
+adultUsers = JSONQuery[data, "$.users[?(@.age >= 30)]"]
+
+(* Merge JSON objects *)
+user1 = JSONParse["{\"name\": \"Alice\", \"age\": 30}"]
+user2 = JSONParse["{\"age\": 31, \"city\": \"NYC\"}"]
+merged = JSONMerge[user1, user2]  (* age: 31 wins, adds city *)
+
+(* Convert back to JSON string *)
+jsonString = JSONStringify[merged]
+
+(* Validate JSON against schema (basic validation) *)
+isValid = JSONValidate[data, "{\"type\": \"object\"}"]
+
+(* ========================================
+   CSV Processing Examples
+   ======================================== *)
+
+(* Parse CSV with headers *)
+csvData = "name,age,department
+Alice,30,Engineering
+Bob,25,Engineering
+Carol,28,Sales"
+
+parsed = CSVParse[csvData, {"delimiter" -> ",", "has_headers" -> True}]
+
+(* Convert CSV to structured table *)
+table = CSVToTable[parsed, {"types" -> {"age" -> "Integer"}}]
+
+(* Convert table back to CSV *)
+csvOutput = TableToCSV[table]
+csvString = CSVStringify[csvOutput]
+
+(* Parse CSV with custom options *)
+customCSV = "Alice;30;Engineering
+Bob;25;Engineering"
+customParsed = CSVParse[customCSV, {
+    "delimiter" -> ";", 
+    "has_headers" -> False
+}]
+
+(* ========================================
+   Data Transformation Examples
+   ======================================== *)
+
+(* Create sample data *)
+employees = {
+    {"name" -> "alice johnson", "age" -> 30, "salary" -> 75000, "department" -> "Engineering"},
+    {"name" -> "bob smith", "age" -> 25, "salary" -> 65000, "department" -> "Engineering"}, 
+    {"name" -> "carol davis", "age" -> 35, "salary" -> 80000, "department" -> "Sales"},
+    {"name" -> "david wilson", "age" -> 28, "salary" -> 70000, "department" -> "Marketing"}
+}
+
+(* Transform data - normalize names to title case *)
+transforms = {"name" -> ToUpperCase}
+cleaned = DataTransform[employees, transforms]
+
+(* Filter data based on conditions *)
+conditions = {
+    "age" -> GreaterThan[25],
+    "salary" -> GreaterThanOrEqual[70000]
+}
+filtered = DataFilter[cleaned, conditions]
+
+(* Group data and apply aggregations *)
+groupBy = "department"
+aggregations = {
+    "avg_salary" -> Mean["salary"],
+    "employee_count" -> Count,
+    "max_age" -> Max["age"],
+    "min_age" -> Min["age"]
+}
+grouped = DataGroup[filtered, groupBy, aggregations]
+
+(* Join two datasets *)
+departments = {
+    {"department" -> "Engineering", "budget" -> 500000, "manager" -> "Tech Lead"},
+    {"department" -> "Sales", "budget" -> 300000, "manager" -> "Sales Director"},
+    {"department" -> "Marketing", "budget" -> 200000, "manager" -> "Marketing Head"}
+}
+joined = DataJoin[grouped, departments, "department"]
+
+(* Sort data by multiple columns *)
+sortKeys = {"avg_salary" -> "DESC", "employee_count" -> "ASC"}
+sorted = DataSort[joined, sortKeys]
+
+(* Select specific columns *)
+columns = {"department", "avg_salary", "employee_count", "manager"}
+selected = DataSelect[sorted, columns]
+
+(* Rename columns for better presentation *)
+columnMap = {
+    "department" -> "Department",
+    "avg_salary" -> "Average Salary",
+    "employee_count" -> "Team Size",
+    "manager" -> "Manager"
+}
+final = DataRename[selected, columnMap]
+
+(* ========================================
+   Schema Operations Examples  
+   ======================================== *)
+
+(* Infer schema from data *)
+schema = InferSchema[employees]
+
+(* Validate data against schema *)
+validation = ValidateData[employees, schema]
+
+(* Convert data types *)
+typeMap = {
+    "age" -> "Integer",
+    "salary" -> "Real", 
+    "name" -> "String",
+    "department" -> "String"
+}
+converted = ConvertTypes[employees, typeMap]
+
+(* Normalize data structures *)
+normalized = NormalizeData[converted]
+
+(* ========================================
+   Query Engine Examples
+   ======================================== *)
+
+(* Create indexes for fast lookups *)
+index = DataIndex[employees, {"department", "age"}]
+
+(* Perform SQL-like queries *)
+query = "SELECT department, AVG(salary) as avg_sal 
+         FROM employees 
+         WHERE age > 26 
+         GROUP BY department 
+         HAVING avg_sal > 68000"
+queryResult = DataQuery[employees, query]
+
+(* Advanced aggregations *)
+advancedAgg = {
+    "total_payroll" -> Sum["salary"],
+    "avg_age" -> Mean["age"],
+    "senior_employees" -> Count[Where["age", GreaterThan[30]]],
+    "departments" -> CountDistinct["department"]
+}
+aggregated = DataAggregate[employees, advancedAgg]
+
+(* ========================================
+   Real-World ETL Pipeline Example
+   ======================================== *)
+
+(* Step 1: Import raw data *)
+rawSales = CSVParse[Import["sales_data.csv"]]
+rawCustomers = JSONParse[Import["customers.json"]]
+
+(* Step 2: Clean and transform *)
+cleanSales = DataTransform[rawSales, {
+    "date" -> ParseDate,
+    "amount" -> ParseCurrency,
+    "product_name" -> Trim
+}]
+
+(* Step 3: Filter valid records *)
+validSales = DataFilter[cleanSales, {
+    "amount" -> GreaterThan[0],
+    "date" -> IsValidDate
+}]
+
+(* Step 4: Join with customer data *)
+enriched = DataJoin[validSales, rawCustomers, "customer_id"]
+
+(* Step 5: Aggregate by time period *)
+monthlySummary = DataGroup[enriched, "month", {
+    "total_sales" -> Sum["amount"],
+    "transaction_count" -> Count,
+    "unique_customers" -> CountDistinct["customer_id"],
+    "avg_transaction" -> Mean["amount"]
+}]
+
+(* Step 6: Export results *)
+Export[JSONStringify[monthlySummary], "monthly_sales_report.json"]
+Export[CSVStringify[TableToCSV[monthlySummary]], "monthly_sales_report.csv"]
+
+(* ========================================
+   Performance Optimization Examples
+   ======================================== *)
+
+(* Index creation for large datasets *)
+customerIndex = DataIndex[rawCustomers, {"region", "customer_type"}]
+salesIndex = DataIndex[validSales, {"date", "product_category"}]
+
+(* Batch processing for large datasets *)
+batchSize = 10000
+processBatch[data_, start_, end_] := DataTransform[
+    Take[data, {start, Min[end, Length[data]]}],
+    transforms
+]
+
+(* Parallel processing hint (conceptual) *)
+results = ParallelMap[
+    processBatch[rawSales, #[[1]], #[[2]]]&,
+    Partition[Range[1, Length[rawSales]], batchSize]
+]
+
+Print["Data Processing & ETL Examples Complete!"]

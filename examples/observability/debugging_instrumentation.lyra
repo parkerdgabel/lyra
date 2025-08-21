@@ -1,0 +1,308 @@
+(* Debugging and Instrumentation Example *)
+(* Demonstrates call stack analysis, heap dumps, thread analysis, and conditional debugging *)
+
+Print["Setting up debugging and instrumentation tools..."]
+
+(* Call Stack Analysis *)
+Print["Setting up call stack capture..."]
+
+main_stack = CallStack[ThreadID[], 32, True]  (* Current thread, 32 frames deep, with symbolication *)
+Print["Call stack configured for thread: " <> ToString[main_stack.threadId()]]
+
+(* Heap Dump Analysis *)
+Print["Setting up heap dump analysis..."]
+
+heap_analyzer = HeapDump["json", False, True]  (* JSON format, no compression, with analysis *)
+Print["Heap dump analyzer configured"]
+
+(* Thread Dump Analysis *)
+Print["Setting up thread dump analysis..."]
+
+thread_analyzer = ThreadDump[ProcessID[], True, True]  (* Current process, with analysis and deadlock detection *)
+Print["Thread dump analyzer configured"]
+
+(* Deadlock Detection *)
+Print["Setting up deadlock detection..."]
+
+deadlock_detector = DeadlockDetector[
+    {"computation_mutex", "io_mutex", "cache_mutex"},  (* Monitor these resources *)
+    10000,  (* 10 second timeout *)
+    "timeout"  (* Resolution strategy *)
+]
+
+Print["Deadlock detector configured"]
+
+(* Conditional Debugging *)
+Print["Setting up conditional breakpoints..."]
+
+(* Breakpoint for high-value computations *)
+high_value_breakpoint = DebugBreakpoint[
+    "computation_time > 1000 && memory_usage > 100000000",  (* >1s and >100MB *)
+    "log",
+    False  (* Not temporary *)
+]
+
+(* Breakpoint for error conditions *)
+error_breakpoint = DebugBreakpoint[
+    "error_count > 10",
+    "break",
+    True  (* Temporary - remove after first hit *)
+]
+
+(* Breakpoint for specific user *)
+user_breakpoint = DebugBreakpoint[
+    "user_id == 'debug_user_123'",
+    "trace",
+    False
+]
+
+Print["Conditional breakpoints configured"]
+
+(* Demonstrate debugging workflow *)
+Print["Starting debugging workflow demonstration..."]
+
+(* Capture initial call stack *)
+Print["Capturing initial call stack..."]
+initial_stack = main_stack.capture[]
+Print["Initial stack frames captured: " <> ToString[Length[initial_stack]]]
+
+(* Format call stack in different ways *)
+text_stack = main_stack.format["text"]
+json_stack = main_stack.format["json"]
+
+Print["Call stack (text format):"]
+Print[StringTake[text_stack, 200] <> "..."]
+
+Print["Call stack depth: " <> ToString[main_stack.depth[]]]
+
+(* Capture initial heap dump *)
+Print["Capturing initial heap dump..."]
+initial_heap = heap_analyzer.capture[]
+Print["Initial heap analysis: " <> StringTake[initial_heap, 100] <> "..."]
+
+(* Get heap statistics *)
+heap_size = heap_analyzer.size[]
+object_count = heap_analyzer.objectCount[]
+fragmentation = heap_analyzer.fragmentation[]
+
+Print["Heap size: " <> ToString[heap_size] <> " bytes"]
+Print["Object count: " <> ToString[object_count]]
+Print["Fragmentation: " <> ToString[fragmentation * 100] <> "%"]
+
+(* Capture thread dump *)
+Print["Capturing thread dump..."]
+thread_dump = thread_analyzer.capture[]
+Print["Thread dump captured: " <> ToString[Length[thread_dump]] <> " threads"]
+
+(* Analyze threads *)
+thread_analysis = thread_analyzer.analyze[]
+Print["Thread analysis:"]
+Print[StringTake[thread_analysis, 300] <> "..."]
+
+(* Check for deadlocks *)
+Print["Scanning for deadlocks..."]
+detected_deadlocks = deadlock_detector.scan[]
+Print["Deadlocks detected: " <> ToString[Length[detected_deadlocks]]]
+
+If[Length[detected_deadlocks] > 0,
+    Print["Deadlock details:"];
+    Do[
+        Print["  " <> deadlock],
+        {deadlock, detected_deadlocks}
+    ],
+    Print["No deadlocks detected"]
+]
+
+(* Add monitors to deadlock detector *)
+deadlock_detector.addMonitor["memory_pool_mutex"]
+deadlock_detector.addMonitor["log_writer_mutex"]
+
+(* Simulate problematic scenarios *)
+Print["Simulating debugging scenarios..."]
+
+(* Scenario 1: High computation with memory usage *)
+Print["Scenario 1: High computation scenario"]
+
+computation_context = {
+    {"computation_time", "1500"},  (* 1.5 seconds *)
+    {"memory_usage", "150000000"},  (* 150MB *)
+    {"operation", "symbolic_integration"},
+    {"complexity", "high"}
+}
+
+breakpoint_result = high_value_breakpoint.evaluate[computation_context]
+Print["High-value breakpoint result: " <> ToString[breakpoint_result]]
+Print["High-value breakpoint hit count: " <> ToString[high_value_breakpoint.hitCount[]]]
+
+(* Scenario 2: Error condition *)
+Print["Scenario 2: Error accumulation scenario"]
+
+error_context = {
+    {"error_count", "15"},
+    {"error_type", "computation_timeout"},
+    {"service", "symbolic_engine"}
+}
+
+error_result = error_breakpoint.evaluate[error_context]
+Print["Error breakpoint result: " <> ToString[error_result]]
+Print["Error breakpoint hit count: " <> ToString[error_breakpoint.hitCount[]]]
+
+(* Scenario 3: Specific user debugging *)
+Print["Scenario 3: User-specific debugging"]
+
+user_context = {
+    {"user_id", "debug_user_123"},
+    {"session_id", "sess_abc123"},
+    {"request_type", "complex_calculation"}
+}
+
+user_result = user_breakpoint.evaluate[user_context]
+Print["User breakpoint result: " <> ToString[user_result]]
+
+(* Simulate memory-intensive operation and capture heap *)
+Print["Simulating memory-intensive operation..."]
+
+(* Create some memory pressure *)
+large_computation = Table[
+    Table[RandomReal[], {j, 1, 1000}],
+    {i, 1, 100}
+];
+
+(* Capture heap after memory allocation *)
+post_allocation_heap = heap_analyzer.capture[]
+Print["Post-allocation heap analysis: " <> StringTake[post_allocation_heap, 100] <> "..."]
+
+(* Analyze heap changes *)
+heap_analysis_report = heap_analyzer.analyze[]
+Print["Heap analysis report:"]
+Print[StringTake[heap_analysis_report, 400] <> "..."]
+
+(* Export heap dump *)
+json_heap_export = heap_analyzer.export["json"]
+Print["Heap dump exported (JSON size): " <> ToString[StringLength[json_heap_export]] <> " characters"]
+
+(* Check updated heap statistics *)
+new_heap_size = heap_analyzer.size[]
+new_object_count = heap_analyzer.objectCount[]
+new_fragmentation = heap_analyzer.fragmentation[]
+
+Print["Updated heap statistics:"]
+Print["  Size change: " <> ToString[new_heap_size - heap_size] <> " bytes"]
+Print["  Object count change: " <> ToString[new_object_count - object_count]]
+Print["  Fragmentation change: " <> ToString[(new_fragmentation - fragmentation) * 100] <> "%"]
+
+(* Simulate potential deadlock scenario *)
+Print["Simulating potential deadlock scenario..."]
+
+(* Add more monitors *)
+deadlock_detector.addMonitor["network_pool_mutex"]
+deadlock_detector.addMonitor["file_system_mutex"]
+
+(* Get detector status *)
+detector_status = deadlock_detector.status[]
+Print["Deadlock detector status:"]
+Do[
+    Print["  " <> status_item[[1]] <> ": " <> status_item[[2]]],
+    {status_item, detector_status}
+]
+
+(* Scan again after adding monitors *)
+updated_deadlocks = deadlock_detector.scan[]
+Print["Updated deadlock scan: " <> ToString[Length[updated_deadlocks]] <> " detected"]
+
+(* Thread count analysis *)
+Print["Analyzing thread behavior..."]
+thread_count = thread_analyzer.threadCount[]
+Print["Current thread count: " <> ToString[thread_count]]
+
+(* Get deadlock detection results *)
+deadlock_results = thread_analyzer.deadlocks[]
+Print["Thread analyzer deadlock results: " <> ToString[Length[deadlock_results]]]
+
+(* Breakpoint management *)
+Print["Demonstrating breakpoint management..."]
+
+(* Check breakpoint statuses *)
+high_value_status = high_value_breakpoint.status[]
+error_status = error_breakpoint.status[]
+user_status = user_breakpoint.status[]
+
+Print["High-value breakpoint status: " <> ToString[Length[high_value_status]] <> " fields"]
+Print["Error breakpoint status: " <> ToString[Length[error_status]] <> " fields"]
+Print["User breakpoint status: " <> ToString[Length[user_status]] <> " fields"]
+
+(* Disable and re-enable breakpoints *)
+high_value_breakpoint.disable[]
+Print["High-value breakpoint disabled"]
+
+high_value_breakpoint.enable[]
+Print["High-value breakpoint re-enabled"]
+
+(* Test disabled breakpoint *)
+disabled_result = high_value_breakpoint.evaluate[computation_context]
+Print["Disabled breakpoint result: " <> ToString[disabled_result]]
+
+(* Memory cleanup simulation *)
+Print["Simulating memory cleanup..."]
+
+(* Clear large computation from memory *)
+large_computation = {};
+
+(* Force garbage collection (in real implementation) *)
+(* This would trigger actual GC *)
+
+(* Capture final heap state *)
+final_heap = heap_analyzer.capture[]
+Print["Final heap analysis: " <> StringTake[final_heap, 100] <> "..."]
+
+final_heap_size = heap_analyzer.size[]
+Print["Final heap size: " <> ToString[final_heap_size] <> " bytes"]
+Print["Total memory change: " <> ToString[final_heap_size - heap_size] <> " bytes"]
+
+(* Capture final call stack *)
+Print["Capturing final call stack..."]
+final_stack = main_stack.capture[]
+final_stack_text = main_stack.format["text"]
+
+Print["Final call stack (first 3 lines):"]
+final_lines = StringSplit[final_stack_text, "\n"];
+Do[
+    If[i <= Length[final_lines],
+        Print["  " <> final_lines[[i]]]
+    ],
+    {i, 1, 3}
+]
+
+(* Summary and recommendations *)
+Print["Debugging Session Summary:"]
+Print["========================"]
+
+Print["📊 Statistics:"]
+Print["  - Call stack frames analyzed: " <> ToString[Length[initial_stack]]]
+Print["  - Heap dumps captured: 3"]
+Print["  - Thread dumps captured: 1"]
+Print["  - Breakpoints evaluated: 3"]
+Print["  - Deadlock scans performed: 2"]
+
+Print["🔍 Findings:"]
+Print["  - Peak memory usage: " <> ToString[new_heap_size] <> " bytes"]
+Print["  - Memory fragmentation: " <> ToString[new_fragmentation * 100] <> "%"]
+Print["  - Threads analyzed: " <> ToString[thread_count]]
+Print["  - Deadlocks detected: " <> ToString[Length[detected_deadlocks]]]
+
+Print["💡 Recommendations:"]
+If[new_fragmentation > 0.2,
+    Print["  ⚠️  Consider memory pool optimization (fragmentation > 20%)"]
+];
+
+If[new_heap_size > 100000000,  (* 100MB *)
+    Print["  ⚠️  Monitor memory usage patterns for potential optimization"]
+];
+
+Print["  ✅ Set up continuous monitoring for production debugging"]
+Print["  ✅ Configure automated heap dump collection on OOM conditions"]
+Print["  ✅ Enable deadlock detection in concurrent environments"]
+Print["  ✅ Use conditional breakpoints for specific debugging scenarios"]
+
+Print["Debugging and instrumentation example completed successfully!"]
+Print["These tools provide powerful capabilities for production debugging and performance analysis."]

@@ -73,6 +73,7 @@ pub enum BytecodeInstruction {
     BindVariable { name: String },
     CheckFunctionHead { expected_head: String },
     CheckArgumentCount { expected_count: usize },
+    CheckExactMatch,
     DescendIntoArg { arg_index: usize },
     Return { success: bool },
 }
@@ -311,9 +312,11 @@ impl PatternMatcher {
             Pattern::Blank { head: Some(_) } => true,
             // Anonymous blank patterns - moderate benefit but consistent
             Pattern::Blank { head: None } => true,
+            // Exact patterns are very fast - simple equality check
+            Pattern::Exact { .. } => true,
             // Named patterns wrapping simple blanks - excellent performance
             Pattern::Named { pattern: inner, .. } => {
-                matches!(inner.as_ref(), Pattern::Blank { .. })
+                matches!(inner.as_ref(), Pattern::Blank { .. } | Pattern::Exact { .. })
             }
             // All other patterns use standard matching
             _ => false,
@@ -328,6 +331,7 @@ impl PatternMatcher {
             Pattern::BlankNullSequence { head } => self.match_blank_null_sequence(expr, head.as_deref()),
             Pattern::Named { name, pattern } => self.match_named(expr, name, pattern),
             Pattern::Function { head, args } => self.match_function(expr, head, args),
+            Pattern::Exact { value } => self.match_exact(expr, value),
             Pattern::Typed { name, type_pattern } => self.match_typed(expr, name, type_pattern),
             Pattern::Predicate { pattern, test } => self.match_predicate(expr, pattern, test),
             Pattern::Alternative { patterns } => self.match_alternative(expr, patterns),
@@ -808,6 +812,20 @@ impl PatternMatcher {
                 MatchResult::Failure {
                     reason: "Expression is not a function call or list".to_string(),
                 }
+            }
+        }
+    }
+    
+    /// Match an exact pattern (exact value match)
+    fn match_exact(&mut self, expr: &Expr, pattern_value: &Expr) -> MatchResult {
+        // Check if the expression matches the pattern value exactly
+        if expr == pattern_value {
+            MatchResult::Success {
+                bindings: create_optimized_bindings(),
+            }
+        } else {
+            MatchResult::Failure {
+                reason: format!("Expression {:?} does not match exact pattern {:?}", expr, pattern_value),
             }
         }
     }
@@ -1769,6 +1787,7 @@ pub fn categorize_pattern(pattern: &Pattern) -> PatternCategory {
             }
         }
         Pattern::Function { .. } => PatternCategory::Complex,
+        Pattern::Exact { .. } => PatternCategory::Simple,
         Pattern::Conditional { .. } => PatternCategory::Conditional,
         Pattern::BlankSequence { .. } | Pattern::BlankNullSequence { .. } => PatternCategory::Complex,
         Pattern::Typed { .. } => PatternCategory::Complex,
@@ -1791,6 +1810,14 @@ pub fn compile_pattern(pattern: &Pattern) -> PatternBytecode {
             },
             variable_count: 0,
             pattern_type: PatternType::Blank,
+        },
+        Pattern::Exact { value: _value } => PatternBytecode {
+            instructions: vec![
+                BytecodeInstruction::CheckExactMatch, // Would need implementation
+                BytecodeInstruction::Return { success: true },
+            ],
+            variable_count: 0,
+            pattern_type: PatternType::Blank, // Use Blank for simplicity
         },
         Pattern::Named { name, pattern } => {
             let mut instructions = vec![];
@@ -2379,11 +2406,12 @@ impl PatternRouter {
             // Trivial patterns - direct type/value matching
             Pattern::Blank { head: None } => ComplexityScore::Trivial,
             Pattern::Blank { head: Some(_) } => ComplexityScore::Trivial,
+            Pattern::Exact { .. } => ComplexityScore::Trivial,
             
             // Simple patterns - single level with basic constraints
             Pattern::Named { pattern: inner, .. } => {
                 match inner.as_ref() {
-                    Pattern::Blank { .. } => ComplexityScore::Simple,
+                    Pattern::Blank { .. } | Pattern::Exact { .. } => ComplexityScore::Simple,
                     _ => self.calculate_pattern_complexity(inner).max(ComplexityScore::Simple),
                 }
             }

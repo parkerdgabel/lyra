@@ -33,7 +33,8 @@ pub mod signal;
 // pub mod sparse;
 // pub mod spatial;
 pub mod special;
-pub mod statistics;
+pub mod analytics;
+// pub mod statistics; // CONSOLIDATED into analytics/statistics.rs
 pub mod string;
 pub mod string_advanced;
 pub mod table;
@@ -49,6 +50,7 @@ pub mod data_processing;
 pub mod temporal;
 pub mod developer_tools;
 pub mod system;
+pub mod collections;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -102,6 +104,7 @@ impl StandardLibrary {
         stdlib.register_temporal_functions();
         stdlib.register_developer_tools_functions();
         stdlib.register_system_functions();
+        stdlib.register_collections_functions();
 
         stdlib
     }
@@ -209,26 +212,43 @@ impl StandardLibrary {
     }
 
     fn register_statistics_functions(&mut self) {
-        // Descriptive statistics
-        self.register("Mean", statistics::mean);
-        self.register("Variance", statistics::variance);
-        self.register("StandardDeviation", statistics::standard_deviation);
-        self.register("Median", statistics::median);
-        self.register("Mode", statistics::mode);
-        self.register("Quantile", statistics::quantile);
+        // Basic Descriptive statistics (consolidated into analytics/statistics.rs)
+        self.register("Mean", analytics::statistics::mean);
+        self.register("Variance", analytics::statistics::variance);
+        self.register("StandardDeviation", analytics::statistics::standard_deviation);
+        self.register("Median", analytics::statistics::median);
+        self.register("Mode", analytics::statistics::mode);
+        self.register("Quantile", analytics::statistics::quantile);
         
-        // Min/Max and aggregation
-        self.register("Min", statistics::min);
-        self.register("Max", statistics::max);
-        self.register("Total", statistics::total);
+        // Min/Max and aggregation (consolidated into analytics/statistics.rs)
+        self.register("Min", analytics::statistics::min);
+        self.register("Max", analytics::statistics::max);
+        self.register("Total", analytics::statistics::total);
         
-        // Random number generation
-        self.register("RandomReal", statistics::random_real);
-        self.register("RandomInteger", statistics::random_integer);
+        // Random number generation (consolidated into analytics/statistics.rs)
+        self.register("RandomReal", analytics::statistics::random_real);
+        self.register("RandomInteger", analytics::statistics::random_integer);
         
-        // Correlation and covariance
-        self.register("Correlation", statistics::correlation);
-        self.register("Covariance", statistics::covariance);
+        // Correlation and covariance (consolidated into analytics/statistics.rs)
+        self.register("Correlation", analytics::statistics::correlation);
+        self.register("Covariance", analytics::statistics::covariance);
+        
+        // Advanced Statistical Analysis Functions
+        self.register("Regression", analytics::statistics::regression);
+        self.register("ANOVA", analytics::statistics::anova);
+        self.register("TTest", analytics::statistics::t_test);
+        self.register("ChiSquareTest", analytics::statistics::chi_square_test);
+        self.register("CorrelationMatrix", analytics::statistics::correlation_matrix);
+        self.register("PCA", analytics::statistics::pca);
+        self.register("HypothesisTest", analytics::statistics::hypothesis_test);
+        self.register("ConfidenceInterval", analytics::statistics::confidence_interval);
+        self.register("BootstrapSample", analytics::statistics::bootstrap_sample);
+        self.register("StatisticalSummary", analytics::statistics::statistical_summary);
+        self.register("OutlierDetection", analytics::statistics::outlier_detection);
+        self.register("NormalityTest", analytics::statistics::normality_test);
+        self.register("PowerAnalysis", analytics::statistics::power_analysis);
+        self.register("EffectSize", analytics::statistics::effect_size);
+        self.register("MultipleComparison", analytics::statistics::multiple_comparison);
     }
 
     fn register_rule_functions(&mut self) {
@@ -305,9 +325,35 @@ impl StandardLibrary {
     }
 
     fn register_io_functions(&mut self) {
-        // I/O operations
+        // Import/Export operations
         self.register("Import", io::import);
         self.register("Export", io::export);
+        
+        // File operations
+        self.register("FileRead", io::file_read);
+        self.register("FileReadLines", io::file_read_lines);
+        self.register("FileWrite", io::file_write);
+        self.register("FileAppend", io::file_append);
+        self.register("FileExists", io::file_exists);
+        self.register("FileSize", io::file_size);
+        self.register("FileDelete", io::file_delete);
+        self.register("FileCopy", io::file_copy);
+        
+        // Directory operations
+        self.register("DirectoryCreate", io::directory_create);
+        self.register("DirectoryDelete", io::directory_delete);
+        self.register("DirectoryExists", io::directory_exists);
+        self.register("DirectoryList", io::directory_list);
+        self.register("DirectorySize", io::directory_size);
+        self.register("DirectoryWatch", io::directory_watch);
+        
+        // Path operations
+        self.register("PathJoin", io::path_join);
+        self.register("PathSplit", io::path_split);
+        self.register("PathParent", io::path_parent);
+        self.register("PathFilename", io::path_filename);
+        self.register("PathExtension", io::path_extension);
+        self.register("PathAbsolute", io::path_absolute);
     }
 
     fn register_linalg_functions(&mut self) {
@@ -1096,6 +1142,41 @@ impl StandardLibrary {
         self.register("TempDirectory", system::temp_directory);
         self.register("CurrentUser", system::current_user);
         self.register("SystemArchitecture", system::system_architecture);
+    }
+
+    fn register_collections_functions(&mut self) {
+        // Set operations (8 functions)
+        self.register("SetCreate", collections::set_create);
+        self.register("SetUnion", collections::set_union);
+        self.register("SetIntersection", collections::set_intersection);
+        self.register("SetDifference", collections::set_difference);
+        self.register("SetContains", collections::set_contains);
+        self.register("SetAdd", collections::set_add);
+        self.register("SetRemove", collections::set_remove);
+        self.register("SetSize", collections::set_size);
+        
+        // Dictionary operations (9 functions)
+        self.register("DictCreate", collections::dict_create);
+        self.register("DictGet", collections::dict_get);
+        self.register("DictSet", collections::dict_set);
+        self.register("DictDelete", collections::dict_delete);
+        self.register("DictKeys", collections::dict_keys);
+        self.register("DictValues", collections::dict_values);
+        self.register("DictContains", collections::dict_contains);
+        self.register("DictMerge", collections::dict_merge);
+        self.register("DictSize", collections::dict_size);
+        
+        // Queue operations (4 functions)
+        self.register("QueueCreate", collections::queue_create);
+        self.register("QueueEnqueue", collections::queue_enqueue);
+        self.register("QueueDequeue", collections::queue_dequeue);
+        self.register("QueueSize", collections::queue_size);
+        
+        // Stack operations (4 functions)
+        self.register("StackCreate", collections::stack_create);
+        self.register("StackPush", collections::stack_push);
+        self.register("StackPop", collections::stack_pop);
+        self.register("StackSize", collections::stack_size);
     }
 }
 

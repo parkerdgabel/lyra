@@ -1540,18 +1540,18 @@ impl KubernetesClient {
 
     /// Get pod logs
     pub fn get_pod_logs(&self, pod_name: &str, container: Option<&str>, namespace: Option<&str>, tail: Option<u32>) -> Result<String, KubernetesError> {
-        let mut args = vec!["logs", pod_name];
+        let mut args: Vec<String> = vec!["logs".to_string(), pod_name.to_string()];
         if let Some(c) = container {
-            args.extend(&["-c", c]);
+            args.extend(["-c".to_string(), c.to_string()]);
         }
         if let Some(ns) = namespace {
-            args.extend(&["-n", ns]);
+            args.extend(["-n".to_string(), ns.to_string()]);
         }
         if let Some(lines) = tail {
-            let tail_str = format!("{}", lines);
-            args.extend(&["--tail", &tail_str]);
+            args.extend(["--tail".to_string(), lines.to_string()]);
         }
-        self.exec_kubectl_command(&args)
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.exec_kubectl_command(&arg_refs)
     }
 
     /// Get resource information
@@ -1592,24 +1592,35 @@ impl KubernetesClient {
     /// Expose deployment as service
     pub fn expose_deployment(&self, deployment_name: &str, port: u16, target_port: Option<u16>, service_type: &str, namespace: Option<&str>) -> Result<String, KubernetesError> {
         let port_str = port.to_string();
-        let mut args = vec!["expose", "deployment", deployment_name, "--port", &port_str, "--type", service_type];
+        let mut args_vec = vec![
+            "expose".to_string(),
+            "deployment".to_string(),
+            deployment_name.to_string(),
+            "--port".to_string(),
+            port_str,
+            "--type".to_string(),
+            service_type.to_string(),
+        ];
         
         if let Some(tp) = target_port {
-            let target_port_str = tp.to_string();
-            args.extend(&["--target-port", &target_port_str]);
+            args_vec.push("--target-port".to_string());
+            args_vec.push(tp.to_string());
         }
         
         if let Some(ns) = namespace {
-            args.extend(&["-n", ns]);
+            args_vec.push("-n".to_string());
+            args_vec.push(ns.to_string());
         }
         
+        let args: Vec<&str> = args_vec.iter().map(String::as_str).collect();
         self.exec_kubectl_command(&args)
     }
 
     /// Rolling update deployment image
     pub fn rolling_update(&self, deployment_name: &str, image: &str, namespace: Option<&str>) -> Result<String, KubernetesError> {
         let image_spec = format!("{}={}", deployment_name, image);
-        let mut args = vec!["set", "image", &format!("deployment/{}", deployment_name), &image_spec];
+        let deployment_spec = format!("deployment/{}", deployment_name);
+        let mut args = vec!["set", "image", deployment_spec.as_str(), image_spec.as_str()];
         
         if let Some(ns) = namespace {
             args.extend(&["-n", ns]);

@@ -2,6 +2,7 @@ use crate::bytecode::{Instruction, OpCode};
 use crate::foreign::LyObj;
 use crate::linker::{registry::create_global_registry, FunctionRegistry};
 use crate::stdlib::StandardLibrary;
+use crate::ast::{Expr, Symbol, Number};
 // Tensor operations imported when needed
 use std::collections::HashMap;
 use thiserror::Error;
@@ -50,6 +51,7 @@ pub enum Value {
     LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema, Tensor)
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
     Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
+    Rule { lhs: Box<Value>, rhs: Box<Value> }, // Rule expressions for transformations
 }
 
 // Use simpler derive-based serialization with a custom implementation for LyObj
@@ -67,6 +69,7 @@ enum ValueSerde {
     LyObjPlaceholder { type_name: String }, // Simplified LyObj representation  
     Quote(Box<crate::ast::Expr>),
     Pattern(crate::ast::Pattern),
+    Rule { lhs: Box<Value>, rhs: Box<Value> },
 }
 
 // Custom serialization for Value enum to handle LyObj
@@ -89,6 +92,7 @@ impl Serialize for Value {
             },
             Value::Quote(expr) => ValueSerde::Quote(expr.clone()),
             Value::Pattern(pat) => ValueSerde::Pattern(pat.clone()),
+            Value::Rule { lhs, rhs } => ValueSerde::Rule { lhs: lhs.clone(), rhs: rhs.clone() },
         };
         serde_value.serialize(serializer)
     }
@@ -116,6 +120,7 @@ impl<'de> Deserialize<'de> for Value {
             }
             ValueSerde::Quote(expr) => Value::Quote(expr),
             ValueSerde::Pattern(pat) => Value::Pattern(pat),
+            ValueSerde::Rule { lhs, rhs } => Value::Rule { lhs, rhs },
         };
         Ok(value)
     }
@@ -174,6 +179,11 @@ impl std::hash::Hash for Value {
                 11u8.hash(state);
                 // Hash the debug representation of the Pattern
                 format!("{:?}", pattern).hash(state);
+            },
+            Value::Rule { lhs, rhs } => {
+                12u8.hash(state);
+                lhs.hash(state);
+                rhs.hash(state);
             },
         }
     }
@@ -846,10 +856,10 @@ impl VirtualMachine {
                 (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a + b as f64)),
                 _ => unreachable!(),
             },
-            _ => Err(VmError::TypeError {
-                expected: "numeric or tensor".to_string(),
-                actual: format!("{:?} and {:?}", a, b),
-            }),
+            _ => {
+                // If we can't evaluate numerically, create a symbolic Plus expression
+                Ok(self.create_symbolic_function("Plus", &[a, b]))
+            }
         }
     }
 
@@ -878,10 +888,10 @@ impl VirtualMachine {
                 (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a - b as f64)),
                 _ => unreachable!(),
             },
-            _ => Err(VmError::TypeError {
-                expected: "numeric or tensor".to_string(),
-                actual: format!("{:?} and {:?}", a, b),
-            }),
+            _ => {
+                // If we can't evaluate numerically, create a symbolic Minus expression
+                Ok(self.create_symbolic_function("Minus", &[a, b]))
+            }
         }
     }
 
@@ -910,10 +920,10 @@ impl VirtualMachine {
                 (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a * b as f64)),
                 _ => unreachable!(),
             },
-            _ => Err(VmError::TypeError {
-                expected: "numeric or tensor".to_string(),
-                actual: format!("{:?} and {:?}", a, b),
-            }),
+            _ => {
+                // If we can't evaluate numerically, create a symbolic Times expression
+                Ok(self.create_symbolic_function("Times", &[a, b]))
+            }
         }
     }
 
@@ -967,10 +977,10 @@ impl VirtualMachine {
                 }
                 _ => unreachable!(),
             },
-            _ => Err(VmError::TypeError {
-                expected: "numeric or tensor".to_string(),
-                actual: format!("{:?} and {:?}", a, b),
-            }),
+            _ => {
+                // If we can't evaluate numerically, create a symbolic Divide expression
+                Ok(self.create_symbolic_function("Divide", &[a, b]))
+            }
         }
     }
 
@@ -1007,11 +1017,40 @@ impl VirtualMachine {
                 (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a.powf(b as f64))),
                 _ => unreachable!(),
             },
-            _ => Err(VmError::TypeError {
-                expected: "numeric or tensor".to_string(),
-                actual: format!("{:?} and {:?}", a, b),
-            }),
+            _ => {
+                // If we can't evaluate numerically, create a symbolic Power expression
+                Ok(self.create_symbolic_function("Power", &[a, b]))
+            }
         }
+    }
+
+    /// Convert a Value to an Expr for symbolic computation
+    fn value_to_expr(&self, value: &Value) -> Expr {
+        match value {
+            Value::Integer(i) => Expr::Number(Number::Integer(*i)),
+            Value::Real(r) => Expr::Number(Number::Real(*r)),
+            Value::String(s) => Expr::String(s.clone()),
+            Value::Symbol(s) => Expr::Symbol(Symbol { name: s.clone() }),
+            Value::List(items) => {
+                let expr_items: Vec<Expr> = items.iter().map(|item| self.value_to_expr(item)).collect();
+                Expr::List(expr_items)
+            }
+            Value::Quote(expr) => *expr.clone(),
+            _ => {
+                // For complex types, create a symbolic representation
+                Expr::Symbol(Symbol { name: format!("{:?}", value) })
+            }
+        }
+    }
+
+    /// Create a symbolic function call when arithmetic can't be evaluated
+    fn create_symbolic_function(&self, function_name: &str, args: &[Value]) -> Value {
+        let expr_args: Vec<Expr> = args.iter().map(|arg| self.value_to_expr(arg)).collect();
+        let function_expr = Expr::Function {
+            head: Box::new(Expr::Symbol(Symbol { name: function_name.to_string() })),
+            args: expr_args,
+        };
+        Value::Quote(Box::new(function_expr))
     }
 
     /// Check if a value is considered "falsy" for conditionals
@@ -1299,6 +1338,7 @@ impl VirtualMachine {
             Value::LyObj(_) => "Object".to_string(),
             Value::Quote(_) => "Quote".to_string(),
             Value::Pattern(_) => "Pattern".to_string(),
+            Value::Rule { .. } => "Rule".to_string(),
         }
     }
 }

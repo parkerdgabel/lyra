@@ -100,7 +100,7 @@ impl Operation {
     }
     
     /// Get a human-readable name for this operation
-    pub fn name(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         match self {
             Operation::Input { .. } => "Input",
             Operation::Add => "Add",

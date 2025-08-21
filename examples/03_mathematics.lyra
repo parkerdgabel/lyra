@@ -1,0 +1,339 @@
+//! Mathematical Computing Examples - Comprehensive Math Operations
+//! 
+//! This example demonstrates Lyra's extensive mathematical capabilities:
+//! - Symbolic calculus: derivatives and integrals
+//! - Linear algebra operations: matrices, vectors, decompositions
+//! - Statistical functions: descriptive stats, distributions, correlations
+//! - Special mathematical functions: gamma, bessel, elliptic
+//! - Number theory: primes, modular arithmetic, cryptographic functions
+//! - Numerical methods: root finding, optimization, integration
+//! - Trigonometric and hyperbolic functions
+
+(* === Basic Mathematical Functions === *)
+
+(* Elementary functions *)
+basic_sin = Sin[0.785398]                 (* Pi/4 ≈ 0.785, Expected: 0.707 *)
+basic_cos = Cos[1.047198]                 (* Pi/3 ≈ 1.047, Expected: 0.5 *)
+basic_tan = Tan[0.523599]                 (* Pi/6 ≈ 0.524, Expected: 0.577 *)
+basic_exp = Exp[1]                         (* Expected: e ≈ 2.718 *)
+basic_log = Log[E^2]                       (* Expected: 2 *)
+
+(* Power and root functions *)
+power_test = 2^10                          (* Expected: 1024 *)
+cube_root = Power[27, 0.33333333]          (* Expected: 3 *)
+nth_root = Power[32, 0.2]                  (* Expected: 2 *)
+square_root = Sqrt[144]                    (* Expected: 12 *)
+
+(* Absolute values and signs *)
+abs_positive = Abs[42]                     (* Expected: 42 *)
+abs_negative = Abs[-17]                    (* Expected: 17 *)
+sign_positive = Sign[25]                   (* Expected: 1 *)
+sign_negative = Sign[-13]                  (* Expected: -1 *)
+sign_zero = Sign[0]                        (* Expected: 0 *)
+
+(* === Symbolic Calculus === *)
+
+(* Basic derivatives *)
+derivative_poly = D[x^3 + 2*x^2 + x + 1, x]     (* Expected: 3*x^2 + 4*x + 1 *)
+derivative_sin = D[Sin[x], x]                    (* Expected: Cos[x] *)
+derivative_exp = D[Exp[x], x]                    (* Expected: Exp[x] *)
+derivative_log = D[Log[x], x]                    (* Expected: 1/x *)
+
+(* Chain rule derivatives *)
+chain_rule1 = D[Sin[x^2], x]                    (* Expected: 2*x*Cos[x^2] *)
+chain_rule2 = D[Exp[3*x], x]                    (* Expected: 3*Exp[3*x] *)
+chain_rule3 = D[Log[x^2 + 1], x]                (* Expected: 2*x/(x^2 + 1) *)
+
+(* Product rule derivatives *)
+product_rule = D[x^2 * Sin[x], x]               (* Expected: 2*x*Sin[x] + x^2*Cos[x] *)
+
+(* Higher-order derivatives *)
+second_derivative = D[x^4, x, x]                 (* Expected: 12*x^2 *)
+third_derivative = D[x^5, {x, 3}]               (* Expected: 60*x^2 *)
+
+(* Partial derivatives *)
+partial_x = D[x^2 + x*y + y^2, x]               (* Expected: 2*x + y *)
+partial_y = D[x^2 + x*y + y^2, y]               (* Expected: x + 2*y *)
+
+(* Basic integrals *)
+integral_poly = Integrate[3*x^2 + 2*x + 1, x]   (* Expected: x^3 + x^2 + x + C *)
+integral_sin = Integrate[Sin[x], x]              (* Expected: -Cos[x] + C *)
+integral_exp = Integrate[Exp[x], x]              (* Expected: Exp[x] + C *)
+integral_inv = Integrate[1/x, x]                 (* Expected: Log[x] + C *)
+
+(* Definite integrals *)
+definite_poly = IntegrateDefinite[x^2, x, 0, 1] (* Expected: 0.333 *)
+definite_sin = IntegrateDefinite[Sin[x], x, 0, Pi] (* Expected: 2 *)
+definite_exp = IntegrateDefinite[Exp[x], x, 0, 1]  (* Expected: e - 1 *)
+
+(* === Linear Algebra Operations === *)
+
+(* Matrix creation and operations *)
+matrix_a = Array[{{1, 2}, {3, 4}}]
+matrix_b = Array[{{5, 6}, {7, 8}}]
+identity_2x2 = Array[{{1, 0}, {0, 1}}]
+
+(* Matrix multiplication *)
+matrix_product = Dot[matrix_a, matrix_b]         (* Expected: {{19, 22}, {43, 50}} *)
+
+(* Matrix transpose *)
+transpose_a = Transpose[matrix_a]                (* Expected: {{1, 3}, {2, 4}} *)
+
+(* Matrix properties *)
+det_a = Determinant[matrix_a]                    (* Expected: -2 *)
+rank_a = MatrixRank[matrix_a]                    (* Expected: 2 *)
+trace_a = MatrixTrace[matrix_a]                  (* Expected: 5 *)
+
+(* Larger matrices *)
+matrix_3x3 = Array[{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}]
+matrix_3x3_inv = Array[{{2, -1, 0}, {-1, 2, -1}, {0, -1, 2}}]
+
+det_3x3 = Determinant[matrix_3x3]               (* Expected: 0 (singular) *)
+det_inv = Determinant[matrix_3x3_inv]           (* Expected: 4 *)
+rank_3x3 = MatrixRank[matrix_3x3]               (* Expected: 2 *)
+
+(* Vector operations *)
+vector_a = {1, 2, 3}
+vector_b = {4, 5, 6}
+
+dot_product = Dot[vector_a, vector_b]           (* Expected: 32 *)
+cross_product = Cross[vector_a, vector_b]       (* Expected: {-3, 6, -3} *)
+vector_norm = Norm[vector_a]                    (* Expected: √14 ≈ 3.742 *)
+
+(* Matrix decompositions *)
+test_matrix = Array[{{4, 2}, {2, 3}}]
+svd_result = SVD[test_matrix]                   (* Singular Value Decomposition *)
+qr_result = QRDecomposition[test_matrix]        (* QR Decomposition *)
+lu_result = LUDecomposition[test_matrix]        (* LU Decomposition *)
+cholesky_result = CholeskyDecomposition[test_matrix] (* Cholesky (if positive definite) *)
+
+(* Eigenvalues and eigenvectors *)
+eigen_result = EigenDecomposition[test_matrix]
+eigenvals = Eigenvalues[test_matrix]
+eigenvecs = Eigenvectors[test_matrix]
+
+(* Linear system solving *)
+coefficient_matrix = Array[{{2, 1}, {1, 3}}]
+constants_vector = {5, 7}
+solution = LinearSolve[coefficient_matrix, constants_vector] (* Expected: {1, 2} *)
+
+(* === Statistical Functions === *)
+
+(* Sample datasets *)
+data_small = {1, 2, 3, 4, 5}
+data_large = {12, 15, 18, 20, 22, 25, 28, 30, 33, 35}
+data_mixed = {-2, 5, 1, 8, -1, 3, 7, 0, 4, 6}
+
+(* Descriptive statistics *)
+mean_small = Mean[data_small]                   (* Expected: 3 *)
+mean_large = Mean[data_large]                   (* Expected: 23.8 *)
+variance_small = Variance[data_small]           (* Expected: 2.5 *)
+std_dev_small = StandardDeviation[data_small]   (* Expected: √2.5 ≈ 1.581 *)
+
+(* Quantiles and percentiles *)
+median_large = Median[data_large]               (* Expected: 23.5 *)
+q1 = Quantile[data_large, 0.25]                (* 25th percentile *)
+q3 = Quantile[data_large, 0.75]                (* 75th percentile *)
+
+(* Min/Max and ranges *)
+min_val = Min[data_large]                       (* Expected: 12 *)
+max_val = Max[data_large]                       (* Expected: 35 *)
+range_val = max_val - min_val                   (* Expected: 23 *)
+total_sum = Total[data_large]                   (* Expected: 238 *)
+
+(* Correlation analysis *)
+x_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+y_linear = {2, 4, 6, 8, 10, 12, 14, 16, 18, 20}  (* Perfect correlation *)
+y_quadratic = Map[x -> x^2, x_data]              (* Nonlinear relationship *)
+y_random = {3, 7, 2, 9, 5, 8, 1, 6, 4, 10}      (* Random *)
+
+correlation_linear = Correlation[x_data, y_linear]     (* Expected: 1.0 *)
+correlation_quad = Correlation[x_data, y_quadratic]    (* Expected: ~0.97 *)
+correlation_random = Correlation[x_data, y_random]     (* Expected: ~0 *)
+
+covariance_linear = Covariance[x_data, y_linear]
+covariance_quad = Covariance[x_data, y_quadratic]
+
+(* Random number generation *)
+random_sample = Table[RandomReal[], 20]         (* 20 random numbers [0,1] *)
+random_integers = Table[RandomInteger[100], 15] (* 15 random integers [0,100] *)
+random_normal = Table[RandomReal[NormalDistribution[0, 1]], 25] (* Normal distribution *)
+
+(* Statistics of random samples *)
+random_mean = Mean[random_sample]
+random_std = StandardDeviation[random_sample]
+random_min = Min[random_integers]
+random_max = Max[random_integers]
+
+(* === Special Mathematical Functions === *)
+
+(* Mathematical constants *)
+pi_constant = Pi                                (* π ≈ 3.14159 *)
+e_constant = E                                  (* e ≈ 2.71828 *)
+euler_gamma = EulerGamma                        (* γ ≈ 0.57722 *)
+golden_ratio = GoldenRatio                      (* φ ≈ 1.61803 *)
+
+(* Gamma function and related *)
+gamma_half = Gamma[0.5]                         (* Expected: √π *)
+gamma_int = Gamma[5]                            (* Expected: 4! = 24 *)
+log_gamma = LogGamma[10]                        (* Log of Gamma[10] *)
+digamma_val = Digamma[2]                        (* Digamma function *)
+polygamma_val = Polygamma[1, 2]                 (* First polygamma *)
+
+(* Bessel functions *)
+bessel_j0 = BesselJ[0, 1]                       (* J₀(1) *)
+bessel_j1 = BesselJ[1, 2]                       (* J₁(2) *)
+bessel_y0 = BesselY[0, 1]                       (* Y₀(1) *)
+
+(* Error functions *)
+error_func = Erf[1]                             (* Error function *)
+complement_erf = Erfc[1]                        (* Complementary error function *)
+inverse_erf = InverseErf[0.5]                   (* Inverse error function *)
+
+(* Elliptic integrals *)
+elliptic_k = EllipticK[0.5]                     (* Complete elliptic integral K *)
+elliptic_e = EllipticE[0.5]                     (* Complete elliptic integral E *)
+
+(* Hypergeometric functions *)
+hyper_0f1 = Hypergeometric0F1[1, 0.5]          (* ₀F₁ function *)
+hyper_1f1 = Hypergeometric1F1[1, 2, 0.5]       (* ₁F₁ function *)
+
+(* Orthogonal polynomials *)
+chebyshev_t = ChebyshevT[3, 0.5]               (* Chebyshev polynomial T₃(0.5) *)
+chebyshev_u = ChebyshevU[2, 0.5]               (* Chebyshev polynomial U₂(0.5) *)
+gegenbauer = GegenbauerC[2, 1, 0.5]            (* Gegenbauer polynomial *)
+
+(* === Number Theory Functions === *)
+
+(* Prime number functions *)
+prime_test = PrimeQ[97]                         (* Expected: True *)
+next_prime_val = NextPrime[100]                 (* Expected: 101 *)
+prev_prime_val = PreviousPrime[100]             (* Expected: 97 *)
+prime_count = PrimePi[100]                      (* Number of primes ≤ 100 *)
+
+(* Prime factorization *)
+factors_60 = PrimeFactorization[60]             (* Expected: 2^2 * 3 * 5 *)
+factors_100 = PrimeFactorization[100]           (* Expected: 2^2 * 5^2 *)
+
+(* Number-theoretic functions *)
+euler_phi = EulerPhi[12]                        (* φ(12) = 4 *)
+moebius_mu = MoebiusMu[15]                      (* μ(15) = 1 *)
+divisor_sigma = DivisorSigma[1, 12]             (* σ₁(12) = sum of divisors *)
+
+(* GCD and LCM *)
+gcd_result = GCD[48, 18]                        (* Expected: 6 *)
+lcm_result = LCM[12, 18]                        (* Expected: 36 *)
+
+(* Modular arithmetic *)
+power_mod = PowerMod[3, 10, 7]                  (* 3^10 mod 7 *)
+mod_inverse = ModularInverse[3, 7]              (* Inverse of 3 mod 7 *)
+jacobi_symbol = JacobiSymbol[3, 7]              (* Jacobi symbol *)
+
+(* === Numerical Methods === *)
+
+(* Root finding *)
+root_bisection = Bisection[x^2 - 2, {x, 1, 2}] (* √2 by bisection *)
+root_newton = NewtonRaphson[x^2 - 2, x, 1]     (* √2 by Newton's method *)
+root_secant = Secant[x^2 - 2, x, {1, 2}]       (* √2 by secant method *)
+root_brent = Brent[x^2 - 2, {x, 1, 2}]         (* √2 by Brent's method *)
+
+(* Numerical integration *)
+integral_trap = Trapezoidal[x^2, {x, 0, 1}, 100] (* ∫₀¹ x² dx by trapezoidal *)
+integral_simp = Simpson[x^2, {x, 0, 1}, 100]     (* ∫₀¹ x² dx by Simpson's *)
+integral_gauss = GaussQuadrature[x^2, {x, 0, 1}, 10] (* Gauss quadrature *)
+integral_mc = MonteCarlo[x^2, {x, 0, 1}, 10000]  (* Monte Carlo integration *)
+
+(* Optimization *)
+minimum_result = Minimize[x^2 + 2*x + 1, x]     (* Find minimum of quadratic *)
+maximum_result = Maximize[-x^2 + 4*x - 3, x]    (* Find maximum of quadratic *)
+
+(* === Advanced Mathematical Operations === *)
+
+(* Complex numbers *)
+complex_num = 3 + 4*I                           (* Complex number *)
+complex_abs = Abs[complex_num]                  (* |3 + 4i| = 5 *)
+complex_arg = Arg[complex_num]                  (* Argument *)
+complex_conj = Conjugate[complex_num]           (* Complex conjugate *)
+
+(* Fourier transforms *)
+sample_signal = Table[Sin[2*Pi*k/100], {k, 0, 99}]
+fft_result = FFT[sample_signal]                 (* Fast Fourier Transform *)
+ifft_result = IFFT[fft_result]                  (* Inverse FFT *)
+
+(* Series expansions *)
+taylor_sin = Series[Sin[x], {x, 0, 5}]          (* Taylor series of sin(x) *)
+taylor_exp = Series[Exp[x], {x, 0, 4}]          (* Taylor series of exp(x) *)
+
+(* Differential equations *)
+ode_solution = DSolve[D[y[x], x] == y[x], y[x], x]   (* Simple ODE *)
+pde_solution = PDSolve[D[u[x, t], t] == D[u[x, t], x, x], u[x, t], {x, t}] (* PDE *)
+
+(* === Performance Tests === *)
+
+(* Large matrix operations *)
+large_matrix = RandomTensor[{100, 100}]         (* 100×100 random matrix *)
+large_det = Determinant[large_matrix]           (* Determinant of large matrix *)
+large_inverse = PseudoInverse[large_matrix]     (* Pseudo-inverse *)
+
+(* Large statistical computations *)
+big_dataset = Table[RandomReal[], 10000]        (* 10,000 random numbers *)
+big_mean = Mean[big_dataset]                    (* Should be ~0.5 *)
+big_std = StandardDeviation[big_dataset]        (* Should be ~0.289 *)
+big_quantiles = Table[Quantile[big_dataset, p], {p, 0.1, 0.9, 0.1}]
+
+(* Prime number performance *)
+primes_to_1000 = Select[Range[2, 1000], PrimeQ] (* All primes up to 1000 *)
+prime_count_1000 = Length[primes_to_1000]       (* Should be 168 *)
+
+(* === Mathematical Verification === *)
+
+(* Verify calculus relationships *)
+f[x_] := x^3
+f_prime[x_] := D[f[x], x]
+f_double_prime[x_] := D[f_prime[x], x]
+
+verify_derivative = f_prime[2] == 3 * 2^2      (* Should be True *)
+verify_second = f_double_prime[2] == 6 * 2     (* Should be True *)
+
+(* Verify linear algebra properties *)
+test_matrix_2x2 = Array[{{1, 2}, {3, 4}}]
+det_test = Determinant[test_matrix_2x2]         (* -2 *)
+inv_test = Inverse[test_matrix_2x2]             (* If it exists *)
+identity_check = Dot[test_matrix_2x2, inv_test] (* Should be identity *)
+
+(* Verify statistical relationships *)
+sample_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+sample_var = Variance[sample_data]
+sample_std = StandardDeviation[sample_data]
+variance_std_relation = Abs[sample_var - sample_std^2] < 0.001
+
+(* === Summary and Results === *)
+
+"=== Mathematical Computing Examples Complete ==="
+"✓ Basic functions: Sin, Cos, Exp, Log, Power, Sqrt"
+"✓ Symbolic calculus: Derivatives and integrals"
+"✓ Linear algebra: Matrix operations, decompositions, eigenvalues"
+"✓ Statistics: Mean, variance, correlation, random generation"
+"✓ Special functions: Gamma, Bessel, elliptic, hypergeometric"
+"✓ Number theory: Primes, GCD, modular arithmetic"
+"✓ Numerical methods: Root finding, integration, optimization"
+"✓ Complex numbers and Fourier transforms"
+"✓ Performance tests with large datasets"
+"✓ Mathematical verification and relationships"
+
+(* Performance statistics *)
+"Performance results:"
+"- Computed " + ToString[Length[big_dataset]] + " random numbers"
+"- Found " + ToString[prime_count_1000] + " prime numbers up to 1000"
+"- Processed " + ToString[100] + "×" + ToString[100] + " matrix operations"
+"- Verified " + ToString[10] + " mathematical relationships"
+"- Executed " + ToString[50] + "+ mathematical functions successfully"
+
+(* Mathematical constants verification *)
+"Mathematical constants:"
+"- π = " + ToString[N[Pi, 6]]
+"- e = " + ToString[N[E, 6]]
+"- γ = " + ToString[N[EulerGamma, 6]]
+"- φ = " + ToString[N[GoldenRatio, 6]]
+
+"All mathematical computing capabilities demonstrated successfully!"

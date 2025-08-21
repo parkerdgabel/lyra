@@ -157,6 +157,7 @@ pub trait Actor: Send + Sync {
 }
 
 /// Handle for communicating with an actor
+#[derive(Clone)]
 pub struct ActorHandle {
     /// Actor ID
     pub id: ActorId,
@@ -188,9 +189,9 @@ impl ActorHandle {
             })?;
         
         rx.recv().await
-            .map_err(|e| VmError::TypeError {
+            .ok_or_else(|| VmError::TypeError {
                 expected: "evaluation result".to_string(),
-                actual: format!("Channel error: {}", e),
+                actual: "Channel closed".to_string(),
             })?
     }
     
@@ -209,9 +210,9 @@ impl ActorHandle {
             })?;
         
         rx.recv().await
-            .map_err(|e| VmError::TypeError {
+            .ok_or_else(|| VmError::TypeError {
                 expected: "pattern match result".to_string(),
-                actual: format!("Channel error: {}", e),
+                actual: "Channel closed".to_string(),
             })?
     }
     
@@ -222,7 +223,7 @@ impl ActorHandle {
         self.send(ActorMessage::Ping { reply_to: tx }).await?;
         
         rx.recv().await
-            .map_err(|e| ConcurrencyError::ActorSystem(format!("Failed to receive ping response: {}", e)))
+            .ok_or_else(|| ConcurrencyError::ActorSystem("Failed to receive ping response: channel closed".to_string()))
     }
     
     /// Terminate the actor
@@ -488,7 +489,7 @@ impl Actor for ComputationActor {
             ActorMessage::MatchPattern { expression, pattern, reply_to } => {
                 // For now, return a placeholder result
                 // Full implementation would integrate with pattern matcher
-                let result = Ok(MatchResult::NoMatch);
+                let result = Ok(MatchResult::Failure { reason: "No match found".to_string() });
                 let _ = reply_to.send(result);
             }
             
@@ -528,7 +529,9 @@ impl Actor for ComputationActor {
             alive: true,
             messages_processed: messages,
             queue_size: 0, // Would need access to mailbox to get real size
-            last_activity: *self.last_activity.try_lock().unwrap_or_else(|_| Instant::now()),
+            last_activity: self.last_activity.try_lock()
+                .map(|guard| *guard)
+                .unwrap_or_else(|_| Instant::now()),
             cpu_usage: if runtime.as_secs() > 0 {
                 (messages as f64) / runtime.as_secs_f64()
             } else {

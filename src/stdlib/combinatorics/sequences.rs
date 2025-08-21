@@ -328,7 +328,7 @@ mod tests {
     }
     
     #[test]
-    fn test_lucas_number() {
+    fn test_lucas_real() {
         // Test Lucas sequence
         assert_eq!(lucas_number(0), Some(2));
         assert_eq!(lucas_number(1), Some(1));

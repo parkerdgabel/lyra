@@ -1,0 +1,243 @@
+/* Dashboard Styles for Lyra Visualization System */
+
+.dashboard {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 20px;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+.dashboard h1 {
+    color: #2c3e50;
+    margin-bottom: 30px;
+    text-align: center;
+    font-weight: 300;
+    font-size: 2.5em;
+}
+
+.filter-panel {
+    background: white;
+    padding: 20px;
+    margin-bottom: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+}
+
+.filter-item label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #34495e;
+}
+
+.filter-item select {
+    padding: 8px 12px;
+    border: 2px solid #bdc3c7;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.filter-item select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.widget-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: repeat(8, 150px);
+    gap: 20px;
+    padding: 0;
+}
+
+.widget {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    padding: 20px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid #ecf0f1;
+    overflow: hidden;
+}
+
+.widget:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+}
+
+.widget h3 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 1.2em;
+    font-weight: 600;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 10px;
+}
+
+.widget-content {
+    height: calc(100% - 50px);
+    overflow: auto;
+    position: relative;
+}
+
+.widget-content[data-type="chart"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.widget-content[data-type="table"] {
+    overflow-x: auto;
+}
+
+.widget-content[data-type="metric"] {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    font-weight: bold;
+    color: #27ae60;
+}
+
+/* Loading animation */
+.widget-content:empty::before {
+    content: "Loading...";
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+/* Chart-specific styles */
+.chart-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.chart-container svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+    .widget-grid {
+        grid-template-columns: repeat(8, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .widget-grid {
+        grid-template-columns: repeat(4, 1fr);
+        grid-template-rows: repeat(auto, 200px);
+    }
+    
+    .filter-panel {
+        flex-direction: column;
+    }
+    
+    .filter-item {
+        min-width: auto;
+    }
+    
+    .dashboard h1 {
+        font-size: 2em;
+    }
+}
+
+@media (max-width: 480px) {
+    .widget-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(auto, 250px);
+    }
+    
+    .dashboard {
+        margin: 10px;
+    }
+    
+    .filter-panel,
+    .widget {
+        padding: 15px;
+    }
+}
+
+/* Interactive elements */
+.widget.interactive {
+    cursor: pointer;
+}
+
+.widget.interactive:active {
+    transform: translateY(0);
+}
+
+.widget.selected {
+    border-color: #3498db;
+    box-shadow: 0 4px 20px rgba(52, 152, 219, 0.2);
+}
+
+/* Tooltip styles */
+.tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.tooltip.visible {
+    opacity: 1;
+}
+
+/* Animation for real-time updates */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.widget.updating {
+    animation: pulse 0.5s ease-in-out;
+}
+
+/* Status indicators */
+.status-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #95a5a6;
+}
+
+.status-indicator.online {
+    background: #27ae60;
+}
+
+.status-indicator.offline {
+    background: #e74c3c;
+}
+
+.status-indicator.loading {
+    background: #f39c12;
+    animation: pulse 1s infinite;
+}

@@ -188,8 +188,8 @@ impl SecurityManager {
     /// Execute code in a sandbox
     pub fn execute_sandboxed<F, R>(&self, context_id: &str, operation: F) -> SecurityResult<R>
     where 
-        F: FnOnce() -> R + Send,
-        R: Send,
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
     {
         self.sandbox_manager.execute(context_id, operation)
     }

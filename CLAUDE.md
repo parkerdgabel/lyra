@@ -147,6 +147,28 @@ pub enum Value {
 
 Remember: **VM simplicity over convenience. Tests first, implementation second, always verify tests pass before proceeding.**
 
+### File Organization and Temporary Files
+
+**CRITICAL: Keep the repository root directory clean and organized.**
+
+#### File Placement Guidelines
+- **Test Files**: All test files must be placed in the `tests/` directory or appropriate subdirectories
+- **Example Files**: Place example scripts in the `examples/` directory 
+- **Documentation**: Technical documentation goes in the `docs/` directory
+- **Temporary Files**: Use `/tmp` for any temporary files during development or testing
+
+#### Prohibited in Repository Root
+- ❌ **Temporary test files**: `*.lyra`, `test_*.rs`, debug files
+- ❌ **Build artifacts**: Compiled binaries, object files  
+- ❌ **Development markdown**: Analysis documents, progress reports, planning files
+- ❌ **Export files**: `.tex`, `.ipynb`, output files from testing
+
+#### Required Approach for Development Files
+1. **Use `/tmp` for temporary testing**: Create temporary files in `/tmp` during development
+2. **Proper directory structure**: Place files in appropriate subdirectories (`tests/`, `examples/`, `docs/`)
+3. **Clean up after development**: Remove temporary files when no longer needed
+4. **Follow existing patterns**: Check existing directory structure before adding new files
+
 ### Concurrency System Architecture
 
 **COMPLETE: Production-ready async/concurrency system implemented as Foreign objects.**

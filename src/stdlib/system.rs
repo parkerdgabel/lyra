@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use sysinfo::{System, SystemExt, ProcessExt, PidExt, UserExt};
+use sysinfo::{System, Pid, PidExt, SystemExt, ProcessExt, UserExt, CpuExt, RefreshKind, ProcessRefreshKind};
 use std::any::Any;
 
 /// Error types for system operations
@@ -75,14 +75,14 @@ impl ProcessHandle {
     }
     
     pub fn is_running(&self) -> bool {
-        let mut system = System::new();
-        system.refresh_process(sysinfo::Pid::from_u32(self.pid));
+        let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+        system.refresh_processes();
         system.process(sysinfo::Pid::from_u32(self.pid)).is_some()
     }
     
     pub fn kill(&self) -> Result<(), SystemError> {
-        let mut system = System::new();
-        system.refresh_process(sysinfo::Pid::from_u32(self.pid));
+        let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+        system.refresh_processes();
         
         if let Some(process) = system.process(sysinfo::Pid::from_u32(self.pid)) {
             if process.kill() {
@@ -528,7 +528,7 @@ pub struct SystemMetrics {
 impl SystemMetrics {
     pub fn new() -> Self {
         Self {
-            system: Arc::new(Mutex::new(System::new_all())),
+            system: Arc::new(Mutex::new(System::new_with_specifics(RefreshKind::everything()))),
         }
     }
     
@@ -784,13 +784,13 @@ pub fn system_info(args: &[Value]) -> VmResult<Value> {
         });
     }
     
-    let mut system = System::new_all();
+    let mut system = System::new_with_specifics(RefreshKind::everything());
     system.refresh_all();
     
     let info = vec![
-        Value::List(vec![Value::String("os_name".to_string()), Value::String(System::name().unwrap_or("Unknown".to_string()))]),
-        Value::List(vec![Value::String("os_version".to_string()), Value::String(System::os_version().unwrap_or("Unknown".to_string()))]),
-        Value::List(vec![Value::String("hostname".to_string()), Value::String(System::host_name().unwrap_or("Unknown".to_string()))]),
+        Value::List(vec![Value::String("os_name".to_string()), Value::String(system.name().unwrap_or("Unknown".to_string()))]),
+        Value::List(vec![Value::String("os_version".to_string()), Value::String(system.os_version().unwrap_or("Unknown".to_string()))]),
+        Value::List(vec![Value::String("hostname".to_string()), Value::String(system.host_name().unwrap_or("Unknown".to_string()))]),
         Value::List(vec![Value::String("architecture".to_string()), Value::String(env::consts::ARCH.to_string())]),
         Value::List(vec![Value::String("cpu_count".to_string()), Value::Integer(system.cpus().len() as i64)]),
         Value::List(vec![Value::String("total_memory".to_string()), Value::Integer(system.total_memory() as i64)]),
@@ -1406,7 +1406,7 @@ pub fn process_list(args: &[Value]) -> VmResult<Value> {
         });
     }
     
-    let mut system = System::new_all();
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::everything()));
     system.refresh_processes();
     
     let mut processes = Vec::new();
@@ -1440,8 +1440,8 @@ pub fn process_kill(args: &[Value]) -> VmResult<Value> {
         }),
     };
     
-    let mut system = System::new();
-    system.refresh_process(sysinfo::Pid::from_u32(pid));
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::new()));
+    system.refresh_processes();
     
     if let Some(process) = system.process(sysinfo::Pid::from_u32(pid)) {
         if process.kill() {
@@ -1483,8 +1483,8 @@ pub fn process_exists(args: &[Value]) -> VmResult<Value> {
         }),
     };
     
-    let mut system = System::new();
-    system.refresh_process(sysinfo::Pid::from_u32(pid));
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::new()));
+    system.refresh_processes();
     
     Ok(Value::Boolean(system.process(sysinfo::Pid::from_u32(pid)).is_some()))
 }
@@ -1770,7 +1770,7 @@ pub fn current_user(args: &[Value]) -> VmResult<Value> {
         Ok(user) => Ok(Value::String(user)),
         Err(_) => {
             // Try using system info
-            let mut system = System::new_all();
+            let mut system = System::new_with_specifics(RefreshKind::new().with_users_list());
             system.refresh_users_list();
             
             if let Some(user) = system.users().first() {

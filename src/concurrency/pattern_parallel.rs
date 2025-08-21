@@ -303,12 +303,12 @@ impl ParallelPatternMatcher {
                     self.cache.put(cache_key, result.clone());
                 }
                 
-                (index, match_result.unwrap_or(MatchResult::NoMatch))
+                (index, match_result.unwrap_or(MatchResult::Failure { reason: "No match found".to_string() }))
             })
             .collect();
         
         // Extract just the match results in original order
-        let mut match_results = vec![MatchResult::NoMatch; patterns.len()];
+        let mut match_results = vec![MatchResult::Failure { reason: "No match found".to_string() }; patterns.len()];
         for (index, result) in results {
             match_results[index] = result;
         }
@@ -351,7 +351,7 @@ impl ParallelPatternMatcher {
             
             // Perform the match
             let match_result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                .unwrap_or(MatchResult::NoMatch);
+                .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
             
             // Cache the result
             self.cache.put(cache_key, match_result.clone());
@@ -396,12 +396,12 @@ impl ParallelPatternMatcher {
                     self.cache.put(cache_key, result.clone());
                 }
                 
-                (index, match_result.unwrap_or(MatchResult::NoMatch))
+                (index, match_result.unwrap_or(MatchResult::Failure { reason: "No match found".to_string() }))
             })
             .collect();
         
         // Extract just the match results in original order
-        let mut match_results = vec![MatchResult::NoMatch; patterns.len()];
+        let mut match_results = vec![MatchResult::Failure { reason: "No match found".to_string() }; patterns.len()];
         for (index, result) in results {
             match_results[index] = result;
         }
@@ -433,7 +433,7 @@ impl ParallelPatternMatcher {
             
             // Perform the match
             let match_result = self.sequential_matcher.match_pattern(expression, pattern, context)
-                .unwrap_or(MatchResult::NoMatch);
+                .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
             
             // Cache the result
             self.cache.put(cache_key, match_result.clone());
@@ -467,7 +467,7 @@ impl ParallelPatternMatcher {
                     
                     // Perform the actual match
                     let result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                        .unwrap_or(MatchResult::NoMatch);
+                        .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
                     
                     // Cache the result
                     self.cache.put(cache_key, result.clone());
@@ -476,7 +476,7 @@ impl ParallelPatternMatcher {
                 
                 // Return the first successful match
                 match match_result {
-                    MatchResult::NoMatch => None,
+                    MatchResult::Failure { reason: "No match found".to_string() } => None,
                     result => Some((index, result)),
                 }
             });
@@ -509,7 +509,7 @@ impl ParallelPatternMatcher {
                     
                     // Perform the actual match
                     let result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                        .unwrap_or(MatchResult::NoMatch);
+                        .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
                     
                     // Cache the result
                     self.cache.put(cache_key, result.clone());
@@ -518,7 +518,7 @@ impl ParallelPatternMatcher {
                 
                 // Return the first successful match with its index
                 match match_result {
-                    MatchResult::NoMatch => None,
+                    MatchResult::Failure { reason: "No match found".to_string() } => None,
                     result => Some((index, result)),
                 }
             });
@@ -580,7 +580,7 @@ mod tests {
         assert!(cache.get(&key).is_none());
         
         // Test put and hit
-        cache.put(key.clone(), MatchResult::NoMatch);
+        cache.put(key.clone(), MatchResult::Failure { reason: "No match found".to_string() });
         assert!(cache.get(&key).is_some());
         
         let stats = cache.stats();
@@ -653,11 +653,11 @@ mod tests {
         };
         
         // Fill cache
-        cache.put(key1.clone(), MatchResult::NoMatch);
-        cache.put(key2.clone(), MatchResult::NoMatch);
+        cache.put(key1.clone(), MatchResult::Failure { reason: "No match found".to_string() });
+        cache.put(key2.clone(), MatchResult::Failure { reason: "No match found".to_string() });
         
         // This should trigger eviction
-        cache.put(key3.clone(), MatchResult::NoMatch);
+        cache.put(key3.clone(), MatchResult::Failure { reason: "No match found".to_string() });
         
         let stats = cache.stats();
         assert_eq!(stats.evictions, 1);

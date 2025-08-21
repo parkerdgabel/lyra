@@ -253,7 +253,7 @@ impl TopologicalFeatures {
 
 /// Foreign object for simplicial complexes
 impl Foreign for SimplicialComplex {
-    fn name(&self) -> &str {
+    fn type_name(&self) -> &'static str {
         "SimplicialComplex"
     }
 
@@ -272,7 +272,8 @@ impl Foreign for SimplicialComplex {
             }
             "simplicesAtDimension" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::ArgumentError {
+                    return Err(ForeignError::InvalidArity {
+                        method: "simplicesAtDimension".to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -298,10 +299,14 @@ impl Foreign for SimplicialComplex {
                 Ok(Value::List(simplex_values))
             }
             _ => Err(ForeignError::UnknownMethod {
-                type_name: self.name().to_string(),
+                type_name: self.type_name().to_string(),
                 method: method.to_string(),
             }),
         }
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -311,7 +316,7 @@ impl Foreign for SimplicialComplex {
 
 /// Foreign object for persistence diagrams
 impl Foreign for PersistenceDiagram {
-    fn name(&self) -> &str {
+    fn type_name(&self) -> &'static str {
         "PersistenceDiagram"
     }
 
@@ -331,7 +336,8 @@ impl Foreign for PersistenceDiagram {
             }
             "intervalsByDimension" => {
                 if args.len() != 1 {
-                    return Err(ForeignError::ArgumentError {
+                    return Err(ForeignError::InvalidArity {
+                        method: "intervalsByDimension".to_string(),
                         expected: 1,
                         actual: args.len(),
                     });
@@ -384,10 +390,14 @@ impl Foreign for PersistenceDiagram {
             "maxDimension" => Ok(Value::Integer(self.max_dimension as i64)),
             "numIntervals" => Ok(Value::Integer(self.intervals.len() as i64)),
             _ => Err(ForeignError::UnknownMethod {
-                type_name: self.name().to_string(),
+                type_name: self.type_name().to_string(),
                 method: method.to_string(),
             }),
         }
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -397,7 +407,7 @@ impl Foreign for PersistenceDiagram {
 
 /// Foreign object for topological features
 impl Foreign for TopologicalFeatures {
-    fn name(&self) -> &str {
+    fn type_name(&self) -> &'static str {
         "TopologicalFeatures"
     }
 
@@ -417,10 +427,14 @@ impl Foreign for TopologicalFeatures {
                 Ok(Value::LyObj(LyObj::new(Box::new(self.persistence_diagram.clone()))))
             }
             _ => Err(ForeignError::UnknownMethod {
-                type_name: self.name().to_string(),
+                type_name: self.type_name().to_string(),
                 method: method.to_string(),
             }),
         }
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
     }
 
     fn as_any(&self) -> &dyn Any {

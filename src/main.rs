@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
-use lyra::{compiler::Compiler, parser::Parser as LyraParser, Result, repl::ReplEngine};
-use rustyline::{error::ReadlineError, DefaultEditor};
+use lyra::{compiler::Compiler, parser::Parser as LyraParser, Result, repl::ReplEngine, stdlib::StandardLibrary};
+use lyra::repl::enhanced_helper::EnhancedLyraHelper;
+use rustyline::{error::ReadlineError, DefaultEditor, Editor, Config};
+use rustyline::completion::Completer;
 use std::{fs, path::PathBuf, process::{Command, Stdio}};
 use walkdir::WalkDir;
 
@@ -178,13 +180,9 @@ fn main() -> Result<()> {
 }
 
 /// Handle package management commands
-fn run_pkg_command(_pkg_cmd: PkgCommands) -> Result<()> {
-    // TODO: Temporarily disabled due to module system being disabled
-    Err(lyra::Error::Runtime {
-        message: "Package management temporarily disabled during memory system integration".to_string(),
-    })
-    /*
-    use lyra::modules::cli::{PackageCli, PackageCommand, default_cache_dir};
+fn run_pkg_command(pkg_cmd: PkgCommands) -> Result<()> {
+    use lyra::modules::cli::PackageCommand;
+    use lyra::modules::simple_cli::SimplePackageCli;
     
     // Convert clap command to our package command enum
     let command = match pkg_cmd {
@@ -202,56 +200,135 @@ fn run_pkg_command(_pkg_cmd: PkgCommands) -> Result<()> {
         PkgCommands::Publish { registry, token } => PackageCommand::Publish { registry, token },
     };
     
-    // Create and run CLI
+    // Create and run simplified CLI (bypasses compilation issues)
     let rt = tokio::runtime::Runtime::new().map_err(|e| lyra::Error::Runtime {
         message: format!("Failed to create async runtime: {}", e),
     })?;
     
-    let mut cli = PackageCli::new(default_cache_dir());
+    let mut cli = SimplePackageCli::new();
     
     rt.block_on(async {
         cli.execute(command).await.map_err(|e| lyra::Error::Runtime {
-            message: format!("Package command failed: {}", e),
+            message: e,
         })
     })
-    */
 }
 
 /// Run the interactive REPL
 fn run_repl() -> Result<()> {
-    println!(
-        "Lyra Interactive Symbolic Computation v{}",
-        env!("CARGO_PKG_VERSION")
+    use colored::*;
+    
+    println!("{}", "Lyra Interactive Symbolic Computation".bright_cyan().bold());
+    println!("{} {}", "Version".dimmed(), env!("CARGO_PKG_VERSION").bright_green());
+    println!("Type {} to evaluate, {} for help, or {} to quit.", 
+        "expressions".bright_yellow(), 
+        "%help".bright_blue(), 
+        "exit".bright_red()
     );
-    println!("Type expressions to evaluate, meta commands (%help), or 'exit' to quit.");
-    println!("Showcasing 50-70% performance improvements from optimization work!");
     println!();
 
-    // Initialize the new REPL engine
+    // Initialize the REPL engine with configuration system
     let mut repl_engine = ReplEngine::new().map_err(|e| lyra::Error::Runtime {
         message: format!("Failed to initialize REPL: {}", e),
     })?;
+    
+    // Show configuration status
+    let config = repl_engine.get_config();
+    if config.repl.show_timing {
+        println!("{}", "Timing enabled".bright_green());
+    }
+    if config.repl.show_performance {
+        println!("{}", "Performance monitoring enabled".bright_green());
+    }
+    
+    // Show configuration paths (for debugging/first run)
+    match lyra::repl::config::ReplConfig::get_config_file_path() {
+        Ok(path) => {
+            if !path.exists() {
+                println!("{} Configuration file created at: {}", 
+                    "Info:".bright_blue(), 
+                    path.display().to_string().dimmed()
+                );
+            }
+        }
+        Err(_) => {} // Ignore error for now
+    }
 
-    let mut rl = DefaultEditor::new().map_err(|e| lyra::Error::Runtime {
+    // Create rustyline editor with enhanced helper
+    let editor_config = Config::builder()
+        .completion_type(rustyline::CompletionType::List)
+        .build();
+    
+    // Create standard library for hint system
+    let stdlib = StandardLibrary::new();
+    
+    // Create enhanced helper with all quality-of-life features
+    let enhanced_helper = EnhancedLyraHelper::new(
+        repl_engine.get_config().clone(),
+        repl_engine.create_shared_completer(),
+        &stdlib
+    ).map_err(|e| lyra::Error::Runtime {
+        message: format!("Failed to create enhanced helper: {}", e),
+    })?;
+    
+    let mut rl = Editor::with_config(editor_config).map_err(|e| lyra::Error::Runtime {
         message: e.to_string(),
     })?;
+    rl.set_helper(Some(enhanced_helper));
     let mut line_number = 1;
 
     loop {
-        let prompt = format!("lyra[{}]> ", line_number);
+        use colored::*;
+        
+        // Determine prompt based on multiline state
+        let prompt = if repl_engine.has_multiline_input() {
+            "   ...> ".to_string()
+        } else {
+            format!("{}[{}]> ", "lyra".bright_cyan(), line_number.to_string().bright_white())
+        };
 
         match rl.readline(&prompt) {
             Ok(line) => {
                 let line = line.trim();
 
-                // Handle special commands
+                // Handle empty lines
                 if line.is_empty() {
+                    if repl_engine.has_multiline_input() {
+                        // Empty line in multiline mode - try to complete
+                        if repl_engine.add_multiline_input("") {
+                            // Expression is complete, evaluate it
+                            match repl_engine.evaluate_multiline() {
+                                Ok(result) => {
+                                    println!("{} {}", 
+                                        format!("Out[{}]=", line_number).bright_blue(), 
+                                        colorize_output(&result.result)
+                                    );
+                                    
+                                    if let Some(perf_info) = result.performance_info {
+                                        if !perf_info.is_empty() && result.execution_time.as_millis() > 10 {
+                                            println!("{} {}", "Performance:".bright_black(), perf_info.dimmed());
+                                        }
+                                    }
+                                    line_number += 1;
+                                }
+                                Err(e) => {
+                                    println!("{} {}", "✗ Error:".bright_red().bold(), e.to_string().red());
+                                    repl_engine.clear_multiline_buffer();
+                                }
+                            }
+                        }
+                        // Otherwise continue multiline input
+                    }
                     continue;
                 }
+
+                // Handle exit commands
                 if line == "exit" || line == "quit" {
-                    println!("Goodbye!");
+                    println!("{}", "Goodbye! 👋".bright_green());
                     break;
                 }
+
+                // Handle help commands
                 if line == "help" || line == "?" {
                     show_repl_help();
                     continue;
@@ -265,32 +342,82 @@ fn run_repl() -> Result<()> {
                     continue;
                 }
 
-                // Add to history
-                let _ = rl.add_history_entry(line);
-
-                // Evaluate using the new REPL engine
-                match repl_engine.evaluate_line(line) {
-                    Ok(result) => {
-                        print!("Out[{}]= {}", line_number, result.result);
-                        
-                        // Show performance information if available
-                        if let Some(perf_info) = result.performance_info {
-                            if !perf_info.is_empty() {
-                                println!();
-                                println!("{}", perf_info);
-                            }
-                        }
-                        println!();
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                    }
+                // Add to history only if not in multiline mode or completing
+                if !repl_engine.has_multiline_input() {
+                    let _ = rl.add_history_entry(line);
                 }
 
-                line_number += 1;
+                // Handle multiline input
+                if repl_engine.has_multiline_input() {
+                    // Already in multiline mode, add this line
+                    if repl_engine.add_multiline_input(line) {
+                        // Expression is complete, evaluate it
+                        let full_input = repl_engine.get_multiline_input();
+                        let _ = rl.add_history_entry(&full_input); // Add complete expression to history
+                        
+                        match repl_engine.evaluate_multiline() {
+                            Ok(result) => {
+                                println!("{} {}", 
+                                    format!("Out[{}]=", line_number).bright_blue(), 
+                                    colorize_output(&result.result)
+                                );
+                                
+                                if let Some(perf_info) = result.performance_info {
+                                    if !perf_info.is_empty() && result.execution_time.as_millis() > 10 {
+                                        println!("{} {}", "Performance:".bright_black(), perf_info.dimmed());
+                                    }
+                                }
+                                line_number += 1;
+                            }
+                            Err(e) => {
+                                println!("{} {}", "✗ Error:".bright_red().bold(), e.to_string().red());
+                                repl_engine.clear_multiline_buffer();
+                            }
+                        }
+                    } else {
+                        // Show hint if available
+                        if let Some(hint) = repl_engine.get_multiline_hint() {
+                            println!("{} {}", "Hint:".bright_yellow(), hint.dimmed());
+                        }
+                    }
+                } else {
+                    // Not in multiline mode, try to start multiline or evaluate immediately
+                    if repl_engine.add_multiline_input(line) {
+                        // Complete expression, evaluate immediately
+                        match repl_engine.evaluate_multiline() {
+                            Ok(result) => {
+                                println!("{} {}", 
+                                    format!("Out[{}]=", line_number).bright_blue(), 
+                                    colorize_output(&result.result)
+                                );
+                                
+                                if let Some(perf_info) = result.performance_info {
+                                    if !perf_info.is_empty() && result.execution_time.as_millis() > 10 {
+                                        println!("{} {}", "Performance:".bright_black(), perf_info.dimmed());
+                                    }
+                                }
+                                line_number += 1;
+                            }
+                            Err(e) => {
+                                println!("{} {}", "✗ Error:".bright_red().bold(), e.to_string().red());
+                            }
+                        }
+                    } else {
+                        // Incomplete expression, entered multiline mode
+                        if let Some(hint) = repl_engine.get_multiline_hint() {
+                            println!("{} {}", "Hint:".bright_yellow(), hint.dimmed());
+                        }
+                    }
+                }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("^C");
+                if repl_engine.has_multiline_input() {
+                    println!("^C");
+                    repl_engine.clear_multiline_buffer();
+                    println!("{}", "Multiline input cancelled".dimmed());
+                } else {
+                    println!("^C");
+                }
                 continue;
             }
             Err(ReadlineError::Eof) => {
@@ -304,6 +431,11 @@ fn run_repl() -> Result<()> {
         }
     }
 
+    // Save history and configuration on exit
+    if let Err(e) = repl_engine.shutdown() {
+        eprintln!("Warning: Failed to save session data: {}", e);
+    }
+
     Ok(())
 }
 
@@ -311,17 +443,35 @@ fn run_repl() -> Result<()> {
 fn run_file(file_path: &PathBuf) -> Result<()> {
     let source = fs::read_to_string(file_path)?;
 
-    match eval_expression(&source) {
-        Ok(result) => {
-            println!("{}", format_value(&result));
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("Error executing {}:", file_path.display());
-            eprintln!("{}", lyra::error::format_error_with_context(&e, &source));
-            Err(e)
+    // Parse source code to AST
+    let mut parser = LyraParser::from_source(&source)?;
+    let statements = parser.parse()?;
+
+    if statements.is_empty() {
+        eprintln!("No statements to execute in {}", file_path.display());
+        return Ok(());
+    }
+
+    // Execute each statement and print results for non-assignments
+    for (i, statement) in statements.iter().enumerate() {
+        match Compiler::eval(statement) {
+            Ok(result) => {
+                // Print the result (in a real implementation, we might want to 
+                // suppress output for assignment statements, but for now print all results)
+                println!("{}", format_value(&result));
+            }
+            Err(e) => {
+                let error = lyra::Error::Compilation {
+                    message: format!("Error in statement {}: {}", i + 1, e),
+                };
+                eprintln!("Error executing statement {} in {}:", i + 1, file_path.display());
+                eprintln!("{}", lyra::error::format_error_with_context(&error, &source));
+                return Err(error);
+            }
         }
     }
+
+    Ok(())
 }
 
 /// Build (compile) a file without running it
@@ -417,6 +567,39 @@ fn compile_source(source: &str) -> Result<Compiler> {
     Ok(compiler)
 }
 
+/// Colorize output for pretty display in REPL
+fn colorize_output(output: &str) -> String {
+    use colored::*;
+    
+    // Try to detect the type of output and colorize appropriately
+    if output.starts_with('"') && output.ends_with('"') {
+        // String values
+        output.bright_green().to_string()
+    } else if output.parse::<i64>().is_ok() {
+        // Integer values
+        output.bright_blue().to_string()
+    } else if output.parse::<f64>().is_ok() {
+        // Float values
+        output.bright_cyan().to_string()
+    } else if output.starts_with('{') && output.ends_with('}') {
+        // List/Array values
+        output.bright_magenta().to_string()
+    } else if output == "True" || output == "False" {
+        // Boolean values
+        if output == "True" {
+            output.bright_green().to_string()
+        } else {
+            output.bright_red().to_string()
+        }
+    } else if output.contains('[') || output.starts_with("Function") {
+        // Function calls or function definitions
+        output.bright_yellow().to_string()
+    } else {
+        // Default: symbols and other values
+        output.normal().to_string()
+    }
+}
+
 /// Format a value for display in the REPL
 fn format_value(value: &lyra::vm::Value) -> String {
     match value {
@@ -461,74 +644,95 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::Pattern(pattern) => {
             format!("{}", pattern)
         }
+        lyra::vm::Value::Rule { lhs, rhs } => {
+            format!("{} -> {}", format_value(lhs), format_value(rhs))
+        }
     }
 }
 
 /// Show REPL help information
 fn show_repl_help() {
-    println!("Lyra Interactive REPL Help");
-    println!("===========================");
+    use colored::*;
+    
+    println!("{}", "Lyra Interactive REPL Help".bright_cyan().bold());
+    println!("{}", "═══════════════════════════".bright_cyan());
     println!();
-    println!("Built-in Commands:");
-    println!("  help, ?         - Show this help message");
-    println!("  functions       - List all available functions");
-    println!("  examples        - Show example expressions");
-    println!("  exit, quit      - Exit the REPL");
+    
+    println!("{}", "Built-in Commands:".bright_yellow().bold());
+    println!("  {} - Show this help message", "help, ?".bright_blue());
+    println!("  {} - List all available functions", "functions".bright_blue());
+    println!("  {} - Show example expressions", "examples".bright_blue());
+    println!("  {} - Exit the REPL", "exit, quit".bright_red());
     println!();
-    println!("Meta Commands (REPL Engine):");
-    println!("  %help           - Show REPL engine help");
-    println!("  %history        - Show command history");
-    println!("  %perf           - Show performance statistics");
-    println!("  %clear          - Clear session (variables, history, stats)");
-    println!("  %vars           - Show defined variables");
-    println!("  %timing on/off  - Enable/disable execution timing");
-    println!("  %perf on/off    - Enable/disable performance info");
+    
+    println!("{}", "Meta Commands:".bright_yellow().bold());
+    println!("  {} - Show detailed REPL help", "%help".bright_magenta());
+    println!("  {} - Show command history", "%history".bright_magenta());
+    println!("  {} - Show performance statistics", "%perf".bright_magenta());
+    println!("  {} - Clear session (variables, history)", "%clear".bright_magenta());
+    println!("  {} - Show defined variables", "%vars".bright_magenta());
+    println!("  {} - Enable/disable execution timing", "%timing on/off".bright_magenta());
+    println!("  {} - Enable/disable performance info", "%perf on/off".bright_magenta());
+    println!("  {} - Show current configuration", "%config".bright_magenta());
+    println!("  {} - Show history settings", "%history-settings".bright_magenta());
     println!();
-    println!("Syntax:");
-    println!("  Variables:      x = 5, name = \"Alice\"");
-    println!("  Functions:      f[x_] := x^2");
-    println!("  Function calls: f[x, y]");
-    println!("  Lists:          {{1, 2, 3}}");
-    println!("  Arithmetic:     2 + 3 * 4");
-    println!("  Strings:        \"Hello, World!\"");
-    println!("  Rules:          x -> x^2");
-    println!("  Replacement:    expr /. rule");
+    
+    println!("{}", "Syntax:".bright_yellow().bold());
+    println!("  Variables:      {}", "x = 5, name = \"Alice\"".green());
+    println!("  Functions:      {}", "f[x_] := x^2".green());
+    println!("  Function calls: {}", "f[x, y]".green());
+    println!("  Lists:          {}", "{1, 2, 3}".green());
+    println!("  Arithmetic:     {}", "2 + 3 * 4".green());
+    println!("  Strings:        {}", "\"Hello, World!\"".green());
+    println!("  Rules:          {}", "x -> x^2".green());
+    println!("  Replacement:    {}", "expr /. rule".green());
     println!();
-    println!("Performance Features:");
-    println!("  • Fast-path pattern matching routing (~67% improvement)");
-    println!("  • Intelligent rule application ordering (~28% improvement)");
-    println!("  • Optimized memory management (~23% reduction)");
-    println!();
-    println!("Try: x = 5; y = x^2; Sin[Pi/2]; %perf");
+    
+    println!("{}", "Quick Start:".bright_yellow().bold());
+    println!("  {}", "x = 5".bright_white());
+    println!("  {}", "Sin[Pi/2]".bright_white());
+    println!("  {}", "Length[{1, 2, 3, 4}]".bright_white());
     println!();
 }
 
 /// Show available functions
 fn show_available_functions() {
-    println!("Available Functions");
-    println!("===================");
+    use colored::*;
+    
+    println!("{}", "Available Functions".bright_cyan().bold());
+    println!("{}", "═══════════════════".bright_cyan());
     println!();
-    println!("Math Functions:");
-    println!("  Sin[x], Cos[x], Tan[x]    - Trigonometric functions");
-    println!("  Exp[x], Log[x], Sqrt[x]   - Exponential and logarithmic");
-    println!("  +, -, *, /, ^             - Arithmetic operators");
+    
+    println!("{}", "Mathematical Functions:".bright_yellow().bold());
+    println!("  {} - Trigonometric functions", "Sin[x], Cos[x], Tan[x]".bright_blue());
+    println!("  {} - Exponential and logarithmic", "Exp[x], Log[x], Sqrt[x]".bright_blue());
+    println!("  {} - Power and modular arithmetic", "Power[x, y], Modulo[x, y]".bright_blue());
+    println!("  {} - Basic arithmetic", "+, -, *, /, ^".bright_blue());
     println!();
-    println!("List Functions:");
-    println!("  Length[list]              - Get length of a list");
-    println!("  Head[list]                - Get first element");
-    println!("  Tail[list]                - Get all but first element");
-    println!("  Append[list, elem]        - Add element to list");
-    println!("  Flatten[list]             - Flatten nested lists");
+    
+    println!("{}", "List Operations:".bright_yellow().bold());
+    println!("  {} - Get length of a list", "Length[list]".bright_green());
+    println!("  {} - Get first element", "Head[list]".bright_green());
+    println!("  {} - Get all but first element", "Tail[list]".bright_green());
+    println!("  {} - Add element to list", "Append[list, elem]".bright_green());
+    println!("  {} - Flatten nested lists", "Flatten[list]".bright_green());
+    println!("  {} - Apply function to each element", "Map[func, list]".bright_green());
     println!();
-    println!("String Functions:");
-    println!("  StringLength[str]         - Get string length");
-    println!("  StringJoin[str1, str2]    - Concatenate strings");
-    println!("  StringTake[str, n]        - Take first n characters");
-    println!("  StringDrop[str, n]        - Drop first n characters");
+    
+    println!("{}", "String Operations:".bright_yellow().bold());
+    println!("  {} - Get string length", "StringLength[str]".bright_magenta());
+    println!("  {} - Concatenate strings", "StringJoin[str1, str2, ...]".bright_magenta());
+    println!("  {} - Take first n characters", "StringTake[str, n]".bright_magenta());
+    println!("  {} - Drop first n characters", "StringDrop[str, n]".bright_magenta());
     println!();
-    println!("Rule Functions:");
-    println!("  Rule[x, y]                - Create replacement rule x -> y");
-    println!("  RuleDelayed[x, y]         - Create delayed rule x :> y");
+    
+    println!("{}", "Constants:".bright_yellow().bold());
+    println!("  {} - Mathematical constants", "Pi, E".bright_red());
+    println!("  {} - Boolean values", "True, False".bright_red());
+    println!("  {} - Special values", "Missing, Undefined, Infinity".bright_red());
+    println!();
+    
+    println!("Type {} for usage examples", "examples".bright_white().bold());
     println!();
 }
 

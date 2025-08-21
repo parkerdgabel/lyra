@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "debug_test"
 path = "debug_test.rs"
 
+[[bin]]
+name = "lyra-pkg"
+path = "src/pkg_main.rs"
+
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 rustyline = "13.0"
@@ -50,13 +54,15 @@ flate2 = "1.0"
 core_affinity = "0.8"
 hwloc2 = "2.1"
 # Networking dependencies
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.11", features = ["json", "stream", "cookies", "multipart"] }
 tokio-tungstenite = "0.20"
 tokio-ping = "0.1"
 trust-dns-resolver = "0.23"
 petgraph = "0.6"
 url = "2.5"
 uuid = { version = "1.8", features = ["v4"] }
+# Web scraping and parsing
+scraper = "0.17"
 # Cloud storage dependencies (lightweight implementation)
 bytes = "1.5"
 mime = "0.3"
@@ -79,6 +85,157 @@ colored = "2.0"
 sysinfo = "0.29"
 which = "4.4"
 dirs = "5.0"
+# Cryptographic dependencies
+ring = "0.17"
+bcrypt = "0.15"
+hex = "0.4"
+base32 = "0.4"
+# Documentation system dependencies
+lazy_static = "1.4"
+# AI/ML Integration dependencies (Phase 14A)
+# Vector operations
+nalgebra = "0.33"
+# Text processing
+text-splitter = "0.13"
+unicode-segmentation = "1.10"
+# Embedding models
+tokenizers = "0.19"
+# HTTP client for APIs (already have reqwest)
+# serde_json already included above
+
+# MLOps dependencies (Phase 14B)
+# Data processing and validation
+polars = { version = "0.33", features = ["lazy", "temporal", "strings"] }
+# Statistical analysis
+statrs = "0.16"
+ndarray-stats = "0.5"
+# Monitoring and metrics
+prometheus = "0.13"
+# SQLite for local storage
+rusqlite = { version = "0.30", features = ["bundled", "chrono"] }
+# Additional serialization for MLOps
+rmp = "0.8"
+
+# Phase 15A: Database Integration Dependencies
+# SQL databases
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "chrono", "uuid", "json"] }
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "sqlx-mysql", "sqlx-sqlite", "runtime-tokio-rustls"] }
+
+# NoSQL databases
+mongodb = "2.8"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Graph databases
+neo4rs = "0.7"
+
+# Schema and migration
+sea-schema = "0.14"
+refinery = { version = "0.8", features = ["postgres", "mysql", "rusqlite"] }
+
+# Data formats and serialization (using compatible versions)
+# Commenting out for now due to version conflicts
+# parquet = "49.0"
+# arrow = "49.0"
+
+# Connection pooling
+deadpool = "0.10"
+bb8 = "0.8"
+
+# Additional utilities
+futures-util = "0.3"
+
+# Phase 15B: Advanced Analytics & Statistics Dependencies
+# Additional numerical libraries for analytics
+num-traits = "0.2"
+sprs = "0.11"
+
+# Phase 16A: Streaming & Event-Driven Architecture Dependencies
+# Apache Kafka (commented out due to cmake requirement)
+# rdkafka = { version = "0.36", features = ["cmake-build", "libz", "ssl", "sasl"] }
+
+# Message queues (commented out to avoid compilation issues)
+# lapin = "2.3"  # RabbitMQ
+# redis already included above with additional features
+
+# WebSocket and real-time
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
+
+# gRPC (commented out to avoid compilation issues)
+# tonic = "0.10"
+# prost = "0.12"
+
+# Event sourcing
+# event-store = { git = "https://github.com/EventStore/EventStore-Client-Rust" }
+
+# Stream processing
+tokio-stream = "0.1"
+async-stream = "0.3"
+
+# Additional serialization (bincode already included)
+
+# Phase 16B: Production Observability & Monitoring Dependencies
+# OpenTelemetry and tracing
+opentelemetry = { version = "0.21", features = ["trace", "metrics"] }
+opentelemetry-jaeger = "0.20"
+opentelemetry-prometheus = "0.14"
+tracing = "0.1"
+tracing-opentelemetry = "0.22"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Metrics and monitoring (prometheus already included above)
+# sysinfo already included above
+
+# Profiling and debugging
+pprof = { version = "0.13", features = ["flamegraph", "protobuf-codec"] }
+jemalloc-ctl = "0.5"
+
+# Alerting and notifications (reqwest already included)
+lettre = "0.11"  # Email notifications
+# slack-api = "0.25"  # Slack integration (commented out due to package name issue)
+
+# Time series and storage
+influxdb2 = "0.4"
+metrics-exporter-prometheus = "0.12"
+
+# Phase 17A: Data Visualization & Dashboards Dependencies
+# Chart rendering
+plotters = { version = "0.3", features = ["all_series", "svg_backend", "bitmap_backend"] }
+resvg = "0.37"  # SVG rendering
+
+# Interactive visualization
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+js-sys = "0.3"
+
+# Image processing
+image = { version = "0.24", features = ["png", "jpeg"] }
+tiny-skia = "0.11"
+
+# PDF generation
+printpdf = "0.6"
+lopdf = "0.31"
+
+# Template rendering
+tera = "1.19"
+# serde_json already included above
+
+# Color management
+palette = "0.7"
+
+# Phase 17B: Advanced System Integrations Dependencies
+# Git integration
+git2 = "0.18"
+
+# CI/CD platform integration (using compatible HTTP clients)
+# Using reqwest for API calls instead of platform-specific libraries to avoid conflicts
+
+# Process execution for CI/CD scripts
+shell-words = "1.1"
+# which = "4.4"  # Already included above
+
+# Cost optimization and cloud pricing APIs
+# Using reqwest for cloud API calls
 
 [dev-dependencies]
 insta = { version = "1.34", features = ["yaml"] }

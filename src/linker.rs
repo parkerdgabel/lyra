@@ -842,8 +842,6 @@ impl FunctionRegistry {
         self.register_function_attributes("TestHoldMultiple", vec![
             FunctionAttribute::Hold(vec![2, 3]), // Don't evaluate second and third arguments
         ]);
-        
-        println!("✅ Registered stdlib function attributes");
     }
     
     /// Get attribute registry statistics

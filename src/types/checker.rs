@@ -1,6 +1,6 @@
 use super::{
     LyraType, TensorShape, TypeError, TypeResult, TypeEnvironment, TypeScheme,
-    TypeInferenceEngine, infer_expression_type
+    TypeInferenceEngine, infer_expression_type, TypeConstraint
 };
 use crate::ast::{Expr, Pattern};
 use std::collections::HashMap;
@@ -26,12 +26,12 @@ pub struct FunctionSignature {
     /// Whether the function is variadic (accepts variable number of arguments)
     pub variadic: bool,
     /// Type constraints (e.g., numeric types only)
-    pub constraints: Vec<TypeConstraint>,
+    pub constraints: Vec<FunctionConstraint>,
 }
 
 /// Type constraints for function parameters
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeConstraint {
+pub enum FunctionConstraint {
     /// Parameter must be numeric (Integer or Real)
     Numeric,
     /// Parameter must be a tensor
@@ -74,8 +74,8 @@ impl TypeChecker {
             return_type: LyraType::TypeVar(0),
             variadic: false,
             constraints: vec![
-                TypeConstraint::Numeric,
-                TypeConstraint::SameType(vec![0, 1]),
+                FunctionConstraint::Numeric,
+                FunctionConstraint::SameType(vec![0, 1]),
             ],
         });
         
@@ -84,8 +84,8 @@ impl TypeChecker {
             return_type: LyraType::TypeVar(0),
             variadic: false,
             constraints: vec![
-                TypeConstraint::Numeric,
-                TypeConstraint::SameType(vec![0, 1]),
+                FunctionConstraint::Numeric,
+                FunctionConstraint::SameType(vec![0, 1]),
             ],
         });
         
@@ -94,8 +94,8 @@ impl TypeChecker {
             return_type: LyraType::TypeVar(0),
             variadic: false,
             constraints: vec![
-                TypeConstraint::Numeric,
-                TypeConstraint::SameType(vec![0, 1]),
+                FunctionConstraint::Numeric,
+                FunctionConstraint::SameType(vec![0, 1]),
             ],
         });
         
@@ -103,14 +103,14 @@ impl TypeChecker {
             params: vec![LyraType::TypeVar(0), LyraType::TypeVar(0)],
             return_type: LyraType::Real, // Division always returns Real
             variadic: false,
-            constraints: vec![TypeConstraint::Numeric],
+            constraints: vec![FunctionConstraint::Numeric],
         });
         
         self.add_signature("Power", FunctionSignature {
             params: vec![LyraType::TypeVar(0), LyraType::TypeVar(1)],
             return_type: LyraType::Real,
             variadic: false,
-            constraints: vec![TypeConstraint::Numeric],
+            constraints: vec![FunctionConstraint::Numeric],
         });
         
         // Mathematical functions
@@ -157,7 +157,7 @@ impl TypeChecker {
             ],
             return_type: LyraType::List(Box::new(LyraType::TypeVar(0))),
             variadic: false,
-            constraints: vec![TypeConstraint::SameType(vec![0, 1])],
+            constraints: vec![FunctionConstraint::SameType(vec![0, 1])],
         });
         
         // Tensor operations
@@ -178,8 +178,8 @@ impl TypeChecker {
             },
             variadic: false,
             constraints: vec![
-                TypeConstraint::BroadcastCompatible(vec![0, 1]),
-                TypeConstraint::SameType(vec![0, 1]),
+                FunctionConstraint::BroadcastCompatible(vec![0, 1]),
+                FunctionConstraint::SameType(vec![0, 1]),
             ],
         });
     }
@@ -274,9 +274,9 @@ impl TypeChecker {
     }
     
     /// Validate a type constraint
-    fn validate_constraint(&self, constraint: &TypeConstraint, arg_types: &[LyraType], function_name: &str) -> TypeResult<()> {
+    fn validate_constraint(&self, constraint: &FunctionConstraint, arg_types: &[LyraType], function_name: &str) -> TypeResult<()> {
         match constraint {
-            TypeConstraint::Numeric => {
+            FunctionConstraint::Numeric => {
                 for (i, arg_type) in arg_types.iter().enumerate() {
                     if !self.is_numeric_type(arg_type) {
                         return Err(TypeError::InvalidOperation {
@@ -288,7 +288,7 @@ impl TypeChecker {
                 }
             }
             
-            TypeConstraint::Tensor => {
+            FunctionConstraint::Tensor => {
                 for (i, arg_type) in arg_types.iter().enumerate() {
                     if !arg_type.is_tensor() {
                         return Err(TypeError::InvalidOperation {
@@ -300,7 +300,7 @@ impl TypeChecker {
                 }
             }
             
-            TypeConstraint::List => {
+            FunctionConstraint::List => {
                 for (i, arg_type) in arg_types.iter().enumerate() {
                     if !matches!(arg_type, LyraType::List(_)) {
                         return Err(TypeError::InvalidOperation {
@@ -312,7 +312,7 @@ impl TypeChecker {
                 }
             }
             
-            TypeConstraint::Callable => {
+            FunctionConstraint::Callable => {
                 for (i, arg_type) in arg_types.iter().enumerate() {
                     if !arg_type.is_function() {
                         return Err(TypeError::InvalidOperation {
@@ -324,11 +324,11 @@ impl TypeChecker {
                 }
             }
             
-            TypeConstraint::BroadcastCompatible(indices) => {
+            FunctionConstraint::BroadcastCompatible(indices) => {
                 self.validate_broadcast_compatibility(indices, arg_types)?;
             }
             
-            TypeConstraint::SameType(indices) => {
+            FunctionConstraint::SameType(indices) => {
                 self.validate_same_types(indices, arg_types)?;
             }
         }

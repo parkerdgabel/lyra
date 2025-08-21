@@ -177,8 +177,8 @@ impl SandboxManager {
     
     pub fn execute<F, R>(&self, context_id: &str, operation: F) -> SecurityResult<R>
     where 
-        F: FnOnce() -> R + Send,
-        R: Send,
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
     {
         // Create context if it doesn't exist
         if !self.context_exists(context_id) {

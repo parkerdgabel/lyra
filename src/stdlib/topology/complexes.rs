@@ -35,7 +35,8 @@ pub fn vietoris_rips_complex(points: &[Point2D], radius: f64, max_dimension: usi
     
     // Build higher-dimensional simplices using clique enumeration
     for dim in 1..=max_dimension {
-        let simplices_at_prev_dim = complex.simplices_at_dimension(dim - 1).cloned().collect::<Vec<_>>();
+        let simplices_at_prev_dim = complex.simplices_at_dimension(dim - 1).iter().cloned().collect::<Vec<_>>();
+        let mut new_simplices = Vec::new();
         
         for simplex in simplices_at_prev_dim {
             // Try to extend this simplex by one vertex
@@ -51,11 +52,16 @@ pub fn vietoris_rips_complex(points: &[Point2D], radius: f64, max_dimension: usi
                         let new_simplex = Simplex::new(new_vertices);
                         
                         if !complex.contains_simplex(&new_simplex) {
-                            complex.add_simplex(new_simplex);
+                            new_simplices.push(new_simplex);
                         }
                     }
                 }
             }
+        }
+        
+        // Add all new simplices after collecting them
+        for simplex in new_simplices {
+            complex.add_simplex(simplex);
         }
     }
     

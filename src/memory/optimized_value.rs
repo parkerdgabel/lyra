@@ -80,6 +80,14 @@ impl CompactValue {
             crate::vm::Value::LyObj(obj) => CompactValue::LyObj(obj),
             crate::vm::Value::Quote(expr) => CompactValue::Quote(expr.into()),
             crate::vm::Value::Pattern(pattern) => CompactValue::Pattern(Arc::new(pattern)),
+            crate::vm::Value::Rule { lhs, rhs } => {
+                // For now, represent Rule as a compact list with special marker
+                let rule_items = vec![
+                    CompactValue::from_value(*lhs, interner),
+                    CompactValue::from_value(*rhs, interner)
+                ];
+                CompactValue::List(Arc::new(rule_items))
+            },
         }
     }
     

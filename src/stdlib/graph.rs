@@ -922,7 +922,8 @@ pub fn minimum_spanning_tree(args: &[Value]) -> VmResult<Value> {
     
     fn find(x: i64, parent: &mut HashMap<i64, i64>) -> i64 {
         if parent[&x] != x {
-            parent.insert(x, find(parent[&x], parent));
+            let root = find(parent[&x], parent);
+            parent.insert(x, root);
         }
         parent[&x]
     }

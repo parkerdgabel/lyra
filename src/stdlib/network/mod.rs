@@ -109,6 +109,7 @@ pub mod events;
 pub mod distributed;
 pub mod analysis;
 pub mod cloud;
+pub mod web;
 
 // Re-export all public functions and types
 pub use core::*;
@@ -118,3 +119,4 @@ pub use events::*;
 pub use distributed::*;
 pub use analysis::*;
 pub use cloud::*;
+pub use web::*;

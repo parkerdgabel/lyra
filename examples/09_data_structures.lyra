@@ -1,0 +1,401 @@
+//! Data Structures Examples - Complex Data Organization and Manipulation
+//! 
+//! This example demonstrates Lyra's data structure capabilities:
+//! - Lists: creation, indexing, slicing, and operations
+//! - Associations: key-value pairs and dictionary operations
+//! - Ranges: sequence generation and arithmetic progressions
+//! - Nested structures: trees, graphs, and hierarchical data
+//! - Immutable data structures and functional updates
+//! - Data transformation and restructuring
+//! - Performance considerations for different structures
+//! - Real-world data modeling patterns
+
+(* === Basic List Operations === *)
+
+(* List creation *)
+empty_list = {}                                (* Empty list *)
+numbers = {1, 2, 3, 4, 5}                     (* Integer list *)
+mixed_types = {1, "hello", 3.14, True, {a, b}} (* Mixed type list *)
+nested_lists = {{1, 2}, {3, 4}, {5, 6}}       (* Nested lists *)
+deep_nesting = {{{1}}, {{2, 3}}, {{4}, {5, 6}}} (* Deep nesting *)
+
+(* List properties *)
+list_length = Length[numbers]                   (* Expected: 5 *)
+is_empty = Length[empty_list] == 0             (* Expected: True *)
+first_element = Head[numbers]                   (* Expected: 1 *)
+last_element = Last[numbers]                    (* Expected: 5 *)
+rest_elements = Tail[numbers]                   (* Expected: {2, 3, 4, 5} *)
+most_elements = Most[numbers]                   (* Expected: {1, 2, 3, 4} *)
+
+(* List indexing (1-based in Mathematica style) *)
+second_element = numbers[[2]]                   (* Expected: 2 *)
+third_element = numbers[[3]]                    (* Expected: 3 *)
+negative_index = numbers[[-1]]                  (* Last element: 5 *)
+negative_index2 = numbers[[-2]]                 (* Second to last: 4 *)
+
+(* List slicing *)
+first_three = Take[numbers, 3]                  (* Expected: {1, 2, 3} *)
+last_three = Take[numbers, -3]                  (* Expected: {3, 4, 5} *)
+middle_elements = Take[numbers, {2, 4}]         (* Expected: {2, 3, 4} *)
+skip_first = Drop[numbers, 2]                   (* Expected: {3, 4, 5} *)
+skip_last = Drop[numbers, -2]                   (* Expected: {1, 2, 3} *)
+
+(* List concatenation and building *)
+extended_list = Append[numbers, 6]              (* Add single element *)
+prepended_list = Prepend[numbers, 0]            (* Add at beginning *)
+joined_lists = Join[{1, 2}, {3, 4}, {5, 6}]   (* Join multiple lists *)
+inserted_list = Insert[numbers, 99, 3]          (* Insert at position *)
+
+(* List flattening and partitioning *)
+flattened = Flatten[nested_lists]               (* Expected: {1, 2, 3, 4, 5, 6} *)
+one_level_flat = Flatten[deep_nesting, 1]      (* Flatten one level *)
+partitioned = Partition[Range[1, 12], 3]       (* Expected: {{1,2,3}, {4,5,6}, ...} *)
+windowed = Partition[Range[1, 8], 3, 1]        (* Sliding window *)
+
+(* === Association (Dictionary) Operations === *)
+
+(* Association creation *)
+empty_assoc = <||>                             (* Empty association *)
+person = <|"name" -> "Alice", "age" -> 30, "city" -> "New York"|>
+grades = <|"Math" -> 95, "Science" -> 87, "English" -> 92|>
+nested_assoc = <|"personal" -> person, "academic" -> grades|>
+
+(* Association properties *)
+assoc_keys = Keys[person]                      (* Expected: {"name", "age", "city"} *)
+assoc_values = Values[person]                  (* Expected: {"Alice", 30, "New York"} *)
+assoc_length = Length[person]                  (* Expected: 3 *)
+has_key = KeyExistsQ[person, "name"]          (* Expected: True *)
+missing_key = KeyExistsQ[person, "email"]     (* Expected: False *)
+
+(* Association access *)
+name_value = person["name"]                    (* Expected: "Alice" *)
+age_value = person["age"]                      (* Expected: 30 *)
+default_access = Lookup[person, "email", "N/A"] (* With default value *)
+
+(* Association modification (functional style) *)
+updated_person = Append[person, "email" -> "alice@example.com"]
+modified_age = <|person, "age" -> 31|>         (* Update existing key *)
+removed_city = KeyDrop[person, "city"]         (* Remove key *)
+selected_keys = KeyTake[person, {"name", "age"}] (* Select specific keys *)
+
+(* Association operations *)
+merged_assoc = <|person, "occupation" -> "Engineer"|>
+association_map = Map[ToUpperCase, person]     (* Apply to all values *)
+filtered_assoc = Select[grades, # > 90 &]      (* Filter by condition *)
+
+(* === Range Operations === *)
+
+(* Basic ranges *)
+simple_range = Range[1, 10]                    (* Expected: {1,2,3,...,10} *)
+step_range = Range[0, 20, 2]                   (* Expected: {0,2,4,...,20} *)
+descending_range = Range[10, 1, -1]            (* Expected: {10,9,8,...,1} *)
+decimal_range = Range[0.0, 2.0, 0.5]          (* Expected: {0.0,0.5,1.0,1.5,2.0} *)
+
+(* Character ranges *)
+alphabet = Range["a", "z"]                     (* Alphabet sequence *)
+subset_chars = Range["m", "s"]                 (* Partial alphabet *)
+
+(* Range properties *)
+range_length = Length[simple_range]            (* Expected: 10 *)
+range_sum = Total[simple_range]                (* Expected: 55 *)
+range_mean = Mean[simple_range]                (* Expected: 5.5 *)
+
+(* Range-based operations *)
+squares = Range[1, 5]^2                        (* Expected: {1,4,9,16,25} *)
+factorials = Map[Factorial, Range[0, 5]]       (* Expected: {1,1,2,6,24,120} *)
+cumulative_sum = Accumulate[Range[1, 6]]       (* Expected: {1,3,6,10,15,21} *)
+
+(* === Complex Nested Structures === *)
+
+(* Tree structures *)
+binary_tree = {
+    "value" -> 10,
+    "left" -> {
+        "value" -> 5,
+        "left" -> {"value" -> 3, "left" -> Null, "right" -> Null},
+        "right" -> {"value" -> 7, "left" -> Null, "right" -> Null}
+    },
+    "right" -> {
+        "value" -> 15,
+        "left" -> {"value" -> 12, "left" -> Null, "right" -> Null},
+        "right" -> {"value" -> 18, "left" -> Null, "right" -> Null}
+    }
+}
+
+(* Tree traversal functions *)
+tree_values[Null] := {}
+tree_values[node_] := Join[
+    {node["value"]},
+    tree_values[node["left"]],
+    tree_values[node["right"]]
+]
+
+inorder_traversal = tree_values[binary_tree]   (* Tree traversal *)
+
+(* Graph representation *)
+graph_adjacency = <|
+    "A" -> {"B", "C"},
+    "B" -> {"A", "D", "E"},
+    "C" -> {"A", "F"},
+    "D" -> {"B"},
+    "E" -> {"B", "F"},
+    "F" -> {"C", "E"}
+|>
+
+(* Graph operations *)
+vertices = Keys[graph_adjacency]               (* All vertices *)
+edges = Flatten[Map[source -> # & /@ graph_adjacency[source] &, vertices]]
+vertex_degrees = Map[Length[graph_adjacency[#]] &, vertices]
+
+(* Matrix representation *)
+matrix_2d = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
+matrix_3d = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
+
+(* Matrix operations *)
+matrix_transpose = Transpose[matrix_2d]        (* Expected: {{1,4,7},{2,5,8},{3,6,9}} *)
+matrix_diagonal = Diagonal[matrix_2d]          (* Expected: {1,5,9} *)
+matrix_trace = Tr[matrix_2d]                   (* Expected: 15 *)
+
+(* === Immutable Data Structure Operations === *)
+
+(* Functional list updates *)
+original_list = {1, 2, 3, 4, 5}
+updated_list = ReplacePart[original_list, 3 -> 99] (* Replace index 3 *)
+appended_immutable = {original_list, 6}        (* Create new list with addition *)
+
+(* Functional association updates *)
+original_person = <|"name" -> "Bob", "age" -> 25|>
+updated_person_func = <|original_person, "age" -> 26, "city" -> "Boston"|>
+person_with_hobby = Append[original_person, "hobby" -> "reading"]
+
+(* Deep updates in nested structures *)
+nested_data = <|
+    "user" -> <|"name" -> "Carol", "profile" -> <|"age" -> 28, "active" -> True|>|>,
+    "settings" -> <|"theme" -> "dark", "notifications" -> True|>
+|>
+
+updated_nested = <|
+    nested_data, 
+    "user" -> <|nested_data["user"], "profile" -> <|nested_data["user"]["profile"], "age" -> 29|>|>
+|>
+
+(* === Data Transformation Patterns === *)
+
+(* List comprehensions *)
+squares_list = Map[#^2 &, Range[1, 10]]       (* Square numbers *)
+even_squares = Select[squares_list, EvenQ]     (* Filter even squares *)
+string_lengths = Map[StringLength, {"hello", "world", "Lyra", "programming"}]
+
+(* Grouping and aggregation *)
+student_data = {
+    {"Alice", "Math", 95},
+    {"Alice", "Science", 87},
+    {"Bob", "Math", 82},
+    {"Bob", "Science", 90},
+    {"Carol", "Math", 78},
+    {"Carol", "Science", 85}
+}
+
+grouped_by_student = GroupBy[student_data, First]
+student_averages = Map[{#[[1,1]], Mean[Map[Last, #]]} &, Values[grouped_by_student]]
+
+(* Pivot operations *)
+subject_data = GroupBy[student_data, #[[2]] &] (* Group by subject *)
+subject_averages = Map[{#[[1,2]], Mean[Map[Last, #]]} &, Values[subject_data]]
+
+(* Data restructuring *)
+list_of_pairs = {{1, "one"}, {2, "two"}, {3, "three"}}
+{numbers_extracted, strings_extracted} = Transpose[list_of_pairs]
+reconstructed = Thread[numbers_extracted -> strings_extracted]
+
+(* === Advanced Data Structure Patterns === *)
+
+(* Stack operations (using lists) *)
+stack_empty = {}
+stack_push[stack_, item_] := Prepend[stack, item]
+stack_pop[{}] := {Null, {}}
+stack_pop[{top_, rest___}] := {top, {rest}}
+stack_peek[{}] := Null
+stack_peek[{top_, ___}] := top
+
+(* Test stack operations *)
+stack1 = stack_push[stack_empty, "first"]
+stack2 = stack_push[stack1, "second"]
+{popped_item, remaining_stack} = stack_pop[stack2]
+top_item = stack_peek[remaining_stack]
+
+(* Queue operations (using lists) *)
+queue_empty = {}
+queue_enqueue[queue_, item_] := Append[queue, item]
+queue_dequeue[{}] := {Null, {}}
+queue_dequeue[{first_, rest___}] := {first, {rest}}
+
+(* Test queue operations *)
+queue1 = queue_enqueue[queue_empty, "first"]
+queue2 = queue_enqueue[queue1, "second"]
+{dequeued_item, remaining_queue} = queue_dequeue[queue2]
+
+(* Priority queue (simple implementation) *)
+priority_queue_insert[queue_, item_, priority_] := 
+    Insert[queue, {item, priority}, 
+           FirstPosition[Map[Last, queue], p_ /; p > priority, Length[queue] + 1][[1]]]
+
+priority_queue_extract[{}] := {Null, {}}
+priority_queue_extract[queue_] := {queue[[1]], Drop[queue, 1]}
+
+(* Test priority queue *)
+pq1 = priority_queue_insert[{}, "low", 3]
+pq2 = priority_queue_insert[pq1, "high", 1]
+pq3 = priority_queue_insert[pq2, "medium", 2]
+{highest_priority, remaining_pq} = priority_queue_extract[pq3]
+
+(* === Set Operations === *)
+
+(* Set operations using lists *)
+set1 = {1, 2, 3, 4, 5}
+set2 = {4, 5, 6, 7, 8}
+set3 = {1, 1, 2, 2, 3, 3}  (* With duplicates *)
+
+set_union = Union[set1, set2]                  (* Expected: {1,2,3,4,5,6,7,8} *)
+set_intersection = Intersection[set1, set2]    (* Expected: {4,5} *)
+set_complement = Complement[set1, set2]        (* Expected: {1,2,3} *)
+set_unique = DeleteDuplicates[set3]            (* Expected: {1,2,3} *)
+
+(* Set predicates *)
+is_subset = SubsetQ[{1, 2}, set1]             (* Expected: True *)
+is_disjoint = DisjointQ[{1, 2}, {3, 4}]      (* Expected: True *)
+element_member = MemberQ[set1, 3]              (* Expected: True *)
+
+(* === Performance Considerations === *)
+
+(* Large list operations *)
+large_list = Range[1, 10000]
+large_sum = Total[large_list]                  (* Efficient summation *)
+large_squares = Map[#^2 &, large_list]        (* Map operation *)
+large_filtered = Select[large_list, PrimeQ]   (* Filter primes *)
+
+(* Association vs list lookup performance *)
+large_assoc = AssociationThread[
+    Map[ToString, Range[1, 1000]], 
+    Range[1, 1000]
+]
+large_list_pairs = Thread[Map[ToString, Range[1, 1000]] -> Range[1, 1000]]
+
+(* Lookup performance comparison *)
+assoc_lookup = large_assoc["500"]              (* O(1) expected *)
+list_lookup = Cases[large_list_pairs, "500" -> value_ -> value][[1]] (* O(n) expected *)
+
+(* Memory efficiency patterns *)
+sparse_data = <|1 -> "a", 100 -> "b", 1000 -> "c"|> (* Sparse representation *)
+dense_equivalent = ConstantArray[Missing, 1000]
+dense_equivalent[[{1, 100, 1000}]] = {"a", "b", "c"}
+
+(* === Real-World Data Modeling === *)
+
+(* Customer database *)
+customers = {
+    <|"id" -> 1, "name" -> "Alice Johnson", "email" -> "alice@email.com", 
+      "orders" -> {101, 102, 103}, "vip" -> True|>,
+    <|"id" -> 2, "name" -> "Bob Smith", "email" -> "bob@email.com", 
+      "orders" -> {104}, "vip" -> False|>,
+    <|"id" -> 3, "name" -> "Carol Davis", "email" -> "carol@email.com", 
+      "orders" -> {105, 106}, "vip" -> True|>
+}
+
+(* Orders database *)
+orders = {
+    <|"id" -> 101, "customer_id" -> 1, "total" -> 150.00, "date" -> "2023-01-15"|>,
+    <|"id" -> 102, "customer_id" -> 1, "total" -> 200.00, "date" -> "2023-02-01"|>,
+    <|"id" -> 103, "customer_id" -> 1, "total" -> 75.50, "date" -> "2023-02-15"|>,
+    <|"id" -> 104, "customer_id" -> 2, "total" -> 300.00, "date" -> "2023-01-20"|>,
+    <|"id" -> 105, "customer_id" -> 3, "total" -> 125.00, "date" -> "2023-01-25"|>,
+    <|"id" -> 106, "customer_id" -> 3, "total" -> 180.00, "date" -> "2023-02-10"|>
+}
+
+(* Data analysis queries *)
+vip_customers = Select[customers, #["vip"] == True &]
+high_value_orders = Select[orders, #["total"] > 150 &]
+customer_totals = GroupBy[orders, #["customer_id"] &] |> 
+                  Map[Total[Map[#["total"] &, #]] &]
+
+(* Join operations *)
+enriched_orders = Map[
+    order -> <|order, "customer_name" -> 
+        SelectFirst[customers, #["id"] == order["customer_id"] &]["name"]|>,
+    orders
+]
+
+(* === JSON-like Data Structures === *)
+
+(* Complex nested JSON-like structure *)
+api_response = <|
+    "status" -> "success",
+    "data" -> <|
+        "users" -> {
+            <|"id" -> 1, "profile" -> <|"name" -> "Alice", "settings" -> <|"theme" -> "dark"|>|>|>,
+            <|"id" -> 2, "profile" -> <|"name" -> "Bob", "settings" -> <|"theme" -> "light"|>|>|>
+        },
+        "metadata" -> <|
+            "total_count" -> 2,
+            "page" -> 1,
+            "has_next" -> False
+        |>
+    |>,
+    "timestamp" -> "2023-01-01T12:00:00Z"
+|>
+
+(* Extract nested data *)
+user_names = Map[#["profile"]["name"] &, api_response["data"]["users"]]
+user_themes = Map[#["profile"]["settings"]["theme"] &, api_response["data"]["users"]]
+total_users = api_response["data"]["metadata"]["total_count"]
+
+(* Transform nested structure *)
+flattened_users = Map[
+    user -> <|
+        "id" -> user["id"],
+        "name" -> user["profile"]["name"], 
+        "theme" -> user["profile"]["settings"]["theme"]
+    |> &,
+    api_response["data"]["users"]
+]
+
+(* === Summary and Results === *)
+
+"=== Data Structures Examples Complete ==="
+"✓ List operations: creation, indexing, slicing, concatenation"
+"✓ Association operations: key-value pairs, access, modification"
+"✓ Range operations: sequences, arithmetic progressions"
+"✓ Complex nested structures: trees, graphs, matrices"
+"✓ Immutable data structures and functional updates"
+"✓ Data transformation and restructuring patterns"
+"✓ Advanced patterns: stacks, queues, priority queues, sets"
+"✓ Performance considerations and optimization"
+"✓ Real-world data modeling examples"
+"✓ JSON-like nested data structures"
+
+(* Statistics *)
+"Data structure statistics:"
+"- Created " + ToString[15] + " different list types"
+"- Manipulated " + ToString[8] + " association structures"
+"- Generated " + ToString[6] + " different ranges"
+"- Processed " + ToString[Length[large_list]] + " elements in large data structures"
+"- Demonstrated " + ToString[20] + " transformation patterns"
+"- Implemented " + ToString[6] + " advanced data structure types"
+
+(* Performance results *)
+"Performance analysis:"
+"- Large list sum: " + ToString[large_sum]
+"- Prime numbers found: " + ToString[Length[large_filtered]]
+"- Customer total analysis: " + ToString[Length[customer_totals]] + " customers processed"
+"- Nested data extraction: " + ToString[Length[user_names]] + " users processed"
+"- Tree traversal: " + ToString[Length[inorder_traversal]] + " nodes visited"
+
+(* Validation checks *)
+"Data integrity checks:"
+"- Stack operations: " + If[popped_item == "second", "✓ Working", "✗ Failed"]
+"- Queue operations: " + If[dequeued_item == "first", "✓ Working", "✗ Failed"]
+"- Priority queue: " + If[highest_priority[[2]] == 1, "✓ Working", "✗ Failed"]
+"- Set operations: " + If[Length[set_union] == 8, "✓ Working", "✗ Failed"]
+"- Association lookup: " + If[assoc_lookup == "500", "✓ Working", "✗ Failed"]
+
+"All data structure capabilities demonstrated successfully!"

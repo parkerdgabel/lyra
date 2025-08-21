@@ -56,13 +56,16 @@ pub fn extract_topological_features(
 }
 
 /// Mapper algorithm for topological data visualization
-pub fn mapper_algorithm(
+pub fn mapper_algorithm<F>(
     points: &[Point2D],
-    filter_function: fn(&Point2D) -> f64,
+    filter_function: F,
     num_intervals: usize,
     overlap_percentage: f64,
     clustering_radius: f64,
-) -> MapperGraph {
+) -> MapperGraph 
+where
+    F: Fn(&Point2D) -> f64,
+{
     let n = points.len();
     
     // Step 1: Apply filter function

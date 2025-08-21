@@ -2,9 +2,10 @@ use crate::vm::Value;
 use std::any::Any;
 use std::fmt;
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 
 /// Error types for Foreign object operations
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Error, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ForeignError {
     #[error("Unknown method '{method}' for type '{type_name}'")]
     UnknownMethod {
@@ -35,6 +36,18 @@ pub enum ForeignError {
     #[error("Runtime error: {message}")]
     RuntimeError {
         message: String,
+    },
+    
+    #[error("Argument error: expected {expected}, got {actual}")]
+    ArgumentError {
+        expected: usize,
+        actual: usize,
+    },
+    
+    #[error("Type error: expected {expected}, got {actual}")]
+    TypeError {
+        expected: String,
+        actual: String,
     },
     
     #[error("Invalid argument: {0}")]

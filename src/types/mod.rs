@@ -644,7 +644,7 @@ impl Default for TypeVarGenerator {
 }
 
 /// Type constraint for the constraint solver
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TypeConstraint {
     /// Equality constraint: t1 = t2
     Equal(LyraType, LyraType),

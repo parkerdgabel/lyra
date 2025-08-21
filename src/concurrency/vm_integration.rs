@@ -57,6 +57,7 @@ impl ConcurrentLyraVM {
     
     /// Create with custom configuration
     pub fn with_config(config: ConcurrencyConfig) -> Result<Self, crate::error::Error> {
+        let parallel_threshold = config.parallel_threshold;
         let concurrency_system = Arc::new(ConcurrencySystem::with_config(config.clone())?);
         let sequential_vm = VirtualMachine::new();
         let concurrent_vm = ConcurrentVirtualMachine::new(concurrency_system.stats().clone());
@@ -67,7 +68,7 @@ impl ConcurrentLyraVM {
             concurrency_system,
             config,
             concurrent_enabled: true,
-            parallel_threshold: config.parallel_threshold,
+            parallel_threshold,
         })
     }
     

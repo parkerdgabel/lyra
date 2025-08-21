@@ -64,6 +64,10 @@ fn value_to_expr(value: &Value) -> VmResult<crate::ast::Expr> {
             }
             Ok(crate::ast::Expr::List(expr_items))
         }
+        Value::Quote(expr) => {
+            // Extract the expression from the Quote wrapper
+            Ok(*expr.clone())
+        }
         _ => Err(VmError::TypeError {
             expected: "basic value types for pattern matching".to_string(),
             actual: format!("unsupported value type: {:?}", value),
@@ -288,10 +292,12 @@ pub fn rule_delayed(args: &[Value]) -> VmResult<Value> {
 /// 
 /// This function implements single-pass rule application using the RuleEngine.
 /// It converts VM Values to AST Expressions, applies rules, and converts back.
+/// Supports both single rules and lists of rules for multiple replacements.
 /// 
 /// Examples:
 /// - ReplaceAll[2, x_ -> x^2] → 4 
 /// - ReplaceAll[{1, 2, 3}, x_Integer -> x*2] → {2, 4, 6}
+/// - ReplaceAll[Plus[x, y], {x -> 3, y -> 2}] → 5
 pub fn replace_all(args: &[Value]) -> VmResult<Value> {
     if args.len() != 2 {
         return Err(VmError::TypeError {
@@ -306,12 +312,18 @@ pub fn replace_all(args: &[Value]) -> VmResult<Value> {
     // Convert expression Value to AST Expr
     let expr = value_to_expr(expr_value)?;
 
-    // Parse rule from Value
-    let rule = parse_rule_from_value(rule_value)?;
+    // Parse rules from Value (handles both single rules and lists)
+    let rules = parse_rules_from_value(rule_value)?;
 
-    // Apply rule using RuleEngine
+    // Apply rules using RuleEngine
     let mut rule_engine = RuleEngine::new();
-    let result_expr = rule_engine.apply_rule(&expr, &rule)?;
+    let result_expr = if rules.len() == 1 {
+        // Single rule
+        rule_engine.apply_rule(&expr, &rules[0])?
+    } else {
+        // Multiple rules - apply all rules sequentially for simultaneous replacements
+        rule_engine.apply_all_rules_sequential(&expr, &rules)?
+    };
 
     // Convert result back to Value
     expr_to_value(&result_expr)
@@ -322,10 +334,12 @@ pub fn replace_all(args: &[Value]) -> VmResult<Value> {
 /// 
 /// This function implements repeated rule application using the RuleEngine.
 /// It applies rules repeatedly until no more changes occur or maximum iterations reached.
+/// Supports both single rules and lists of rules for multiple replacements.
 /// 
 /// Examples:
 /// - ReplaceRepeated[f[f[f[x]]], f[y_] -> y] → x (strips all f wrappers)
 /// - ReplaceRepeated[x + 0, x_ + 0 -> x] → x (simplifies expression)
+/// - ReplaceRepeated[Plus[x, y], {x -> a, a -> 1, y -> 2}] → 3 (applies repeatedly)
 pub fn replace_repeated(args: &[Value]) -> VmResult<Value> {
     if args.len() != 2 {
         return Err(VmError::TypeError {
@@ -340,23 +354,80 @@ pub fn replace_repeated(args: &[Value]) -> VmResult<Value> {
     // Convert expression Value to AST Expr
     let expr = value_to_expr(expr_value)?;
 
-    // Parse rule from Value
-    let rule = parse_rule_from_value(rule_value)?;
+    // Parse rules from Value (handles both single rules and lists)
+    let rules = parse_rules_from_value(rule_value)?;
 
-    // Apply rule repeatedly using RuleEngine
+    // Apply rules repeatedly using RuleEngine
     let mut rule_engine = RuleEngine::new();
-    let result_expr = rule_engine.apply_rule_repeated(&expr, &rule)?;
+    let result_expr = if rules.len() == 1 {
+        // Single rule repeated application
+        rule_engine.apply_rule_repeated(&expr, &rules[0])?
+    } else {
+        // Multiple rules repeated application - apply all rules sequentially, then repeat
+        let mut current_expr = expr.clone();
+        let mut iterations = 0;
+        const MAX_ITERATIONS: usize = 1000;
+        
+        loop {
+            let new_expr = rule_engine.apply_all_rules_sequential(&current_expr, &rules)?;
+            
+            // Check if expression changed
+            if rule_engine.expressions_equal(&current_expr, &new_expr) {
+                // No change - we're done
+                break;
+            }
+            
+            // Check iteration limit
+            iterations += 1;
+            if iterations >= MAX_ITERATIONS {
+                return Err(crate::vm::VmError::Runtime(
+                    format!("Maximum iterations ({}) exceeded in repeated rule application", MAX_ITERATIONS)
+                ));
+            }
+            
+            current_expr = new_expr;
+        }
+        
+        current_expr
+    };
 
     // Convert result back to Value
     expr_to_value(&result_expr)
 }
 
-/// Parse a rule from a VM Value
+/// Parse rules from a VM Value - handles both single rules and lists of rules
+/// 
+/// Rules can be represented as:
+/// - Single rule: Value::Function or Value::Quote 
+/// - Multiple rules: Value::List containing rule values
+fn parse_rules_from_value(value: &Value) -> VmResult<Vec<Rule>> {
+    match value {
+        Value::List(rule_values) => {
+            let mut rules = Vec::new();
+            for rule_value in rule_values {
+                rules.push(parse_single_rule_from_value(rule_value)?);
+            }
+            Ok(rules)
+        }
+        _ => {
+            // Single rule
+            let rule = parse_single_rule_from_value(value)?;
+            Ok(vec![rule])
+        }
+    }
+}
+
+/// Parse a single rule from a VM Value (backwards compatibility function)
+fn parse_rule_from_value(value: &Value) -> VmResult<Rule> {
+    parse_single_rule_from_value(value)
+}
+
+/// Parse a single rule from a VM Value
 /// 
 /// Rules can be represented as:
 /// - Value::Function with rule string representation (e.g., "Rule[x_, x^2]")
 /// - Value::Quote containing an AST Rule expression
-fn parse_rule_from_value(value: &Value) -> VmResult<Rule> {
+fn parse_single_rule_from_value(value: &Value) -> VmResult<Rule> {
     match value {
         Value::Function(rule_str) => {
             // Parse rule from string representation (for compatibility)
@@ -379,12 +450,19 @@ fn parse_rule_from_value(value: &Value) -> VmResult<Rule> {
             // Handle quoted rule expressions like Quote(Rule { lhs, rhs, delayed })
             match quoted_expr.as_ref() {
                 Expr::Rule { lhs, rhs, delayed } => {
-                    // Extract pattern from lhs
+                    // Extract pattern from lhs - handle both patterns and symbols
                     let pattern_ast = match lhs.as_ref() {
                         Expr::Pattern(p) => p.clone(),
+                        Expr::Symbol(sym) => {
+                            // For simple symbol replacement like x -> 3, create an Exact pattern
+                            // that matches only that specific symbol
+                            Pattern::Exact {
+                                value: Box::new(lhs.as_ref().clone())
+                            }
+                        },
                         _ => {
                             return Err(VmError::TypeError {
-                                expected: "pattern in rule lhs".to_string(),
+                                expected: "pattern or symbol in rule lhs".to_string(),
                                 actual: format!("got {:?}", lhs),
                             });
                         }
@@ -432,6 +510,54 @@ fn parse_rule_from_string(_rule_str: &str, delayed: bool) -> VmResult<Rule> {
     Ok(rule)
 }
 
+/// Try to evaluate an expression if it contains only numeric/evaluable components
+/// Returns Some(value) if successful, None if the expression should remain symbolic
+fn try_evaluate_expression(expr: &Expr) -> Option<Value> {
+    // Check if expression can be evaluated (contains no unbound symbols)
+    if has_unbound_symbols(expr) {
+        return None;
+    }
+    
+    // Try to compile and evaluate the expression
+    match crate::compiler::Compiler::eval(expr) {
+        Ok(value) => Some(value),
+        Err(_) => None, // Evaluation failed, keep symbolic
+    }
+}
+
+/// Check if expression contains unbound symbols that would prevent evaluation
+fn has_unbound_symbols(expr: &Expr) -> bool {
+    match expr {
+        Expr::Symbol(sym) => {
+            // Check if this is a built-in function name that can be evaluated
+            !is_builtin_function(&sym.name)
+        }
+        Expr::Number(_) | Expr::String(_) => false,
+        Expr::List(items) => items.iter().any(has_unbound_symbols),
+        Expr::Function { head, args } => {
+            has_unbound_symbols(head) || args.iter().any(has_unbound_symbols)
+        }
+        _ => true, // Conservative: assume other expression types are symbolic
+    }
+}
+
+/// Check if a symbol name refers to a built-in function that can be evaluated
+fn is_builtin_function(name: &str) -> bool {
+    matches!(name,
+        // Arithmetic functions
+        "Plus" | "Minus" | "Times" | "Divide" | "Power" |
+        // Math functions  
+        "Sin" | "Cos" | "Tan" | "Exp" | "Log" | "Sqrt" |
+        // List functions
+        "Length" | "Head" | "Tail" | "Append" | "Map" | "Apply" |
+        // String functions
+        "StringJoin" | "StringLength" | "StringTake" | "StringDrop" |
+        // Other commonly evaluable functions
+        "Print" | "N" | "Floor" | "Ceiling" | "Round" | "Abs" |
+        "Max" | "Min" | "RandomReal" | "RandomInteger"
+    )
+}
+
 /// Convert AST Expression to VM Value
 fn expr_to_value(expr: &Expr) -> VmResult<Value> {
     match expr {
@@ -447,13 +573,13 @@ fn expr_to_value(expr: &Expr) -> VmResult<Value> {
             Ok(Value::List(values))
         }
         Expr::Function { head, args } => {
-            // For function calls, create a function representation
-            // This is simplified - full implementation would evaluate the function
-            let head_str = match head.as_ref() {
-                Expr::Symbol(sym) => sym.name.clone(),
-                _ => "Function".to_string(),
-            };
-            Ok(Value::Function(format!("{}[{}]", head_str, args.len())))
+            // Try to evaluate if expression contains only numeric/evaluable components
+            if let Some(evaluated_value) = try_evaluate_expression(expr) {
+                Ok(evaluated_value)
+            } else {
+                // Keep as symbolic expression (Quote) to preserve structure
+                Ok(Value::Quote(Box::new(expr.clone())))
+            }
         }
         _ => Err(VmError::TypeError {
             expected: "convertible expression type".to_string(),

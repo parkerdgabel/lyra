@@ -49,6 +49,7 @@ pub mod type_utils {
             Value::LyObj(_) => "Object",
             Value::Quote(_) => "Quote",
             Value::Pattern(_) => "Pattern",
+            Value::Rule { .. } => "Rule",
         }
     }
     

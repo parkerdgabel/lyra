@@ -186,7 +186,7 @@ impl GeometricShape {
 }
 
 impl Foreign for GeometricShape {
-    fn name(&self) -> &str {
+    fn type_name(&self) -> &'static str {
         match self.shape_type {
             ShapeType::Points => "Points",
             ShapeType::Polygon => "Polygon", 
@@ -256,10 +256,14 @@ impl Foreign for GeometricShape {
                 Ok(Value::Integer(points.len() as i64))
             }
             _ => Err(ForeignError::UnknownMethod {
-                type_name: self.name().to_string(),
+                type_name: self.type_name().to_string(),
                 method: method.to_string(),
             }),
         }
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
     }
 
     fn as_any(&self) -> &dyn Any {

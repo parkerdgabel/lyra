@@ -2,13 +2,39 @@
 //! 
 //! Interactive symbolic computation engine showcasing Lyra's capabilities
 
+pub mod multiline;
+pub mod completion;
+pub mod file_ops;
+pub mod docs;
+pub mod benchmark;
+pub mod config;
+pub mod history;
+pub mod enhanced_helper;
+pub mod highlighting;
+pub mod validation;
+pub mod hints;
+pub mod debug;
+pub mod export;
+pub mod server;
+
 use crate::ast::Expr;
 use crate::compiler::Compiler;
 use crate::parser::Parser;
 use crate::vm::{Value, VirtualMachine};
+use multiline::MultilineBuffer;
+use completion::{LyraCompleter, SharedLyraCompleter};
+use config::{ReplConfig, HistoryConfig};
+use history::{HistoryManager, HistoryEntry, SharedHistoryManager};
+use std::sync::{Arc, Mutex};
+use file_ops::FileOperations;
+use docs::DocumentationSystem;
+use benchmark::BenchmarkSystem;
+use debug::DebugSystem;
+use export::{ExportManager, ExportFormat, SessionSnapshot, SessionEntry, SessionMetadata, CellType};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use chrono;
 
 #[derive(Error, Debug)]
 pub enum ReplError {
@@ -20,6 +46,10 @@ pub enum ReplError {
     RuntimeError { message: String },
     #[error("Invalid meta command: {command}")]
     InvalidMetaCommand { command: String },
+    #[error("Configuration error: {0}")]
+    Config(#[from] config::ConfigError),
+    #[error("History error: {0}")]
+    History(#[from] history::HistoryError),
 }
 
 pub type ReplResult<T> = std::result::Result<T, ReplError>;
@@ -61,15 +91,6 @@ impl PerformanceStats {
     }
 }
 
-/// History entry for command tracking
-#[derive(Debug, Clone)]
-pub struct HistoryEntry {
-    pub line_number: usize,
-    pub input: String,
-    pub output: String,
-    pub execution_time: Duration,
-    pub timestamp: std::time::SystemTime,
-}
 
 /// REPL evaluation result
 #[derive(Debug, Clone)]
@@ -80,28 +101,57 @@ pub struct EvaluationResult {
     pub execution_time: Duration,
 }
 
+/// Session checkpoint for save/restore functionality
+#[derive(Debug, Clone)]
+pub struct SessionCheckpoint {
+    pub name: String,
+    pub environment: HashMap<String, Value>,
+    pub history: Vec<HistoryEntry>,
+    pub line_number: usize,
+    pub performance_stats: PerformanceStats,
+    pub config: ReplConfig,
+    pub timestamp: std::time::SystemTime,
+}
+
 /// Core REPL engine with VM integration
 pub struct ReplEngine {
     /// Virtual machine for expression evaluation
     vm: VirtualMachine,
     /// Parser for syntax analysis
     parser: Parser,
-    /// Variable environment for session persistence
-    environment: HashMap<String, Value>,
-    /// Command history
-    history: Vec<HistoryEntry>,
+    /// Shared variable environment for session persistence and completion
+    environment: Arc<Mutex<HashMap<String, Value>>>,
+    /// Configuration
+    config: ReplConfig,
+    /// History manager
+    history_manager: SharedHistoryManager,
     /// Performance monitoring
     performance_stats: PerformanceStats,
     /// Current line number
     line_number: usize,
-    /// Configuration flags
-    show_performance: bool,
-    show_timing: bool,
+    /// Multi-line input buffer
+    multiline_buffer: MultilineBuffer,
+    /// Auto-completion support
+    completer: LyraCompleter,
+    /// Documentation system
+    docs: DocumentationSystem,
+    /// Debug system
+    debug_system: DebugSystem,
+    /// Export manager for session exports
+    export_manager: ExportManager,
+    /// Session checkpoints
+    checkpoints: HashMap<String, SessionCheckpoint>,
 }
 
 impl ReplEngine {
-    /// Create a new REPL engine
+    /// Create a new REPL engine with default configuration
     pub fn new() -> ReplResult<Self> {
+        let config = ReplConfig::load_or_create_default()?;
+        Self::new_with_config(config)
+    }
+    
+    /// Create a new REPL engine with specific configuration
+    pub fn new_with_config(config: ReplConfig) -> ReplResult<Self> {
         let vm = VirtualMachine::new();
         
         // Create a dummy parser (will be replaced when parsing expressions)
@@ -109,16 +159,31 @@ impl ReplEngine {
             message: format!("Failed to create parser: {}", e),
         })?;
         
+        // Initialize history manager
+        let history_path = ReplConfig::get_history_file_path()?;
+        let history_config = HistoryConfig::from_repl_config(&config);
+        let history_manager = SharedHistoryManager::new(history_path, history_config)?;
+        
         Ok(ReplEngine {
             vm,
             parser: dummy_parser,
-            environment: HashMap::new(),
-            history: Vec::new(),
+            environment: Arc::new(Mutex::new(HashMap::new())),
+            config,
+            history_manager,
             performance_stats: PerformanceStats::default(),
             line_number: 1,
-            show_performance: true,
-            show_timing: true,
+            multiline_buffer: MultilineBuffer::new(),
+            completer: LyraCompleter::new(),
+            docs: DocumentationSystem::new(),
+            debug_system: DebugSystem::new(),
+            export_manager: ExportManager::new(),
+            checkpoints: HashMap::new(),
         })
+    }
+
+    /// Create a shared completer that can be used with rustyline
+    pub fn create_shared_completer(&self) -> SharedLyraCompleter {
+        SharedLyraCompleter::new(self.environment.clone())
     }
     
     /// Evaluate a line of input
@@ -146,21 +211,20 @@ impl ReplEngine {
         self.update_performance_stats(&expr, execution_time);
         
         // Generate performance info
-        let performance_info = if self.show_performance {
+        let performance_info = if self.config.repl.show_performance {
             Some(self.generate_performance_info(&expr, execution_time))
         } else {
             None
         };
         
         // Create history entry
-        let history_entry = HistoryEntry {
-            line_number: self.line_number,
-            input: input.to_string(),
-            output: result_str.clone(),
+        let history_entry = HistoryEntry::new(
+            self.line_number,
+            input.to_string(),
+            result_str.clone(),
             execution_time,
-            timestamp: std::time::SystemTime::now(),
-        };
-        self.history.push(history_entry);
+        );
+        self.history_manager.add_entry(history_entry)?;
         
         // Increment line number
         self.line_number += 1;
@@ -197,7 +261,9 @@ impl ReplEngine {
         if let Expr::Assignment { lhs, rhs, delayed: _ } = expr {
             if let Expr::Symbol(var_name) = lhs.as_ref() {
                 let evaluated_value = self.compile_and_run(rhs)?;
-                self.environment.insert(var_name.name.clone(), evaluated_value.clone());
+                if let Ok(mut env) = self.environment.lock() {
+                    env.insert(var_name.name.clone(), evaluated_value.clone());
+                }
                 return Ok(evaluated_value);
             }
         }
@@ -209,10 +275,12 @@ impl ReplEngine {
                     // Store function definition in environment
                     // For now, we'll store as a symbol indicating function was defined
                     let definition_info = if *delayed { "delayed function" } else { "immediate function" };
-                    self.environment.insert(
-                        func_name.name.clone(), 
-                        Value::Symbol(format!("Function[{}]", definition_info))
-                    );
+                    if let Ok(mut env) = self.environment.lock() {
+                        env.insert(
+                            func_name.name.clone(), 
+                            Value::Symbol(format!("Function[{}]", definition_info))
+                        );
+                    }
                     return Ok(Value::Symbol(format!("Function {} defined", func_name.name)));
                 }
             }
@@ -237,9 +305,13 @@ impl ReplEngine {
     fn substitute_variables(&self, expr: &Expr) -> ReplResult<Expr> {
         match expr {
             Expr::Symbol(sym) => {
-                if let Some(value) = self.environment.get(&sym.name) {
-                    // Convert value back to expression for compilation
-                    Ok(self.value_to_expr(value))
+                if let Ok(env) = self.environment.lock() {
+                    if let Some(value) = env.get(&sym.name) {
+                        // Convert value back to expression for compilation
+                        Ok(self.value_to_expr(value))
+                    } else {
+                        Ok(expr.clone())
+                    }
                 } else {
                     Ok(expr.clone())
                 }
@@ -382,7 +454,7 @@ impl ReplEngine {
     fn generate_performance_info(&self, expr: &Expr, execution_time: Duration) -> String {
         let mut info = Vec::new();
         
-        if self.show_timing {
+        if self.config.repl.show_timing {
             info.push(format!("Execution time: {:.2}ms", execution_time.as_secs_f64() * 1000.0));
         }
         
@@ -411,28 +483,96 @@ impl ReplEngine {
     fn handle_meta_command(&mut self, command: &str) -> ReplResult<EvaluationResult> {
         let start_time = Instant::now();
         
-        let result = match command {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        let cmd = parts[0];
+        
+        let result = match cmd {
+            // Existing commands
             "%history" => self.show_history(),
-            "%perf" => self.show_performance_stats(),
             "%clear" => self.clear_session(),
             "%help" => self.show_help(),
             "%vars" => self.show_variables(),
-            "%timing on" => {
-                self.show_timing = true;
-                "Timing display enabled".to_string()
-            }
-            "%timing off" => {
-                self.show_timing = false;
-                "Timing display disabled".to_string()
-            }
-            "%perf on" => {
-                self.show_performance = true;
-                "Performance display enabled".to_string()
-            }
-            "%perf off" => {
-                self.show_performance = false;
-                "Performance display disabled".to_string()
-            }
+            "%timing" => self.handle_timing_command(&parts),
+            "%perf" => self.handle_perf_command(&parts),
+            
+            // File operations
+            "%load" => self.handle_load_command(&parts),
+            "%save" => self.handle_save_command(&parts),
+            "%run" => self.handle_run_command(&parts),
+            "%include" => self.handle_include_command(&parts),
+            "%examples" if parts.len() == 1 => self.list_examples(),
+            
+            // Documentation commands
+            "%doc" => self.handle_doc_command(&parts),
+            "%examples" if parts.len() > 1 => self.handle_examples_command(&parts),
+            "%search" => self.handle_search_command(&parts),
+            "%categories" => self.handle_categories_command(),
+            
+            // Benchmarking commands
+            "%benchmark" => self.handle_benchmark_command(&parts),
+            "%profile" => self.handle_profile_command(&parts),
+            "%compare" => self.handle_compare_command(&parts),
+            "%memory" => self.handle_memory_command(&parts),
+            
+            // Session management
+            "%export" => self.handle_export_command(&parts),
+            "%export-jupyter" | "%export-ipynb" | "%jupyter" => self.handle_jupyter_export_command(&parts),
+            "%export-latex" | "%export-tex" | "%latex" => self.handle_latex_export_command(&parts),
+            "%export-html" | "%html" => self.handle_html_export_command(&parts),
+            "%export-preview" | "%preview" => self.handle_export_preview_command(&parts),
+            "%export-formats" | "%formats" => self.handle_export_formats_command(),
+            "%import" => self.handle_import_command(&parts),
+            "%reset" => self.handle_reset_command(),
+            "%checkpoint" => self.handle_checkpoint_command(&parts),
+            "%restore" => self.handle_restore_command(&parts),
+            
+            // Configuration management
+            "%config" => self.handle_config_command(&parts),
+            "%config-save" => self.handle_config_save_command(&parts),
+            "%config-reload" => self.handle_config_reload_command(),
+            "%history-settings" => self.handle_history_settings_command(&parts),
+            "%history-export" => self.handle_history_export_command(&parts),
+            "%history-search" => self.handle_history_search_command(&parts),
+            
+            // Helper management
+            "%helper-info" => self.handle_helper_info_command(),
+            "%helper-reload" => self.handle_helper_reload_command(),
+            
+            // Debug commands
+            "%debug" => self.handle_debug_command(&parts),
+            "%step" => self.handle_step_command(),
+            "%continue" => self.handle_continue_command(),
+            "%stop" => self.handle_stop_debug_command(),
+            "%inspect" => self.handle_inspect_command(&parts),
+            "%tree" => self.handle_tree_command(),
+            "%debug-status" => self.handle_debug_status_command(),
+            
+            // Performance profiling commands
+            "%profile" | "%prof" => self.handle_profile_command(&parts),
+            "%profile-report" | "%prof-report" | "%preport" => self.handle_profile_report_command(),
+            "%profile-export" | "%prof-export" | "%pexport" => self.handle_profile_export_command(&parts),
+            "%profile-summary" | "%prof-summary" | "%psummary" => self.handle_profile_summary_command(),
+            "%profile-visualize" | "%prof-viz" | "%pviz" => self.handle_profile_visualize_command(),
+            "%profile-stop" | "%prof-stop" | "%pstop" => self.handle_profile_stop_command(),
+            
+            // Baseline management commands
+            "%baseline-set" | "%bset" => self.handle_baseline_set_command(),
+            "%baseline-compare" | "%bcompare" => self.handle_baseline_compare_command(),
+            "%baseline-info" | "%binfo" => self.handle_baseline_info_command(),
+            "%baseline-clear" | "%bclear" => self.handle_baseline_clear_command(),
+            
+            // Regression detection commands
+            "%regression-detect" | "%regress" | "%rdetect" => self.handle_regression_detect_command(),
+            "%regression-status" | "%rstatus" => self.handle_regression_status_command(),
+            
+            // Benchmark commands
+            "%benchmark-run" | "%bench-run" | "%brun" => self.handle_benchmark_run_command(&parts),
+            "%benchmark-suite" | "%bench-suite" | "%bsuite" => self.handle_benchmark_suite_command(),
+            "%benchmark-category" | "%bench-cat" | "%bcat" => self.handle_benchmark_category_command(&parts),
+            "%benchmark-compare" | "%bench-cmp" | "%bcmp" => self.handle_benchmark_compare_command(&parts),
+            "%benchmark-list" | "%bench-list" | "%blist" => self.handle_benchmark_list_command(),
+            "%benchmark-history" | "%bench-hist" | "%bhist" => self.handle_benchmark_history_command(),
+            
             _ => return Err(ReplError::InvalidMetaCommand {
                 command: command.to_string(),
             }),
@@ -448,9 +588,395 @@ impl ReplEngine {
         })
     }
     
+    /// Handle timing command (on/off)
+    fn handle_timing_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return format!("Usage: %timing [on|off]. Current: {}", 
+                if self.config.repl.show_timing { "on" } else { "off" });
+        }
+        
+        match parts[1] {
+            "on" => {
+                self.config.repl.show_timing = true;
+                "Timing display enabled".to_string()
+            }
+            "off" => {
+                self.config.repl.show_timing = false;
+                "Timing display disabled".to_string()
+            }
+            _ => "Usage: %timing [on|off]".to_string(),
+        }
+    }
+    
+    /// Handle performance command (on/off)
+    fn handle_perf_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return self.show_performance_stats();
+        }
+        
+        match parts[1] {
+            "on" => {
+                self.config.repl.show_performance = true;
+                "Performance display enabled".to_string()
+            }
+            "off" => {
+                self.config.repl.show_performance = false;
+                "Performance display disabled".to_string()
+            }
+            _ => self.show_performance_stats(),
+        }
+    }
+    
+    /// Handle load file command
+    fn handle_load_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %load <filename>".to_string();
+        }
+        
+        let file_path = parts[1];
+        match FileOperations::load_file(file_path, None) {
+            Ok(results) => {
+                // Add results to history and update environment if they contain assignments
+                for (i, result) in results.iter().enumerate() {
+                    if let Some(value) = &result.value {
+                        // Simple assignment detection - in a real implementation,
+                        // we'd need to parse the original expressions to detect assignments
+                        // For now, just report successful execution
+                    }
+                    
+                    let history_entry = HistoryEntry::new(
+                        self.line_number + i,
+                        format!("(from {})", file_path),
+                        result.result.clone(),
+                        result.execution_time,
+                    );
+                    let _ = self.history_manager.add_entry(history_entry);
+                }
+                
+                self.line_number += results.len();
+                format!("Loaded {} expressions from '{}'", results.len(), file_path)
+            }
+            Err(e) => format!("Error loading file: {}", e),
+        }
+    }
+    
+    /// Handle save session command
+    fn handle_save_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %save <filename>".to_string();
+        }
+        
+        let file_path = parts[1];
+        if let Ok(env) = self.environment.lock() {
+            let history_entries = self.history_manager.get_entries();
+            match FileOperations::save_session(
+                &env,
+                &history_entries,
+                self.line_number,
+                self.config.repl.show_performance,
+                self.config.repl.show_timing,
+                file_path,
+                None,
+            ) {
+                Ok(message) => message,
+                Err(e) => format!("Error saving session: {}", e),
+            }
+        } else {
+            "Error accessing environment for save".to_string()
+        }
+    }
+    
+    /// Handle run file command
+    fn handle_run_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %run <filename>".to_string();
+        }
+        
+        let file_path = parts[1];
+        match FileOperations::run_file(file_path, None) {
+            Ok(results) => {
+                format!("Executed {} expressions from '{}'", results.len(), file_path)
+            }
+            Err(e) => format!("Error running file: {}", e),
+        }
+    }
+    
+    /// Handle include file command
+    fn handle_include_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %include <filename>".to_string();
+        }
+        
+        let file_path = parts[1];
+        match FileOperations::include_file(file_path, None) {
+            Ok(expressions) => {
+                format!("Included {} expressions from '{}' (ready for evaluation)", 
+                    expressions.len(), file_path)
+            }
+            Err(e) => format!("Error including file: {}", e),
+        }
+    }
+    
+    /// List available example files
+    fn list_examples(&self) -> String {
+        match FileOperations::list_examples() {
+            Ok(files) => {
+                if files.is_empty() {
+                    "No example files found".to_string()
+                } else {
+                    let mut result = vec!["Available Examples:".to_string(), "==================".to_string()];
+                    for file in files {
+                        result.push(format!("  {}", file));
+                    }
+                    result.push("".to_string());
+                    result.push("Use '%load <filename>' to load an example".to_string());
+                    result.join("\\n")
+                }
+            }
+            Err(e) => format!("Error listing examples: {}", e),
+        }
+    }
+    
+    /// Handle documentation command
+    fn handle_doc_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %doc <function_name>".to_string();
+        }
+        
+        let function_name = parts[1];
+        match self.docs.show_function_doc(function_name) {
+            Ok(doc) => doc,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+    
+    /// Handle examples command
+    fn handle_examples_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %examples <function_name>".to_string();
+        }
+        
+        let function_name = parts[1];
+        match self.docs.show_function_examples(function_name) {
+            Ok(examples) => examples,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+    
+    /// Handle search command
+    fn handle_search_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %search <keyword>".to_string();
+        }
+        
+        let query = parts[1..].join(" ");
+        match self.docs.search_functions(&query) {
+            Ok(results) => results,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+    
+    /// Handle categories command
+    fn handle_categories_command(&mut self) -> String {
+        match self.docs.show_categories() {
+            Ok(categories) => categories,
+            Err(e) => format!("Error: {}", e),
+        }
+    }
+    
+    /// Handle benchmark command
+    fn handle_benchmark_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %benchmark <expression> [iterations]".to_string();
+        }
+        
+        let expression = parts[1..].join(" ");
+        let iterations = parts.get(parts.len().saturating_sub(1))
+            .and_then(|s| s.parse::<usize>().ok());
+        
+        match BenchmarkSystem::benchmark_expression(&expression, iterations, None) {
+            Ok((_, results)) => results,
+            Err(e) => format!("Benchmark error: {}", e),
+        }
+    }
+    
+    /// Handle profile command
+    fn handle_profile_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %profile <expression>".to_string();
+        }
+        
+        let expression = parts[1..].join(" ");
+        match BenchmarkSystem::profile_expression(&expression) {
+            Ok((_, results)) => results,
+            Err(e) => format!("Profile error: {}", e),
+        }
+    }
+    
+    /// Handle compare command
+    fn handle_compare_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 3 {
+            return "Usage: %compare <expr1> <expr2> [iterations]".to_string();
+        }
+        
+        // Simple parsing: assume expressions are separated by comma or "vs"
+        let full_args = parts[1..].join(" ");
+        let expressions: Vec<&str> = if full_args.contains(" vs ") {
+            full_args.split(" vs ").collect()
+        } else {
+            full_args.split(',').collect()
+        };
+        
+        if expressions.len() < 2 {
+            return "Usage: %compare <expr1> vs <expr2> or %compare <expr1>, <expr2>".to_string();
+        }
+        
+        let expr1 = expressions[0].trim();
+        let expr2 = expressions[1].trim();
+        
+        match BenchmarkSystem::compare_expressions(expr1, expr2, None) {
+            Ok((_, results)) => results,
+            Err(e) => format!("Compare error: {}", e),
+        }
+    }
+    
+    /// Handle memory analysis command
+    fn handle_memory_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %memory <expression>".to_string();
+        }
+        
+        let expression = parts[1..].join(" ");
+        match BenchmarkSystem::memory_analysis(&expression) {
+            Ok((_, results)) => results,
+            Err(e) => format!("Memory analysis error: {}", e),
+        }
+    }
+    
+    /// Handle export session command
+    fn handle_export_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            let default_name = format!("session_{}.json", 
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            );
+            return self.handle_save_command(&["%save", &default_name]);
+        }
+        
+        self.handle_save_command(parts)
+    }
+    
+    /// Handle import session command
+    fn handle_import_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %import <filename>".to_string();
+        }
+        
+        let file_path = parts[1];
+        match FileOperations::load_session(file_path, None) {
+            Ok((env, hist, line_num, show_perf, show_timing)) => {
+                if let Ok(mut current_env) = self.environment.lock() {
+                    *current_env = env;
+                }
+                
+                // Clear current history and load from import
+                let _ = self.history_manager.clear();
+                for entry in hist.iter().rev() { // Add in reverse to maintain order
+                    let _ = self.history_manager.add_entry(entry.clone());
+                }
+                
+                self.line_number = line_num;
+                self.config.repl.show_performance = show_perf;
+                self.config.repl.show_timing = show_timing;
+                format!("Session imported from '{}'", file_path)
+            }
+            Err(e) => format!("Error importing session: {}", e),
+        }
+    }
+    
+    /// Handle reset command
+    fn handle_reset_command(&mut self) -> String {
+        if let Ok(mut env) = self.environment.lock() {
+            env.clear();
+        }
+        let _ = self.history_manager.clear();
+        self.performance_stats = PerformanceStats::default();
+        self.line_number = 1;
+        self.checkpoints.clear();
+        self.multiline_buffer = MultilineBuffer::new();
+        "REPL reset to initial state".to_string()
+    }
+    
+    /// Handle checkpoint command
+    fn handle_checkpoint_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %checkpoint <name>".to_string();
+        }
+        
+        let checkpoint_name = parts[1].to_string();
+        let environment_clone = if let Ok(env) = self.environment.lock() {
+            env.clone()
+        } else {
+            HashMap::new()
+        };
+        
+        let checkpoint = SessionCheckpoint {
+            name: checkpoint_name.clone(),
+            environment: environment_clone,
+            history: self.history_manager.get_entries(),
+            line_number: self.line_number,
+            performance_stats: self.performance_stats.clone(),
+            config: self.config.clone(),
+            timestamp: std::time::SystemTime::now(),
+        };
+        
+        self.checkpoints.insert(checkpoint_name.clone(), checkpoint);
+        format!("Checkpoint '{}' created", checkpoint_name)
+    }
+    
+    /// Handle restore command
+    fn handle_restore_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            let checkpoint_names: Vec<String> = self.checkpoints.keys().cloned().collect();
+            if checkpoint_names.is_empty() {
+                return "No checkpoints available. Usage: %checkpoint <name> to create one".to_string();
+            } else {
+                return format!("Usage: %restore <name>. Available: {}", checkpoint_names.join(", "));
+            }
+        }
+        
+        let checkpoint_name = parts[1];
+        if let Some(checkpoint) = self.checkpoints.get(checkpoint_name) {
+            if let Ok(mut env) = self.environment.lock() {
+                *env = checkpoint.environment.clone();
+            }
+            
+            // Clear current history and restore from checkpoint
+            let _ = self.history_manager.clear();
+            for entry in checkpoint.history.iter().rev() { // Add in reverse to maintain order
+                let _ = self.history_manager.add_entry(entry.clone());
+            }
+            
+            self.line_number = checkpoint.line_number;
+            self.performance_stats = checkpoint.performance_stats.clone();
+            self.config = checkpoint.config.clone();
+            format!("Restored from checkpoint '{}'", checkpoint_name)
+        } else {
+            let available: Vec<String> = self.checkpoints.keys().cloned().collect();
+            format!("Checkpoint '{}' not found. Available: {}", 
+                checkpoint_name, 
+                if available.is_empty() { "none".to_string() } else { available.join(", ") }
+            )
+        }
+    }
+    
     /// Show command history
     fn show_history(&self) -> String {
-        if self.history.is_empty() {
+        let history_entries = self.history_manager.get_entries();
+        
+        if history_entries.is_empty() {
             return "No command history available".to_string();
         }
         
@@ -458,12 +984,19 @@ impl ReplEngine {
         output.push("Command History:".to_string());
         output.push("================".to_string());
         
-        for entry in &self.history {
+        // Show most recent entries first (limited to avoid overwhelming output)
+        let display_limit = std::cmp::min(history_entries.len(), 20);
+        for entry in history_entries.iter().take(display_limit) {
             output.push(format!("{}. {} => {}", 
                 entry.line_number, 
                 entry.input, 
                 entry.output
             ));
+        }
+        
+        if history_entries.len() > display_limit {
+            output.push(format!("... and {} more entries", history_entries.len() - display_limit));
+            output.push("Use %history-export to save complete history".to_string());
         }
         
         output.join("\n")
@@ -513,8 +1046,10 @@ impl ReplEngine {
     
     /// Clear the session
     fn clear_session(&mut self) -> String {
-        self.environment.clear();
-        self.history.clear();
+        if let Ok(mut env) = self.environment.lock() {
+            env.clear();
+        }
+        let _ = self.history_manager.clear();
         self.performance_stats = PerformanceStats::default();
         self.line_number = 1;
         "Session cleared".to_string()
@@ -525,14 +1060,75 @@ impl ReplEngine {
         let help_text = r#"Lyra REPL Help
 ===============
 
-Meta Commands:
+Basic Commands:
   %help           - Show this help message
   %history        - Show command history
-  %perf           - Show performance statistics
   %clear          - Clear session (variables, history, stats)
   %vars           - Show defined variables
   %timing on/off  - Enable/disable execution timing
-  %perf on/off    - Enable/disable performance info
+  %perf [on/off]  - Show/toggle performance statistics
+
+File Operations:
+  %load <file>    - Load and execute a Lyra script
+  %save <file>    - Save current session to file
+  %run <file>     - Execute file without loading into session
+  %include <file> - Include file content for evaluation
+  %examples       - List available example files
+
+Documentation:
+  %doc <function>     - Show function documentation
+  %examples <function> - Show usage examples for function
+  %search <keyword>   - Search functions by keyword
+  %categories         - List all function categories
+
+Performance Analysis:
+  %benchmark <expr> [iterations] - Benchmark expression performance
+  %profile <expr>                - Profile expression with timing breakdown
+  %compare <expr1> vs <expr2>    - Compare performance of two expressions
+  %memory <expr>                 - Analyze memory usage of expression
+
+Session Management:
+  %export [file]         - Export session state to JSON file
+  %export-jupyter [file] - Export session as Jupyter notebook (.ipynb)
+  %export-latex [file]   - Export session as LaTeX document (.tex)
+  %export-html [file]    - Export session as interactive HTML (.html)
+  %export-preview [fmt]  - Preview export in specified format (jupyter/latex/html)
+  %export-formats        - Show all available export formats
+  %import <file>         - Import session state from JSON file
+  %reset                 - Reset REPL to initial state
+  %checkpoint <name>     - Create named checkpoint of current state
+  %restore <name>        - Restore from named checkpoint
+
+Helper Management:
+  %helper-info        - Show REPL helper capabilities and status
+  %helper-reload      - Reload helper configuration
+
+Debug Commands:
+  %debug <expr>       - Start step-through debugging of expression
+  %step               - Execute one debugging step
+  %continue           - Continue execution until completion or breakpoint
+  %stop               - Stop current debug session
+  %inspect <var>      - Inspect variable state during debugging
+  %tree               - Show expression evaluation tree
+  %debug-status       - Show current debugging session status
+
+Performance Profiling:
+  %profile <expr>     - Start performance profiling of expression (alias: %prof)
+  %profile-report     - Generate comprehensive performance report (alias: %preport)
+  %profile-summary    - Get quick performance summary (alias: %psummary)
+  %profile-visualize  - Show performance charts and visualizations (alias: %pviz)
+  %profile-export <format> <file> - Export report (text/json/csv/markdown) (alias: %pexport)
+  %profile-stop       - Stop profiling and get final results (alias: %pstop)
+
+Baseline Management:
+  %baseline-set       - Establish performance baseline from current session (alias: %bset)
+  %baseline-compare   - Compare current performance to baseline (alias: %bcompare)
+  %baseline-info      - Show baseline information and metrics (alias: %binfo)
+  %baseline-clear     - Clear established baseline (alias: %bclear)
+
+Regression Detection:
+  %regression-detect  - Automatically detect performance regressions (alias: %regress, %rdetect)
+  %regression-status  - Get current regression detection status (alias: %rstatus)
 
 Syntax:
   Variables:      x = 5, name = "Alice"
@@ -552,6 +1148,12 @@ Examples:
   expr = Plus[Times[x, 2], Power[y, 3]]
   expr /. x -> 3
 
+Demo Scripts:
+  %examples                    # List available demos
+  %load 01_basic_syntax.lyra   # Load basic syntax examples
+  %doc Length                  # Get help for Length function
+  %benchmark Sin[Pi/2] 1000    # Benchmark trigonometric function
+
 The REPL showcases Lyra's symbolic computation optimizations:
 - Fast-path pattern matching routing (~67% improvement)
 - Intelligent rule application ordering (~28% improvement)
@@ -562,19 +1164,23 @@ The REPL showcases Lyra's symbolic computation optimizations:
     
     /// Show defined variables
     fn show_variables(&self) -> String {
-        if self.environment.is_empty() {
-            return "No variables defined".to_string();
+        if let Ok(env) = self.environment.lock() {
+            if env.is_empty() {
+                return "No variables defined".to_string();
+            }
+            
+            let mut output = Vec::new();
+            output.push("Defined Variables:".to_string());
+            output.push("==================".to_string());
+            
+            for (name, value) in env.iter() {
+                output.push(format!("{} = {}", name, self.format_value(value)));
+            }
+            
+            output.join("\n")
+        } else {
+            "Error accessing variables".to_string()
         }
-        
-        let mut output = Vec::new();
-        output.push("Defined Variables:".to_string());
-        output.push("==================".to_string());
-        
-        for (name, value) in &self.environment {
-            output.push(format!("{} = {}", name, self.format_value(value)));
-        }
-        
-        output.join("\n")
     }
     
     /// Format a value for display
@@ -600,6 +1206,7 @@ The REPL showcases Lyra's symbolic computation optimizations:
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),
+            Value::Rule { lhs, rhs } => format!("{} -> {}", self.format_value(lhs), self.format_value(rhs)),
         }
     }
     
@@ -609,12 +1216,1072 @@ The REPL showcases Lyra's symbolic computation optimizations:
     }
     
     /// Get command history
-    pub fn get_history(&self) -> &[HistoryEntry] {
-        &self.history
+    pub fn get_history(&self) -> Vec<HistoryEntry> {
+        self.history_manager.get_entries()
     }
     
     /// Get defined variables
-    pub fn get_variables(&self) -> &HashMap<String, Value> {
-        &self.environment
+    pub fn get_variables(&self) -> Arc<Mutex<HashMap<String, Value>>> {
+        self.environment.clone()
+    }
+
+    /// Add line to multiline buffer and check if expression is complete
+    pub fn add_multiline_input(&mut self, line: &str) -> bool {
+        self.multiline_buffer.add_line(line)
+    }
+
+    /// Get the complete multiline input
+    pub fn get_multiline_input(&self) -> String {
+        self.multiline_buffer.get_complete_input()
+    }
+
+    /// Check if multiline buffer has content
+    pub fn has_multiline_input(&self) -> bool {
+        !self.multiline_buffer.is_empty()
+    }
+
+    /// Clear multiline buffer
+    pub fn clear_multiline_buffer(&mut self) {
+        self.multiline_buffer.clear()
+    }
+
+    /// Get completion hint for current multiline state
+    pub fn get_multiline_hint(&self) -> Option<String> {
+        self.multiline_buffer.completion_hint()
+    }
+
+    /// Evaluate multiline input when complete
+    pub fn evaluate_multiline(&mut self) -> ReplResult<EvaluationResult> {
+        let input = self.multiline_buffer.get_complete_input();
+        let result = self.evaluate_line(&input);
+        self.clear_multiline_buffer();
+        result
+    }
+
+    /// Get auto-completion suggestions for the given input
+    pub fn get_completions(&self, line: &str, pos: usize) -> Vec<String> {
+        // For now, let's provide a simple implementation that returns function names and variables
+        let word_start = line[..pos]
+            .rfind(|c: char| c.is_whitespace() || "()[]{},".contains(c))
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        
+        let word = &line[word_start..pos];
+        let mut completions = Vec::new();
+
+        // Complete function names
+        let function_names = self.completer.complete_functions(word);
+        completions.extend(function_names.into_iter().map(|p| p.replacement));
+
+        // Complete meta commands
+        if word.starts_with('%') {
+            let meta_completions = self.completer.complete_meta_commands(word);
+            completions.extend(meta_completions.into_iter().map(|p| p.replacement));
+        }
+
+        // Complete variables
+        if let Ok(env) = self.environment.lock() {
+            let variable_completions = self.completer.complete_variables(word, &env);
+            completions.extend(variable_completions.into_iter().map(|p| p.replacement));
+        }
+
+        completions.sort();
+        completions.dedup();
+        completions
+    }
+
+    /// Get a reference to the completer for setting up rustyline
+    pub fn get_completer(&self) -> &LyraCompleter {
+        &self.completer
+    }
+    
+    /// Handle configuration command
+    fn handle_config_command(&self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return self.show_current_config();
+        }
+        
+        match parts[1] {
+            "show" => self.show_current_config(),
+            "paths" => self.show_config_paths(),
+            _ => format!("Usage: %config [show|paths]\n{}", self.show_current_config()),
+        }
+    }
+    
+    /// Show current configuration
+    fn show_current_config(&self) -> String {
+        let mut output = Vec::new();
+        output.push("Current Configuration:".to_string());
+        output.push("=====================".to_string());
+        output.push("".to_string());
+        
+        output.push("[REPL Settings]".to_string());
+        output.push(format!("  History size: {}", self.config.repl.history_size));
+        output.push(format!("  Remove duplicates: {}", self.config.repl.remove_duplicates));
+        output.push(format!("  Show timing: {}", self.config.repl.show_timing));
+        output.push(format!("  Show performance: {}", self.config.repl.show_performance));
+        output.push(format!("  Auto complete: {}", self.config.repl.auto_complete));
+        output.push(format!("  Multiline support: {}", self.config.repl.multiline_support));
+        output.push("".to_string());
+        
+        output.push("[Display Settings]".to_string());
+        output.push(format!("  Colors: {}", self.config.display.colors));
+        output.push(format!("  Unicode support: {}", self.config.display.unicode_support));
+        output.push(format!("  Max output length: {}", self.config.display.max_output_length));
+        output.push("".to_string());
+        
+        output.push("[Editor Settings]".to_string());
+        output.push(format!("  Mode: {}", self.config.editor.mode));
+        output.push(format!("  External editor: {}", self.config.editor.external_editor));
+        output.push("".to_string());
+        
+        output.push("Use %config-save to save current configuration".to_string());
+        output.push("Use %config-reload to reload from file".to_string());
+        
+        output.join("\n")
+    }
+    
+    /// Show configuration file paths
+    fn show_config_paths(&self) -> String {
+        let mut output = Vec::new();
+        output.push("Configuration Paths:".to_string());
+        output.push("===================".to_string());
+        output.push("".to_string());
+        
+        match ReplConfig::get_config_file_path() {
+            Ok(path) => output.push(format!("Config file: {}", path.display())),
+            Err(e) => output.push(format!("Config file: Error - {}", e)),
+        }
+        
+        match ReplConfig::get_history_file_path() {
+            Ok(path) => output.push(format!("History file: {}", path.display())),
+            Err(e) => output.push(format!("History file: Error - {}", e)),
+        }
+        
+        match ReplConfig::get_config_dir() {
+            Ok(path) => output.push(format!("Config directory: {}", path.display())),
+            Err(e) => output.push(format!("Config directory: Error - {}", e)),
+        }
+        
+        output.push("".to_string());
+        output.push("Environment Variables:".to_string());
+        output.push("- LYRA_CONFIG_DIR: Override config directory".to_string());
+        output.push("- LYRA_HISTORY_FILE: Override history file path".to_string());
+        output.push("- LYRA_HISTORY_SIZE: Override history size".to_string());
+        output.push("- EDITOR: Set external editor".to_string());
+        
+        output.join("\n")
+    }
+    
+    /// Handle config save command
+    fn handle_config_save_command(&self, parts: &[&str]) -> String {
+        let config_path = if parts.len() >= 2 {
+            std::path::PathBuf::from(parts[1])
+        } else {
+            match ReplConfig::get_config_file_path() {
+                Ok(path) => path,
+                Err(e) => return format!("Error getting config path: {}", e),
+            }
+        };
+        
+        match self.config.save_to_file(&config_path) {
+            Ok(()) => format!("Configuration saved to {}", config_path.display()),
+            Err(e) => format!("Error saving configuration: {}", e),
+        }
+    }
+    
+    /// Handle config reload command
+    fn handle_config_reload_command(&mut self) -> String {
+        match ReplConfig::load_or_create_default() {
+            Ok(new_config) => {
+                self.config = new_config;
+                "Configuration reloaded from file".to_string()
+            }
+            Err(e) => format!("Error reloading configuration: {}", e),
+        }
+    }
+    
+    /// Handle history settings command
+    fn handle_history_settings_command(&self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return self.show_history_settings();
+        }
+        
+        match parts[1] {
+            "show" => self.show_history_settings(),
+            "stats" => self.show_history_stats(),
+            _ => format!("Usage: %history-settings [show|stats]\n{}", self.show_history_settings()),
+        }
+    }
+    
+    /// Show history settings
+    fn show_history_settings(&self) -> String {
+        let mut output = Vec::new();
+        output.push("History Settings:".to_string());
+        output.push("================".to_string());
+        output.push("".to_string());
+        
+        output.push(format!("Max size: {}", self.history_manager.max_size()));
+        output.push(format!("Remove duplicates: {}", self.history_manager.remove_duplicates()));
+        output.push(format!("Current entries: {}", self.history_manager.len()));
+        
+        match ReplConfig::get_history_file_path() {
+            Ok(path) => output.push(format!("History file: {}", path.display())),
+            Err(e) => output.push(format!("History file: Error - {}", e)),
+        }
+        
+        output.push("".to_string());
+        output.push("Commands:".to_string());
+        output.push("  %history-export <file> [format] - Export history".to_string());
+        output.push("  %history-search <pattern> - Search history".to_string());
+        
+        output.join("\n")
+    }
+    
+    /// Show history statistics
+    fn show_history_stats(&self) -> String {
+        let entries = self.history_manager.get_entries();
+        let mut output = Vec::new();
+        output.push("History Statistics:".to_string());
+        output.push("==================".to_string());
+        output.push("".to_string());
+        
+        output.push(format!("Total entries: {}", entries.len()));
+        output.push(format!("Max capacity: {}", self.history_manager.max_size()));
+        
+        if !entries.is_empty() {
+            let total_time: Duration = entries.iter().map(|e| e.execution_time).sum();
+            let avg_time = total_time / entries.len() as u32;
+            
+            output.push(format!("Average execution time: {:.2}ms", avg_time.as_secs_f64() * 1000.0));
+            
+            if let Some(oldest) = entries.last() {
+                output.push(format!("Oldest entry: line {}", oldest.line_number));
+            }
+            
+            if let Some(newest) = entries.first() {
+                output.push(format!("Newest entry: line {}", newest.line_number));
+            }
+        }
+        
+        output.join("\n")
+    }
+    
+    /// Handle history export command
+    fn handle_history_export_command(&self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %history-export <filename> [json|text|csv]".to_string();
+        }
+        
+        let filename = parts[1];
+        let format = if parts.len() >= 3 {
+            match parts[2] {
+                "json" => history::ExportFormat::Json,
+                "text" => history::ExportFormat::PlainText,
+                "csv" => history::ExportFormat::Csv,
+                _ => {
+                    return "Invalid format. Use: json, text, or csv".to_string();
+                }
+            }
+        } else {
+            // Default to text format
+            history::ExportFormat::PlainText
+        };
+        
+        match self.history_manager.export_to_file(filename, format) {
+            Ok(()) => format!("History exported to {}", filename),
+            Err(e) => format!("Error exporting history: {}", e),
+        }
+    }
+    
+    /// Handle history search command
+    fn handle_history_search_command(&self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %history-search <pattern>".to_string();
+        }
+        
+        let pattern = parts[1..].join(" ");
+        let results = self.history_manager.search_entries(&pattern);
+        
+        if results.is_empty() {
+            return format!("No history entries found matching '{}'", pattern);
+        }
+        
+        let mut output = Vec::new();
+        output.push(format!("History search results for '{}':", pattern));
+        output.push("=".repeat(40 + pattern.len()));
+        output.push("".to_string());
+        
+        for entry in results.iter().take(10) { // Limit to 10 results
+            output.push(format!("{}. {} => {}", 
+                entry.line_number, 
+                entry.input, 
+                entry.output
+            ));
+        }
+        
+        if results.len() > 10 {
+            output.push(format!("... and {} more results", results.len() - 10));
+        }
+        
+        output.join("\n")
+    }
+    
+    /// Get the current configuration
+    pub fn get_config(&self) -> &ReplConfig {
+        &self.config
+    }
+    
+    /// Update configuration (useful for programmatic changes)
+    pub fn update_config(&mut self, new_config: ReplConfig) -> ReplResult<()> {
+        new_config.validate()?;
+        self.config = new_config;
+        Ok(())
+    }
+    
+    /// Save history and configuration on shutdown
+    pub fn shutdown(&self) -> ReplResult<()> {
+        // Save history
+        self.history_manager.save()?;
+        
+        // Optionally save configuration if it has been modified
+        // (In a more sophisticated implementation, we'd track configuration changes)
+        
+        Ok(())
+    }
+    
+    /// Handle helper info command
+    fn handle_helper_info_command(&self) -> String {
+        // For now, provide basic info about completion capabilities
+        // In the future, this will delegate to EnhancedLyraHelper
+        let mut info = Vec::new();
+        info.push("REPL Helper Information".to_string());
+        info.push("=======================".to_string());
+        info.push("".to_string());
+        
+        info.push("[Current Capabilities]".to_string());
+        info.push("  • Auto-completion for functions, variables, and meta commands".to_string());
+        info.push("  • File path completion for load/save operations".to_string());
+        info.push("  • Case-insensitive completion matching".to_string());
+        info.push("  • Integration with StandardLibrary function registry".to_string());
+        info.push("".to_string());
+        
+        info.push("[Configuration]".to_string());
+        info.push(format!("  • Auto-complete enabled: {}", self.config.repl.auto_complete));
+        info.push(format!("  • Editor mode: {}", self.config.editor.mode));
+        info.push(format!("  • History size: {}", self.config.repl.history_size));
+        info.push("".to_string());
+        
+        info.push("[Future Enhancements (Enhanced Helper Architecture)]".to_string());
+        info.push("  • Syntax highlighting with semantic awareness".to_string());
+        info.push("  • Smart hints with function signature display".to_string());
+        info.push("  • Input validation with error prevention".to_string());
+        info.push("  • Advanced Vi/Emacs mode support".to_string());
+        info.push("".to_string());
+        
+        info.push("Note: Enhanced helper architecture ready for integration".to_string());
+        info.push("Use '%helper-reload' to refresh helper configuration".to_string());
+        
+        info.join("\n")
+    }
+    
+    /// Handle helper reload command
+    fn handle_helper_reload_command(&self) -> String {
+        // For now, this is a placeholder that reports current status
+        // In the future, this will reload the EnhancedLyraHelper configuration
+        match ReplConfig::load_or_create_default() {
+            Ok(_) => {
+                "Helper configuration validated and ready for reload.\nNote: Enhanced helper integration pending - configuration changes will take effect on next REPL restart.".to_string()
+            }
+            Err(e) => {
+                format!("Error validating helper configuration: {}", e)
+            }
+        }
+    }
+    
+    /// Handle debug command
+    fn handle_debug_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %debug <expression>".to_string();
+        }
+        
+        let expression_str = parts[1..].join(" ");
+        
+        // Parse the expression
+        match self.parse_expression(&expression_str) {
+            Ok(expr) => {
+                // Get current environment
+                let env = if let Ok(env) = self.environment.lock() {
+                    env.clone()
+                } else {
+                    HashMap::new()
+                };
+                
+                // Start debugging
+                match self.debug_system.start_debug(expr, &env) {
+                    Ok(result) => {
+                        let mut output = vec![result.message];
+                        output.extend(result.debug_output);
+                        output.join("\n")
+                    }
+                    Err(e) => format!("Debug error: {}", e),
+                }
+            }
+            Err(e) => format!("Parse error: {}", e),
+        }
+    }
+    
+    /// Handle step command
+    fn handle_step_command(&mut self) -> String {
+        match self.debug_system.step() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                
+                if let Some(value) = result.value {
+                    output.push(format!("Result: {}", self.format_value(&value)));
+                }
+                
+                output.join("\n")
+            }
+            Err(e) => format!("Step error: {}", e),
+        }
+    }
+    
+    /// Handle continue command
+    fn handle_continue_command(&mut self) -> String {
+        match self.debug_system.continue_execution() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                
+                if let Some(value) = result.value {
+                    output.push(format!("Final result: {}", self.format_value(&value)));
+                }
+                
+                output.join("\n")
+            }
+            Err(e) => format!("Continue error: {}", e),
+        }
+    }
+    
+    /// Handle stop debug command
+    fn handle_stop_debug_command(&mut self) -> String {
+        match self.debug_system.stop_debug() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("Stop error: {}", e),
+        }
+    }
+    
+    /// Handle inspect command
+    fn handle_inspect_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "Usage: %inspect <variable_name>".to_string();
+        }
+        
+        let variable_name = parts[1];
+        match self.debug_system.inspect_variable(variable_name) {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                
+                if let Some(value) = result.value {
+                    output.push(format!("Current value: {}", self.format_value(&value)));
+                }
+                
+                output.join("\n")
+            }
+            Err(e) => format!("Inspect error: {}", e),
+        }
+    }
+    
+    /// Handle tree command
+    fn handle_tree_command(&mut self) -> String {
+        match self.debug_system.show_evaluation_tree() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("Tree error: {}", e),
+        }
+    }
+    
+    /// Handle debug status command
+    fn handle_debug_status_command(&mut self) -> String {
+        let result = self.debug_system.get_status();
+        let mut output = vec![result.message];
+        output.extend(result.debug_output);
+        output.join("\n")
+    }
+    
+    /// Handle profile command - start profiling an expression
+    fn handle_profile_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return concat!(
+                "Usage: %profile <expression>\n",
+                "Examples:\n",
+                "  %prof {1, 2, 3} + {4, 5, 6}\n",
+                "  %prof Fibonacci[20]\n",
+                "  %prof Table[Prime[n], {n, 1, 100}]\n",
+                "\nCommands after profiling:\n",
+                "  %preport     - Full performance report\n",
+                "  %psummary    - Quick summary\n", 
+                "  %pviz        - Performance charts\n",
+                "  %pexport     - Export to file"
+            ).to_string();
+        }
+        
+        let expression_str = parts[1..].join(" ");
+        
+        // Parse the expression
+        match self.parse_expression(&expression_str) {
+            Ok(expr) => {
+                match self.debug_system.start_profiling(expr) {
+                    Ok(result) => {
+                        let mut output = vec![result.message];
+                        output.extend(result.debug_output);
+                        output.push("💡 Use '%psummary' for quick results or '%preport' for detailed analysis".to_string());
+                        output.join("\n")
+                    }
+                    Err(e) => format!("Profile error: {}\n💡 Tip: Check expression syntax with %validate first", e),
+                }
+            }
+            Err(e) => format!("Parse error: {}\n💡 Try: %prof 2+2  or  %prof Range[1,10]", e),
+        }
+    }
+    
+    /// Handle profile report command - generate comprehensive performance report
+    fn handle_profile_report_command(&mut self) -> String {
+        match self.debug_system.generate_performance_report() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.push("💡 Use '%pexport markdown report.md' to save this report".to_string());
+                output.join("\n")
+            }
+            Err(e) => format!("Report error: {}\n💡 Start profiling first with '%prof <expression>'", e),
+        }
+    }
+    
+    /// Handle profile export command - export report to file
+    fn handle_profile_export_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 3 {
+            return concat!(
+                "Usage: %profile-export <format> <file_path>\n",
+                "Formats: text, json, csv, markdown\n",
+                "Examples:\n",
+                "  %pexport text report.txt\n",
+                "  %pexport json performance.json\n",
+                "  %pexport csv data.csv\n",
+                "  %pexport markdown report.md"
+            ).to_string();
+        }
+        
+        let format = parts[1].to_lowercase();
+        let file_path = parts[2];
+        
+        // Validate format before attempting export
+        let valid_formats = ["text", "txt", "json", "csv", "markdown", "md"];
+        if !valid_formats.contains(&format.as_str()) {
+            return format!(
+                "Invalid format '{}'. Supported formats: {}\n\nDid you mean one of:\n  {}",
+                format,
+                valid_formats.join(", "),
+                valid_formats.iter()
+                    .filter(|&f| f.starts_with(&format.chars().next().unwrap_or('x').to_string()))
+                    .take(3)
+                    .map(|&f| format!("  %pexport {} {}", f, file_path))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+        
+        match self.debug_system.export_performance_report(&format, file_path) {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.push(format!("💡 Tip: View with '%pviz' for charts or '%psummary' for quick overview"));
+                output.join("\n")
+            }
+            Err(e) => format!("Export error: {}\n💡 Tip: Ensure you've started profiling with '%prof <expression>' first", e),
+        }
+    }
+    
+    /// Handle profile summary command - get performance summary
+    fn handle_profile_summary_command(&mut self) -> String {
+        match self.debug_system.get_performance_summary() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("Summary error: {}", e),
+        }
+    }
+    
+    /// Handle profile visualize command - show performance visualizations
+    fn handle_profile_visualize_command(&mut self) -> String {
+        match self.debug_system.show_performance_visualizations() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                if result.debug_output.len() > 5 {
+                    output.push("💡 Charts show timing, memory, and hotspots - use '%preport' for detailed metrics".to_string());
+                }
+                output.join("\n")
+            }
+            Err(e) => format!("Visualization error: {}\n💡 Profile an expression first: '%prof <expression>'", e),
+        }
+    }
+    
+    /// Handle profile stop command - stop profiling and get final results
+    fn handle_profile_stop_command(&mut self) -> String {
+        match self.debug_system.stop_profiling() {
+            Ok(result) => {
+                let mut output = vec![result.message];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("Stop profiling error: {}", e),
+        }
+    }
+
+    /// Handle baseline set command
+    fn handle_baseline_set_command(&mut self) -> String {
+        match self.debug_system.set_performance_baseline() {
+            Ok(result) => {
+                let mut output = vec![format!("✅ {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("⚠️ Baseline set error: {}\n\nTip: Start profiling first with %profile <expression>", e),
+        }
+    }
+
+    /// Handle baseline compare command
+    fn handle_baseline_compare_command(&mut self) -> String {
+        match self.debug_system.compare_to_baseline() {
+            Ok(result) => {
+                if result.success {
+                    let mut output = vec![format!("✅ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                } else {
+                    let mut output = vec![format!("⚠️ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                }
+            }
+            Err(e) => format!("❌ Baseline comparison error: {}", e),
+        }
+    }
+
+    /// Handle baseline info command
+    fn handle_baseline_info_command(&mut self) -> String {
+        match self.debug_system.get_baseline_info() {
+            Ok(result) => {
+                if result.success {
+                    let mut output = vec![format!("📊 {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                } else {
+                    let mut output = vec![format!("ℹ️ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                }
+            }
+            Err(e) => format!("❌ Get baseline info error: {}", e),
+        }
+    }
+
+    /// Handle baseline clear command
+    fn handle_baseline_clear_command(&mut self) -> String {
+        match self.debug_system.clear_baseline() {
+            Ok(result) => {
+                let mut output = vec![format!("🗑️ {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Clear baseline error: {}", e),
+        }
+    }
+
+    /// Handle regression detection command
+    fn handle_regression_detect_command(&mut self) -> String {
+        match self.debug_system.detect_regressions() {
+            Ok(result) => {
+                if result.success {
+                    let mut output = vec![format!("🔍 {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                } else {
+                    let mut output = vec![format!("⚠️ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                }
+            }
+            Err(e) => format!("❌ Regression detection error: {}", e),
+        }
+    }
+
+    /// Handle regression status command
+    fn handle_regression_status_command(&mut self) -> String {
+        match self.debug_system.get_regression_status() {
+            Ok(result) => {
+                let mut output = vec![format!("📊 {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Regression status error: {}", e),
+        }
+    }
+
+    // ===== BENCHMARK COMMAND HANDLERS =====
+
+    /// Handle benchmark run command
+    fn handle_benchmark_run_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "❌ Usage: %benchmark-run <benchmark_name>\nUse %benchmark-list to see available benchmarks".to_string();
+        }
+        
+        let benchmark_name = parts[1];
+        match self.debug_system.run_benchmark(benchmark_name) {
+            Ok(result) => {
+                if result.success {
+                    let mut output = vec![format!("🚀 {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                } else {
+                    let mut output = vec![format!("⚠️ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                }
+            }
+            Err(e) => format!("❌ Benchmark run error: {}", e),
+        }
+    }
+
+    /// Handle benchmark suite command
+    fn handle_benchmark_suite_command(&mut self) -> String {
+        match self.debug_system.run_benchmark_suite() {
+            Ok(result) => {
+                let mut output = vec![format!("🏆 {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Benchmark suite error: {}", e),
+        }
+    }
+
+    /// Handle benchmark category command
+    fn handle_benchmark_category_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "❌ Usage: %benchmark-category <category>\nAvailable categories: arithmetic, data, functions, patterns, math".to_string();
+        }
+        
+        let category_name = parts[1];
+        match self.debug_system.run_benchmark_category(category_name) {
+            Ok(result) => {
+                let mut output = vec![format!("📂 {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Benchmark category error: {}", e),
+        }
+    }
+
+    /// Handle benchmark compare command
+    fn handle_benchmark_compare_command(&mut self, parts: &[&str]) -> String {
+        if parts.len() < 2 {
+            return "❌ Usage: %benchmark-compare <benchmark_name>\nThis compares the benchmark result with the current baseline".to_string();
+        }
+        
+        let benchmark_name = parts[1];
+        match self.debug_system.compare_benchmark_with_baseline(benchmark_name) {
+            Ok(result) => {
+                if result.success {
+                    let mut output = vec![format!("📊 {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                } else {
+                    let mut output = vec![format!("⚠️ {}", result.message)];
+                    output.extend(result.debug_output);
+                    output.join("\n")
+                }
+            }
+            Err(e) => format!("❌ Benchmark comparison error: {}", e),
+        }
+    }
+
+    /// Handle benchmark list command
+    fn handle_benchmark_list_command(&mut self) -> String {
+        match self.debug_system.list_benchmarks() {
+            Ok(result) => {
+                let mut output = vec![format!("📋 {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Benchmark list error: {}", e),
+        }
+    }
+
+    /// Handle benchmark history command
+    fn handle_benchmark_history_command(&mut self) -> String {
+        match self.debug_system.get_benchmark_history() {
+            Ok(result) => {
+                let mut output = vec![format!("📈 {}", result.message)];
+                output.extend(result.debug_output);
+                output.join("\n")
+            }
+            Err(e) => format!("❌ Benchmark history error: {}", e),
+        }
+    }
+
+    /// Handle Jupyter notebook export command
+    fn handle_jupyter_export_command(&mut self, parts: &[&str]) -> String {
+        // Default output filename
+        let output_file = if parts.len() > 1 {
+            parts[1].to_string()
+        } else {
+            format!("lyra_session_{}.ipynb", 
+                chrono::Utc::now().format("%Y%m%d_%H%M%S"))
+        };
+
+        // Get current history
+        let history = match self.history_manager.get_all_entries() {
+            Ok(entries) => entries,
+            Err(e) => return format!("❌ Failed to get history: {}", e),
+        };
+
+        // Get current environment
+        let environment = match self.environment.lock() {
+            Ok(env) => env.clone(),
+            Err(_) => return "❌ Failed to access environment".to_string(),
+        };
+
+        // Create session metadata
+        let metadata = SessionMetadata::new(
+            format!("session-{}", chrono::Utc::now().timestamp()),
+            env!("CARGO_PKG_VERSION").to_string(),
+        );
+
+        // Create session snapshot
+        let snapshot = self.export_manager.create_snapshot(&history, &environment, metadata);
+
+        // Export to Jupyter notebook
+        match self.export_manager.export_session(
+            &snapshot,
+            ExportFormat::Jupyter,
+            &std::path::PathBuf::from(&output_file),
+        ) {
+            Ok(()) => {
+                let stats = self.export_manager.export_stats(&snapshot);
+                format!(
+                    "✅ Successfully exported session to {}\n\n{}", 
+                    output_file, 
+                    stats.format_summary()
+                )
+            }
+            Err(e) => format!("❌ Export failed: {}", e),
+        }
+    }
+
+    /// Handle LaTeX export command
+    fn handle_latex_export_command(&mut self, parts: &[&str]) -> String {
+        // Default output filename
+        let output_file = if parts.len() > 1 {
+            parts[1].to_string()
+        } else {
+            format!("lyra_session_{}.tex", 
+                chrono::Utc::now().format("%Y%m%d_%H%M%S"))
+        };
+
+        // Get current history
+        let history = match self.history_manager.get_all_entries() {
+            Ok(entries) => entries,
+            Err(e) => return format!("❌ Failed to get history: {}", e),
+        };
+
+        // Get current environment
+        let environment = match self.environment.lock() {
+            Ok(env) => env.clone(),
+            Err(_) => return "❌ Failed to access environment".to_string(),
+        };
+
+        // Create session metadata
+        let metadata = SessionMetadata::new(
+            format!("session-{}", chrono::Utc::now().timestamp()),
+            env!("CARGO_PKG_VERSION").to_string(),
+        );
+
+        // Create session snapshot
+        let snapshot = self.export_manager.create_snapshot(&history, &environment, metadata);
+
+        // Export to LaTeX document
+        match self.export_manager.export_session(
+            &snapshot,
+            ExportFormat::LaTeX,
+            &std::path::PathBuf::from(&output_file),
+        ) {
+            Ok(()) => {
+                let stats = self.export_manager.export_stats(&snapshot);
+                format!(
+                    "✅ Successfully exported session to LaTeX document: {}\n\n{}\n\n\
+                    📝 To generate PDF:\n\
+                    • Install LaTeX: pdflatex, xelatex, or lualatex\n\
+                    • Compile: pdflatex {}\n\
+                    • For better math support: xelatex {}", 
+                    output_file, 
+                    stats.format_summary(),
+                    output_file,
+                    output_file
+                )
+            }
+            Err(e) => format!("❌ LaTeX export failed: {}", e),
+        }
+    }
+
+    /// Handle HTML export command
+    fn handle_html_export_command(&mut self, parts: &[&str]) -> String {
+        // Default output filename
+        let output_file = if parts.len() > 1 {
+            parts[1].to_string()
+        } else {
+            format!("lyra_session_{}.html", 
+                chrono::Utc::now().format("%Y%m%d_%H%M%S"))
+        };
+
+        // Get current history
+        let history = match self.history_manager.get_all_entries() {
+            Ok(entries) => entries,
+            Err(e) => return format!("❌ Failed to get history: {}", e),
+        };
+
+        // Get current environment
+        let environment = match self.environment.lock() {
+            Ok(env) => env.clone(),
+            Err(_) => return "❌ Failed to access environment".to_string(),
+        };
+
+        // Create session metadata
+        let metadata = SessionMetadata::new(
+            format!("session-{}", chrono::Utc::now().timestamp()),
+            env!("CARGO_PKG_VERSION").to_string(),
+        );
+
+        // Create session snapshot
+        let snapshot = self.export_manager.create_snapshot(&history, &environment, metadata);
+
+        // Export to HTML document
+        match self.export_manager.export_session(
+            &snapshot,
+            ExportFormat::Html,
+            &std::path::PathBuf::from(&output_file),
+        ) {
+            Ok(()) => {
+                let stats = self.export_manager.export_stats(&snapshot);
+                format!(
+                    "✅ Successfully exported session to interactive HTML: {}\n\n{}\n\n\
+                    🌐 To view the HTML file:\n\
+                    • Open directly: open {}\n\
+                    • Or serve locally: python3 -m http.server 8000\n\
+                    • Features: Interactive navigation, math rendering, copy-to-clipboard, theme toggle", 
+                    output_file, 
+                    stats.format_summary(),
+                    output_file
+                )
+            }
+            Err(e) => format!("❌ HTML export failed: {}", e),
+        }
+    }
+
+    /// Handle export preview command
+    fn handle_export_preview_command(&mut self, parts: &[&str]) -> String {
+        // Determine format from command or default to Jupyter
+        let format = if parts.len() > 1 {
+            match parts[1].parse::<ExportFormat>() {
+                Ok(fmt) => fmt,
+                Err(_) => {
+                    return format!("❌ Unknown format '{}'. Available formats: jupyter, latex, html, markdown, text, json", parts[1]);
+                }
+            }
+        } else {
+            ExportFormat::Jupyter
+        };
+
+        // Get current history (limit to last 5 entries for preview)
+        let history = match self.history_manager.get_all_entries() {
+            Ok(entries) => {
+                let preview_count = 5.min(entries.len());
+                entries.into_iter().rev().take(preview_count).rev().collect()
+            }
+            Err(e) => return format!("❌ Failed to get history: {}", e),
+        };
+
+        if history.is_empty() {
+            return "📄 No session data to preview".to_string();
+        }
+
+        // Get current environment
+        let environment = match self.environment.lock() {
+            Ok(env) => env.clone(),
+            Err(_) => return "❌ Failed to access environment".to_string(),
+        };
+
+        // Create session metadata
+        let metadata = SessionMetadata::new(
+            "preview-session".to_string(),
+            env!("CARGO_PKG_VERSION").to_string(),
+        );
+
+        // Create session snapshot
+        let snapshot = self.export_manager.create_snapshot(&history, &environment, metadata);
+
+        // Generate preview
+        match self.export_manager.preview_export(&snapshot, format) {
+            Ok(preview) => {
+                let preview_length = 800; // Limit preview length
+                if preview.len() > preview_length {
+                    format!(
+                        "📄 Export Preview ({}): First {} characters:\n\n{}\n\n... (truncated)", 
+                        format,
+                        preview_length,
+                        &preview[..preview_length]
+                    )
+                } else {
+                    format!("📄 Export Preview ({}):\n\n{}", format, preview)
+                }
+            }
+            Err(e) => format!("❌ Preview failed: {}", e),
+        }
+    }
+
+    /// Handle export formats command
+    fn handle_export_formats_command(&mut self) -> String {
+        let formats = self.export_manager.supported_formats();
+        let mut output = vec!["📋 Supported Export Formats:".to_string()];
+        
+        for format in formats {
+            output.push(format!(
+                "  • {} - {}", 
+                format, 
+                format.description()
+            ));
+        }
+        
+        output.push("".to_string());
+        output.push("Usage examples:".to_string());
+        output.push("  %export-jupyter [filename]     - Export to Jupyter notebook".to_string());
+        output.push("  %export-latex [filename]       - Export to LaTeX document".to_string());
+        output.push("  %export-html [filename]        - Export to interactive HTML".to_string());
+        output.push("  %export-preview [format]       - Preview export in specified format".to_string());
+        output.push("  %export-formats                - Show this help".to_string());
+        
+        output.join("\n")
     }
 }

@@ -1,0 +1,210 @@
+(* Service Monitoring and Alerting Example *)
+(* Demonstrates comprehensive service health monitoring, SLO tracking, and alerting *)
+
+Print["Setting up comprehensive service monitoring..."]
+
+(* Create service health monitor *)
+Print["Configuring service health monitoring..."]
+
+health_monitor = ServiceHealth["lyra_computation_service", {}, {
+    {"availability_target", "99.9"},
+    {"latency_p95_target", "200"},
+    {"error_rate_target", "1.0"}
+}]
+
+(* Set up individual health checks *)
+Print["Creating health checks..."]
+
+api_health = HealthCheck["http://localhost:8080/health", 5, 200]
+database_health = HealthCheck["postgresql://localhost:5432/lyra", 10, "connected"]
+cache_health = HealthCheck["redis://localhost:6379", 3, "PONG"]
+
+Print["Health checks configured"]
+
+(* Configure alert rules *)
+Print["Setting up alert rules..."]
+
+high_latency_rule = AlertRule["latency_p95 > 500", 500.0, 300, "warning"]
+high_error_rate_rule = AlertRule["error_rate > 5", 5.0, 180, "critical"]  
+low_availability_rule = AlertRule["availability < 99", 99.0, 600, "critical"]
+high_memory_rule = AlertRule["memory_usage > 80", 80.0, 300, "warning"]
+
+Print["Alert rules defined"]
+
+(* Set up notification channels *)
+Print["Configuring notification channels..."]
+
+slack_channel = NotificationChannel["slack", {
+    {"webhook", "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"}
+}, {
+    {"template", "🚨 [{{severity}}] {{message}} - Service: {{service}}"},
+    {"channel", "#alerts"}
+}]
+
+email_channel = NotificationChannel["email", {
+    {"smtp_server", "smtp.company.com"},
+    {"smtp_port", "587"},
+    {"username", "alerts@company.com"},
+    {"recipients", "ops-team@company.com,sre-team@company.com"}
+}, {
+    {"subject", "🚨 Lyra Service Alert: {{severity}}"},
+    {"template", "Alert: {{message}}\nService: {{service}}\nTime: {{timestamp}}"}
+}]
+
+pagerduty_channel = NotificationChannel["pagerduty", {
+    {"integration_key", "YOUR_PAGERDUTY_INTEGRATION_KEY"},
+    {"service_id", "PXXXXXXX"}
+}, {
+    {"title", "Lyra Service Alert"}
+}]
+
+Print["Notification channels configured"]
+
+(* Create alert manager *)
+Print["Setting up alert manager..."]
+
+alert_manager = AlertManager[
+    {high_latency_rule, high_error_rate_rule, low_availability_rule, high_memory_rule},
+    {slack_channel, email_channel, pagerduty_channel},
+    {
+        {"escalation_time", "900"},
+        {"auto_resolve_time", "3600"},
+        {"quiet_hours", "02:00-06:00"}
+    }
+]
+
+Print["Alert manager configured"]
+
+(* Set up SLO tracking *)
+Print["Configuring SLO tracking..."]
+
+slo_tracker = SLOTracker["lyra_computation_service", {
+    {"availability", {99.9, "monthly"}},
+    {"latency_p95", {200, "daily"}},
+    {"latency_p99", {500, "daily"}},
+    {"error_rate", {1.0, "weekly"}}
+}, 0.1]  (* 10% error budget *)
+
+Print["SLO tracker configured"]
+
+(* Set up heartbeat monitoring *)
+Print["Setting up heartbeat monitoring..."]
+
+service_heartbeat = Heartbeat["lyra_computation_service", 30, 120]  (* 30s interval, 120s timeout *)
+worker_heartbeat = Heartbeat["lyra_worker_pool", 15, 60]  (* 15s interval, 60s timeout *)
+
+Print["Heartbeat monitoring configured"]
+
+(* Simulate service monitoring workflow *)
+Print["Starting monitoring simulation..."]
+
+(* Run health checks *)
+Print["Running health checks..."]
+health_check_result = health_monitor.runChecks()
+Print["Health check result: " <> ToString[health_check_result]]
+
+(* Get service status *)
+service_status = health_monitor.status()
+Print["Service status: " <> service_status]
+
+(* Execute individual health checks *)
+api_result = api_health.execute()
+Print["API health check: " <> api_result]
+
+(* Record SLO measurements *)
+Print["Recording SLO measurements..."]
+
+(* Simulate various service metrics *)
+measurements = {
+    {"availability", 99.95},
+    {"latency_p95", 185.3},
+    {"latency_p99", 425.7},
+    {"error_rate", 0.8}
+}
+
+Do[
+    slo_tracker.recordMeasurement(measurement[[1]], measurement[[2]]),
+    {measurement, measurements}
+]
+
+(* Check error budget *)
+remaining_budget = slo_tracker.errorBudget()
+Print["Remaining error budget: " <> ToString[remaining_budget]]
+
+(* Get SLO report *)
+slo_report = slo_tracker.report()
+Print["SLO report length: " <> ToString[Length[slo_report]]]
+
+(* Send heartbeats *)
+Print["Sending heartbeats..."]
+service_heartbeat.ping()
+worker_heartbeat.ping()
+
+(* Check heartbeat status *)
+service_status = service_heartbeat.status()
+worker_status = worker_heartbeat.status()
+Print["Service heartbeat status: " <> ToString[Length[service_status]] <> " fields"]
+Print["Worker heartbeat status: " <> ToString[Length[worker_status]] <> " fields"]
+
+(* Simulate alert scenarios *)
+Print["Simulating alert scenarios..."]
+
+(* Fire test alerts *)
+alert_manager.fireAlert["high_cpu_usage", "CPU usage has exceeded 85% for 5 minutes"]
+alert_manager.fireAlert["database_slow", "Database queries are taking longer than expected"]
+
+(* Get active alerts *)
+active_alerts = alert_manager.activeAlerts()
+Print["Active alerts count: " <> ToString[Length[active_alerts]]]
+
+(* Resolve an alert *)
+alert_manager.resolveAlert["high_cpu_usage"]
+Print["Resolved high_cpu_usage alert"]
+
+(* Get updated active alerts *)
+updated_alerts = alert_manager.activeAlerts()
+Print["Updated active alerts count: " <> ToString[Length[updated_alerts]]]
+
+(* Demonstrate escalation workflow *)
+Print["Demonstrating escalation workflow..."]
+
+(* Create critical alert that would trigger escalation *)
+alert_manager.fireAlert["service_down", "Service is completely unavailable"]
+
+(* In a real scenario, this would trigger notifications through configured channels *)
+Print["Critical alert fired - notifications would be sent to all channels"]
+
+(* Service dependency tracking *)
+Print["Setting up service dependency tracking..."]
+
+dependency_result = ServiceDependency[
+    "lyra_computation_service",
+    {"postgresql", "redis", "message_queue"},
+    "high"
+]
+Print["Service dependency tracking result: " <> ToString[dependency_result]]
+
+(* Incident management *)
+Print["Setting up incident management..."]
+
+incident_result = IncidentManagement[
+    alert_manager,
+    {"sre_team", "ops_team"},
+    "https://runbooks.company.com/lyra-incidents"
+]
+Print["Incident management result: " <> ToString[incident_result]]
+
+(* Status page generation *)
+Print["Generating status page..."]
+
+status_page = StatusPage[
+    {"lyra_computation_service", "lyra_worker_pool"},
+    {"availability", "latency", "error_rate"},
+    True
+]
+
+Print["Status page generated (sample):")
+Print[StringTake[status_page, 200] <> "..."]
+
+Print["Service monitoring example completed successfully!"]
+Print["In production, this would provide comprehensive monitoring of your Lyra services."]

@@ -343,6 +343,49 @@ pub fn minus(args: &[Value]) -> VmResult<Value> {
     }
 }
 
+/// Modulo function
+/// Usage: Modulo[17, 5] -> 2, Modulo[10, 3] -> 1
+pub fn modulo(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+    let (a, b) = (&args[0], &args[1]);
+    
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => {
+            if *y == 0 {
+                return Err(VmError::DivisionByZero);
+            }
+            Ok(Value::Integer(x % y))
+        }
+        (Value::Integer(x), Value::Real(y)) => {
+            if *y == 0.0 {
+                return Err(VmError::DivisionByZero);
+            }
+            Ok(Value::Real((*x as f64) % y))
+        }
+        (Value::Real(x), Value::Integer(y)) => {
+            if *y == 0 {
+                return Err(VmError::DivisionByZero);
+            }
+            Ok(Value::Real(x % (*y as f64)))
+        }
+        (Value::Real(x), Value::Real(y)) => {
+            if *y == 0.0 {
+                return Err(VmError::DivisionByZero);
+            }
+            Ok(Value::Real(x % y))
+        }
+        _ => Err(VmError::TypeError {
+            expected: "Numbers".to_string(),
+            actual: format!("{:?}, {:?}", a, b),
+        }),
+    }
+}
+
 /// Test function for Hold[1] attribute - holds first argument
 /// Usage: TestHold[1+1, 2+2] -> evaluates second arg but holds first
 pub fn test_hold(args: &[Value]) -> VmResult<Value> {
@@ -372,6 +415,497 @@ pub fn test_hold_multiple(args: &[Value]) -> VmResult<Value> {
     // Args 1,4 should be evaluated, args 2,3 should be held (unevaluated)
     Ok(Value::String(format!("TestHoldMultiple[{:?}, {:?}, {:?}, {:?}]", 
         args[0], args[1], args[2], args[3])))
+}
+
+/// Absolute value function
+/// Usage: Abs[-42] -> 42, Abs[3.14] -> 3.14
+pub fn abs(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    match &args[0] {
+        Value::Integer(n) => Ok(Value::Integer(n.abs())),
+        Value::Real(r) => Ok(Value::Real(r.abs())),
+        _ => Err(VmError::TypeError {
+            expected: "Number".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    }
+}
+
+/// Sign function
+/// Usage: Sign[-5] -> -1, Sign[0] -> 0, Sign[5] -> 1
+pub fn sign(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    match &args[0] {
+        Value::Integer(n) => Ok(Value::Integer(n.signum())),
+        Value::Real(r) => {
+            if *r > 0.0 {
+                Ok(Value::Integer(1))
+            } else if *r < 0.0 {
+                Ok(Value::Integer(-1))
+            } else {
+                Ok(Value::Integer(0))
+            }
+        }
+        _ => Err(VmError::TypeError {
+            expected: "Number".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    }
+}
+
+/// Mathematical constants
+/// Usage: Pi -> 3.14159..., E -> 2.71828...
+pub fn pi(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Real(std::f64::consts::PI))
+}
+
+pub fn e(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Real(std::f64::consts::E))
+}
+
+/// Boolean constants
+/// Usage: True -> True, False -> False
+pub fn true_constant(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Boolean(true))
+}
+
+pub fn false_constant(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Boolean(false))
+}
+
+/// Special constants
+pub fn infinity(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Real(f64::INFINITY))
+}
+
+pub fn undefined(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Symbol("Undefined".to_string()))
+}
+
+pub fn missing(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Missing)
+}
+
+/// Euler-Mascheroni constant (γ ≈ 0.5772156649)
+pub fn euler_gamma(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Real(0.5772156649015329))
+}
+
+/// Golden ratio (φ ≈ 1.618033988749)
+pub fn golden_ratio(_args: &[Value]) -> VmResult<Value> {
+    Ok(Value::Real(1.618033988749894))
+}
+
+/// Convert any value to string representation
+/// Usage: ToString[42] -> "42", ToString[{1,2,3}] -> "{1, 2, 3}"
+pub fn to_string(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let string_repr = match &args[0] {
+        Value::Integer(n) => n.to_string(),
+        Value::Real(f) => {
+            if f.fract() == 0.0 {
+                format!("{:.1}", f)
+            } else {
+                f.to_string()
+            }
+        }
+        Value::String(s) => s.clone(),
+        Value::Symbol(s) => s.clone(),
+        Value::Boolean(b) => if *b { "True".to_string() } else { "False".to_string() },
+        Value::Missing => "Missing".to_string(),
+        Value::List(items) => {
+            let formatted_items: Vec<String> = items.iter().map(|v| match v {
+                Value::Integer(n) => n.to_string(),
+                Value::Real(f) => {
+                    if f.fract() == 0.0 {
+                        format!("{:.1}", f)
+                    } else {
+                        f.to_string()
+                    }
+                }
+                Value::String(s) => format!("\"{}\"", s),
+                Value::Symbol(s) => s.clone(),
+                Value::Boolean(b) => if *b { "True".to_string() } else { "False".to_string() },
+                Value::Missing => "Missing".to_string(),
+                Value::List(_) => "{...}".to_string(), // Nested lists simplified
+                Value::Function(name) => format!("Function[{}]", name),
+                Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
+                Value::Quote(expr) => format!("Hold[{:?}]", expr),
+                Value::Pattern(pattern) => format!("{}", pattern),
+                Value::Rule { lhs: _, rhs: _ } => "Rule[...]".to_string(),
+            }).collect();
+            format!("{{{}}}", formatted_items.join(", "))
+        }
+        Value::Function(name) => format!("Function[{}]", name),
+        Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
+        Value::Quote(expr) => format!("Hold[{:?}]", expr),
+        Value::Pattern(pattern) => format!("{}", pattern),
+        Value::Rule { lhs: _, rhs: _ } => "Rule[...]".to_string(),
+    };
+
+    Ok(Value::String(string_repr))
+}
+
+/// Conditional evaluation function
+/// Usage: If[True, "yes", "no"] -> "yes", If[False, 1, 0] -> 0
+pub fn if_function(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 3 {
+        return Err(VmError::TypeError {
+            expected: "exactly 3 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let condition = &args[0];
+    let true_value = &args[1];
+    let false_value = &args[2];
+
+    let is_true = match condition {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Boolean, Integer, or Real condition".to_string(),
+                actual: format!("{:?}", condition),
+            });
+        }
+    };
+
+    if is_true {
+        Ok(true_value.clone())
+    } else {
+        Ok(false_value.clone())
+    }
+}
+
+/// Generate random real number between 0 and 1
+/// Usage: RandomReal[] -> 0.42384... (random)
+pub fn random_real(_args: &[Value]) -> VmResult<Value> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    Ok(Value::Real(rng.gen::<f64>()))
+}
+
+/// Get current date and time as string
+/// Usage: DateString[] -> "2024-01-15T14:30:45"
+pub fn date_string(_args: &[Value]) -> VmResult<Value> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| VmError::Runtime("Failed to get current time".to_string()))?;
+    
+    // Simple ISO-like format (simplified since we don't have chrono)
+    let secs = now.as_secs();
+    let days_since_epoch = secs / 86400;
+    let seconds_today = secs % 86400;
+    let hours = seconds_today / 3600;
+    let minutes = (seconds_today % 3600) / 60;
+    let seconds = seconds_today % 60;
+    
+    // Approximate date calculation (simplified)
+    let year = 1970 + (days_since_epoch / 365);
+    let month = ((days_since_epoch % 365) / 30) + 1;
+    let day = ((days_since_epoch % 365) % 30) + 1;
+    
+    Ok(Value::String(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        year, month, day, hours, minutes, seconds
+    )))
+}
+
+/// Boolean NOT operation
+/// Usage: Not[True] -> False, Not[False] -> True
+pub fn not_function(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "exactly 1 argument".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    match &args[0] {
+        Value::Boolean(b) => Ok(Value::Boolean(!b)),
+        Value::Integer(n) => Ok(Value::Boolean(*n == 0)),
+        Value::Real(f) => Ok(Value::Boolean(*f == 0.0)),
+        _ => Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    }
+}
+
+/// Boolean AND operation
+/// Usage: And[True, False] -> False, And[True, True] -> True
+pub fn and_function(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let a = match &args[0] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+
+    let b = match &args[1] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[1]),
+        }),
+    };
+
+    Ok(Value::Boolean(a && b))
+}
+
+/// Boolean OR operation
+/// Usage: Or[True, False] -> True, Or[False, False] -> False
+pub fn or_function(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let a = match &args[0] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+
+    let b = match &args[1] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[1]),
+        }),
+    };
+
+    Ok(Value::Boolean(a || b))
+}
+
+/// Boolean XOR operation
+/// Usage: Xor[True, False] -> True, Xor[True, True] -> False
+pub fn xor_function(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let a = match &args[0] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+
+    let b = match &args[1] {
+        Value::Boolean(b) => *b,
+        Value::Integer(n) => *n != 0,
+        Value::Real(f) => *f != 0.0,
+        _ => return Err(VmError::TypeError {
+            expected: "Boolean, Integer, or Real".to_string(),
+            actual: format!("{:?}", args[1]),
+        }),
+    };
+
+    Ok(Value::Boolean(a ^ b))
+}
+
+/// Greater than comparison
+/// Usage: Greater[5, 3] -> True, Greater[2, 5] -> False
+pub fn greater(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let result = match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x > y,
+        (Value::Integer(x), Value::Real(y)) => (*x as f64) > *y,
+        (Value::Real(x), Value::Integer(y)) => *x > (*y as f64),
+        (Value::Real(x), Value::Real(y)) => x > y,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Numbers".to_string(),
+                actual: format!("{:?}, {:?}", a, b),
+            });
+        }
+    };
+
+    Ok(Value::Boolean(result))
+}
+
+/// Less than comparison
+/// Usage: Less[3, 5] -> True, Less[5, 2] -> False
+pub fn less(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let result = match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x < y,
+        (Value::Integer(x), Value::Real(y)) => (*x as f64) < *y,
+        (Value::Real(x), Value::Integer(y)) => *x < (*y as f64),
+        (Value::Real(x), Value::Real(y)) => x < y,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Numbers".to_string(),
+                actual: format!("{:?}, {:?}", a, b),
+            });
+        }
+    };
+
+    Ok(Value::Boolean(result))
+}
+
+/// Equal comparison
+/// Usage: Equal[5, 5] -> True, Equal[3, 5] -> False
+pub fn equal(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let result = match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x == y,
+        (Value::Integer(x), Value::Real(y)) => (*x as f64) == *y,
+        (Value::Real(x), Value::Integer(y)) => *x == (*y as f64),
+        (Value::Real(x), Value::Real(y)) => x == y,
+        (Value::String(x), Value::String(y)) => x == y,
+        (Value::Boolean(x), Value::Boolean(y)) => x == y,
+        (Value::Symbol(x), Value::Symbol(y)) => x == y,
+        _ => false, // Different types are not equal
+    };
+
+    Ok(Value::Boolean(result))
+}
+
+/// Not equal comparison
+/// Usage: Unequal[5, 3] -> True, Unequal[5, 5] -> False
+pub fn unequal(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // Use the equal function and negate the result
+    match equal(args)? {
+        Value::Boolean(b) => Ok(Value::Boolean(!b)),
+        _ => unreachable!("equal function should always return boolean"),
+    }
+}
+
+/// Greater than or equal comparison
+/// Usage: GreaterEqual[5, 5] -> True, GreaterEqual[3, 5] -> False
+pub fn greater_equal(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let result = match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x >= y,
+        (Value::Integer(x), Value::Real(y)) => (*x as f64) >= *y,
+        (Value::Real(x), Value::Integer(y)) => *x >= (*y as f64),
+        (Value::Real(x), Value::Real(y)) => x >= y,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Numbers".to_string(),
+                actual: format!("{:?}, {:?}", a, b),
+            });
+        }
+    };
+
+    Ok(Value::Boolean(result))
+}
+
+/// Less than or equal comparison
+/// Usage: LessEqual[3, 5] -> True, LessEqual[5, 3] -> False
+pub fn less_equal(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "exactly 2 arguments".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let (a, b) = (&args[0], &args[1]);
+    
+    let result = match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x <= y,
+        (Value::Integer(x), Value::Real(y)) => (*x as f64) <= *y,
+        (Value::Real(x), Value::Integer(y)) => *x <= (*y as f64),
+        (Value::Real(x), Value::Real(y)) => x <= y,
+        _ => {
+            return Err(VmError::TypeError {
+                expected: "Numbers".to_string(),
+                actual: format!("{:?}, {:?}", a, b),
+            });
+        }
+    };
+
+    Ok(Value::Boolean(result))
 }
 
 #[cfg(test)]

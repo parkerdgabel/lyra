@@ -199,6 +199,7 @@ impl TypeRegistry {
             Value::LyObj(_) => "Object".to_string(),
             Value::Quote(_) => "Quote".to_string(),
             Value::Pattern(_) => "Pattern".to_string(),
+            Value::Rule { .. } => "Rule".to_string(),
         }
     }
     

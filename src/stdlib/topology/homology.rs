@@ -61,9 +61,9 @@ fn build_boundary_matrix(filtration: &Filtration) -> Vec<Vec<bool>> {
 /// Matrix reduction algorithm for computing persistence pairs
 fn matrix_reduction(boundary_matrix: &[Vec<bool>], filtration: &Filtration) -> Vec<(usize, Option<usize>)> {
     let n = boundary_matrix.len();
-    let mut reduced_matrix = boundary_matrix.to_vec();
+    let mut reduced_matrix: Vec<Vec<bool>> = boundary_matrix.to_vec();
     let mut pairs = Vec::new();
-    let mut low = vec![None; n];
+    let mut low: Vec<Option<usize>> = vec![None; n];
     
     for j in 0..n {
         // Reduce column j
@@ -71,7 +71,8 @@ fn matrix_reduction(boundary_matrix: &[Vec<bool>], filtration: &Filtration) -> V
             if let Some(k) = low[i] {
                 // Add column k to column j
                 for row in 0..n {
-                    reduced_matrix[j][row] ^= reduced_matrix[k][row];
+                    let right_val: bool = reduced_matrix[k][row];
+                    reduced_matrix[j][row] ^= right_val;
                 }
             } else {
                 low[i] = Some(j);
@@ -153,7 +154,8 @@ fn estimate_connected_components(complex: &SimplicialComplex) -> usize {
     
     fn find(parent: &mut HashMap<usize, usize>, x: usize) -> usize {
         if parent[&x] != x {
-            parent.insert(x, find(parent, parent[&x]));
+            let root = find(parent, parent[&x]);
+            parent.insert(x, root);
         }
         parent[&x]
     }

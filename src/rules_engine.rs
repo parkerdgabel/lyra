@@ -694,7 +694,66 @@ impl RuleEngine {
                 self.substitute_variables(&rule.replacement, &bindings)
             }
             MatchResult::Failure { .. } => {
-                // Pattern didn't match - return original expression unchanged
+                // Pattern didn't match at top level - try recursive application
+                self.apply_rule_recursive(expr, rule)
+            }
+        }
+    }
+
+    /// Apply rule recursively to subexpressions
+    fn apply_rule_recursive(&mut self, expr: &Expr, rule: &Rule) -> VmResult<Expr> {
+        match expr {
+            Expr::Function { head, args } => {
+                // Recursively apply rule to head and each argument
+                let new_head = self.apply_rule(head, rule)?;
+                let mut new_args = Vec::new();
+                let mut changed = false;
+                
+                for arg in args {
+                    let new_arg = self.apply_rule(arg, rule)?;
+                    if !self.expressions_equal(arg, &new_arg) {
+                        changed = true;
+                    }
+                    new_args.push(new_arg);
+                }
+                
+                // If head changed, mark as changed
+                if !self.expressions_equal(head, &new_head) {
+                    changed = true;
+                }
+                
+                if changed {
+                    Ok(Expr::Function { 
+                        head: Box::new(new_head), 
+                        args: new_args 
+                    })
+                } else {
+                    // No changes at any level
+                    Ok(expr.clone())
+                }
+            }
+            Expr::List(items) => {
+                // Recursively apply rule to each list item
+                let mut new_items = Vec::new();
+                let mut changed = false;
+                
+                for item in items {
+                    let new_item = self.apply_rule(item, rule)?;
+                    if !self.expressions_equal(item, &new_item) {
+                        changed = true;
+                    }
+                    new_items.push(new_item);
+                }
+                
+                if changed {
+                    Ok(Expr::List(new_items))
+                } else {
+                    Ok(expr.clone())
+                }
+            }
+            _ => {
+                // For atomic expressions (Symbol, Number, String), 
+                // no recursive application needed
                 Ok(expr.clone())
             }
         }
@@ -744,6 +803,23 @@ impl RuleEngine {
         }
         
         Ok(current)
+    }
+    
+    /// Apply all rules to an expression sequentially
+    /// 
+    /// Applies each rule in sequence, building up transformations.
+    /// This implements simultaneous replacements like {x -> 3, y -> 2}.
+    /// Each rule is applied to the result of the previous rule application.
+    pub fn apply_all_rules_sequential(&mut self, expr: &Expr, rules: &[Rule]) -> VmResult<Expr> {
+        let mut current_expr = expr.clone();
+        
+        // Apply each rule to the current expression
+        for rule in rules {
+            let result = self.apply_rule(&current_expr, rule)?;
+            current_expr = result;
+        }
+        
+        Ok(current_expr)
     }
     
     /// Apply multiple rules to an expression (single pass)
@@ -961,7 +1037,7 @@ impl RuleEngine {
     /// Check if two expressions are structurally equal
     /// 
     /// This is used to detect when rule application stops making changes.
-    fn expressions_equal(&self, expr1: &Expr, expr2: &Expr) -> bool {
+    pub fn expressions_equal(&self, expr1: &Expr, expr2: &Expr) -> bool {
         // For now, use simple structural equality
         // TODO: This could be optimized with custom equality that handles
         // mathematical equivalences (e.g., x + 0 == x)

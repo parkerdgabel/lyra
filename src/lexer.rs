@@ -33,6 +33,7 @@ pub enum TokenKind {
     Minus,
     Times,
     Divide,
+    Modulo,
     Power,
 
     // Comparison
@@ -262,6 +263,14 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Ok(Token {
                             kind: TokenKind::Power,
+                            position: start_pos,
+                            length: 1,
+                        })
+                    }
+                    '%' => {
+                        self.advance();
+                        Ok(Token {
+                            kind: TokenKind::Modulo,
                             position: start_pos,
                             length: 1,
                         })

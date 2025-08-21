@@ -282,6 +282,15 @@ impl Compiler {
                         Expr::Symbol(sym) => {
                             list_values.push(Value::Symbol(sym.name.clone()));
                         }
+                        Expr::Rule { lhs, rhs, delayed } => {
+                            // Convert rule to Quote value for processing by rule system
+                            let rule_expr = Expr::Rule {
+                                lhs: lhs.clone(),
+                                rhs: rhs.clone(),
+                                delayed: *delayed,
+                            };
+                            list_values.push(Value::Quote(Box::new(rule_expr)));
+                        }
                         _ => {
                             // For complex expressions, we'd need to compile them and evaluate at runtime
                             // For now, just put the list in the constant pool
@@ -642,8 +651,6 @@ impl Compiler {
         
         // Step 3: Apply attribute-specific processing (Phase 5A.5.1b-d)
         if !attributes.is_empty() {
-            println!("🔍 Found attributes for {}: {:?}", function_name, attributes);
-            
             // Phase 5A.5.1b: Process Hold attributes (highest priority)
             for attribute in &attributes {
                 if let crate::linker::FunctionAttribute::Hold(positions) = attribute {
@@ -1010,13 +1017,16 @@ impl Compiler {
 
     /// Compile rule expressions (lhs -> rhs and lhs :> rhs)
     fn compile_rule_expression(&mut self, lhs: &Expr, rhs: &Expr, delayed: bool) -> CompilerResult<()> {
-        // For now, create a function representation of the rule
-        // This is similar to how the stdlib Rule function works
-        let rule_type = if delayed { "RuleDelayed" } else { "Rule" };
-        let rule_repr = format!("{}[{:?}, {:?}]", rule_type, lhs, rhs);
+        // Preserve the AST structure by creating a Quote containing the Rule
+        // This allows proper rule parsing and pattern matching in the VM
+        let rule_expr = Expr::Rule {
+            lhs: Box::new(lhs.clone()),
+            rhs: Box::new(rhs.clone()),
+            delayed,
+        };
         
-        // Store the rule as a Function value in constants
-        let const_index = self.context.add_constant(Value::Function(rule_repr))?;
+        // Store the rule as a Quote value to preserve structure
+        let const_index = self.context.add_constant(Value::Quote(Box::new(rule_expr)))?;
         self.context.emit(OpCode::LDC, const_index as u32)?;
         
         Ok(())

@@ -230,6 +230,9 @@ fn format_pattern(p: &Pattern, level: usize, cfg: &FormatterConfig, out: &mut St
             }
             write!(out, "]")
         }
+        Pattern::Exact { value } => {
+            format_expr(value, level, cfg, out)
+        }
         Pattern::Typed { name, type_pattern } => {
             write!(out, "{}:", name)?;
             format_expr(type_pattern, level, cfg, out)

@@ -21,8 +21,7 @@ pub mod security;
 // TODO: Serialization module has compilation issues - temporarily disabled
 // pub mod serialization;
 pub mod stdlib;
-// TODO: Types module has compilation issues - temporarily disabled
-// pub mod types;
+pub mod types;
 pub mod vm;
 pub mod vm_components;
 pub mod compiler_components;

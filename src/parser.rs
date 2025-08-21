@@ -263,11 +263,12 @@ impl Parser {
     fn factor(&mut self) -> Result<Expr> {
         let mut expr = self.power()?;
 
-        while let Some(op) = self.match_tokens(&[TokenKind::Times, TokenKind::Divide]) {
+        while let Some(op) = self.match_tokens(&[TokenKind::Times, TokenKind::Divide, TokenKind::Modulo]) {
             let right = self.power()?;
             let op_symbol = match op {
                 TokenKind::Times => "Times",
                 TokenKind::Divide => "Divide",
+                TokenKind::Modulo => "Modulo",
                 _ => unreachable!(),
             };
             expr = Expr::function(Expr::symbol(op_symbol), vec![expr, right]);

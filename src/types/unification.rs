@@ -79,10 +79,12 @@ impl Unifier {
                 LyraType::Function {
                     params: params1,
                     return_type: ret1,
+                    ..
                 },
                 LyraType::Function {
                     params: params2,
                     return_type: ret2,
+                    ..
                 },
             ) => {
                 // Check arity
@@ -122,9 +124,9 @@ impl Unifier {
                 self.unify_types(rhs1, rhs2)
             }
 
-            // Error types always fail unification unless they're the same error
-            (LyraType::Error(msg1), LyraType::Error(msg2)) if msg1 == msg2 => Ok(()),
-            (LyraType::Error(_), _) | (_, LyraType::Error(_)) => Err(TypeError::Mismatch {
+            // Never types never unify with anything except themselves
+            (LyraType::Never, LyraType::Never) => Ok(()),
+            (LyraType::Never, _) | (_, LyraType::Never) => Err(TypeError::Mismatch {
                 expected: t1.clone(),
                 actual: t2.clone(),
             }),
@@ -167,7 +169,7 @@ impl Unifier {
             LyraType::TypeVar(other_var) => var == *other_var,
             LyraType::List(elem_type) => self.occurs_check(var, elem_type),
             LyraType::Tensor { element_type, .. } => self.occurs_check(var, element_type),
-            LyraType::Function { params, return_type } => {
+            LyraType::Function { params, return_type, .. } => {
                 params.iter().any(|p| self.occurs_check(var, p))
                     || self.occurs_check(var, return_type)
             }
@@ -342,10 +344,12 @@ mod tests {
         let f1 = LyraType::Function {
             params: vec![LyraType::Integer],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         let f2 = LyraType::Function {
             params: vec![LyraType::Integer],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         let result = unify_types(&f1, &f2);
@@ -355,6 +359,7 @@ mod tests {
         let f3 = LyraType::Function {
             params: vec![LyraType::Integer, LyraType::Real],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         let result = unify_types(&f1, &f3);
@@ -417,10 +422,12 @@ mod tests {
         let f1 = LyraType::Function {
             params: vec![LyraType::TypeVar(0)],
             return_type: Box::new(LyraType::TypeVar(1)),
+            attributes: vec![],
         };
         let f2 = LyraType::Function {
             params: vec![LyraType::Integer],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         let substitution = unify_types(&f1, &f2).unwrap();

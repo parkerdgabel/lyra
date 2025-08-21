@@ -234,6 +234,7 @@ pub fn value_to_type(value: &Value) -> LyraType {
             LyraType::Function {
                 params: vec![LyraType::Unknown],
                 return_type: Box::new(LyraType::Unknown),
+                attributes: vec![],
             }
         }
         Value::LyObj(obj) => {
@@ -250,6 +251,10 @@ pub fn value_to_type(value: &Value) -> LyraType {
         }
         Value::Quote(_) => LyraType::Unknown, // Quoted expressions have unknown type
         Value::Pattern(_) => LyraType::Pattern(Box::new(LyraType::Unknown)),
+        Value::Rule { .. } => LyraType::Rule {
+            lhs_type: Box::new(LyraType::Unknown),
+            rhs_type: Box::new(LyraType::Unknown),
+        },
     }
 }
 
@@ -273,7 +278,7 @@ pub fn type_to_value(ty: &LyraType) -> Value {
                 Value::Function(format!("Tensor[{}]", element_type))
             }
         }
-        LyraType::Function { params, return_type } => {
+        LyraType::Function { params, return_type, .. } => {
             let param_strs: Vec<String> = params.iter().map(|p| p.to_string()).collect();
             Value::Function(format!("({}) -> {}", param_strs.join(", "), return_type))
         }
@@ -284,7 +289,17 @@ pub fn type_to_value(ty: &LyraType) -> Value {
             Value::Function(format!("Rule[{} -> {}]", lhs_type, rhs_type))
         }
         LyraType::TypeVar(var) => Value::Symbol(format!("α{}", var)),
-        LyraType::Error(msg) => Value::String(format!("TypeError: {}", msg)),
+        LyraType::ConstrainedTypeVar(var, _constraints) => Value::Symbol(format!("α{}", var)),
+        LyraType::Union(_types) => Value::Symbol("Union".to_string()),
+        LyraType::Tuple(_types) => Value::Symbol("Tuple".to_string()),
+        LyraType::Association { .. } => Value::Symbol("Association".to_string()),
+        LyraType::Any => Value::Symbol("Any".to_string()),
+        LyraType::Never => Value::Symbol("Never".to_string()),
+        LyraType::Module(name) => Value::Symbol(format!("Module[{}]", name)),
+        LyraType::Effect(name) => Value::Symbol(format!("Effect[{}]", name)),
+        LyraType::Custom(name) => Value::Symbol(name.clone()),
+        LyraType::Complex => Value::Symbol("Complex".to_string()),
+        LyraType::Rational => Value::Symbol("Rational".to_string()),
     }
 }
 
@@ -330,8 +345,8 @@ fn types_compatible(actual: &LyraType, expected: &LyraType) -> bool {
         
         // Function compatibility (contravariant in parameters, covariant in return type)
         (
-            LyraType::Function { params: actual_params, return_type: actual_ret },
-            LyraType::Function { params: expected_params, return_type: expected_ret },
+            LyraType::Function { params: actual_params, return_type: actual_ret, .. },
+            LyraType::Function { params: expected_params, return_type: expected_ret, .. },
         ) => {
             actual_params.len() == expected_params.len() &&
             actual_params.iter().zip(expected_params.iter()).all(|(a, e)| types_compatible(e, a)) &&
@@ -363,6 +378,7 @@ pub fn create_stdlib_type_environment() -> TypeEnvironment {
         LyraType::Function {
             params: vec![LyraType::TypeVar(0), LyraType::TypeVar(0)],
             return_type: Box::new(LyraType::TypeVar(0)),
+            attributes: vec![],
         }
     );
     
@@ -374,6 +390,7 @@ pub fn create_stdlib_type_environment() -> TypeEnvironment {
     let real_to_real = TypeScheme::monomorphic(LyraType::Function {
         params: vec![LyraType::Real],
         return_type: Box::new(LyraType::Real),
+        attributes: vec![],
     });
     
     env.insert("Sin".to_string(), real_to_real.clone());
@@ -487,11 +504,13 @@ mod tests {
         let func1 = LyraType::Function {
             params: vec![LyraType::Integer],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         let func2 = LyraType::Function {
             params: vec![LyraType::Real], // Contravariant
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         };
         
         // func1 is compatible with func2 (can accept Integer where Real is expected)

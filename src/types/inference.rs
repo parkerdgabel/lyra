@@ -39,6 +39,7 @@ impl TypeInferenceEngine {
             LyraType::Function {
                 params: vec![LyraType::TypeVar(0), LyraType::TypeVar(0)],
                 return_type: Box::new(LyraType::TypeVar(0)),
+                attributes: vec![],
             }
         );
         
@@ -53,6 +54,7 @@ impl TypeInferenceEngine {
             LyraType::Function {
                 params: vec![LyraType::TypeVar(0), LyraType::TypeVar(1)],
                 return_type: Box::new(LyraType::Real),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Power".to_string(), power_scheme);
@@ -61,6 +63,7 @@ impl TypeInferenceEngine {
         let real_to_real = TypeScheme::monomorphic(LyraType::Function {
             params: vec![LyraType::Real],
             return_type: Box::new(LyraType::Real),
+            attributes: vec![],
         });
         
         self.global_env.insert("Sin".to_string(), real_to_real.clone());
@@ -76,6 +79,7 @@ impl TypeInferenceEngine {
             LyraType::Function {
                 params: vec![LyraType::List(Box::new(LyraType::TypeVar(0)))],
                 return_type: Box::new(LyraType::Integer),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Length".to_string(), length_scheme);
@@ -85,6 +89,7 @@ impl TypeInferenceEngine {
             LyraType::Function {
                 params: vec![LyraType::List(Box::new(LyraType::TypeVar(0)))],
                 return_type: Box::new(LyraType::TypeVar(0)),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Head".to_string(), head_scheme);
@@ -94,6 +99,7 @@ impl TypeInferenceEngine {
             LyraType::Function {
                 params: vec![LyraType::List(Box::new(LyraType::TypeVar(0)))],
                 return_type: Box::new(LyraType::List(Box::new(LyraType::TypeVar(0)))),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Tail".to_string(), tail_scheme);
@@ -107,6 +113,7 @@ impl TypeInferenceEngine {
                     LyraType::TypeVar(0),
                 ],
                 return_type: Box::new(LyraType::List(Box::new(LyraType::TypeVar(0)))),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Append".to_string(), append_scheme);
@@ -119,10 +126,12 @@ impl TypeInferenceEngine {
                     LyraType::Function {
                         params: vec![LyraType::TypeVar(0)],
                         return_type: Box::new(LyraType::TypeVar(1)),
+                        attributes: vec![],
                     },
                     LyraType::List(Box::new(LyraType::TypeVar(0))),
                 ],
                 return_type: Box::new(LyraType::List(Box::new(LyraType::TypeVar(1)))),
+                attributes: vec![],
             }
         );
         self.global_env.insert("Map".to_string(), map_scheme);
@@ -145,6 +154,7 @@ impl TypeInferenceEngine {
                     element_type: Box::new(LyraType::TypeVar(0)),
                     shape: None,
                 }),
+                attributes: vec![],
             }
         );
         self.global_env.insert("TensorAdd".to_string(), tensor_add_scheme);
@@ -261,6 +271,7 @@ impl TypeInferenceEngine {
                 Ok(LyraType::Function {
                     params: param_types,
                     return_type: Box::new(body_type),
+                    attributes: vec![],
                 })
             }
             
@@ -290,6 +301,7 @@ impl TypeInferenceEngine {
         let expected_func_type = LyraType::Function {
             params: arg_types,
             return_type: Box::new(return_type.clone()),
+            attributes: vec![],
         };
         
         // Add constraint that function type equals expected type
@@ -316,6 +328,11 @@ impl TypeInferenceEngine {
                     // Untyped blank, can match anything
                     Ok(self.var_gen.fresh_type())
                 }
+            }
+            
+            Pattern::Exact { value } => {
+                // Exact pattern has the same type as the value it matches
+                self.generate_constraints(value, env)
             }
             
             Pattern::BlankSequence { head } | Pattern::BlankNullSequence { head } => {
@@ -352,6 +369,7 @@ impl TypeInferenceEngine {
                 let expected_func_type = LyraType::Function {
                     params: arg_types,
                     return_type: Box::new(return_type.clone()),
+                    attributes: vec![],
                 };
                 
                 self.constraints.push(TypeConstraint::Equal(head_type, expected_func_type));
@@ -371,6 +389,7 @@ impl TypeInferenceEngine {
                 let expected_test_type = LyraType::Function {
                     params: vec![pattern_type.clone()],
                     return_type: Box::new(LyraType::Boolean),
+                    attributes: vec![],
                 };
                 
                 self.constraints.push(TypeConstraint::Equal(test_type, expected_test_type));
@@ -556,7 +575,7 @@ mod tests {
         let ty = engine.infer_expr(&expr, &env).unwrap();
         assert!(ty.is_function());
         
-        if let LyraType::Function { params, return_type } = ty {
+        if let LyraType::Function { params, return_type, .. } = ty {
             assert_eq!(params.len(), 1);
             // The parameter and return type should be the same (both type variables)
             if let (LyraType::TypeVar(p), LyraType::TypeVar(r)) = (&params[0], return_type.as_ref()) {

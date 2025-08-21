@@ -1,0 +1,89 @@
+# Lyra REPL Configuration Example
+# This file demonstrates all available configuration options for the Lyra REPL
+
+[repl]
+# Maximum number of history entries to retain (default: 10000)
+# Set to a smaller number for systems with limited memory
+# Set to a larger number to retain more command history
+history_size = 10000
+
+# Remove duplicate entries from history (default: true)
+# When true, duplicate commands are not added to history
+# When false, all commands are added regardless of duplicates
+remove_duplicates = true
+
+# Show execution timing information (default: false)  
+# When true, displays execution time for each command
+# Useful for performance analysis and optimization
+show_timing = false
+
+# Show performance optimization information (default: false)
+# When true, displays information about pattern matching improvements,
+# rule application optimizations, and other performance enhancements
+show_performance = false
+
+# Enable auto-completion (default: true)
+# When true, provides intelligent auto-completion for:
+# - Function names
+# - Variable names  
+# - Meta commands
+# - File paths
+auto_complete = true
+
+# Enable multiline input support (default: true)
+# When true, allows entering complex expressions across multiple lines
+# Automatically detects incomplete expressions and prompts for continuation
+multiline_support = true
+
+[display]
+# Enable colored output (default: true)
+# When true, uses colors to highlight different types of output:
+# - Strings in green
+# - Numbers in blue/cyan
+# - Functions in yellow
+# - Errors in red
+colors = true
+
+# Enable Unicode character support (default: true)
+# When true, allows Unicode characters in variable names and output
+# When false, restricts to ASCII characters only
+unicode_support = true
+
+# Maximum length of output before truncation (default: 1000)
+# Prevents overwhelming display with extremely large results
+# Set to a larger value if you frequently work with large data structures
+max_output_length = 1000
+
+[editor]
+# Editor mode for line editing (default: "emacs")
+# Options: "emacs" or "vi"
+# Determines key bindings for command line editing
+mode = "emacs"
+
+# External editor command (default: uses $EDITOR environment variable or "vim")
+# Command used when editing multi-line expressions or scripts
+# Supports ${EDITOR} substitution for environment variable
+external_editor = "${EDITOR:-vim}"
+
+# Example alternative configurations:
+
+# For performance-focused development:
+# [repl]
+# show_timing = true
+# show_performance = true
+# history_size = 50000
+
+# For minimal memory usage:
+# [repl]  
+# history_size = 1000
+# [display]
+# max_output_length = 500
+
+# For vim users:
+# [editor]
+# mode = "vi"
+# external_editor = "nvim"
+
+# For Windows users:
+# [editor]
+# external_editor = "notepad"
