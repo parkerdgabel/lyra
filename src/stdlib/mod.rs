@@ -36,7 +36,6 @@ pub mod special;
 pub mod analytics;
 // pub mod statistics; // CONSOLIDATED into analytics/statistics.rs
 pub mod string;
-pub mod string_advanced;
 pub mod table;
 pub mod tensor;
 pub mod timeseries;
@@ -71,7 +70,6 @@ impl StandardLibrary {
         // Register all function categories
         stdlib.register_list_functions();
         stdlib.register_string_functions();
-        stdlib.register_string_advanced_functions();
         stdlib.register_math_functions();
         stdlib.register_calculus_functions();
         stdlib.register_statistics_functions();
@@ -138,48 +136,49 @@ impl StandardLibrary {
     }
 
     fn register_string_functions(&mut self) {
-        self.register("StringJoin", string::string_join);
-        self.register("StringLength", string::string_length);
-        self.register("StringTake", string::string_take);
-        self.register("StringDrop", string::string_drop);
-    }
-
-    fn register_string_advanced_functions(&mut self) {
+        // Basic string operations
+        self.register("StringJoin", string::basic::string_join);
+        self.register("StringLength", string::basic::string_length);
+        self.register("StringTake", string::basic::string_take);
+        self.register("StringDrop", string::basic::string_drop);
+        
+        // Advanced string operations
         // String template and regex operations
-        self.register("StringTemplate", string_advanced::string_template);
-        self.register("RegularExpression", string_advanced::regular_expression);
-        self.register("StringMatch", string_advanced::string_match);
-        self.register("StringExtract", string_advanced::string_extract);
-        self.register("StringReplace", string_advanced::string_replace);
+        self.register("StringTemplate", string::advanced::string_template);
+        self.register("RegularExpression", string::advanced::regular_expression);
+        self.register("StringMatch", string::advanced::string_match);
+        self.register("StringExtract", string::advanced::string_extract);
+        self.register("StringReplace", string::advanced::string_replace);
         
         // Core string utilities
-        self.register("StringSplit", string_advanced::string_split);
-        self.register("StringTrim", string_advanced::string_trim);
-        self.register("StringContains", string_advanced::string_contains);
-        self.register("StringStartsWith", string_advanced::string_starts_with);
-        self.register("StringEndsWith", string_advanced::string_ends_with);
-        self.register("StringReverse", string_advanced::string_reverse);
-        self.register("StringRepeat", string_advanced::string_repeat);
+        self.register("StringSplit", string::advanced::string_split);
+        self.register("StringTrim", string::advanced::string_trim);
+        self.register("StringContains", string::advanced::string_contains);
+        self.register("StringStartsWith", string::advanced::string_starts_with);
+        self.register("StringEndsWith", string::advanced::string_ends_with);
+        self.register("StringReverse", string::advanced::string_reverse);
+        self.register("StringRepeat", string::advanced::string_repeat);
         
         // Case operations
-        self.register("ToUpperCase", string_advanced::to_upper_case);
-        self.register("ToLowerCase", string_advanced::to_lower_case);
-        self.register("TitleCase", string_advanced::title_case);
-        self.register("CamelCase", string_advanced::camel_case);
-        self.register("SnakeCase", string_advanced::snake_case);
+        self.register("ToUpperCase", string::advanced::to_upper_case);
+        self.register("ToLowerCase", string::advanced::to_lower_case);
+        self.register("TitleCase", string::advanced::title_case);
+        self.register("CamelCase", string::advanced::camel_case);
+        self.register("SnakeCase", string::advanced::snake_case);
         
         // Encoding/Decoding functions
-        self.register("Base64Encode", string_advanced::base64_encode);
-        self.register("Base64Decode", string_advanced::base64_decode);
-        self.register("URLEncode", string_advanced::url_encode);
-        self.register("URLDecode", string_advanced::url_decode);
-        self.register("HTMLEscape", string_advanced::html_escape);
-        self.register("HTMLUnescape", string_advanced::html_unescape);
-        self.register("JSONEscape", string_advanced::json_escape);
+        self.register("Base64Encode", string::advanced::base64_encode);
+        self.register("Base64Decode", string::advanced::base64_decode);
+        self.register("URLEncode", string::advanced::url_encode);
+        self.register("URLDecode", string::advanced::url_decode);
+        self.register("HTMLEscape", string::advanced::html_escape);
+        self.register("HTMLUnescape", string::advanced::html_unescape);
+        self.register("JSONEscape", string::advanced::json_escape);
         
         // String formatting
-        self.register("StringFormat", string_advanced::string_format);
+        self.register("StringFormat", string::advanced::string_format);
     }
+
 
     fn register_math_functions(&mut self) {
         // Basic arithmetic functions (for Listable attribute support)
