@@ -37,24 +37,19 @@ pub fn register_mathematics_functions() -> HashMap<String, fn(&[Value]) -> VmRes
     functions.insert("Sin".to_string(), basic::sin as fn(&[Value]) -> VmResult<Value>);
     functions.insert("Cos".to_string(), basic::cos as fn(&[Value]) -> VmResult<Value>);
     functions.insert("Tan".to_string(), basic::tan as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("ArcSin".to_string(), basic::arcsin as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("ArcCos".to_string(), basic::arccos as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("ArcTan".to_string(), basic::arctan as fn(&[Value]) -> VmResult<Value>);
     
     // Exponential and logarithmic functions
     functions.insert("Exp".to_string(), basic::exp as fn(&[Value]) -> VmResult<Value>);
     functions.insert("Log".to_string(), basic::log as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Log10".to_string(), basic::log10 as fn(&[Value]) -> VmResult<Value>);
     functions.insert("Sqrt".to_string(), basic::sqrt as fn(&[Value]) -> VmResult<Value>);
     
     // Other mathematical functions
     functions.insert("Abs".to_string(), basic::abs as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Floor".to_string(), basic::floor as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Ceiling".to_string(), basic::ceiling as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Round".to_string(), basic::round as fn(&[Value]) -> VmResult<Value>);
     functions.insert("Sign".to_string(), basic::sign as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Max".to_string(), basic::max as fn(&[Value]) -> VmResult<Value>);
-    functions.insert("Min".to_string(), basic::min as fn(&[Value]) -> VmResult<Value>);
+    
+    // Test functions
+    functions.insert("TestHold".to_string(), basic::test_hold as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("TestHoldMultiple".to_string(), basic::test_hold_multiple as fn(&[Value]) -> VmResult<Value>);
 
     // Calculus functions (from calculus.rs)
     functions.insert("D".to_string(), calculus::d as fn(&[Value]) -> VmResult<Value>);

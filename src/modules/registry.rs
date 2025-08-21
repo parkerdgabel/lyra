@@ -188,55 +188,55 @@ impl ModuleRegistry {
         
         // Add math functions
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Sin", crate::stdlib::math::sin, vec![FunctionAttribute::Listable], 
+            "Sin", crate::stdlib::mathematics::basic::sin, vec![FunctionAttribute::Listable], 
             "Sine function - computes sin(x) for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Cos", crate::stdlib::math::cos, vec![FunctionAttribute::Listable],
+            "Cos", crate::stdlib::mathematics::basic::cos, vec![FunctionAttribute::Listable],
             "Cosine function - computes cos(x) for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Tan", crate::stdlib::math::tan, vec![FunctionAttribute::Listable],
+            "Tan", crate::stdlib::mathematics::basic::tan, vec![FunctionAttribute::Listable],
             "Tangent function - computes tan(x) for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Exp", crate::stdlib::math::exp, vec![FunctionAttribute::Listable],
+            "Exp", crate::stdlib::mathematics::basic::exp, vec![FunctionAttribute::Listable],
             "Exponential function - computes e^x for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Log", crate::stdlib::math::log, vec![FunctionAttribute::Listable],
+            "Log", crate::stdlib::mathematics::basic::log, vec![FunctionAttribute::Listable],
             "Natural logarithm function - computes ln(x) for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Sqrt", crate::stdlib::math::sqrt, vec![FunctionAttribute::Listable],
+            "Sqrt", crate::stdlib::mathematics::basic::sqrt, vec![FunctionAttribute::Listable],
             "Square root function - computes sqrt(x) for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Plus", crate::stdlib::math::plus, vec![FunctionAttribute::Listable, FunctionAttribute::Orderless],
+            "Plus", crate::stdlib::mathematics::basic::plus, vec![FunctionAttribute::Listable, FunctionAttribute::Orderless],
             "Addition function - computes the sum of arguments"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Times", crate::stdlib::math::times, vec![FunctionAttribute::Listable, FunctionAttribute::Orderless],
+            "Times", crate::stdlib::mathematics::basic::times, vec![FunctionAttribute::Listable, FunctionAttribute::Orderless],
             "Multiplication function - computes the product of arguments"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Power", crate::stdlib::math::power, vec![FunctionAttribute::Listable],
+            "Power", crate::stdlib::mathematics::basic::power, vec![FunctionAttribute::Listable],
             "Power function - computes base^exponent"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Divide", crate::stdlib::math::divide, vec![FunctionAttribute::Listable],
+            "Divide", crate::stdlib::mathematics::basic::divide, vec![FunctionAttribute::Listable],
             "Division function - computes a/b for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "Minus", crate::stdlib::math::minus, vec![FunctionAttribute::Listable],
+            "Minus", crate::stdlib::mathematics::basic::minus, vec![FunctionAttribute::Listable],
             "Subtraction function - computes a-b for numeric inputs"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "TestHold", crate::stdlib::math::test_hold, vec![FunctionAttribute::Hold(vec![1])],
+            "TestHold", crate::stdlib::mathematics::basic::test_hold, vec![FunctionAttribute::Hold(vec![1])],
             "Test function for Hold attribute support"
         ))?;
         math_module.add_export(super::stdlib_to_export_with_docs(
-            "TestHoldMultiple", crate::stdlib::math::test_hold_multiple, vec![FunctionAttribute::Hold(vec![1, 2])],
+            "TestHoldMultiple", crate::stdlib::mathematics::basic::test_hold_multiple, vec![FunctionAttribute::Hold(vec![1, 2])],
             "Test function for Hold attribute with multiple arguments"
         ))?;
         

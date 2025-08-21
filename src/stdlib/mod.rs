@@ -14,25 +14,18 @@ use std::collections::HashMap;
 // pub mod async_ops;  // Removed due to compilation issues
 pub mod autodiff;
 pub mod secure_wrapper;
-pub mod calculus;
 pub mod clustering;
 pub mod data;
-pub mod diffeq;
 pub mod graph;
 pub mod image;
-pub mod interp;
 pub mod io;
-pub mod linalg;
 pub mod list;
-pub mod math;
+pub mod mathematics;
 pub mod ml;
-pub mod optimization;
 pub mod result;
 pub mod rules;
-pub mod signal;
 // pub mod sparse;
 // pub mod spatial;
-pub mod special;
 pub mod analytics;
 // pub mod statistics; // CONSOLIDATED into analytics/statistics.rs
 pub mod string;
@@ -182,32 +175,32 @@ impl StandardLibrary {
 
     fn register_math_functions(&mut self) {
         // Basic arithmetic functions (for Listable attribute support)
-        self.register("Plus", math::plus);
-        self.register("Times", math::times);
-        self.register("Divide", math::divide);
-        self.register("Power", math::power);
-        self.register("Minus", math::minus);
+        self.register("Plus", mathematics::basic::plus);
+        self.register("Times", mathematics::basic::times);
+        self.register("Divide", mathematics::basic::divide);
+        self.register("Power", mathematics::basic::power);
+        self.register("Minus", mathematics::basic::minus);
         
         // Trigonometric and other math functions
-        self.register("Sin", math::sin);
-        self.register("Cos", math::cos);
-        self.register("Tan", math::tan);
-        self.register("Exp", math::exp);
-        self.register("Log", math::log);
-        self.register("Sqrt", math::sqrt);
+        self.register("Sin", mathematics::basic::sin);
+        self.register("Cos", mathematics::basic::cos);
+        self.register("Tan", mathematics::basic::tan);
+        self.register("Exp", mathematics::basic::exp);
+        self.register("Log", mathematics::basic::log);
+        self.register("Sqrt", mathematics::basic::sqrt);
         
         // Test functions for Hold attribute support
-        self.register("TestHold", math::test_hold);
-        self.register("TestHoldMultiple", math::test_hold_multiple);
+        self.register("TestHold", mathematics::basic::test_hold);
+        self.register("TestHoldMultiple", mathematics::basic::test_hold_multiple);
     }
 
     fn register_calculus_functions(&mut self) {
         // Symbolic differentiation
-        self.register("D", calculus::d);
+        self.register("D", mathematics::calculus::d);
         
         // Symbolic integration
-        self.register("Integrate", calculus::integrate);
-        self.register("IntegrateDefinite", calculus::integrate_definite);
+        self.register("Integrate", mathematics::calculus::integrate);
+        self.register("IntegrateDefinite", mathematics::calculus::integrate_definite);
     }
 
     fn register_statistics_functions(&mut self) {
@@ -357,130 +350,130 @@ impl StandardLibrary {
 
     fn register_linalg_functions(&mut self) {
         // Matrix decompositions
-        self.register("SVD", linalg::svd);
-        self.register("QRDecomposition", linalg::qr_decomposition);
-        self.register("LUDecomposition", linalg::lu_decomposition);
-        self.register("CholeskyDecomposition", linalg::cholesky_decomposition);
+        self.register("SVD", mathematics::linear_algebra::svd);
+        self.register("QRDecomposition", mathematics::linear_algebra::qr_decomposition);
+        self.register("LUDecomposition", mathematics::linear_algebra::lu_decomposition);
+        self.register("CholeskyDecomposition", mathematics::linear_algebra::cholesky_decomposition);
         
         // Eigenvalue computations
-        self.register("EigenDecomposition", linalg::eigen_decomposition);
-        self.register("SchurDecomposition", linalg::schur_decomposition);
+        self.register("EigenDecomposition", mathematics::linear_algebra::eigen_decomposition);
+        self.register("SchurDecomposition", mathematics::linear_algebra::schur_decomposition);
         
         // Linear systems
-        self.register("LinearSolve", linalg::linear_solve);
-        self.register("LeastSquares", linalg::least_squares);
-        self.register("PseudoInverse", linalg::pseudo_inverse);
+        self.register("LinearSolve", mathematics::linear_algebra::linear_solve);
+        self.register("LeastSquares", mathematics::linear_algebra::least_squares);
+        self.register("PseudoInverse", mathematics::linear_algebra::pseudo_inverse);
         
         // Matrix functions
-        self.register("MatrixPower", linalg::matrix_power);
-        self.register("MatrixFunction", linalg::matrix_function);
-        self.register("MatrixTrace", linalg::matrix_trace);
+        self.register("MatrixPower", mathematics::linear_algebra::matrix_power);
+        self.register("MatrixFunction", mathematics::linear_algebra::matrix_function);
+        self.register("MatrixTrace", mathematics::linear_algebra::matrix_trace);
         
         // Matrix analysis
-        self.register("MatrixRank", linalg::matrix_rank);
-        self.register("MatrixCondition", linalg::matrix_condition);
-        self.register("MatrixNorm", linalg::matrix_norm);
-        self.register("Determinant", linalg::determinant);
+        self.register("MatrixRank", mathematics::linear_algebra::matrix_rank);
+        self.register("MatrixCondition", mathematics::linear_algebra::matrix_condition);
+        self.register("MatrixNorm", mathematics::linear_algebra::matrix_norm);
+        self.register("Determinant", mathematics::linear_algebra::determinant);
     }
 
     fn register_diffeq_functions(&mut self) {
         // Ordinary Differential Equations
-        self.register("NDSolve", diffeq::nd_solve);
-        self.register("DSolve", diffeq::d_solve);
-        self.register("DEigensystem", diffeq::d_eigensystem);
+        self.register("NDSolve", mathematics::differential::nd_solve);
+        self.register("DSolve", mathematics::differential::d_solve);
+        self.register("DEigensystem", mathematics::differential::d_eigensystem);
         
         // Partial Differential Equations
-        self.register("PDSolve", diffeq::pd_solve);
-        self.register("LaplacianFilter", diffeq::laplacian_filter);
-        self.register("WaveEquation", diffeq::wave_equation);
+        self.register("PDSolve", mathematics::differential::pd_solve);
+        self.register("LaplacianFilter", mathematics::differential::laplacian_filter);
+        self.register("WaveEquation", mathematics::differential::wave_equation);
         
         // Vector Calculus
-        self.register("VectorCalculus", diffeq::vector_calculus);
-        self.register("Gradient", diffeq::gradient);
-        self.register("Divergence", diffeq::divergence);
-        self.register("Curl", diffeq::curl);
+        self.register("VectorCalculus", mathematics::differential::vector_calculus);
+        self.register("Gradient", mathematics::differential::gradient);
+        self.register("Divergence", mathematics::differential::divergence);
+        self.register("Curl", mathematics::differential::curl);
         
         // Numerical Methods
-        self.register("RungeKutta", diffeq::runge_kutta);
-        self.register("AdamsBashforth", diffeq::adams_bashforth);
-        self.register("BDF", diffeq::bdf);
+        self.register("RungeKutta", mathematics::differential::runge_kutta);
+        self.register("AdamsBashforth", mathematics::differential::adams_bashforth);
+        self.register("BDF", mathematics::differential::bdf);
         
         // Special Functions
-        self.register("BesselJ", diffeq::bessel_j);
-        self.register("HermiteH", diffeq::hermite_h);
-        self.register("LegendreP", diffeq::legendre_p);
+        self.register("BesselJ", mathematics::differential::bessel_j);
+        self.register("HermiteH", mathematics::differential::hermite_h);
+        self.register("LegendreP", mathematics::differential::legendre_p);
         
         // Transform Methods
-        self.register("LaplaceTransform", diffeq::laplace_transform);
-        self.register("ZTransform", diffeq::z_transform);
-        self.register("HankelTransform", diffeq::hankel_transform);
+        self.register("LaplaceTransform", mathematics::differential::laplace_transform);
+        self.register("ZTransform", mathematics::differential::z_transform);
+        self.register("HankelTransform", mathematics::differential::hankel_transform);
     }
 
     fn register_interp_functions(&mut self) {
         // Interpolation Methods
-        self.register("Interpolation", interp::interpolation);
-        self.register("SplineInterpolation", interp::spline_interpolation);
-        self.register("PolynomialInterpolation", interp::polynomial_interpolation);
+        self.register("Interpolation", mathematics::interpolation::interpolation);
+        self.register("SplineInterpolation", mathematics::interpolation::spline_interpolation);
+        self.register("PolynomialInterpolation", mathematics::interpolation::polynomial_interpolation);
         
         // Numerical Integration
-        self.register("NIntegrateAdvanced", interp::n_integrate_advanced);
-        self.register("GaussLegendre", interp::gauss_legendre);
-        self.register("AdaptiveQuadrature", interp::adaptive_quadrature_wrapper);
+        self.register("NIntegrateAdvanced", mathematics::interpolation::n_integrate_advanced);
+        self.register("GaussLegendre", mathematics::interpolation::gauss_legendre);
+        self.register("AdaptiveQuadrature", mathematics::interpolation::adaptive_quadrature_wrapper);
         
         // Root Finding
-        self.register("FindRootAdvanced", interp::find_root_advanced);
-        self.register("BrentMethod", interp::brent_method_wrapper);
-        self.register("NewtonRaphson", interp::newton_raphson_wrapper);
+        self.register("FindRootAdvanced", mathematics::interpolation::find_root_advanced);
+        self.register("BrentMethod", mathematics::interpolation::brent_method_wrapper);
+        self.register("NewtonRaphson", mathematics::interpolation::newton_raphson_wrapper);
         
         // Curve Fitting
-        self.register("NonlinearFit", interp::nonlinear_fit);
-        self.register("LeastSquaresFit", interp::least_squares_fit);
-        self.register("SplineFit", interp::spline_fit);
+        self.register("NonlinearFit", mathematics::interpolation::nonlinear_fit);
+        self.register("LeastSquaresFit", mathematics::interpolation::least_squares_fit);
+        self.register("SplineFit", mathematics::interpolation::spline_fit);
         
         // Numerical Differentiation
-        self.register("NDerivative", interp::n_derivative);
-        self.register("FiniteDifference", interp::finite_difference_wrapper);
-        self.register("RichardsonExtrapolation", interp::richardson_extrapolation);
+        self.register("NDerivative", mathematics::interpolation::n_derivative);
+        self.register("FiniteDifference", mathematics::interpolation::finite_difference_wrapper);
+        self.register("RichardsonExtrapolation", mathematics::interpolation::richardson_extrapolation);
         
         // Error Analysis
-        self.register("ErrorEstimate", interp::error_estimate);
-        self.register("RichardsonExtrapolationError", interp::richardson_extrapolation_error);
-        self.register("AdaptiveMethod", interp::adaptive_method);
+        self.register("ErrorEstimate", mathematics::interpolation::error_estimate);
+        self.register("RichardsonExtrapolationError", mathematics::interpolation::richardson_extrapolation_error);
+        self.register("AdaptiveMethod", mathematics::interpolation::adaptive_method);
     }
 
     fn register_special_functions(&mut self) {
         // Mathematical Constants
-        self.register("Pi", special::pi_constant);
-        self.register("E", special::e_constant);
-        self.register("EulerGamma", special::euler_gamma);
-        self.register("GoldenRatio", special::golden_ratio);
+        self.register("Pi", mathematics::special::pi_constant);
+        self.register("E", mathematics::special::e_constant);
+        self.register("EulerGamma", mathematics::special::euler_gamma);
+        self.register("GoldenRatio", mathematics::special::golden_ratio);
         
         // Gamma Functions
-        self.register("Gamma", special::gamma_function);
-        self.register("LogGamma", special::log_gamma);
-        self.register("Digamma", special::digamma);
-        self.register("Polygamma", special::polygamma);
+        self.register("Gamma", mathematics::special::gamma_function);
+        self.register("LogGamma", mathematics::special::log_gamma);
+        self.register("Digamma", mathematics::special::digamma);
+        self.register("Polygamma", mathematics::special::polygamma);
         
         // Hypergeometric Functions
-        self.register("Hypergeometric0F1", special::hypergeometric_0f1);
-        self.register("Hypergeometric1F1", special::hypergeometric_1f1);
+        self.register("Hypergeometric0F1", mathematics::special::hypergeometric_0f1);
+        self.register("Hypergeometric1F1", mathematics::special::hypergeometric_1f1);
         
         // Elliptic Functions
-        self.register("EllipticK", special::elliptic_k);
-        self.register("EllipticE", special::elliptic_e);
-        self.register("EllipticTheta", special::elliptic_theta);
+        self.register("EllipticK", mathematics::special::elliptic_k);
+        self.register("EllipticE", mathematics::special::elliptic_e);
+        self.register("EllipticTheta", mathematics::special::elliptic_theta);
         
         // Orthogonal Polynomials
-        self.register("ChebyshevT", special::chebyshev_t);
-        self.register("ChebyshevU", special::chebyshev_u);
-        self.register("GegenbauerC", special::gegenbauer_c);
+        self.register("ChebyshevT", mathematics::special::chebyshev_t);
+        self.register("ChebyshevU", mathematics::special::chebyshev_u);
+        self.register("GegenbauerC", mathematics::special::gegenbauer_c);
         
         // Error Functions
-        self.register("Erf", special::erf_function);
-        self.register("Erfc", special::erfc_function);
-        self.register("InverseErf", special::inverse_erf);
-        self.register("FresnelC", special::fresnel_c);
-        self.register("FresnelS", special::fresnel_s);
+        self.register("Erf", mathematics::special::erf_function);
+        self.register("Erfc", mathematics::special::erfc_function);
+        self.register("InverseErf", mathematics::special::inverse_erf);
+        self.register("FresnelC", mathematics::special::fresnel_c);
+        self.register("FresnelS", mathematics::special::fresnel_s);
     }
 
     fn register_graph_functions(&mut self) {
@@ -505,53 +498,53 @@ impl StandardLibrary {
 
     fn register_optimization_functions(&mut self) {
         // Root finding algorithms
-        self.register("FindRoot", optimization::find_root);
-        self.register("Newton", optimization::newton_method_wrapper);
-        self.register("Bisection", optimization::bisection_method_wrapper);
-        self.register("Secant", optimization::secant_method_wrapper);
+        self.register("FindRoot", mathematics::optimization::find_root);
+        self.register("Newton", mathematics::optimization::newton_method_wrapper);
+        self.register("Bisection", mathematics::optimization::bisection_method_wrapper);
+        self.register("Secant", mathematics::optimization::secant_method_wrapper);
         
         // Optimization algorithms
-        self.register("Minimize", optimization::minimize);
-        self.register("Maximize", optimization::maximize);
+        self.register("Minimize", mathematics::optimization::minimize);
+        self.register("Maximize", mathematics::optimization::maximize);
         
         // Numerical integration
-        self.register("NIntegrate", optimization::n_integrate);
-        self.register("GaussianQuadrature", optimization::gaussian_quadrature);
-        self.register("MonteCarlo", optimization::monte_carlo_integration);
+        self.register("NIntegrate", mathematics::optimization::n_integrate);
+        self.register("GaussianQuadrature", mathematics::optimization::gaussian_quadrature);
+        self.register("MonteCarlo", mathematics::optimization::monte_carlo_integration);
     }
 
     fn register_signal_functions(&mut self) {
         // Fourier transform functions
-        self.register("FFT", signal::fft);
-        self.register("IFFT", signal::ifft);
-        self.register("DCT", signal::dct);
-        self.register("PowerSpectrum", signal::power_spectrum);
+        self.register("FFT", mathematics::signal::fft);
+        self.register("IFFT", mathematics::signal::ifft);
+        self.register("DCT", mathematics::signal::dct);
+        self.register("PowerSpectrum", mathematics::signal::power_spectrum);
         
         // Spectral analysis functions
-        self.register("Periodogram", signal::periodogram);
-        self.register("Spectrogram", signal::spectrogram);
-        self.register("PSDEstimate", signal::psd_estimate);
+        self.register("Periodogram", mathematics::signal::periodogram);
+        self.register("Spectrogram", mathematics::signal::spectrogram);
+        self.register("PSDEstimate", mathematics::signal::psd_estimate);
         
         // Windowing functions
-        self.register("HammingWindow", signal::hamming_window);
-        self.register("HanningWindow", signal::hanning_window);
-        self.register("BlackmanWindow", signal::blackman_window);
-        self.register("ApplyWindow", signal::apply_window);
+        self.register("HammingWindow", mathematics::signal::hamming_window);
+        self.register("HanningWindow", mathematics::signal::hanning_window);
+        self.register("BlackmanWindow", mathematics::signal::blackman_window);
+        self.register("ApplyWindow", mathematics::signal::apply_window);
         
         // Convolution and correlation
-        self.register("Convolve", signal::convolve);
-        self.register("CrossCorrelation", signal::cross_correlation);
-        self.register("AutoCorrelation", signal::auto_correlation);
+        self.register("Convolve", mathematics::signal::convolve);
+        self.register("CrossCorrelation", mathematics::signal::cross_correlation);
+        self.register("AutoCorrelation", mathematics::signal::auto_correlation);
         
         // Digital filtering
-        self.register("LowPassFilter", signal::low_pass_filter);
-        self.register("HighPassFilter", signal::high_pass_filter);
-        self.register("MedianFilter", signal::median_filter);
+        self.register("LowPassFilter", mathematics::signal::low_pass_filter);
+        self.register("HighPassFilter", mathematics::signal::high_pass_filter);
+        self.register("MedianFilter", mathematics::signal::median_filter);
         
         // Advanced processing
-        self.register("Hilbert", signal::hilbert_transform);
-        self.register("ZeroPadding", signal::zero_padding);
-        self.register("PhaseUnwrap", signal::phase_unwrap);
+        self.register("Hilbert", mathematics::signal::hilbert_transform);
+        self.register("ZeroPadding", mathematics::signal::zero_padding);
+        self.register("PhaseUnwrap", mathematics::signal::phase_unwrap);
     }
 
     fn register_image_functions(&mut self) {
