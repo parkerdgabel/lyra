@@ -6,7 +6,6 @@ pub mod compiler;
 pub mod error;
 pub mod foreign;
 pub mod format;
-pub mod io;
 pub mod lexer;
 pub mod linker;
 pub mod memory;
@@ -15,11 +14,10 @@ pub mod parser;
 // TODO: Tree-shaking has complex dependencies - postponed
 // pub mod tree_shaking;
 pub mod pattern_matcher;
+pub mod pure_function;
 pub mod repl;
 pub mod rules_engine;
 pub mod security;
-// TODO: Serialization module has compilation issues - temporarily disabled
-// pub mod serialization;
 pub mod stdlib;
 pub mod types;
 pub mod vm;

@@ -2,11 +2,10 @@
 //!
 //! Manages the registration and lookup of modules within the Lyra system.
 
-use super::{Module, ModuleError, Version, VersionConstraint, FunctionExport, FunctionImplementation};
+use super::{Module, ModuleError, Version, FunctionImplementation};
 use crate::{
-    stdlib::{StandardLibrary, StdlibFunction},
+    stdlib::StandardLibrary,
     linker::{FunctionRegistry, FunctionAttribute},
-    vm::Value,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -76,7 +75,7 @@ impl ModuleRegistry {
                             message: format!("Failed to register function {}: {:?}", qualified_name, e),
                         })?;
                     },
-                    FunctionImplementation::Foreign { type_name, method_name } => {
+                    FunctionImplementation::Foreign { type_name: _, method_name: _ } => {
                         // For foreign methods, we need to handle them through the existing foreign system
                         // This would require extending the linker to handle module-aware foreign methods
                         // For now, we'll store the information but not register in the function registry

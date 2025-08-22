@@ -109,8 +109,18 @@ pub mod algebraic;
 pub mod modular;
 pub mod crypto;
 
-// Re-export all public functions and types
-pub use primes::*;
+// Re-export specific functions to avoid conflicts
+pub use primes::{
+    prime_q, next_prime, previous_prime, prime_pi, prime_factorization,
+    euler_phi_fn, moebius_mu_fn, divisor_sigma_fn
+};
 pub use algebraic::*;
-pub use modular::*;
-pub use crypto::*;
+// Use modular functions from modular module (primary implementation)
+pub use modular::{
+    power_mod_fn, modular_inverse_fn, discrete_log_fn,
+    quadratic_residue_fn, primitive_root_fn, mult_order_fn
+};
+// Use crypto functions with different names or selectively
+pub use crypto::{
+    rsa_generate, ec_point, hash_function, random_prime
+};

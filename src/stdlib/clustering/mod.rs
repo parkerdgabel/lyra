@@ -15,8 +15,3 @@ pub mod advanced;
 // Re-export all public functions
 pub use core::*;
 pub use kmeans::*;
-pub use hierarchical::*;
-pub use density::*;
-pub use spectral::*;
-pub use mixture::*;
-pub use advanced::*;

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
 
 /// Security middleware for WebSocket connections
 pub struct SecurityMiddleware {

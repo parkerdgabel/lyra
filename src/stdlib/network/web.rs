@@ -644,10 +644,10 @@ impl Foreign for RESTClient {
 /// Convert Lyra Value to JSON
 fn lyra_value_to_json(value: &Value) -> Result<JsonValue, String> {
     match value {
-        Value::Integer(i) => Ok(JsonValue::Real((*i).into())),
+        Value::Integer(i) => Ok(JsonValue::Number((*i).into())),
         Value::Real(r) => {
             if let Some(number) = serde_json::Number::from_f64(*r) {
-                Ok(JsonValue::Real(number))
+                Ok(JsonValue::Number(number))
             } else {
                 Err(format!("Invalid float value: {}", r))
             }

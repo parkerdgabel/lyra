@@ -7,7 +7,7 @@
 //! - Advanced geometric operations (Minkowski sum, shape matching)
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, ForeignError, LyObj};
+use crate::foreign::{Foreign, ForeignError};
 use std::any::Any;
 
 pub mod convex_hull;

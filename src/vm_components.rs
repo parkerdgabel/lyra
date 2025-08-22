@@ -196,10 +196,13 @@ impl TypeRegistry {
             Value::Function(_) => "Function".to_string(),
             Value::Boolean(_) => "Boolean".to_string(),
             Value::Missing => "Missing".to_string(),
-            Value::LyObj(_) => "Object".to_string(),
+            Value::Object(_) => "Object".to_string(),
+            Value::LyObj(_) => "LyObj".to_string(),
             Value::Quote(_) => "Quote".to_string(),
             Value::Pattern(_) => "Pattern".to_string(),
             Value::Rule { .. } => "Rule".to_string(),
+            Value::PureFunction { .. } => "PureFunction".to_string(),
+            Value::Slot { .. } => "Slot".to_string(),
         }
     }
     

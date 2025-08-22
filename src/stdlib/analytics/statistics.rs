@@ -4,16 +4,13 @@
 //! hypothesis testing, correlation analysis, and advanced statistical methods.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, LyObj};
+use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
-use std::sync::Arc;
-use parking_lot::RwLock;
+use std::any::Any;
 
 // Import required statistical libraries
-use statrs::statistics::{Statistics, OrderStatistics};
-use statrs::distribution::{Normal, StudentsT, ChiSquared, Continuous};
-use nalgebra::{DMatrix, DVector, SVD};
-use ndarray::{Array1, Array2};
+use statrs::statistics::Statistics;
+use statrs::distribution::{Normal, StudentsT, ChiSquared, ContinuousCDF};
 
 /// Statistical Model Results - Foreign Object
 #[derive(Debug, Clone)]
@@ -32,8 +29,16 @@ impl Foreign for StatisticalModel {
     fn type_name(&self) -> &'static str {
         "StatisticalModel"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "coefficients" => Ok(Value::List(
                 self.coefficients.iter().map(|&x| Value::Real(x)).collect()
@@ -49,17 +54,18 @@ impl Foreign for StatisticalModel {
                 self.fitted_values.iter().map(|&x| Value::Real(x)).collect()
             )),
             "summary" => {
-                let mut summary = HashMap::new();
-                summary.insert("modelType".to_string(), Value::String(self.model_type.clone()));
-                summary.insert("rSquared".to_string(), Value::Real(self.r_squared));
-                summary.insert("coefficients".to_string(), Value::List(
-                    self.coefficients.iter().map(|&x| Value::Real(x)).collect()
-                ));
-                Ok(Value::Object(summary))
+                Ok(Value::List(vec![
+                    Value::List(vec![Value::String("modelType".to_string()), Value::String(self.model_type.clone())]),
+                    Value::List(vec![Value::String("rSquared".to_string()), Value::Real(self.r_squared)]),
+                    Value::List(vec![Value::String("coefficients".to_string()), Value::List(
+                        self.coefficients.iter().map(|&x| Value::Real(x)).collect()
+                    )])
+                ]))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for StatisticalModel", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "StatisticalModel".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -80,13 +86,25 @@ impl Foreign for HypothesisTestResult {
     fn type_name(&self) -> &'static str {
         "HypothesisTestResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "testStatistic" => Ok(Value::Real(self.test_statistic)),
             "pValue" => Ok(Value::Real(self.p_value)),
             "isSignificant" => {
-                let alpha = args.get(0).and_then(|v| v.as_real()).unwrap_or(0.05);
+                let alpha = args.get(0).and_then(|v| match v {
+                    Value::Real(r) => Some(*r),
+                    Value::Integer(i) => Some(*i as f64),
+                    _ => None,
+                }).unwrap_or(0.05);
                 Ok(Value::Boolean(self.p_value < alpha))
             },
             "confidenceLevel" => Ok(Value::Real(self.confidence_level)),
@@ -95,16 +113,17 @@ impl Foreign for HypothesisTestResult {
                 None => Ok(Value::Missing),
             },
             "summary" => {
-                let mut summary = HashMap::new();
-                summary.insert("testType".to_string(), Value::String(self.test_type.clone()));
-                summary.insert("testStatistic".to_string(), Value::Real(self.test_statistic));
-                summary.insert("pValue".to_string(), Value::Real(self.p_value));
-                summary.insert("confidenceLevel".to_string(), Value::Real(self.confidence_level));
-                Ok(Value::Object(summary))
+                Ok(Value::List(vec![
+                    Value::List(vec![Value::String("testType".to_string()), Value::String(self.test_type.clone())]),
+                    Value::List(vec![Value::String("testStatistic".to_string()), Value::Real(self.test_statistic)]),
+                    Value::List(vec![Value::String("pValue".to_string()), Value::Real(self.p_value)]),
+                    Value::List(vec![Value::String("confidenceLevel".to_string()), Value::Real(self.confidence_level)])
+                ]))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for HypothesisTestResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "HypothesisTestResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -121,8 +140,16 @@ impl Foreign for CorrelationMatrix {
     fn type_name(&self) -> &'static str {
         "CorrelationMatrix"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "matrix" => {
                 let rows: Vec<Value> = self.matrix.iter()
@@ -136,28 +163,45 @@ impl Foreign for CorrelationMatrix {
             "method" => Ok(Value::String(self.method.clone())),
             "getCorrelation" => {
                 if args.len() != 2 {
-                    return Err(VmError::Runtime(
-                        "getCorrelation requires 2 arguments (var1, var2)".to_string()
-                    ));
+                    return Err(ForeignError::InvalidArity {
+                        method: "getCorrelation".to_string(),
+                        expected: 2,
+                        actual: args.len(),
+                    });
                 }
                 
-                let var1 = args[0].as_string().ok_or_else(|| VmError::Runtime(
-                    "First argument must be a string".to_string()
-                ))?;
-                let var2 = args[1].as_string().ok_or_else(|| VmError::Runtime(
-                    "Second argument must be a string".to_string()
-                ))?;
+                let var1 = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: "getCorrelation".to_string(),
+                        expected: "String".to_string(),
+                        actual: format!("{:?}", args[0]),
+                    }),
+                };
+                let var2 = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(ForeignError::InvalidArgumentType {
+                        method: "getCorrelation".to_string(),
+                        expected: "String".to_string(),
+                        actual: format!("{:?}", args[1]),
+                    }),
+                };
                 
                 let idx1 = self.column_names.iter().position(|x| x == &var1)
-                    .ok_or_else(|| VmError::Runtime(format!("Variable '{}' not found", var1)))?;
+                    .ok_or_else(|| ForeignError::RuntimeError {
+                        message: format!("Variable '{}' not found", var1),
+                    })?;
                 let idx2 = self.column_names.iter().position(|x| x == &var2)
-                    .ok_or_else(|| VmError::Runtime(format!("Variable '{}' not found", var2)))?;
+                    .ok_or_else(|| ForeignError::RuntimeError {
+                        message: format!("Variable '{}' not found", var2),
+                    })?;
                 
                 Ok(Value::Real(self.matrix[idx1][idx2]))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for CorrelationMatrix", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "CorrelationMatrix".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -176,8 +220,16 @@ impl Foreign for BootstrapResult {
     fn type_name(&self) -> &'static str {
         "BootstrapResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "originalStatistic" => Ok(Value::Real(self.original_statistic)),
             "bootstrapStatistics" => Ok(Value::List(
@@ -189,9 +241,10 @@ impl Foreign for BootstrapResult {
             ])),
             "bias" => Ok(Value::Real(self.bias)),
             "standardError" => Ok(Value::Real(self.standard_error)),
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for BootstrapResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "BootstrapResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }

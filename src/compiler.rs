@@ -338,6 +338,15 @@ impl Compiler {
                 // Type information will be stored in metadata for later validation
                 self.compile_typed_function(head, params, return_type)?;
             }
+            Expr::PureFunction { body, .. } => {
+                // Create a pure function object and store it in constants
+                // This will be handled by the VM when the pure function is called
+                self.compile_pure_function(body)?;
+            }
+            Expr::Slot { number } => {
+                // Create a slot placeholder - this should only appear inside pure functions
+                self.compile_slot(*number)?;
+            }
             _ => {
                 return Err(CompilerError::UnsupportedExpression(format!("{:?}", expr)));
             }
@@ -598,6 +607,11 @@ impl Compiler {
         vm
     }
 
+    /// Legacy compatibility wrapper for compile_expr
+    pub fn compile(&mut self, expr: &Expr) -> CompilerResult<()> {
+        self.compile_expr(expr)
+    }
+
     /// Convenience method to compile and evaluate an expression
     pub fn eval(expr: &Expr) -> CompilerResult<Value> {
         let mut compiler = Compiler::new();
@@ -643,6 +657,11 @@ impl Compiler {
     /// This is the new entry point that will replace direct compile_function_call usage
     /// for attribute-aware compilation
     fn compile_function_with_attributes(&mut self, head: &Expr, args: &[Expr]) -> CompilerResult<()> {
+        // Special case: Pure function application
+        if let Expr::PureFunction { .. } = head {
+            return self.compile_pure_function_application(head, args);
+        }
+        
         // Step 1: Extract function name
         let function_name = self.extract_function_name(head)?;
         
@@ -990,6 +1009,32 @@ impl Compiler {
             // For any other cases, use a consistent default
             _ => Ordering::Equal,
         }
+    }
+
+    /// Compile pure function application: (# + 1 &)[5]
+    /// 
+    /// This generates bytecode for calling a pure function with arguments.
+    /// The VM will detect the special function index 1000+ and dispatch to slot substitution.
+    fn compile_pure_function_application(&mut self, head: &Expr, args: &[Expr]) -> CompilerResult<()> {
+        // Compile the pure function onto the stack
+        self.compile_expr(head)?;
+        
+        // Compile all arguments onto the stack
+        for arg in args {
+            self.compile_expr(arg)?;
+        }
+        
+        // Generate CallStatic with special index 1000+ for pure function application
+        // The VM will see this index and know to pop the pure function and apply slot substitution
+        let pure_function_index = 1000u16; // Special index for pure function calls
+        let argc = args.len() as u8;
+        
+        // Pack function index and arg count into operand
+        let operand = ((pure_function_index as u32) << 8) | (argc as u32);
+        
+        self.context.emit(OpCode::CallStatic, operand)?;
+        
+        Ok(())
     }
 
     /// Compile replace expressions (expr /. rules and expr //. rules)
@@ -1562,7 +1607,7 @@ impl Compiler {
             }
             
             // Symbol references (variables, type names, etc.)
-            Expr::Symbol(sym) => {
+            Expr::Symbol(_sym) => {
                 // Could be a variable or type name - for now, we can't infer without context
                 None
             }
@@ -1636,10 +1681,10 @@ impl Compiler {
             }
             
             // Assignment expressions - check type compatibility
-            Expr::Assignment { lhs, rhs, delayed: _ } => {
+            Expr::Assignment { lhs: _, rhs, delayed: _ } => {
                 // For now, we'll implement basic assignment type checking
                 // This would need a variable type context in a full implementation
-                if let Some(rhs_type) = self.infer_expression_type(rhs) {
+                if let Some(_rhs_type) = self.infer_expression_type(rhs) {
                     // In a full implementation, we'd check against lhs variable type
                     // For now, just ensure the RHS has a valid type
                     self.compile_expr(expr)
@@ -1726,6 +1771,64 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Compile a pure function by creating a PureFunction value in the constant pool
+    fn compile_pure_function(&mut self, body: &Expr) -> CompilerResult<()> {
+        // For now, we'll create a quote of the body and store it as a PureFunction
+        // The VM will need to handle function application with slot substitution
+        let pure_func_value = Value::PureFunction {
+            body: Box::new(self.ast_to_value(body)?),
+        };
+        
+        let const_index = self.context.add_constant(pure_func_value)?;
+        self.context.emit(OpCode::LDC, const_index as u32)?;
+        
+        Ok(())
+    }
+    
+    /// Compile a slot by creating a Slot value in the constant pool
+    fn compile_slot(&mut self, number: Option<usize>) -> CompilerResult<()> {
+        let slot_value = Value::Slot { number };
+        
+        let const_index = self.context.add_constant(slot_value)?;
+        self.context.emit(OpCode::LDC, const_index as u32)?;
+        
+        Ok(())
+    }
+    
+    /// Convert an AST expression to a Value for storage in constants
+    /// This is a simplified conversion for quoted expressions
+    fn ast_to_value(&self, expr: &Expr) -> CompilerResult<Value> {
+        match expr {
+            Expr::Number(Number::Integer(n)) => Ok(Value::Integer(*n)),
+            Expr::Number(Number::Real(r)) => Ok(Value::Real(*r)),
+            Expr::String(s) => Ok(Value::String(s.clone())),
+            Expr::Symbol(sym) => Ok(Value::Symbol(sym.name.clone())),
+            Expr::List(items) => {
+                let mut values = Vec::new();
+                for item in items {
+                    values.push(self.ast_to_value(item)?);
+                }
+                Ok(Value::List(values))
+            }
+            Expr::Function { head, args } => {
+                // For function expressions, store as Quote for now
+                // This preserves the structure for pure function evaluation
+                Ok(Value::Quote(Box::new(expr.clone())))
+            }
+            Expr::Slot { number } => Ok(Value::Slot { number: *number }),
+            Expr::PureFunction { body, .. } => {
+                let body_value = self.ast_to_value(body)?;
+                Ok(Value::PureFunction {
+                    body: Box::new(body_value),
+                })
+            }
+            _ => {
+                // For other expression types, create a Quote value
+                Ok(Value::Quote(Box::new(expr.clone())))
+            }
+        }
     }
 }
 

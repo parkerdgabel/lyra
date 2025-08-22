@@ -3,7 +3,7 @@
 //! Implements the `lyra pkg` command suite for package management operations.
 
 use super::{ModuleError, Version};
-use super::package::{PackageManager, PackageBundle, LocalRegistry};
+use super::package::{PackageManager, LocalRegistry};
 use super::registry::ModuleRegistry;
 use std::path::PathBuf;
 use std::env;

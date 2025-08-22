@@ -66,6 +66,12 @@ impl LaTeXExporter {
             CellType::Meta => {
                 latex.push_str(&self.convert_meta_cell(entry, config)?);
             }
+            CellType::Markdown => {
+                latex.push_str(&self.convert_markdown_cell(entry, config)?);
+            }
+            CellType::Raw => {
+                latex.push_str(&self.convert_raw_cell(entry, config)?);
+            }
         }
         
         latex.push('\n');
@@ -262,9 +268,39 @@ impl LaTeXExporter {
                 let items_str: Vec<String> = items.iter().map(|v| self.value_to_string(v)).collect();
                 format!("{{{}}}", items_str.join(", "))
             }
-            Value::Function { name, .. } => format!("Function[{}]", name),
+            Value::Function(name) => format!("Function[{}]", name),
+            Value::Missing => "Missing[]".to_string(),
+            Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(_) => "Foreign[Object]".to_string(),
+            Value::Quote(expr) => format!("Hold[{:?}]", expr),
+            Value::Pattern(pattern) => format!("{}", pattern),
+            Value::Rule { lhs, rhs } => format!("{} -> {}", self.value_to_string(lhs), self.value_to_string(rhs)),
+            Value::PureFunction { body } => format!("{} \\&", self.value_to_string(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("\\#{}", n),
+                None => "\\#".to_string(),
+            },
         }
+    }
+
+    /// Convert markdown cell to LaTeX
+    fn convert_markdown_cell(&self, entry: &SessionEntry, _config: &ExportConfig) -> ExportResult<String> {
+        let mut latex = String::new();
+        latex.push_str("\\subsection{Markdown Cell}\n");
+        latex.push_str("\\begin{quote}\n");
+        latex.push_str(&escape_latex(&entry.input));
+        latex.push_str("\n\\end{quote}\n");
+        Ok(latex)
+    }
+
+    /// Convert raw cell to LaTeX
+    fn convert_raw_cell(&self, entry: &SessionEntry, _config: &ExportConfig) -> ExportResult<String> {
+        let mut latex = String::new();
+        latex.push_str("\\subsection{Raw Text}\n");
+        latex.push_str("\\begin{verbatim}\n");
+        latex.push_str(&entry.input);
+        latex.push_str("\n\\end{verbatim}\n");
+        Ok(latex)
     }
 }
 

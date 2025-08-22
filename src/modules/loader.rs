@@ -3,7 +3,7 @@
 //! Handles loading and initialization of modules from various sources.
 
 use super::{Module, ModuleError, ModuleMetadata, Version};
-use super::package::{PackageManager, PackageBundle};
+use super::package::PackageManager;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -319,7 +319,7 @@ impl ModuleLoader {
         };
         
         // Create module
-        let mut module = Module::new(metadata);
+        let module = Module::new(metadata);
         
         // TODO: Compile and load source files from src/ directory
         // For now, create an empty module

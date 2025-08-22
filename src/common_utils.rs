@@ -29,6 +29,8 @@ pub mod type_utils {
             (Value::LyObj(_), "Object") => true,
             (Value::Quote(_), "Quote") => true,
             (Value::Pattern(_), "Pattern") => true,
+            (Value::PureFunction { .. }, "PureFunction") => true,
+            (Value::Slot { .. }, "Slot") => true,
             // Type coercion rules
             (Value::Integer(_), "Real") => true,
             _ => false,
@@ -46,10 +48,13 @@ pub mod type_utils {
             Value::Function(_) => "Function",
             Value::Boolean(_) => "Boolean",
             Value::Missing => "Missing",
-            Value::LyObj(_) => "Object",
+            Value::Object(_) => "Object",
+            Value::LyObj(_) => "LyObj",
             Value::Quote(_) => "Quote",
             Value::Pattern(_) => "Pattern",
             Value::Rule { .. } => "Rule",
+            Value::PureFunction { .. } => "PureFunction",
+            Value::Slot { .. } => "Slot",
         }
     }
     

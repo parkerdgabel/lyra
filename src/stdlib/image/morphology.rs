@@ -5,7 +5,8 @@
 
 use crate::foreign::LyObj;
 use crate::vm::{Value, VmResult, VmError};
-use crate::stdlib::image::core::{Image, ColorSpace};
+use crate::stdlib::image::core::Image;
+use crate::stdlib::image::ColorSpace;
 
 // ===============================
 // STRUCTURING ELEMENTS

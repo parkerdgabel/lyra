@@ -3,7 +3,6 @@
 //! This module implements mesh generation algorithms essential for finite element
 //! analysis and computational geometry applications.
 
-use crate::foreign::{Foreign, ForeignError};
 use crate::vm::{Value, VmResult, VmError};
 
 // Placeholder implementations - will be fully implemented in future phases

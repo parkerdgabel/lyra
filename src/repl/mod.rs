@@ -24,13 +24,13 @@ use crate::vm::{Value, VirtualMachine};
 use multiline::MultilineBuffer;
 use completion::{LyraCompleter, SharedLyraCompleter};
 use config::{ReplConfig, HistoryConfig};
-use history::{HistoryManager, HistoryEntry, SharedHistoryManager};
+use history::{HistoryEntry, SharedHistoryManager};
 use std::sync::{Arc, Mutex};
 use file_ops::FileOperations;
 use docs::DocumentationSystem;
 use benchmark::BenchmarkSystem;
 use debug::DebugSystem;
-use export::{ExportManager, ExportFormat, SessionSnapshot, SessionEntry, SessionMetadata, CellType};
+use export::{ExportManager, ExportFormat, SessionMetadata};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -50,6 +50,8 @@ pub enum ReplError {
     Config(#[from] config::ConfigError),
     #[error("History error: {0}")]
     History(#[from] history::HistoryError),
+    #[error("Other error: {message}")]
+    Other { message: String },
 }
 
 pub type ReplResult<T> = std::result::Result<T, ReplError>;
@@ -800,18 +802,6 @@ impl ReplEngine {
         }
     }
     
-    /// Handle profile command
-    fn handle_profile_command(&mut self, parts: &[&str]) -> String {
-        if parts.len() < 2 {
-            return "Usage: %profile <expression>".to_string();
-        }
-        
-        let expression = parts[1..].join(" ");
-        match BenchmarkSystem::profile_expression(&expression) {
-            Ok((_, results)) => results,
-            Err(e) => format!("Profile error: {}", e),
-        }
-    }
     
     /// Handle compare command
     fn handle_compare_command(&mut self, parts: &[&str]) -> String {
@@ -1203,10 +1193,16 @@ The REPL showcases Lyra's symbolic computation optimizations:
             Value::Function(name) => format!("Function[{}]", name),
             Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
             Value::Missing => "Missing[]".to_string(),
+            Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),
             Value::Rule { lhs, rhs } => format!("{} -> {}", self.format_value(lhs), self.format_value(rhs)),
+            Value::PureFunction { body } => format!("{} &", self.format_value(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            },
         }
     }
     
@@ -1829,8 +1825,9 @@ The REPL showcases Lyra's symbolic computation optimizations:
         match self.debug_system.show_performance_visualizations() {
             Ok(result) => {
                 let mut output = vec![result.message];
+                let debug_output_len = result.debug_output.len();
                 output.extend(result.debug_output);
-                if result.debug_output.len() > 5 {
+                if debug_output_len > 5 {
                     output.push("💡 Charts show timing, memory, and hotspots - use '%preport' for detailed metrics".to_string());
                 }
                 output.join("\n")
@@ -2053,10 +2050,7 @@ The REPL showcases Lyra's symbolic computation optimizations:
         };
 
         // Get current history
-        let history = match self.history_manager.get_all_entries() {
-            Ok(entries) => entries,
-            Err(e) => return format!("❌ Failed to get history: {}", e),
-        };
+        let history = self.history_manager.get_entries();
 
         // Get current environment
         let environment = match self.environment.lock() {
@@ -2102,10 +2096,7 @@ The REPL showcases Lyra's symbolic computation optimizations:
         };
 
         // Get current history
-        let history = match self.history_manager.get_all_entries() {
-            Ok(entries) => entries,
-            Err(e) => return format!("❌ Failed to get history: {}", e),
-        };
+        let history = self.history_manager.get_entries();
 
         // Get current environment
         let environment = match self.environment.lock() {
@@ -2157,10 +2148,7 @@ The REPL showcases Lyra's symbolic computation optimizations:
         };
 
         // Get current history
-        let history = match self.history_manager.get_all_entries() {
-            Ok(entries) => entries,
-            Err(e) => return format!("❌ Failed to get history: {}", e),
-        };
+        let history = self.history_manager.get_entries();
 
         // Get current environment
         let environment = match self.environment.lock() {
@@ -2215,12 +2203,10 @@ The REPL showcases Lyra's symbolic computation optimizations:
         };
 
         // Get current history (limit to last 5 entries for preview)
-        let history = match self.history_manager.get_all_entries() {
-            Ok(entries) => {
-                let preview_count = 5.min(entries.len());
-                entries.into_iter().rev().take(preview_count).rev().collect()
-            }
-            Err(e) => return format!("❌ Failed to get history: {}", e),
+        let all_entries = self.history_manager.get_entries();
+        let history = {
+            let preview_count = 5.min(all_entries.len());
+            all_entries.into_iter().rev().take(preview_count).rev().collect::<Vec<_>>()
         };
 
         if history.is_empty() {

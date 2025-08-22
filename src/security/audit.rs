@@ -7,7 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, BufWriter};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, Instant};
+use std::time::SystemTime;
 use serde::{Serialize, Deserialize};
 
 /// Security event types for audit logging

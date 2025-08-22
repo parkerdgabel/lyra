@@ -122,8 +122,9 @@ impl ReplSession {
             session_data.settings.max_history_entries
         };
         
-        if history.len() > max_entries {
-            history.drain(0..(history.len() - max_entries));
+        let current_len = history.len();
+        if current_len > max_entries {
+            history.drain(0..(current_len - max_entries));
         }
 
         // Update variables from VM state
@@ -241,13 +242,14 @@ impl ReplSession {
 
         // Compile
         let mut compiler = Compiler::new();
-        let bytecode = compiler.compile(&ast).map_err(|e| format!("Compiler error: {:?}", e))?;
+        compiler.compile_program(&ast).map_err(|e| format!("Compiler error: {:?}", e))?;
 
-        // Execute
-        let result = vm.execute(&bytecode).map_err(|e| format!("Runtime error: {:?}", e))?;
+        // Load and execute
+        vm.load(compiler.context.code, compiler.context.constants);
+        let result = vm.execute().map_err(|e| format!("Runtime error: {:?}", e))?;
 
         // Format result
-        Ok(format!("{}", result))
+        Ok(format!("{:?}", result))
     }
 
     /// Sync variables from VM state

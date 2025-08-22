@@ -8,7 +8,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use crossbeam::queue::SegQueue;
 
-use crate::memory::{CompactValue, SymbolId, stats::PoolStats};
+use crate::memory::{CompactValue, stats::PoolStats};
 
 /// Pool for small integers (most common case)
 pub struct SmallIntPool {
@@ -78,7 +78,7 @@ impl LargeIntPool {
         self.stats.write().total_allocations += 1;
         
         // Try to reuse an existing Arc
-        if let Some(arc) = self.recycled.pop() {
+        if let Some(_arc) = self.recycled.pop() {
             self.stats.write().reuse_hits += 1;
             // We can't modify the Arc content, so create a new one
             // But this saves allocation overhead in some cases
@@ -290,7 +290,7 @@ impl CompactValuePools {
         // managed by Arc (automatic cleanup). Return estimate of any
         // cleanup performed.
         
-        let initial_usage = self.total_memory_usage();
+        let _initial_usage = self.total_memory_usage();
         
         // Reset statistics to clean state
         *self.global_stats.write() = PoolStats::default();

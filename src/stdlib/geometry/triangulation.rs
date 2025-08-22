@@ -6,7 +6,6 @@
 use super::{Point2D, GeometricShape, value_to_points};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
-use std::collections::HashSet;
 
 /// Triangle represented by three point indices
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

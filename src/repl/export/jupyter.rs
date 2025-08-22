@@ -6,7 +6,7 @@ use crate::repl::export::{
     SessionSnapshot, SessionEntry, CellType,
 };
 use crate::repl::export::engine::{
-    ExportEngine, ExportFormat, ExportConfig, ExportResult, ExportError, ExportFeature,
+    ExportEngine, ExportConfig, ExportResult, ExportError, ExportFeature,
 };
 use crate::vm::Value;
 use std::path::PathBuf;
@@ -178,7 +178,7 @@ impl JupyterExporter {
             
             if let Some(exec_time) = entry.execution_time {
                 lyra_metadata.insert("execution_time_ms".to_string(), 
-                    serde_json::Value::Real(serde_json::Number::from(exec_time.as_millis() as u64)));
+                    serde_json::Value::Number(serde_json::Number::from(exec_time.as_millis() as u64)));
             }
             
             lyra_metadata.insert("timestamp".to_string(), 
@@ -301,12 +301,18 @@ impl JupyterExporter {
                     .collect();
                 format!("{{{}}}", items_str.join(", "))
             },
+            Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pat) => format!("Pattern[{:?}]", pat),
             Value::Rule { lhs, rhs } => format!("{} -> {}", 
                 self.value_to_string(lhs), 
                 self.value_to_string(rhs)),
+            Value::PureFunction { body } => format!("{} &", self.value_to_string(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            },
         }
     }
     
@@ -360,10 +366,13 @@ impl JupyterExporter {
                 Value::Symbol(_) => "Symbol",
                 Value::Function(_) => "Function",
                 Value::Missing => "Missing",
+                Value::Object(_) => "Object",
                 Value::LyObj(_) => "LyObj",
                 Value::Quote(_) => "Quote",
                 Value::Pattern(_) => "Pattern", 
                 Value::Rule { .. } => "Rule",
+                Value::PureFunction { .. } => "PureFunction",
+                Value::Slot { .. } => "Slot",
             };
             
             content.push_str(&format!("| `{}` | `{}` | {} |\n", name, display_value, type_name));

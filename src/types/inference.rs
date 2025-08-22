@@ -4,7 +4,6 @@ use super::{
     unification::{ConstraintSolver, Unifier, unify_types}
 };
 use crate::ast::{Expr, Number, Pattern};
-use std::collections::HashMap;
 
 /// Type inference engine implementing the Hindley-Milner algorithm
 #[derive(Debug)]

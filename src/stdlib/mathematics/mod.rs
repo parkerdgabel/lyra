@@ -95,8 +95,11 @@ pub fn register_mathematics_functions() -> HashMap<String, fn(&[Value]) -> VmRes
     functions
 }
 
-// Re-export all public functions for convenience
-pub use basic::*;
+// Re-export public functions (avoiding conflicts)
+// Note: Only re-exporting functions that actually exist
+pub use basic::{
+    divide, power, sqrt, sin, cos, tan, exp, log, random_real
+};
 pub use calculus::*;
 pub use special::*;
 // pub use differential::*;

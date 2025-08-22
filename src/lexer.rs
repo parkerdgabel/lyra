@@ -97,6 +97,11 @@ pub enum TokenKind {
     // Special
     StringJoin, // <>
     Backtick,   // ` (for contexts)
+    
+    // Pure function syntax
+    Slot,        // # (slot in pure function)
+    NumberedSlot(usize), // #1, #2, #3, etc. (numbered slots)
+    PureFunction, // & (pure function terminator)
 
     // Whitespace and comments (usually ignored)
     Whitespace,
@@ -484,9 +489,10 @@ impl<'a> Lexer<'a> {
                                 length: 2,
                             })
                         } else {
-                            Err(Error::Lexer {
-                                message: "Unexpected character '&'".to_string(),
+                            Ok(Token {
+                                kind: TokenKind::PureFunction,
                                 position: start_pos,
+                                length: 1,
                             })
                         }
                     }
@@ -573,7 +579,67 @@ impl<'a> Lexer<'a> {
                             self.read_number(start_pos)
                         }
                     }
-                    c if c.is_alphabetic() || c == '$' || c == '#' => self.read_symbol(start_pos),
+                    '#' => {
+                        self.advance();
+                        
+                        // Check if followed by digits for numbered slots (#1, #2, etc.)
+                        if let Some(ch) = self.current_char {
+                            if ch.is_ascii_digit() {
+                                let mut number_str = String::new();
+                                let mut length = 1; // Start with 1 for the # character
+                                
+                                // Collect all consecutive digits
+                                while let Some(ch) = self.current_char {
+                                    if ch.is_ascii_digit() {
+                                        number_str.push(ch);
+                                        length += 1;
+                                        self.advance();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                
+                                // Parse the number
+                                if let Ok(slot_number) = number_str.parse::<usize>() {
+                                    if slot_number > 0 {
+                                        // Valid numbered slot (must be > 0)
+                                        Ok(Token {
+                                            kind: TokenKind::NumberedSlot(slot_number),
+                                            position: start_pos,
+                                            length,
+                                        })
+                                    } else {
+                                        // Invalid: #0 is not allowed
+                                        Err(Error::Lexer {
+                                            message: "Slot numbers must be greater than 0".to_string(),
+                                            position: start_pos,
+                                        })
+                                    }
+                                } else {
+                                    // Invalid number
+                                    Err(Error::Lexer {
+                                        message: format!("Invalid slot number: {}", number_str),
+                                        position: start_pos,
+                                    })
+                                }
+                            } else {
+                                // Just # without digits - regular slot
+                                Ok(Token {
+                                    kind: TokenKind::Slot,
+                                    position: start_pos,
+                                    length: 1,
+                                })
+                            }
+                        } else {
+                            // # at end of input - regular slot
+                            Ok(Token {
+                                kind: TokenKind::Slot,
+                                position: start_pos,
+                                length: 1,
+                            })
+                        }
+                    }
+                    c if c.is_alphabetic() || c == '$' => self.read_symbol(start_pos),
                     _ => Err(Error::Lexer {
                         message: format!("Unexpected character '{}'", ch),
                         position: start_pos,
@@ -853,7 +919,7 @@ impl<'a> Lexer<'a> {
         let mut is_context = false;
 
         while let Some(ch) = self.current_char {
-            if ch.is_alphanumeric() || ch == '$' || ch == '#' {
+            if ch.is_alphanumeric() || ch == '$' {
                 symbol_name.push(ch);
                 self.advance();
             } else if ch == '_' {
@@ -861,7 +927,7 @@ impl<'a> Lexer<'a> {
                 // the next character is not uppercase (to handle x_Integer pattern)
                 let next_char = self.input.chars().nth(self.char_position() + 1);
                 if next_char.map_or(false, |c| {
-                    (c.is_alphanumeric() || c == '$' || c == '#') && !c.is_uppercase()
+                    (c.is_alphanumeric() || c == '$') && !c.is_uppercase()
                 }) {
                     symbol_name.push(ch);
                     self.advance();

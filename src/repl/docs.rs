@@ -3,7 +3,7 @@
 //! Provides interactive documentation, function lookup, and help system
 //! for the Lyra REPL using the existing documentation infrastructure.
 
-use crate::repl::{ReplError, ReplResult};
+use crate::repl::ReplResult;
 use colored::*;
 
 pub struct DocumentationSystem {

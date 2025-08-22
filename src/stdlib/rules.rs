@@ -572,7 +572,7 @@ fn expr_to_value(expr: &Expr) -> VmResult<Value> {
             }
             Ok(Value::List(values))
         }
-        Expr::Function { head, args } => {
+        Expr::Function { head, args: _ } => {
             // Try to evaluate if expression contains only numeric/evaluable components
             if let Some(evaluated_value) = try_evaluate_expression(expr) {
                 Ok(evaluated_value)

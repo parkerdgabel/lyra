@@ -147,6 +147,90 @@ pub enum Value {
 
 Remember: **VM simplicity over convenience. Tests first, implementation second, always verify tests pass before proceeding.**
 
+### Compilation Quality Assurance
+
+**CRITICAL: ZERO TOLERANCE for compilation errors and warnings.**
+
+#### Mandatory Error & Warning Resolution
+- **ALWAYS fix compilation errors immediately** - Never leave the codebase in a non-compiling state
+- **ALWAYS fix compilation warnings immediately** - Warnings indicate potential issues and code quality problems
+- **Run `cargo check` after every change** to verify compilation status
+- **Run `cargo clippy -- -D warnings`** to catch additional issues
+- **Never commit code with compilation errors or warnings**
+
+#### Error-First Development Process
+1. **Before making changes**: Run `cargo check` to establish clean baseline
+2. **After making changes**: Immediately run `cargo check` to verify no errors introduced
+3. **If errors appear**: Stop all other work and fix errors before proceeding
+4. **If warnings appear**: Fix warnings before considering the change complete
+5. **Integration**: Ensure all agents/workers fix their compilation issues before integration
+
+#### Quality Commands (Run in Order)
+```bash
+# 1. Check for compilation errors
+cargo check --message-format short
+
+# 2. Check for style and additional warnings  
+cargo clippy -- -D warnings
+
+# 3. Verify formatting
+cargo fmt --check
+
+# 4. Run tests to ensure functionality
+cargo test
+```
+
+#### Error Categories and Required Actions
+- **Compilation Errors (E0xxx)**: IMMEDIATE FIX REQUIRED - highest priority
+- **Clippy Warnings**: IMMEDIATE FIX REQUIRED - code quality issues
+- **Format Issues**: Fix with `cargo fmt`
+- **Test Failures**: Investigate and fix underlying cause
+
+#### Zero Tolerance Policy
+- ❌ **Never ignore compilation errors** - they indicate broken code
+- ❌ **Never ignore warnings** - they indicate potential bugs and quality issues  
+- ❌ **Never commit with warnings or errors** - maintains codebase quality
+- ❌ **Never defer error fixing** - fix immediately when discovered
+- ✅ **Always maintain zero errors and zero warnings** - this is the expected state
+
+#### Emergency Protocol for Error States
+If you encounter a codebase with compilation errors:
+1. **STOP all feature work immediately**
+2. **Run `cargo check --message-format short` to assess damage**
+3. **Systematically fix each error in order of appearance**
+4. **Verify each fix with `cargo check` before proceeding to next error**
+5. **Only resume feature work after achieving zero errors and zero warnings**
+
+### Language Grammar and Syntax Documentation
+
+**CRITICAL: Maintain comprehensive documentation of Lyra's syntax and grammar.**
+
+#### Grammar Documentation Location
+- **Formal EBNF Grammar**: `docs/grammar.ebnf` - Complete formal specification
+- **Syntax Test Suite**: `examples/syntax_test.lyra` - Comprehensive syntax validation
+- **Language Reference**: `docs/language-reference.md` - Human-readable documentation
+
+#### Grammar Maintenance Requirements
+- **Update grammar when adding syntax features** - Keep EBNF specification current
+- **Add test cases for new syntax** - Extend syntax_test.lyra for all new features
+- **Validate against implementation** - Ensure grammar matches lexer/parser implementation
+- **Document precedence and associativity** - Critical for correct parsing
+
+#### Syntax Test Coverage
+The syntax test suite (`examples/syntax_test.lyra`) covers:
+- All literal types (integers, reals, strings, symbols)
+- All operators and precedence rules
+- All pattern types and combinations
+- All modern syntax features (pipelines, arrow functions, etc.)
+- Edge cases and error conditions
+- Complex nested expressions
+
+#### Grammar Validation Process
+1. **Parse syntax_test.lyra successfully** - Verify all documented syntax works
+2. **Cross-reference with EBNF grammar** - Ensure formal grammar is complete
+3. **Test error cases** - Verify parser rejects invalid syntax appropriately
+4. **Document any grammar extensions** - Update all three documentation sources
+
 ### File Organization and Temporary Files
 
 **CRITICAL: Keep the repository root directory clean and organized.**

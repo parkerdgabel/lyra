@@ -2,7 +2,6 @@
 
 use super::{SecurityError, SecurityResult, SecurityConfig};
 use crate::vm::Value;
-use std::collections::HashMap;
 
 /// Trait for validatable inputs
 pub trait Validatable {

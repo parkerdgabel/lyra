@@ -308,10 +308,16 @@ impl FileOperations {
             Value::Function(name) => format!("Function[{}]", name),
             Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
             Value::Missing => "Missing[]".to_string(),
+            Value::Object(obj) => format!("Object[{:?}]", obj),
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),
             Value::Rule { lhs, rhs } => format!("{} -> {}", Self::format_value(lhs), Self::format_value(rhs)),
+            Value::PureFunction { body } => format!("{} &", Self::format_value(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            },
         }
     }
 

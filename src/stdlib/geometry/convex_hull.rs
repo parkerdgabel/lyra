@@ -2,7 +2,7 @@
 //!
 //! Implementation of Graham scan algorithm for computing 2D convex hulls.
 
-use super::{Point2D, GeometricShape, value_to_points, points_to_value};
+use super::{Point2D, GeometricShape, value_to_points};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
 

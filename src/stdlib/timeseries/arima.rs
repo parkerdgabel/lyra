@@ -5,7 +5,8 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
-use crate::stdlib::timeseries::core::{TimeSeries, Frequency, extract_timeseries};
+use super::core::{TimeSeries, extract_timeseries};
+
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -712,7 +713,7 @@ pub fn sarima(args: &[Value]) -> VmResult<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stdlib::timeseries::core::Frequency;
+
 
     #[test]
     fn test_arima_params() {
@@ -748,10 +749,10 @@ mod tests {
             values.push(0.5 * values[i-1] + 0.1 * (i as f64 % 7.0 - 3.0)); // Add some noise pattern
         }
         
-        let series = TimeSeries::new(values, Frequency::Daily);
+
         let params = ARIMAParams::new(1, 0, 0); // AR(1)
         
-        let result = ARIMAModel::fit(&series, params);
+        let result = ARIMAModel::fit(&values, params);
         assert!(result.is_ok());
         
         let model = result.unwrap();
@@ -768,10 +769,10 @@ mod tests {
     #[test]
     fn test_arima_forecasting() {
         let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
-        let series = TimeSeries::new(values, Frequency::Daily);
+
         let params = ARIMAParams::new(1, 1, 0); // ARIMA(1,1,0)
         
-        let model = ARIMAModel::fit(&series, params).unwrap();
+        let model = ARIMAModel::fit(&values, params).unwrap();
         let forecasts = model.forecast(3).unwrap();
         
         assert_eq!(forecasts.len(), 3);

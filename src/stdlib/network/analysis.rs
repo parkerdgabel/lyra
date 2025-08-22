@@ -12,9 +12,7 @@ use petgraph::prelude::*;
 use petgraph::algo::*;
 use petgraph::Graph;
 use std::collections::VecDeque;
-use std::time::{SystemTime, Duration, Instant};
-use tokio::task::JoinHandle;
-use tokio::time::interval;
+use std::time::{SystemTime, Duration};
 
 /// Simplified NetworkGraph with petgraph integration
 #[derive(Debug, Clone)]

@@ -3,7 +3,6 @@
 //! This module provides comprehensive pattern matching assistance including
 //! pattern syntax validation, rule construction guidance, and match prediction.
 
-use crate::lexer::{Lexer, TokenKind};
 use std::collections::HashMap;
 
 /// Pattern matching analyzer for intelligent hints

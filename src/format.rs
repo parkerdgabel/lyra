@@ -130,6 +130,16 @@ fn format_expr(e: &Expr, level: usize, cfg: &FormatterConfig, out: &mut String) 
             }
             write!(out, "\"")
         }
+        Expr::PureFunction { body, .. } => {
+            format_expr(body, level, cfg, out)?;
+            write!(out, " &")
+        }
+        Expr::Slot { number } => {
+            match number {
+                Some(n) => write!(out, "#{}", n),
+                None => write!(out, "#"),
+            }
+        }
     }
 }
 

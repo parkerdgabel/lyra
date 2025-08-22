@@ -16,8 +16,10 @@ pub mod autodiff;
 pub mod secure_wrapper;
 pub mod clustering;
 pub mod data;
+pub mod finance;
 pub mod graph;
 pub mod image;
+pub mod vision;
 pub mod io;
 pub mod list;
 pub mod mathematics;
@@ -39,10 +41,15 @@ pub mod combinatorics;
 pub mod geometry;
 pub mod topology;
 pub mod data_processing;
+pub mod game_theory;
 pub mod temporal;
 pub mod developer_tools;
 pub mod system;
 pub mod collections;
+pub mod bioinformatics;
+pub mod signal;
+pub mod quantum;
+pub mod nlp;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -79,6 +86,7 @@ impl StandardLibrary {
         stdlib.register_optimization_functions();
         stdlib.register_signal_functions();
         stdlib.register_image_functions();
+        stdlib.register_vision_functions();
         stdlib.register_timeseries_functions();
         stdlib.register_clustering_functions();
         stdlib.register_numerical_functions();
@@ -92,10 +100,15 @@ impl StandardLibrary {
         stdlib.register_geometry_functions();
         stdlib.register_topology_functions();
         stdlib.register_data_processing_functions();
+        stdlib.register_game_theory_functions();
         stdlib.register_temporal_functions();
         stdlib.register_developer_tools_functions();
         stdlib.register_system_functions();
         stdlib.register_collections_functions();
+        stdlib.register_bioinformatics_functions();
+        stdlib.register_finance_functions();
+        stdlib.register_quantum_functions();
+        stdlib.register_nlp_functions();
 
         stdlib
     }
@@ -502,37 +515,12 @@ impl StandardLibrary {
     }
 
     fn register_signal_functions(&mut self) {
-        // Fourier transform functions
-        self.register("FFT", mathematics::signal::fft);
-        self.register("IFFT", mathematics::signal::ifft);
-        self.register("DCT", mathematics::signal::dct);
-        self.register("PowerSpectrum", mathematics::signal::power_spectrum);
-        
-        // Spectral analysis functions
-        self.register("Periodogram", mathematics::signal::periodogram);
-        self.register("Spectrogram", mathematics::signal::spectrogram);
-        self.register("PSDEstimate", mathematics::signal::psd_estimate);
-        
-        // Windowing functions
-        self.register("HammingWindow", mathematics::signal::hamming_window);
-        self.register("HanningWindow", mathematics::signal::hanning_window);
-        self.register("BlackmanWindow", mathematics::signal::blackman_window);
-        self.register("ApplyWindow", mathematics::signal::apply_window);
-        
-        // Convolution and correlation
-        self.register("Convolve", mathematics::signal::convolve);
-        self.register("CrossCorrelation", mathematics::signal::cross_correlation);
-        self.register("AutoCorrelation", mathematics::signal::auto_correlation);
-        
-        // Digital filtering
-        self.register("LowPassFilter", mathematics::signal::low_pass_filter);
-        self.register("HighPassFilter", mathematics::signal::high_pass_filter);
-        self.register("MedianFilter", mathematics::signal::median_filter);
-        
-        // Advanced processing
-        self.register("Hilbert", mathematics::signal::hilbert_transform);
-        self.register("ZeroPadding", mathematics::signal::zero_padding);
-        self.register("PhaseUnwrap", mathematics::signal::phase_unwrap);
+        // Phase 1.2: Signal Processing & FFT Fundamentals
+        // Register all signal processing functions from the dedicated signal module
+        let signal_functions = signal::register_signal_functions();
+        for (name, function) in signal_functions {
+            self.register(&name, function);
+        }
     }
 
     fn register_image_functions(&mut self) {
@@ -563,6 +551,31 @@ impl StandardLibrary {
         self.register("FeatureDetection", image::analysis::feature_detection);
         self.register("TemplateMatching", image::analysis::template_matching);
         self.register("ImageSegmentation", image::analysis::image_segmentation);
+    }
+
+    fn register_vision_functions(&mut self) {
+        // Phase 1.3: Computer Vision Core Algorithms
+        
+        // Feature Detection (4 functions)
+        self.register("HarrisCorners", vision::features::harris_corners);
+        self.register("SIFTFeatures", vision::features::sift_features);
+        self.register("ORBFeatures", vision::features::orb_features);
+        self.register("MatchFeatures", vision::features::match_features);
+        
+        // Edge Detection (6 functions)
+        self.register("CannyEdges", vision::edges::canny_edges);
+        self.register("SobelEdges", vision::edges::sobel_edges);
+        self.register("LaplacianEdges", vision::edges::laplacian_edges);
+        self.register("PrewittEdges", vision::edges::prewitt_edges);
+        self.register("RobertsEdges", vision::edges::roberts_edges);
+        self.register("ScharrEdges", vision::edges::scharr_edges);
+        
+        // Geometric Transformations (5 functions)
+        self.register("ApplyAffineTransform", vision::transforms::affine_transform);
+        self.register("ApplyPerspectiveTransform", vision::transforms::perspective_transform);
+        self.register("CreateTransform", vision::transforms::create_transform);
+        self.register("EstimateHomography", vision::transforms::estimate_homography);
+        self.register("TransformKeypoints", vision::transforms::transform_keypoints_func);
     }
 
     fn register_timeseries_functions(&mut self) {
@@ -1137,6 +1150,172 @@ impl StandardLibrary {
         self.register("StackPush", collections::stack_push);
         self.register("StackPop", collections::stack_pop);
         self.register("StackSize", collections::stack_size);
+    }
+
+    fn register_bioinformatics_functions(&mut self) {
+        // Phase 2.1: Bioinformatics Algorithms
+        
+        // Sequence Alignment Functions (4 functions)
+        self.register("GlobalAlignment", bioinformatics::alignment::global_alignment);
+        self.register("LocalAlignment", bioinformatics::alignment::local_alignment);
+        self.register("MultipleAlignment", bioinformatics::alignment::multiple_alignment);
+        self.register("BlastSearch", bioinformatics::alignment::blast_search);
+        
+        // Phylogenetic Functions (4 functions)
+        self.register("PhylogeneticTree", bioinformatics::phylogenetics::phylogenetic_tree);
+        self.register("NeighborJoining", bioinformatics::phylogenetics::neighbor_joining);
+        self.register("MaximumLikelihood", bioinformatics::phylogenetics::maximum_likelihood);
+        self.register("PairwiseDistance", bioinformatics::phylogenetics::pairwise_distance);
+        
+        // Genomics Functions (8 functions)
+        self.register("BiologicalSequence", bioinformatics::genomics::biological_sequence);
+        self.register("ReverseComplement", bioinformatics::genomics::reverse_complement);
+        self.register("Translate", bioinformatics::genomics::translate);
+        self.register("Transcribe", bioinformatics::genomics::transcribe);
+        self.register("GCContent", bioinformatics::genomics::gc_content);
+        self.register("FindORFs", bioinformatics::genomics::find_orfs);
+        self.register("FindMotifs", bioinformatics::genomics::find_motifs);
+        self.register("CodonUsage", bioinformatics::genomics::codon_usage);
+    }
+
+    fn register_finance_functions(&mut self) {
+        // Phase 2.3: Financial Mathematics Algorithms
+        
+        // Option Pricing Models (6 functions)
+        self.register("BlackScholes", finance::pricing::black_scholes);
+        self.register("BinomialTree", finance::pricing::binomial_tree);
+        self.register("MonteCarloOption", finance::pricing::monte_carlo_option);
+        self.register("GreeksCalculation", finance::pricing::greeks_calculation);
+        self.register("CreateOption", finance::pricing::create_option);
+        
+        // Risk Metrics (8 functions)
+        self.register("ValueAtRisk", finance::risk::value_at_risk);
+        self.register("ConditionalVaR", finance::risk::conditional_var_fn);
+        self.register("SharpeRatio", finance::risk::sharpe_ratio);
+        self.register("BetaCalculation", finance::risk::beta_calculation);
+        self.register("CorrelationCalculation", finance::risk::correlation_calculation);
+        self.register("TreynorRatio", finance::risk::treynor_ratio);
+        self.register("InformationRatio", finance::risk::information_ratio);
+        self.register("MaxDrawdown", finance::risk::max_drawdown);
+        
+        // Portfolio Optimization (8 functions)
+        self.register("MarkowitzOptimization", finance::portfolio::markowitz_optimization);
+        self.register("CAPMModel", finance::portfolio::capm_model);
+        self.register("BondPrice", finance::portfolio::bond_price);
+        self.register("BondDuration", finance::portfolio::bond_duration_fn);
+        self.register("BondConvexity", finance::portfolio::bond_convexity_fn);
+        self.register("EfficientFrontier", finance::portfolio::efficient_frontier);
+        self.register("PortfolioPerformance", finance::portfolio::portfolio_performance);
+        self.register("YieldCurveInterpolation", finance::portfolio::yield_curve_interpolation);
+    }
+
+    fn register_quantum_functions(&mut self) {
+        // Phase 2.2: Quantum Computing Simulation Framework
+        
+        // Quantum Gates (12 functions)
+        self.register("PauliXGate", quantum::pauli_x_gate);
+        self.register("PauliYGate", quantum::pauli_y_gate);
+        self.register("PauliZGate", quantum::pauli_z_gate);
+        self.register("HadamardGate", quantum::hadamard_gate);
+        self.register("PhaseGate", quantum::phase_gate);
+        self.register("TGate", quantum::t_gate);
+        self.register("RotationXGate", quantum::rotation_x_gate);
+        self.register("RotationYGate", quantum::rotation_y_gate);
+        self.register("RotationZGate", quantum::rotation_z_gate);
+        self.register("CNOTGate", quantum::cnot_gate);
+        self.register("CZGate", quantum::cz_gate);
+        self.register("SWAPGate", quantum::swap_gate);
+        self.register("ToffoliGate", quantum::toffoli_gate);
+        self.register("FredkinGate", quantum::fredkin_gate);
+        self.register("ControlledGate", quantum::controlled_gate);
+        self.register("MultiControlledGate", quantum::multi_controlled_gate);
+        self.register("CustomGate", quantum::custom_gate);
+        
+        // Quantum Circuits (8 functions)
+        self.register("QuantumCircuit", quantum::quantum_circuit);
+        self.register("QubitRegister", quantum::qubit_register);
+        self.register("CircuitAddGate", quantum::circuit_add_gate);
+        self.register("ExecuteCircuit", quantum::execute_circuit);
+        self.register("MeasureQubit", quantum::measure_qubit);
+        self.register("CreateQubitState", quantum::create_qubit_state);
+        self.register("CreateSuperposition", quantum::create_superposition_state);
+        self.register("CreateBellState", quantum::create_bell_state);
+        self.register("StateProbabilities", quantum::state_probabilities);
+        self.register("NormalizeState", quantum::normalize_state);
+        self.register("PartialTrace", quantum::partial_trace);
+        
+        // Quantum Algorithms (10 functions)
+        self.register("QuantumFourierTransform", quantum::quantum_fourier_transform);
+        self.register("InverseQuantumFourierTransform", quantum::inverse_quantum_fourier_transform);
+        self.register("GroverSearch", quantum::grovers_search);
+        self.register("GroverOracle", quantum::grover_oracle);
+        self.register("QuantumPhaseEstimation", quantum::quantum_phase_estimation);
+        self.register("QuantumTeleportation", quantum::quantum_teleportation);
+        self.register("ThreeQubitEncode", quantum::three_qubit_encode);
+        self.register("ApplyBitFlipError", quantum::apply_bit_flip_error);
+        self.register("ThreeQubitCorrect", quantum::three_qubit_correct);
+        self.register("ThreeQubitDecode", quantum::three_qubit_decode);
+        self.register("EntanglementMeasure", quantum::entanglement_measure);
+        self.register("MeasureBellState", quantum::measure_bell_state);
+    }
+
+    fn register_nlp_functions(&mut self) {
+        // Phase 3.2: Natural Language Processing Algorithms
+        
+        // Text Processing Functions (8 functions)
+        self.register("TokenizeText", nlp::tokenize_text);
+        self.register("StemText", nlp::stem_text);
+        self.register("GenerateNGrams", nlp::generate_ngrams);
+        self.register("TFIDFVectorize", nlp::tfidf_vectorize);
+        self.register("WordFrequency", nlp::word_frequency);
+        self.register("TextSimilarity", nlp::text_similarity);
+        self.register("NormalizeText", nlp::normalize_text);
+        self.register("RemoveStopWords", nlp::remove_stop_words);
+        
+        // Text Analysis Functions (6 functions)
+        self.register("SentimentAnalysis", nlp::sentiment_analysis);
+        self.register("NamedEntityRecognition", nlp::named_entity_recognition);
+        self.register("POSTagging", nlp::pos_tagging);
+        self.register("LanguageDetection", nlp::language_detection);
+        self.register("TextClassification", nlp::text_classification);
+        self.register("KeywordExtraction", nlp::keyword_extraction);
+        
+        // Language Modeling Functions (4 functions)
+        self.register("LanguageModel", nlp::language_model);
+        self.register("TextSummarization", nlp::text_summarization);
+        self.register("SpellCheck", nlp::spell_check);
+        self.register("SpellCorrect", nlp::spell_correct);
+        
+        // Advanced Sentiment Analysis Functions (3 functions)
+        self.register("RuleBasedSentiment", nlp::rule_based_sentiment);
+        self.register("StatisticalSentiment", nlp::statistical_sentiment);
+        self.register("EmotionDetection", nlp::emotion_detection);
+    }
+
+    fn register_game_theory_functions(&mut self) {
+        // Phase 3.1: Game Theory & Mechanism Design Algorithms
+        
+        // Equilibrium Concepts (4 functions)
+        self.register("NashEquilibrium", game_theory::nash_equilibrium);
+        self.register("CorrelatedEquilibrium", game_theory::correlated_equilibrium);
+        self.register("EvolutionaryStableStrategy", game_theory::evolutionary_stable_strategy);
+        self.register("EliminateDominatedStrategies", game_theory::eliminate_dominated_strategies);
+        
+        // Auction Mechanisms (6 functions)
+        self.register("FirstPriceAuction", game_theory::first_price_auction);
+        self.register("SecondPriceAuction", game_theory::second_price_auction);
+        self.register("VickreyAuction", game_theory::vickrey_auction);
+        self.register("CombinatorialAuction", game_theory::combinatorial_auction);
+        self.register("EnglishAuction", game_theory::english_auction);
+        self.register("DutchAuction", game_theory::dutch_auction);
+        
+        // Mechanism Design (6 functions)
+        self.register("VCGMechanism", game_theory::vcg_mechanism);
+        self.register("OptimalAuction", game_theory::optimal_auction);
+        self.register("RevenueMaximization", game_theory::revenue_maximization);
+        self.register("StableMarriage", game_theory::stable_marriage);
+        self.register("AssignmentProblem", game_theory::assignment_problem);
+        self.register("StableAssignment", game_theory::stable_assignment);
     }
 }
 

@@ -7,11 +7,16 @@ use crate::{
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    in_pure_function_body: bool,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser { tokens, current: 0, in_pure_function_body: false }
+    }
+    
+    pub fn new_for_pure_function_body(tokens: Vec<Token>) -> Self {
+        Parser { tokens, current: 0, in_pure_function_body: true }
     }
 
     pub fn from_source(source: &str) -> Result<Self> {
@@ -417,6 +422,10 @@ impl Parser {
                         Ok(Expr::symbol(name))
                     }
                 }
+                TokenKind::ContextSymbol(name) => {
+                    // Context symbols like MyPackage`symbol - treat as regular symbols for now
+                    Ok(Expr::symbol(name))
+                }
                 TokenKind::Blank => {
                     // Check if there's a head type after the blank
                     let head =
@@ -459,9 +468,121 @@ impl Parser {
                     Ok(Expr::Pattern(Pattern::BlankNullSequence { head: None }))
                 }
                 TokenKind::LeftParen => {
-                    let expr = self.expression()?;
-                    self.consume(&TokenKind::RightParen, "Expected ')' after expression")?;
-                    Ok(expr)
+                    // Check if this is a pure function in parentheses
+                    // Look ahead to find a slot token anywhere within reasonable depth
+                    let mut pure_function_detected = false;
+                    let mut lookahead_depth = 0;
+                    let start_pos = self.current;
+                    
+                    while lookahead_depth < 10 && self.current < self.tokens.len() {
+                        if let Some(token) = self.peek() {
+                            match &token.kind {
+                                TokenKind::Slot | TokenKind::NumberedSlot(_) => {
+                                    pure_function_detected = true;
+                                    break;
+                                }
+                                TokenKind::PureFunction => {
+                                    if lookahead_depth == 0 {
+                                        // Found & at our level - this is definitely a pure function
+                                        pure_function_detected = true;
+                                        break;
+                                    }
+                                    self.advance();
+                                }
+                                TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftBracket => {
+                                    lookahead_depth += 1;
+                                    self.advance();
+                                }
+                                TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightBracket => {
+                                    lookahead_depth -= 1;
+                                    if lookahead_depth < 0 {
+                                        break;
+                                    }
+                                    self.advance();
+                                }
+                                _ => {
+                                    self.advance();
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Reset parser position
+                    self.current = start_pos;
+                    
+                    if pure_function_detected {
+                        // Parse pure function inside parentheses
+                        // Collect all tokens until we find & at depth 1 (inside our parentheses)
+                        let mut body_tokens = Vec::new();
+                        let mut depth = 1; // We're already inside the outer parentheses
+                        
+                        // Collect tokens until we find & at depth 1
+                        while let Some(token) = self.peek() {
+                            match &token.kind {
+                                TokenKind::PureFunction => {
+                                    if depth == 1 {
+                                        // Found the terminating & at our level
+                                        self.advance(); // consume &
+                                        break;
+                                    } else {
+                                        body_tokens.push(token.clone());
+                                        self.advance();
+                                    }
+                                },
+                                TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftBracket => {
+                                    depth += 1;
+                                    body_tokens.push(token.clone());
+                                    self.advance();
+                                },
+                                TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightBracket => {
+                                    depth -= 1;
+                                    if depth == 0 && token.kind == TokenKind::RightParen {
+                                        // We've reached the end of our parentheses without finding &
+                                        return Err(Error::Parse {
+                                            message: "Expected '&' to terminate pure function".to_string(),
+                                            position: token.position,
+                                        });
+                                    }
+                                    body_tokens.push(token.clone());
+                                    self.advance();
+                                },
+                                TokenKind::Eof => {
+                                    return Err(Error::Parse {
+                                        message: "Unexpected end of input while parsing pure function".to_string(),
+                                        position: token.position,
+                                    });
+                                },
+                                _ => {
+                                    body_tokens.push(token.clone());
+                                    self.advance();
+                                }
+                            }
+                        }
+                        
+                        self.consume(&TokenKind::RightParen, "Expected ')' after pure function")?;
+                        
+                        if body_tokens.is_empty() {
+                            // Empty pure function: (# &)
+                            Ok(Expr::pure_function(Expr::slot()))
+                        } else {
+                            // Parse the body tokens
+                            let mut sub_parser = Parser::new_for_pure_function_body(body_tokens);
+                            match sub_parser.expression() {
+                                Ok(body) => Ok(Expr::pure_function(body)),
+                                Err(_) => {
+                                    // If sub-parsing fails, treat as standalone slot
+                                    Ok(Expr::slot())
+                                }
+                            }
+                        }
+                    } else {
+                        // Parse the expression inside parentheses normally
+                        let expr = self.expression()?;
+                        self.consume(&TokenKind::RightParen, "Expected ')' after expression")?;
+                        Ok(expr)
+                    }
                 }
                 TokenKind::LeftBrace => {
                     let elements = if self.check(&TokenKind::RightBrace) {
@@ -485,6 +606,76 @@ impl Parser {
                         "Expected '|>' after association elements",
                     )?;
                     Ok(Expr::association(pairs))
+                }
+                TokenKind::NumberedSlot(slot_number) => {
+                    // Numbered slot in pure function (#1, #2, #3, etc.)
+                    Ok(Expr::numbered_slot(slot_number))
+                }
+                TokenKind::Slot => {
+                    // If we're parsing a pure function body, just return a simple slot
+                    if self.in_pure_function_body {
+                        return Ok(Expr::slot());
+                    }
+                    
+                    // Simple two-pass parsing for pure functions: collect tokens until &
+                    let mut depth = 0;
+                    let mut body_tokens = Vec::new();
+                    
+                    // First pass: collect all tokens between # and &
+                    while let Some(token) = self.peek() {
+                        match &token.kind {
+                            TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftBracket => {
+                                depth += 1;
+                                body_tokens.push(token.clone());
+                                self.advance();
+                            },
+                            TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightBracket => {
+                                if depth == 0 {
+                                    // Hit closing bracket at our level - pure function ends here
+                                    break;
+                                }
+                                depth -= 1;
+                                body_tokens.push(token.clone());
+                                self.advance();
+                            },
+                            TokenKind::PureFunction => {
+                                if depth == 0 {
+                                    // Found the terminating & - create pure function
+                                    if body_tokens.is_empty() {
+                                        // Empty pure function: # &
+                                        return Ok(Expr::pure_function(Expr::slot()));
+                                    }
+                                    
+                                    // Second pass: create sub-parser for the body tokens
+                                    let mut sub_parser = Parser::new_for_pure_function_body(body_tokens);
+                                    match sub_parser.expression() {
+                                        Ok(body) => {
+                                            return Ok(Expr::pure_function(body));
+                                        },
+                                        Err(_) => {
+                                            // If sub-parsing fails, treat as standalone slot
+                                            return Ok(Expr::slot());
+                                        }
+                                    }
+                                } else {
+                                    body_tokens.push(token.clone());
+                                    self.advance();
+                                }
+                            },
+                            TokenKind::Semicolon | TokenKind::Eof => break,
+                            _ => {
+                                body_tokens.push(token.clone());
+                                self.advance();
+                            }
+                        }
+                    }
+                    
+                    // No matching & found, treat as standalone slot
+                    Ok(Expr::slot())
+                }
+                TokenKind::PureFunction => {
+                    // Parse pure function terminator (&) - treat as a symbol for now
+                    Ok(Expr::symbol("PureFunction"))
                 }
                 _ => Err(Error::Parse {
                     message: format!("Unexpected token: {:?}", token.kind),

@@ -3,7 +3,7 @@
 //! This module provides intelligent symbol suggestions by analyzing the current
 //! context and combining information from symbol resolution and pattern matching.
 
-use super::symbol_resolution::{SymbolResolver, Symbol, SymbolType, SymbolSuggestion};
+use super::symbol_resolution::{SymbolResolver, SymbolType, SymbolSuggestion};
 use super::pattern_matching::{PatternAnalyzer, PatternType};
 use crate::lexer::{Lexer, TokenKind};
 use std::collections::HashMap;

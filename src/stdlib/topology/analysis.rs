@@ -8,7 +8,7 @@ use super::{SimplicialComplex, TopologicalFeatures, PersistenceDiagram, value_to
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
 use crate::stdlib::geometry::Point2D;
-use std::collections::{HashMap, HashSet};
+
 
 /// Extract comprehensive topological features from point cloud data
 pub fn extract_topological_features(

@@ -1,7 +1,6 @@
 //! Security wrapper for stdlib functions with input validation and resource monitoring
 
-use crate::security::{SecurityManager, SecurityError, SecurityResult};
-use crate::security::validation::{validate_input, Validatable};
+use crate::security::SecurityManager;
 use crate::security::audit::SecurityEvent;
 use crate::vm::{Value, VmResult, VmError};
 use std::time::Instant;
@@ -377,11 +376,14 @@ impl SecureStdlibWrapper {
             Value::Function(name) => {
                 name.len() as i64 + 24  // Function name plus basic overhead
             }
+            Value::Object(_) => 500, // Conservative estimate for object dictionaries
             Value::LyObj(_) => 1000, // Conservative estimate for foreign objects
             Value::Missing => 1,
             Value::Quote(_) => 100, // Conservative estimate for quoted expressions
             Value::Pattern(_) => 50, // Conservative estimate for patterns
             Value::Rule { lhs, rhs } => 16 + self.estimate_value_memory(lhs) + self.estimate_value_memory(rhs),
+            Value::PureFunction { body } => 50 + self.estimate_value_memory(body), // Function overhead + body
+            Value::Slot { .. } => 8, // Minimal slot placeholder
         }
     }
 }

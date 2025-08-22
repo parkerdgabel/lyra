@@ -404,10 +404,13 @@ fn value_to_string(value: &Value) -> String {
             format!("{{{}}}", elements.join(", "))
         },
         Value::Function(name) => format!("Function[{}]", name),
+        Value::Object(_) => "Object[...]".to_string(),
         Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
         Value::Quote(expr) => format!("Hold[{:?}]", expr),
         Value::Pattern(pat) => format!("Pattern[{:?}]", pat),
         Value::Rule { lhs, rhs } => format!("{} -> {}", value_to_string(lhs), value_to_string(rhs)),
+        Value::PureFunction { .. } => "PureFunction[...]".to_string(),
+        Value::Slot { .. } => "Slot[...]".to_string(),
     }
 }
 

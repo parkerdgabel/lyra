@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -241,11 +240,12 @@ impl AuthManager {
         for api_key in api_keys.values() {
             if api_key.key_hash == key_hash && api_key.active {
                 let mut result = api_key.clone();
+                let key_id = api_key.id.clone();
                 
                 // Update last used timestamp
                 drop(api_keys);
                 let mut api_keys = self.api_keys.write().await;
-                if let Some(key) = api_keys.get_mut(&api_key.id) {
+                if let Some(key) = api_keys.get_mut(&key_id) {
                     key.last_used = Utc::now();
                     result.last_used = Utc::now();
                 }

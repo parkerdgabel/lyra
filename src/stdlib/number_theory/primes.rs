@@ -6,7 +6,6 @@
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
-use std::collections::HashMap;
 
 /// Prime factorization result as a Foreign object
 #[derive(Debug, Clone)]

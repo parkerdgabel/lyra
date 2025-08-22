@@ -6,7 +6,6 @@
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
-use std::collections::HashMap;
 
 /// Extended GCD result
 #[derive(Debug, Clone)]

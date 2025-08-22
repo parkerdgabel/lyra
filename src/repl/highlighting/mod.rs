@@ -157,7 +157,7 @@ impl LyraSyntaxHighlighter {
             
             TokenKind::Blank | TokenKind::BlankSequence | TokenKind::BlankNullSequence => HighlightColor::Variable,
             
-            TokenKind::StringJoin | TokenKind::Backtick => HighlightColor::Operator,
+            TokenKind::StringJoin | TokenKind::Backtick | TokenKind::Slot | TokenKind::NumberedSlot(_) | TokenKind::PureFunction => HighlightColor::Operator,
             
             TokenKind::Comment(_) => HighlightColor::Comment,
             

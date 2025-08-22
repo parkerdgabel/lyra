@@ -249,12 +249,19 @@ pub fn value_to_type(value: &Value) -> LyraType {
                 _ => LyraType::Unknown,
             }
         }
+        Value::Object(_) => LyraType::Unknown, // Object dictionaries have unknown type for now
         Value::Quote(_) => LyraType::Unknown, // Quoted expressions have unknown type
         Value::Pattern(_) => LyraType::Pattern(Box::new(LyraType::Unknown)),
         Value::Rule { .. } => LyraType::Rule {
             lhs_type: Box::new(LyraType::Unknown),
             rhs_type: Box::new(LyraType::Unknown),
         },
+        Value::PureFunction { .. } => LyraType::Function {
+            params: vec![LyraType::Unknown],
+            return_type: Box::new(LyraType::Unknown),
+            attributes: vec![],
+        },
+        Value::Slot { .. } => LyraType::Unknown, // Slots are placeholders with unknown type
     }
 }
 

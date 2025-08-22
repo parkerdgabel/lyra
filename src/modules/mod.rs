@@ -4,9 +4,9 @@
 //! for Lyra, enabling organized code distribution and dependency management.
 
 use crate::{
-    vm::{Value, VmResult},
+    vm::Value,
     stdlib::StdlibFunction,
-    linker::{FunctionSignature, FunctionAttribute, UnifiedFunction},
+    linker::{FunctionSignature, FunctionAttribute},
     bytecode::Instruction,
 };
 use std::collections::HashMap;

@@ -48,10 +48,13 @@ pub enum Value {
     Function(String), // Built-in function name for now
     Boolean(bool),
     Missing,            // Missing/unknown value (distinct from Null)
+    Object(HashMap<String, Value>), // Object/dictionary type for structured data
     LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema, Tensor)
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
     Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
     Rule { lhs: Box<Value>, rhs: Box<Value> }, // Rule expressions for transformations
+    PureFunction { body: Box<Value> }, // Pure function with slot placeholders
+    Slot { number: Option<usize> }, // Slot placeholder (#, #1, #2, etc.)
 }
 
 // Use simpler derive-based serialization with a custom implementation for LyObj
@@ -66,10 +69,13 @@ enum ValueSerde {
     Function(String),
     Boolean(bool),
     Missing,
+    Object(HashMap<String, Value>),
     LyObjPlaceholder { type_name: String }, // Simplified LyObj representation  
     Quote(Box<crate::ast::Expr>),
     Pattern(crate::ast::Pattern),
     Rule { lhs: Box<Value>, rhs: Box<Value> },
+    PureFunction { body: Box<Value> },
+    Slot { number: Option<usize> },
 }
 
 // Custom serialization for Value enum to handle LyObj
@@ -87,12 +93,15 @@ impl Serialize for Value {
             Value::Function(name) => ValueSerde::Function(name.clone()),
             Value::Boolean(b) => ValueSerde::Boolean(*b),
             Value::Missing => ValueSerde::Missing,
+            Value::Object(obj) => ValueSerde::Object(obj.clone()),
             Value::LyObj(obj) => ValueSerde::LyObjPlaceholder { 
                 type_name: obj.type_name().to_string() 
             },
             Value::Quote(expr) => ValueSerde::Quote(expr.clone()),
             Value::Pattern(pat) => ValueSerde::Pattern(pat.clone()),
             Value::Rule { lhs, rhs } => ValueSerde::Rule { lhs: lhs.clone(), rhs: rhs.clone() },
+            Value::PureFunction { body } => ValueSerde::PureFunction { body: body.clone() },
+            Value::Slot { number } => ValueSerde::Slot { number: *number },
         };
         serde_value.serialize(serializer)
     }
@@ -113,6 +122,7 @@ impl<'de> Deserialize<'de> for Value {
             ValueSerde::Function(name) => Value::Function(name),
             ValueSerde::Boolean(b) => Value::Boolean(b),
             ValueSerde::Missing => Value::Missing,
+            ValueSerde::Object(obj) => Value::Object(obj),
             ValueSerde::LyObjPlaceholder { type_name: _ } => {
                 // For now, deserialize LyObj placeholders as Missing
                 // Real implementation would need registry-based reconstruction
@@ -121,6 +131,8 @@ impl<'de> Deserialize<'de> for Value {
             ValueSerde::Quote(expr) => Value::Quote(expr),
             ValueSerde::Pattern(pat) => Value::Pattern(pat),
             ValueSerde::Rule { lhs, rhs } => Value::Rule { lhs, rhs },
+            ValueSerde::PureFunction { body } => Value::PureFunction { body },
+            ValueSerde::Slot { number } => Value::Slot { number },
         };
         Ok(value)
     }
@@ -163,8 +175,15 @@ impl std::hash::Hash for Value {
             Value::Missing => {
                 7u8.hash(state);
             },
-            Value::LyObj(obj) => {
+            Value::Object(obj) => {
                 8u8.hash(state);
+                // Hash the entries in a deterministic order
+                let mut entries: Vec<_> = obj.iter().collect();
+                entries.sort_by_key(|(k, _)| *k);
+                entries.hash(state);
+            },
+            Value::LyObj(obj) => {
+                9u8.hash(state);
                 // Hash type name and debug representation for now
                 // Foreign objects could implement custom hashing
                 obj.type_name().hash(state);
@@ -185,6 +204,14 @@ impl std::hash::Hash for Value {
                 lhs.hash(state);
                 rhs.hash(state);
             },
+            Value::PureFunction { body } => {
+                13u8.hash(state);
+                body.hash(state);
+            },
+            Value::Slot { number } => {
+                14u8.hash(state);
+                number.hash(state);
+            },
         }
     }
 }
@@ -200,6 +227,7 @@ impl PartialEq for Value {
             (Value::Function(a), Value::Function(b)) => a == b,
             (Value::Boolean(a), Value::Boolean(b)) => a == b,
             (Value::Missing, Value::Missing) => true,
+            (Value::Object(a), Value::Object(b)) => a == b,
             (Value::LyObj(a), Value::LyObj(b)) => a == b,
             (Value::Quote(a), Value::Quote(b)) => {
                 // Compare AST expressions structurally
@@ -339,6 +367,11 @@ impl VirtualMachine {
         } else {
             Ok(self.stack.last().unwrap().clone())
         }
+    }
+
+    /// Legacy compatibility wrapper for run
+    pub fn execute(&mut self) -> VmResult<Value> {
+        self.run()
     }
 
     /// Execute a single instruction
@@ -612,7 +645,33 @@ impl VirtualMachine {
                 args.reverse(); // Stack pops in reverse order
                 
                 // Dispatch based on function index range
-                if function_index < 32 {
+                if function_index >= 1000 {
+                    // Pure function application (indices 1000+): pop pure function and apply slot substitution
+                    let function_value = self.pop()?; // Pop the pure function from stack
+                    
+                    match function_value {
+                        Value::PureFunction { .. } => {
+                            // Use the slot substitution algorithm from pure_function module
+                            match crate::pure_function::substitute_slots(&function_value, &args) {
+                                Ok(result) => {
+                                    self.push(result);
+                                }
+                                Err(substitution_error) => {
+                                    return Err(VmError::Runtime(format!(
+                                        "Pure function application failed: {}",
+                                        substitution_error
+                                    )));
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(VmError::TypeError {
+                                expected: "PureFunction value for pure function call".to_string(),
+                                actual: format!("{:?}", function_value),
+                            });
+                        }
+                    }
+                } else if function_index < 32 {
                     // Foreign methods (indices 0-31): need object + method call
                     let obj = self.pop()?; // Pop the object
                     
@@ -1335,10 +1394,13 @@ impl VirtualMachine {
             Value::Function(_) => "Function".to_string(),
             Value::Boolean(_) => "Boolean".to_string(),
             Value::Missing => "Missing".to_string(),
-            Value::LyObj(_) => "Object".to_string(),
+            Value::Object(_) => "Object".to_string(),
+            Value::LyObj(_) => "LyObj".to_string(),
             Value::Quote(_) => "Quote".to_string(),
             Value::Pattern(_) => "Pattern".to_string(),
             Value::Rule { .. } => "Rule".to_string(),
+            Value::PureFunction { .. } => "PureFunction".to_string(),
+            Value::Slot { .. } => "Slot".to_string(),
         }
     }
 }
@@ -1346,6 +1408,59 @@ impl VirtualMachine {
 impl Default for VirtualMachine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Value {
+    /// Get the value as a real number if possible
+    pub fn as_real(&self) -> Option<f64> {
+        match self {
+            Value::Real(r) => Some(*r),
+            Value::Integer(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+    
+    /// Get the value as a string if possible
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            Value::String(s) => Some(s.clone()),
+            Value::Symbol(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+    
+    /// Get the value as an integer if possible
+    pub fn as_integer(&self) -> Option<i64> {
+        match self {
+            Value::Integer(i) => Some(*i),
+            Value::Real(r) if r.fract() == 0.0 => Some(*r as i64),
+            _ => None,
+        }
+    }
+    
+    /// Get the value as a boolean if possible
+    pub fn as_boolean(&self) -> Option<bool> {
+        match self {
+            Value::Boolean(b) => Some(*b),
+            _ => None,
+        }
+    }
+    
+    /// Get the value as a list if possible
+    pub fn as_list(&self) -> Option<&Vec<Value>> {
+        match self {
+            Value::List(list) => Some(list),
+            _ => None,
+        }
+    }
+    
+    /// Get the value as an object if possible
+    pub fn as_object(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            Value::Object(obj) => Some(obj),
+            _ => None,
+        }
     }
 }
 

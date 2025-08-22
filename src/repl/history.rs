@@ -10,8 +10,8 @@
 use crate::repl::config::HistoryConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::{VecDeque, HashMap, HashSet};
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Write, Seek, SeekFrom};
+use std::fs::File;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

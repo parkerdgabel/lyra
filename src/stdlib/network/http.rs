@@ -3,14 +3,14 @@
 //! This module implements HTTP-specific networking operations that build on the core
 //! network primitives, providing URLRead, URLWrite, and related HTTP functionality.
 
-use super::core::{NetworkRequest, NetworkResponse, HttpMethod, NetworkAuth};
+use super::core::{NetworkRequest, NetworkResponse, HttpMethod};
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
-use reqwest::{Client, Method, RequestBuilder};
+use reqwest::{Client, Method};
 use url::Url;
 
 /// HTTP client configuration and state

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use axum::{
@@ -10,7 +10,6 @@ use axum::{
     routing::get,
     Router,
 };
-use tokio_tungstenite::tungstenite::Message;
 
 pub mod session;
 pub mod protocol;
@@ -18,7 +17,7 @@ pub mod auth;
 pub mod security;
 
 use session::{ReplSession, SessionManager};
-use protocol::{WebSocketMessage, MessageType};
+use protocol::MessageType;
 use auth::AuthManager;
 use security::SecurityMiddleware;
 
@@ -166,7 +165,6 @@ async fn handle_websocket_connection(
     params: HashMap<String, String>,
     state: AppState,
 ) {
-    use axum::extract::ws::Message;
     use futures_util::{SinkExt, StreamExt};
 
     // Extract authentication token if provided
@@ -213,7 +211,7 @@ async fn handle_websocket_connection(
     };
 
     if let Ok(msg_json) = serde_json::to_string(&welcome_msg) {
-        let _ = ws_sender.send(Message::Text(msg_json)).await;
+        let _ = ws_sender.send(axum::extract::ws::Message::Text(msg_json)).await;
     }
 
     // Main message processing loop
@@ -222,21 +220,28 @@ async fn handle_websocket_connection(
             // Handle incoming WebSocket messages
             msg = ws_receiver.next() => {
                 match msg {
-                    Some(Ok(Message::Text(text))) => {
+                    Some(Ok(axum::extract::ws::Message::Text(text))) => {
                         if let Err(e) = handle_text_message(&text, &session, &mut ws_sender).await {
                             println!("❌ Error handling message: {}", e);
                         }
                     }
-                    Some(Ok(Message::Binary(_))) => {
+                    Some(Ok(axum::extract::ws::Message::Binary(_))) => {
                         // Binary messages not supported yet
                         let error_msg = protocol::WebSocketMessage::error(
                             "Binary messages not supported".to_string()
                         );
                         if let Ok(msg_json) = serde_json::to_string(&error_msg) {
-                            let _ = ws_sender.send(Message::Text(msg_json)).await;
+                            let _ = ws_sender.send(axum::extract::ws::Message::Text(msg_json)).await;
                         }
                     }
-                    Some(Ok(Message::Close(_))) => {
+                    Some(Ok(axum::extract::ws::Message::Ping(data))) => {
+                        // Respond to ping with pong
+                        let _ = ws_sender.send(axum::extract::ws::Message::Pong(data)).await;
+                    }
+                    Some(Ok(axum::extract::ws::Message::Pong(_))) => {
+                        // Pong received - no action needed
+                    }
+                    Some(Ok(axum::extract::ws::Message::Close(_))) => {
                         println!("🔌 WebSocket connection closed: {}", session_id);
                         break;
                     }
@@ -251,7 +256,7 @@ async fn handle_websocket_connection(
             // Handle server shutdown
             _ = shutdown_rx.recv() => {
                 println!("🛑 Server shutdown signal received for session {}", session_id);
-                let _ = ws_sender.send(Message::Close(None)).await;
+                let _ = ws_sender.send(axum::extract::ws::Message::Close(None)).await;
                 break;
             }
         }
@@ -266,7 +271,7 @@ async fn handle_websocket_connection(
 async fn handle_text_message(
     text: &str,
     session: &Arc<ReplSession>,
-    ws_sender: &mut futures_util::stream::SplitSink<axum::extract::ws::WebSocket, Message>,
+    ws_sender: &mut futures_util::stream::SplitSink<axum::extract::ws::WebSocket, axum::extract::ws::Message>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use futures_util::SinkExt;
 
@@ -305,7 +310,7 @@ async fn handle_text_message(
 
     // Send response back to client
     if let Ok(response_json) = serde_json::to_string(&response) {
-        ws_sender.send(Message::Text(response_json)).await?;
+        ws_sender.send(axum::extract::ws::Message::Text(response_json)).await?;
     }
 
     Ok(())

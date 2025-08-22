@@ -622,8 +622,8 @@ impl Foreign for JSONQuery {
 // Helper functions for JSON conversion
 fn value_to_json_value(value: &Value) -> JsonValue {
     match value {
-        Value::Integer(n) => JsonValue::Real(serde_json::Number::from(*n)),
-        Value::Real(f) => JsonValue::Real(serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0))),
+        Value::Integer(n) => JsonValue::Number(serde_json::Number::from(*n)),
+        Value::Real(f) => JsonValue::Number(serde_json::Number::from_f64(*f).unwrap_or_else(|| serde_json::Number::from(0))),
         Value::String(s) => JsonValue::String(s.clone()),
         Value::Boolean(b) => JsonValue::Bool(*b),
         Value::List(list) => {
@@ -648,7 +648,7 @@ fn json_value_to_value(json: &JsonValue) -> Value {
     match json {
         JsonValue::Null => Value::Symbol("null".to_string()),
         JsonValue::Bool(b) => Value::Boolean(*b),
-        JsonValue::Real(n) => {
+        JsonValue::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Value::Integer(i)
             } else if let Some(f) = n.as_f64() {

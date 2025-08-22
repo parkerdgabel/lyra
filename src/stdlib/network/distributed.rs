@@ -329,8 +329,8 @@ impl RemoteFunction {
     /// Convert Lyra Value to JSON
     fn value_to_json(&self, value: &Value) -> Result<serde_json::Value, String> {
         match value {
-            Value::Integer(i) => Ok(serde_json::Value::Real((*i).into())),
-            Value::Real(r) => Ok(serde_json::Value::Real(
+            Value::Integer(i) => Ok(serde_json::Value::Number((*i).into())),
+            Value::Real(r) => Ok(serde_json::Value::Number(
                 serde_json::Number::from_f64(*r)
                     .ok_or("Invalid floating point number")?)),
             Value::String(s) => Ok(serde_json::Value::String(s.clone())),
@@ -351,7 +351,7 @@ impl RemoteFunction {
     /// Deserialize JSON result back to Lyra Value
     fn deserialize_result(&self, json: &serde_json::Value) -> Result<Value, String> {
         match json {
-            serde_json::Value::Real(n) => {
+            serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Ok(Value::Integer(i))
                 } else if let Some(f) = n.as_f64() {

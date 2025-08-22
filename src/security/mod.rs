@@ -14,7 +14,6 @@ pub mod resource_monitor;
 pub mod sandbox;
 pub mod validation;
 
-use crate::error::Error;
 use std::fmt;
 
 /// Security-related errors

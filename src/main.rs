@@ -647,6 +647,15 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::Rule { lhs, rhs } => {
             format!("{} -> {}", format_value(lhs), format_value(rhs))
         }
+        lyra::vm::Value::Object(_) => {
+            "Object[]".to_string()
+        }
+        lyra::vm::Value::PureFunction { .. } => {
+            "PureFunction[...]".to_string()
+        }
+        lyra::vm::Value::Slot { .. } => {
+            "Slot[...]".to_string()
+        }
     }
 }
 

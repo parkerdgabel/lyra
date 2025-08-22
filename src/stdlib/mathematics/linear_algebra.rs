@@ -22,7 +22,6 @@
 use crate::vm::{Value, VmError, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::any::Any;
-use std::f64::consts::PI;
 
 /// Matrix decomposition result containing factors and metadata
 #[derive(Debug, Clone)]

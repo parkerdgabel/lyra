@@ -1,0 +1,297 @@
+(* Lyra Language Grammar - Extended Backus-Naur Form (EBNF) *)
+(* This grammar describes the complete syntax of the Lyra programming language *)
+(* Inspired by Wolfram Language with modern functional programming extensions *)
+
+(* ============================================================================ *)
+(*                              ENTRY POINTS                                   *)
+(* ============================================================================ *)
+
+Program          = { Statement } ;
+Statement        = Expression [ ";" ] ;
+Expression       = Assignment ;
+
+(* ============================================================================ *)
+(*                           OPERATOR PRECEDENCE                               *)
+(* ============================================================================ *)
+(* Listed from lowest to highest precedence *)
+
+Assignment       = ArrowFunction [ ( "=" | ":=" ) Assignment ] ;
+ArrowFunction    = Pipeline [ "=>" ArrowFunction ] ;
+Pipeline         = Replacement { "|>" Replacement } ;
+Replacement      = Rule { ( "/." | "//." ) Rule } ;
+Rule             = Range [ ( "->" | ":>" ) Rule ] ;
+Range            = LogicalOr [ ";;" LogicalOr [ ";;" LogicalOr ] ] ;
+LogicalOr        = LogicalAnd { "||" LogicalAnd } ;
+LogicalAnd       = Equality { "&&" Equality } ;
+Equality         = Comparison { ( "==" | "!=" ) Comparison } ;
+Comparison       = Additive { ( "<" | "<=" | ">" | ">=" ) Additive } ;
+Additive         = Multiplicative { ( "+" | "-" ) Multiplicative } ;
+Multiplicative   = Power { ( "*" | "/" | "%" ) Power } ;
+Power            = Unary [ "^" Power ] ;  (* Right associative *)
+Unary            = [ ( "!" | "-" | "+" ) ] Postfix ;
+Postfix          = Primary { PostfixOp } ;
+
+(* ============================================================================ *)
+(*                            POSTFIX OPERATIONS                               *)
+(* ============================================================================ *)
+
+PostfixOp        = FunctionCall 
+                 | PartAccess 
+                 | DotCall 
+                 | TypeAnnotation ;
+
+FunctionCall     = "[" [ ArgumentList ] "]" ;
+PartAccess       = "[[" ArgumentList "]]" ;
+DotCall          = "." Symbol "[" [ ArgumentList ] "]" ;
+TypeAnnotation   = ":" Expression ;
+
+ArgumentList     = Expression { "," Expression } ;
+
+(* ============================================================================ *)
+(*                             PRIMARY EXPRESSIONS                             *)
+(* ============================================================================ *)
+
+Primary          = Literal
+                 | Symbol
+                 | Pattern
+                 | List
+                 | Association
+                 | ParenthesizedExpr
+                 | ArrowFunctionLiteral
+                 | PureFunction
+                 | Slot ;
+
+(* ============================================================================ *)
+(*                                  LITERALS                                   *)
+(* ============================================================================ *)
+
+Literal          = Number
+                 | String
+                 | InterpolatedString ;
+
+Number           = Integer
+                 | Real
+                 | Rational
+                 | Complex
+                 | BigInteger
+                 | BigDecimal
+                 | HexInteger ;
+
+Integer          = [ "-" | "+" ] Digit { Digit } ;
+Real             = [ "-" | "+" ] ( 
+                     Digit { Digit } "." Digit { Digit } [ Exponent ]
+                   | Digit { Digit } Exponent 
+                   ) ;
+Rational         = Integer "/" Integer ;
+Complex          = Real ( "+" | "-" ) Real "I" ;
+BigInteger       = Integer "n" ;
+BigDecimal       = Real "d" Digit { Digit } ;
+HexInteger       = Digit { Digit } "^^" HexDigit { HexDigit } ;
+
+Exponent         = ( "e" | "E" ) [ "+" | "-" ] Digit { Digit } ;
+
+String           = '"' { StringChar } '"' ;
+StringChar       = EscapeSequence | ( ? any character except '"' and '\' ? ) ;
+EscapeSequence   = "\" ( '"' | "\" | "n" | "t" | "r" | ? any character ? ) ;
+
+InterpolatedString = '"' { InterpolationPart } '"' ;
+InterpolationPart = StringText | InterpolationExpr ;
+StringText       = { ? any character except '"', '\', and '#' ? } ;
+InterpolationExpr = "#{" Expression "}" ;
+
+(* ============================================================================ *)
+(*                               SYMBOLS & PATTERNS                            *)
+(* ============================================================================ *)
+
+Symbol           = SymbolName [ PatternSuffix ] ;
+SymbolName       = ( Letter | "$" | "#" ) { Letter | Digit | "_" | "$" | "#" } ;
+ContextSymbol    = SymbolName { "`" SymbolName } ;
+
+Pattern          = BlankPattern
+                 | NamedPattern
+                 | TypedPattern
+                 | PredicatePattern
+                 | ConditionalPattern
+                 | AlternativePattern
+                 | ExactPattern ;
+
+BlankPattern     = ( "_" | "__" | "___" ) [ Symbol ] ;
+NamedPattern     = Symbol PatternSuffix ;
+PatternSuffix    = ( "_" | "__" | "___" ) [ Symbol ] ;
+TypedPattern     = Symbol ":" Expression ;
+PredicatePattern = Pattern "?" Expression ;
+ConditionalPattern = Pattern "/;" Expression ;
+AlternativePattern = Pattern { "|" Pattern } ;
+ExactPattern     = Expression ;
+
+(* ============================================================================ *)
+(*                               COMPOUND EXPRESSIONS                          *)
+(* ============================================================================ *)
+
+List             = "{" [ ArgumentList ] "}" ;
+
+Association      = "<|" [ AssociationPairs ] "|>" ;
+AssociationPairs = AssociationPair { "," AssociationPair } ;
+AssociationPair  = Expression "->" Expression ;
+
+ParenthesizedExpr = "(" Expression ")" ;
+
+(* ============================================================================ *)
+(*                             ARROW FUNCTIONS                                 *)
+(* ============================================================================ *)
+
+ArrowFunctionLiteral = "(" [ ParameterList ] ")" "=>" Expression ;
+ParameterList    = Symbol { "," Symbol } ;
+
+(* ============================================================================ *)
+(*                               COMMENTS                                      *)
+(* ============================================================================ *)
+
+LineComment      = "//" { ? any character except newline ? } [ Newline ] ;
+BlockComment     = "(*" { ? any character except "*)" ? } "*)" ;
+DocComment       = "//!" { ? any character except newline ? } [ Newline ] ;
+
+(* ============================================================================ *)
+(*                              LEXICAL ELEMENTS                               *)
+(* ============================================================================ *)
+
+Letter           = ? Unicode letter ? ;
+Digit            = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+HexDigit         = Digit | "A" | "B" | "C" | "D" | "E" | "F" | "a" | "b" | "c" | "d" | "e" | "f" ;
+Newline          = "\n" | "\r\n" | "\r" ;
+Whitespace       = " " | "\t" | Newline ;
+
+(* ============================================================================ *)
+(*                             OPERATOR TOKENS                                 *)
+(* ============================================================================ *)
+
+(* Arithmetic Operators *)
+(* "+" | "-" | "*" | "/" | "%" | "^" *)
+
+(* Comparison Operators *)
+(* "==" | "!=" | "<" | "<=" | ">" | ">=" *)
+
+(* Logical Operators *)
+(* "&&" | "||" | "!" *)
+
+(* Assignment Operators *)
+(* "=" | ":=" *)
+
+(* Rule Operators *)
+(* "->" | ":>" *)
+
+(* Replacement Operators *)
+(* "/." | "//." *)
+
+(* Modern Operators *)
+(* "|>" | "//" | "@" | "=>" | ";;" | "/;" | "|" *)
+
+(* String Operators *)
+(* "<>" *)
+
+(* Grouping & Access *)
+(* "(" | ")" | "[" | "]" | "{" | "}" | "[[" | "]]" | "<|" | "|>" *)
+
+(* Separators *)
+(* "," | ";" | "." | ":" | "?" | "`" *)
+
+(* Pattern Operators *)
+(* "_" | "__" | "___" *)
+
+(* Pure Function Operators *)
+(* "#" | "&" *)
+
+(* ============================================================================ *)
+(*                              ADVANCED FEATURES                              *)
+(* ============================================================================ *)
+
+(* Modern Syntax Extensions *)
+TypedFunction    = Symbol "[" [ ParameterList ] "]" ":" Expression ;
+DotCallChain     = Primary { "." Symbol "[" [ ArgumentList ] "]" } ;
+PipelineChain    = Expression { "|>" Expression } ;
+RangeExpression  = Expression ";;" Expression [ ";;" Expression ] ;
+
+(* Pattern Matching Extensions *)
+ComplexPattern   = Pattern [ "?" Expression ] [ "/;" Expression ] ;
+AlternativeSet   = Pattern { "|" Pattern } ;
+
+(* String Processing *)
+StringOperation  = String "<>" String ;
+
+(* Modern Functional Features *)
+HigherOrderFunc  = "(" ParameterList ")" "=>" Expression ;
+PartialApplication = Symbol "[" ArgumentList "," "_" { "," ArgumentList } "]" ;
+PureFunction     = "#" Expression "&" ;
+Slot             = "#" [ Digit { Digit } ] ;
+
+(* ============================================================================ *)
+(*                           PRODUCTION NOTES                                  *)
+(* ============================================================================ *)
+
+(*
+ * PRECEDENCE TABLE (lowest to highest):
+ * 1. Assignment: =, :=
+ * 2. Arrow Functions: =>
+ * 3. Pipeline: |>
+ * 4. Replacement: /., //.
+ * 5. Rules: ->, :>
+ * 6. Range: ;;
+ * 7. Logical OR: ||
+ * 8. Logical AND: &&
+ * 9. Equality: ==, !=
+ * 10. Comparison: <, <=, >, >=
+ * 11. Additive: +, -
+ * 12. Multiplicative: *, /, %
+ * 13. Power: ^ (right associative)
+ * 14. Unary: !, -, +
+ * 15. Postfix: [args], [[parts]], .method[args], :type
+ *)
+
+(*
+ * ASSOCIATIVITY RULES:
+ * - Power (^) is right associative: a^b^c = a^(b^c)
+ * - Assignment is right associative: a = b = c means a = (b = c)
+ * - Rules are right associative: a -> b -> c means a -> (b -> c)
+ * - All other operators are left associative
+ *)
+
+(*
+ * PATTERN MATCHING:
+ * - _ matches any single expression
+ * - __ matches any sequence of expressions (1 or more)
+ * - ___ matches any sequence of expressions (0 or more)
+ * - x_ matches any expression and binds it to variable x
+ * - x_Integer matches any integer and binds it to variable x
+ * - x:_Integer modern typed pattern syntax
+ * - x_?Positive matches any expression that passes the Positive test
+ * - x_ /; x > 0 matches any expression that satisfies the condition
+ * - _Integer | _Real alternative pattern matching
+ *)
+
+(*
+ * MODERN FEATURES:
+ * - Pipeline operator |> for functional composition
+ * - Arrow functions (x, y) => x + y for lambda expressions
+ * - Dot notation obj.method[args] for method calls
+ * - Associations <|key -> value|> for key-value structures
+ * - Range syntax 1;;10;;2 for arithmetic sequences
+ * - Type annotations f[x]: Integer for typed functions
+ * - Modern pattern syntax x:_Integer as alternative to x_Integer
+ * - Pure functions # > 0 & for anonymous predicates (Wolfram-style)
+ * - Slots # and #1, #2, etc. for pure function parameters
+ *)
+
+(*
+ * COMMENTS:
+ * - Line comments: // text
+ * - Block comments: (* text *)
+ * - Documentation comments: //! text
+ * - Block comments can be nested
+ *)
+
+(*
+ * WHITESPACE:
+ * - Whitespace is generally ignored except as token separator
+ * - Newlines can optionally terminate statements
+ * - No significant indentation (unlike Python)
+ *)

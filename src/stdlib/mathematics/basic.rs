@@ -545,20 +545,26 @@ pub fn to_string(args: &[Value]) -> VmResult<Value> {
                 Value::Symbol(s) => s.clone(),
                 Value::Boolean(b) => if *b { "True".to_string() } else { "False".to_string() },
                 Value::Missing => "Missing".to_string(),
+                Value::Object(_) => "Object[...]".to_string(),
                 Value::List(_) => "{...}".to_string(), // Nested lists simplified
                 Value::Function(name) => format!("Function[{}]", name),
                 Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
                 Value::Quote(expr) => format!("Hold[{:?}]", expr),
                 Value::Pattern(pattern) => format!("{}", pattern),
                 Value::Rule { lhs: _, rhs: _ } => "Rule[...]".to_string(),
+                Value::PureFunction { .. } => "PureFunction[...]".to_string(),
+                Value::Slot { .. } => "Slot[...]".to_string(),
             }).collect();
             format!("{{{}}}", formatted_items.join(", "))
         }
         Value::Function(name) => format!("Function[{}]", name),
+        Value::Object(_) => "Object[...]".to_string(),
         Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
         Value::Quote(expr) => format!("Hold[{:?}]", expr),
         Value::Pattern(pattern) => format!("{}", pattern),
         Value::Rule { lhs: _, rhs: _ } => "Rule[...]".to_string(),
+        Value::PureFunction { .. } => "PureFunction[...]".to_string(),
+        Value::Slot { .. } => "Slot[...]".to_string(),
     };
 
     Ok(Value::String(string_repr))

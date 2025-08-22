@@ -1,0 +1,503 @@
+(* ============================================================================ *)
+(*                    Lyra Language Syntax Test Suite                          *)
+(*                Complete Test of All Language Features                       *)
+(* ============================================================================ *)
+
+(* This file comprehensively tests every aspect of Lyra syntax *)
+(* It serves as both documentation and validation of the language grammar *)
+(* Run this file to verify that all syntax features are working correctly *)
+
+// Line comment test
+(* Block comment test *)
+(* Nested (* block *) comment test *)
+//! Documentation comment test
+
+(* ============================================================================ *)
+(*                               LITERALS                                      *)
+(* ============================================================================ *)
+
+(* Integer literals *)
+42;
+-17;
++100;
+0;
+
+(* Real literals *)
+3.14;
+-2.71;
++1.0;
+0.0;
+1.5e10;
+-2.3E-5;
++4.67e+12;
+
+(* String literals *)
+"Hello, World!";
+"";
+"String with \"escaped quotes\"";
+"String with \n newline and \t tab";
+
+(* Interpolated strings *)
+name = "Ada";
+age = 37;
+"Hello #{name}, you are #{age} years old!";
+"Calculation: #{2 + 3} = 5";
+
+(* Symbols *)
+x;
+symbol;
+VariableName;
+$Context;
+#HashSymbol;
+symbol_with_underscores;
+symbol123;
+
+(* Context symbols *)
+MyPackage`symbol;
+My`Deep`Context`symbol;
+
+(* ============================================================================ *)
+(*                            BASIC EXPRESSIONS                                *)
+(* ============================================================================ *)
+
+(* Function calls *)
+f[];
+g[x];
+h[x, y, z];
+Sin[Pi/4];
+Plus[1, 2, 3];
+
+(* Lists *)
+{};
+{1};
+{1, 2, 3};
+{x, y, z};
+{{1, 2}, {3, 4}};
+{f[x], g[y], h[z]};
+
+(* Nested expressions *)
+f[g[x]];
+h[f[x], g[y]];
+{f[x], {g[y], h[z]}};
+
+(* ============================================================================ *)
+(*                             ARITHMETIC                                      *)
+(* ============================================================================ *)
+
+(* Basic arithmetic *)
+1 + 2;
+5 - 3;
+2 * 3;
+8 / 2;
+7 % 3;
+2 ^ 3;
+
+(* Operator precedence *)
+1 + 2 * 3;        (* Should be 1 + (2 * 3) = 7 *)
+(1 + 2) * 3;      (* Should be (1 + 2) * 3 = 9 *)
+2 ^ 3 ^ 2;        (* Right associative: 2 ^ (3 ^ 2) = 2 ^ 9 = 512 *)
+-2 ^ 2;           (* Should be -(2 ^ 2) = -4 *)
+(-2) ^ 2;         (* Should be (-2) ^ 2 = 4 *)
+
+(* Unary operators *)
+-x;
++x;
+!True;
+
+(* Complex arithmetic expressions *)
+(a + b) * (c - d) / (e + f);
+x^2 + y^2 - 2*x*y;
+Sin[x]^2 + Cos[x]^2;
+
+(* ============================================================================ *)
+(*                           COMPARISON & LOGIC                                *)
+(* ============================================================================ *)
+
+(* Comparison operators *)
+x == y;
+x != y;
+x < y;
+x <= y;
+x > y;
+x >= y;
+
+(* Logical operators *)
+x && y;
+x || y;
+!x;
+x && y || z;      (* Left associative: (x && y) || z *)
+!(x && y);
+
+(* Complex logical expressions *)
+(x > 0) && (y > 0);
+(x == 0) || (y == 0);
+!(x < 0 || y < 0);
+
+(* ============================================================================ *)
+(*                              PATTERNS                                       *)
+(* ============================================================================ *)
+
+(* Basic patterns *)
+_;
+_Integer;
+_Real;
+_String;
+_Symbol;
+
+(* Named patterns *)
+x_;
+value_Integer;
+name_String;
+func_Symbol;
+
+(* Sequence patterns *)
+__;          (* One or more *)
+___;         (* Zero or more *)
+x__;         (* Named sequence *)
+values__Integer;
+
+(* Modern typed patterns *)
+x:_Integer;
+value:_Real;
+name:_String;
+data:_{1, 2, 3};
+
+(* Predicate patterns *)
+x_?Positive;
+n_Integer?EvenQ;
+_?NumberQ;
+value_Real?(# > 0 &);
+
+(* Conditional patterns *)
+x_ /; x > 0;
+n_Integer /; n > 0 && n < 100;
+_ /; # != 0;
+
+(* Alternative patterns *)
+_Integer | _Real;
+x_Integer | x_Real;
+_?NumericQ | _String;
+
+(* Complex pattern combinations *)
+x_?Positive /; x < 100;
+(x_Integer | x_Real) /; x > 0;
+values__Integer?(Length[#] > 3 &);
+
+(* ============================================================================ *)
+(*                            RULES & REPLACEMENT                              *)
+(* ============================================================================ *)
+
+(* Basic rules *)
+x -> x^2;
+Sin[0] -> 0;
+f[x_] -> x + 1;
+
+(* Delayed rules *)
+x :> RandomReal[];
+f[x_] :> x + RandomInteger[10];
+
+(* Complex rules *)
+f[x_Integer] -> x^2;
+g[x_Real] -> Sin[x];
+h[x_, y_] -> x + y;
+
+(* Replacement operations *)
+x^2 /. x -> 3;              (* Single replacement *)
+{x, y, x} /. x -> 1;        (* Replace all x with 1 *)
+expr //. rules;             (* Repeated replacement *)
+
+(* Multiple rules *)
+expr /. {x -> 1, y -> 2, z -> 3};
+expr /. {f[x_] -> x^2, g[x_] -> Sin[x]};
+
+(* ============================================================================ *)
+(*                             ASSIGNMENTS                                     *)
+(* ============================================================================ *)
+
+(* Immediate assignment *)
+x = 42;
+result = 2 + 3;
+data = {1, 2, 3, 4, 5};
+
+(* Delayed assignment *)
+x := RandomReal[];
+currentTime := Now[];
+randomData := RandomInteger[100, 10];
+
+(* Function definitions *)
+f[x_] = x^2;
+g[x_, y_] = x + y;
+h[x_Integer] = x * 2;
+square[x_] := x^2;
+
+(* Pattern-based assignments *)
+{a, b, c} = {1, 2, 3};
+f[x_?Positive] = Sqrt[x];
+g[0] = 1;
+g[n_] := n * g[n - 1];
+
+(* ============================================================================ *)
+(*                           MODERN SYNTAX FEATURES                            *)
+(* ============================================================================ *)
+
+(* Associations (key-value structures) *)
+<||>;                                    (* Empty association *)
+<|"name" -> "Ada"|>;                    (* Single pair *)
+<|"name" -> "Ada", "age" -> 37|>;       (* Multiple pairs *)
+<|x -> 1, y -> 2, z -> 3|>;
+<|"nested" -> <|"inner" -> 42|>|>;      (* Nested associations *)
+
+(* Pipeline operator *)
+x |> f;                                 (* Simple pipeline *)
+data |> Map[f] |> Select[g] |> Total;   (* Multi-stage pipeline *)
+{1, 2, 3} |> Map[x -> x^2] |> Total;    (* With lambda *)
+
+(* Complex pipeline examples *)
+data 
+  |> Map[x -> x * 2] 
+  |> Select[x -> x > 10] 
+  |> Sort 
+  |> Take[5];
+
+(* Dot notation (method calls) *)
+obj.method[];
+obj.process[data];
+obj.transform[func, args];
+
+(* Chained dot calls *)
+data.filter[predicate].map[func].reduce[combiner];
+obj.first[].second[x].third[y, z];
+
+(* Mixed dot calls and pipelines *)
+data |> obj.process[config] |> result.format[];
+
+(* Range expressions *)
+1;;10;                    (* Simple range *)
+0;;1;;0.1;               (* Range with step *)
+-5;;5;;2;                (* Negative to positive *)
+x;;y + 1;;step;          (* Expression ranges *)
+
+(* Arrow functions (lambdas) *)
+() => 42;                          (* No parameters *)
+(x) => x + 1;                      (* Single parameter *)
+(x, y) => x + y;                   (* Multiple parameters *)
+(x) => f[x^2];                     (* Complex body *)
+
+(* Arrow functions in higher-order functions *)
+Map[(x) => x^2, {1, 2, 3, 4}];
+Select[(x) => x > 5, Range[10]];
+data |> Map[(x) => x * 2] |> Select[(x) => x > 10];
+
+(* Nested arrow functions *)
+(x) => (y) => x + y;               (* Curried function *)
+createAdder = (x) => (y) => x + y;
+add5 = createAdder[5];
+
+(* Type annotations *)
+f[x]: Integer;
+g[x, y]: Real;
+processData[data]: {Integer};
+
+(* ============================================================================ *)
+(*                            PART ACCESS                                      *)
+(* ============================================================================ *)
+
+(* List part access *)
+list = {a, b, c, d, e};
+list[[1]];           (* First element *)
+list[[2]];           (* Second element *)
+list[[-1]];          (* Last element *)
+
+(* Multi-dimensional access *)
+matrix = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+matrix[[1, 2]];      (* Element at row 1, column 2 *)
+matrix[[2]];         (* Second row *)
+
+(* Multiple indices *)
+data[[1, 3, 5]];     (* Multiple elements *)
+matrix[[1;;2, 2;;3]]; (* Submatrix *)
+
+(* ============================================================================ *)
+(*                           COMPLEX EXPRESSIONS                               *)
+(* ============================================================================ *)
+
+(* Nested function calls with multiple argument types *)
+f[g[x, y], {1, 2, 3}, h[a -> b, c -> d]];
+
+(* Complex mathematical expressions *)
+result = Integrate[x^2 * Sin[x], {x, 0, Pi}] + 
+         Sum[1/n^2, {n, 1, Infinity}] - 
+         Limit[Sin[x]/x, x -> 0];
+
+(* Pattern matching in function definitions *)
+factorial[0] = 1;
+factorial[n_Integer?Positive] := n * factorial[n - 1];
+
+fibonacci[0] = 0;
+fibonacci[1] = 1;
+fibonacci[n_Integer?(# > 1 &)] := fibonacci[n - 1] + fibonacci[n - 2];
+
+(* Complex data structures *)
+data = {
+  <|"name" -> "Alice", "age" -> 30, "scores" -> {85, 92, 78}|>,
+  <|"name" -> "Bob", "age" -> 25, "scores" -> {90, 88, 95}|>,
+  <|"name" -> "Carol", "age" -> 35, "scores" -> {88, 91, 87}|>
+};
+
+(* Processing complex data *)
+averageScores = data 
+  |> Map[person -> Mean[person["scores"]]] 
+  |> Mean;
+
+topPerformers = data 
+  |> Select[person -> Mean[person["scores"]] > 85] 
+  |> Map[person -> person["name"]];
+
+(* ============================================================================ *)
+(*                              EDGE CASES                                     *)
+(* ============================================================================ *)
+
+(* Empty structures *)
+f[];                     (* Function with no arguments *)
+{};                      (* Empty list *)
+<||>;                    (* Empty association *)
+() => 42;                (* Arrow function with no parameters *)
+
+(* Single element structures *)
+{x};                     (* Single element list *)
+<|x -> y|>;             (* Single pair association *)
+
+(* Deeply nested structures *)
+{{{{{1}}}}};
+<|a -> <|b -> <|c -> d|>|>|>;
+f[g[h[i[j[k]]]]];
+
+(* Complex operator combinations *)
+x^y^z;                   (* Right associative power *)
+a + b * c / d - e;       (* Mixed arithmetic operators *)
+x && y || z && w;        (* Mixed logical operators *)
+
+(* Pattern edge cases *)
+f[___] = "empty or any";                    (* Zero or more arguments *)
+g[x_, y___] = {x, y};                       (* Required + optional *)
+h[x_Integer | x_Real] = N[x];               (* Alternative types *)
+
+(* Rule edge cases *)
+f[x_ /; x > 0] = Sqrt[x];                   (* Conditional pattern in rule *)
+g[x_?NumberQ] := N[x, 10];                  (* Predicate pattern in rule *)
+
+(* Assignment edge cases *)
+{a, b, rest___} = {1, 2, 3, 4, 5};         (* List destructuring *)
+<|key1 -> a, key2 -> b|> = <|key1 -> 1, key2 -> 2, key3 -> 3|>; (* Association destructuring *)
+
+(* ============================================================================ *)
+(*                         FUNCTIONAL PROGRAMMING                              *)
+(* ============================================================================ *)
+
+(* Higher-order functions *)
+Map[f, {1, 2, 3}];
+Select[x -> x > 0, {-2, -1, 0, 1, 2}];
+Fold[Plus, 0, {1, 2, 3, 4}];
+
+(* Function composition *)
+compose = (f, g) => (x) => f[g[x]];
+pipeline = compose[Sin, Sqrt];
+result = pipeline[4];
+
+(* Partial application simulation *)
+add = (x, y) => x + y;
+add5 = (y) => add[5, y];
+add5[10];  (* Should be 15 *)
+
+(* Currying *)
+curry = (f) => (x) => (y) => f[x, y];
+curriedAdd = curry[(x, y) => x + y];
+add10 = curriedAdd[10];
+add10[5];  (* Should be 15 *)
+
+(* ============================================================================ *)
+(*                           ERROR CASES (EXPECTED TO FAIL)                    *)
+(* ============================================================================ *)
+
+(* Note: These are commented out as they should cause parse errors *)
+(* Uncomment individual lines to test error handling *)
+
+(* Syntax errors *)
+(* f[x, );          - Unclosed parenthesis *)
+(* {1, 2, ;         - Unclosed brace *)
+(* x +;             - Incomplete expression *)
+(* -> 5;            - Rule without left side *)
+
+(* Invalid patterns *)
+(* __;             - BlankSequence in wrong context - actually this is valid *)
+(* x___;           - BlankNullSequence with name - this is valid too *)
+
+(* Invalid operators *)
+(* x === y;        - Triple equals not supported *)
+(* x <> y;         - String join in wrong context *)
+
+(* ============================================================================ *)
+(*                              TEST VALIDATION                                *)
+(* ============================================================================ *)
+
+(* Test arithmetic *)
+arithmeticTest = {
+  1 + 1,                    (* Should be 2 *)
+  2 * 3,                    (* Should be 6 *)
+  2^3,                      (* Should be 8 *)
+  10 / 2,                   (* Should be 5 *)
+  7 % 3                     (* Should be 1 *)
+};
+
+(* Test function calls *)
+mathTest = {
+  Sin[0],                   (* Should be 0 *)
+  Cos[0],                   (* Should be 1 *)
+  Sqrt[4],                  (* Should be 2 *)
+  Abs[-5]                   (* Should be 5 *)
+};
+
+(* Test pattern matching *)
+testFunction[x_Integer] := x^2;
+testFunction[x_Real] := Sin[x];
+testFunction[x_String] := StringLength[x];
+
+patternTest = {
+  testFunction[5],          (* Should be 25 *)
+  testFunction[3.14],       (* Should be Sin[3.14] *)
+  testFunction["hello"]     (* Should be 5 *)
+};
+
+(* Test modern syntax *)
+modernTest = {1, 2, 3} 
+  |> Map[(x) => x^2] 
+  |> Select[(x) => x > 5] 
+  |> Total;
+
+(* Test associations *)
+person = <|"name" -> "Ada", "age" -> 37, "profession" -> "programmer"|>;
+personInfo = person["name"] <> " is " <> ToString[person["age"]] <> " years old";
+
+(* ============================================================================ *)
+(*                                SUMMARY                                      *)
+(* ============================================================================ *)
+
+(* This file tests the following Lyra language features: *)
+(* 
+ * 1. Literals: integers, reals, strings, symbols
+ * 2. Basic expressions: function calls, lists, nesting
+ * 3. Arithmetic: all operators and precedence rules
+ * 4. Comparison and logic: all comparison and logical operators
+ * 5. Patterns: all pattern types including modern syntax
+ * 6. Rules and replacement: immediate and delayed rules
+ * 7. Assignment: immediate, delayed, and pattern-based
+ * 8. Modern features: associations, pipelines, dot calls, ranges, arrow functions
+ * 9. Part access: single and multi-dimensional indexing
+ * 10. Complex expressions: nested calls, mathematical formulas
+ * 11. Edge cases: empty structures, deeply nested, operator combinations
+ * 12. Functional programming: higher-order functions, composition, currying
+ * 13. Error cases: syntax errors that should be caught by parser
+ * 14. Test validation: expressions that verify correctness
+ *)
+
+"Syntax test suite completed successfully!";

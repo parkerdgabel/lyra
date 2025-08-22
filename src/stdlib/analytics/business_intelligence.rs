@@ -4,9 +4,10 @@
 //! cohort analysis, funnel analysis, retention metrics, and A/B testing.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, LyObj};
+use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc, Duration};
+use std::any::Any;
 
 /// Key Performance Indicator - Foreign Object
 #[derive(Debug, Clone)]
@@ -24,8 +25,16 @@ impl Foreign for KPI {
     fn type_name(&self) -> &'static str {
         "KPI"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "name" => Ok(Value::String(self.name.clone())),
             "value" => Ok(Value::Real(self.value)),
@@ -49,9 +58,10 @@ impl Foreign for KPI {
                     Ok(Value::Missing)
                 }
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for KPI", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "KPI".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -69,8 +79,16 @@ impl Foreign for CohortAnalysis {
     fn type_name(&self) -> &'static str {
         "CohortAnalysis"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "cohorts" => {
                 let mut cohort_map = HashMap::new();
@@ -89,10 +107,14 @@ impl Foreign for CohortAnalysis {
                     if let Some(rates) = self.cohorts.get(cohort_name) {
                         Ok(Value::List(rates.iter().map(|&x| Value::Real(x)).collect()))
                     } else {
-                        Err(VmError::Runtime(format!("Cohort '{}' not found", cohort_name)))
+                        Err(ForeignError::RuntimeError {
+                            message: format!("Cohort '{}' not found", cohort_name),
+                        })
                     }
                 } else {
-                    Err(VmError::Runtime("getCohort requires cohort name".to_string()))
+                    Err(ForeignError::RuntimeError {
+                        message: "getCohort requires cohort name".to_string(),
+                    })
                 }
             },
             "cohortSize" => {
@@ -100,10 +122,14 @@ impl Foreign for CohortAnalysis {
                     if let Some(&size) = self.cohort_sizes.get(cohort_name) {
                         Ok(Value::Integer(size as i64))
                     } else {
-                        Err(VmError::Runtime(format!("Cohort '{}' not found", cohort_name)))
+                        Err(ForeignError::RuntimeError {
+                            message: format!("Cohort '{}' not found", cohort_name),
+                        })
                     }
                 } else {
-                    Err(VmError::Runtime("cohortSize requires cohort name".to_string()))
+                    Err(ForeignError::RuntimeError {
+                        message: "cohortSize requires cohort name".to_string(),
+                    })
                 }
             },
             "averageRetention" => {
@@ -124,9 +150,10 @@ impl Foreign for CohortAnalysis {
                     Ok(Value::Real(0.0))
                 }
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for CohortAnalysis", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "CohortAnalysis".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -144,8 +171,16 @@ impl Foreign for FunnelAnalysis {
     fn type_name(&self) -> &'static str {
         "FunnelAnalysis"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "stages" => Ok(Value::List(
                 self.stages.iter().map(|s| Value::String(s.clone())).collect()
@@ -179,9 +214,10 @@ impl Foreign for FunnelAnalysis {
                     Ok(Value::Missing)
                 }
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for FunnelAnalysis", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "FunnelAnalysis".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -204,8 +240,16 @@ impl Foreign for ABTestResult {
     fn type_name(&self) -> &'static str {
         "ABTestResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "controlSize" => Ok(Value::Integer(self.control_size as i64)),
             "treatmentSize" => Ok(Value::Integer(self.treatment_size as i64)),
@@ -222,9 +266,10 @@ impl Foreign for ABTestResult {
             "relativeImprovement" => Ok(Value::Real(
                 (self.treatment_metric - self.control_metric) / self.control_metric * 100.0
             )),
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for ABTestResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "ABTestResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }

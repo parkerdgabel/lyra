@@ -20,6 +20,11 @@ pub enum AutodiffMode {
 
 impl AutodiffMode {
     /// Get a human-readable name for this mode
+    pub fn name(&self) -> &'static str {
+        self.type_name()
+    }
+    
+    /// Get a human-readable name for this mode
     pub fn type_name(&self) -> &'static str {
         match self {
             AutodiffMode::Forward => "forward",

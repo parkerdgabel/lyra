@@ -10,7 +10,6 @@ use crate::vm::Value;
 use crate::repl::{ReplError, ReplResult};
 use colored::*;
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 
 /// Statistical summary of benchmark results
 #[derive(Debug, Clone)]

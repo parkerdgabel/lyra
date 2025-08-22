@@ -58,6 +58,14 @@ pub enum Expr {
         return_type: Box<Expr>,
     },
     InterpolatedString(Vec<InterpolationPart>),
+    // Pure function support
+    PureFunction {
+        body: Box<Expr>,
+        max_slot: Option<usize>, // highest slot number found, for optimization
+    },
+    Slot {
+        number: Option<usize>, // None for #, Some(n) for #n
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
@@ -237,6 +245,15 @@ impl fmt::Display for Expr {
                     }
                 }
                 write!(f, "\"")
+            }
+            Expr::PureFunction { body, .. } => {
+                write!(f, "{} &", body)
+            }
+            Expr::Slot { number } => {
+                match number {
+                    Some(n) => write!(f, "#{}", n),
+                    None => write!(f, "#"),
+                }
             }
         }
     }
@@ -453,6 +470,112 @@ impl Expr {
             pattern: Box::new(pattern),
             condition: Box::new(condition),
         })
+    }
+
+    // Pure function constructors
+    pub fn pure_function(body: Expr) -> Self {
+        let max_slot = Self::find_max_slot(&body);
+        Expr::PureFunction {
+            body: Box::new(body),
+            max_slot,
+        }
+    }
+
+    pub fn slot() -> Self {
+        Expr::Slot { number: None }
+    }
+
+    pub fn numbered_slot(number: usize) -> Self {
+        Expr::Slot {
+            number: Some(number),
+        }
+    }
+
+    // Helper function to find the maximum slot number in an expression
+    fn find_max_slot(expr: &Expr) -> Option<usize> {
+        match expr {
+            Expr::Slot { number } => *number,
+            Expr::Function { head, args } => {
+                let head_max = Self::find_max_slot(head);
+                let args_max = args.iter().filter_map(|arg| Self::find_max_slot(arg)).max();
+                match (head_max, args_max) {
+                    (Some(h), Some(a)) => Some(h.max(a)),
+                    (Some(h), None) => Some(h),
+                    (None, Some(a)) => Some(a),
+                    (None, None) => None,
+                }
+            }
+            Expr::List(items) => items.iter().filter_map(|item| Self::find_max_slot(item)).max(),
+            Expr::Rule { lhs, rhs, .. } => {
+                let lhs_max = Self::find_max_slot(lhs);
+                let rhs_max = Self::find_max_slot(rhs);
+                match (lhs_max, rhs_max) {
+                    (Some(l), Some(r)) => Some(l.max(r)),
+                    (Some(l), None) => Some(l),
+                    (None, Some(r)) => Some(r),
+                    (None, None) => None,
+                }
+            }
+            Expr::Assignment { lhs, rhs, .. } => {
+                let lhs_max = Self::find_max_slot(lhs);
+                let rhs_max = Self::find_max_slot(rhs);
+                match (lhs_max, rhs_max) {
+                    (Some(l), Some(r)) => Some(l.max(r)),
+                    (Some(l), None) => Some(l),
+                    (None, Some(r)) => Some(r),
+                    (None, None) => None,
+                }
+            }
+            Expr::Replace { expr, rules, .. } => {
+                let expr_max = Self::find_max_slot(expr);
+                let rules_max = Self::find_max_slot(rules);
+                match (expr_max, rules_max) {
+                    (Some(e), Some(r)) => Some(e.max(r)),
+                    (Some(e), None) => Some(e),
+                    (None, Some(r)) => Some(r),
+                    (None, None) => None,
+                }
+            }
+            Expr::Association(pairs) => pairs
+                .iter()
+                .flat_map(|(k, v)| [Self::find_max_slot(k), Self::find_max_slot(v)])
+                .flatten()
+                .max(),
+            Expr::Pipeline { stages } => stages.iter().filter_map(|stage| Self::find_max_slot(stage)).max(),
+            Expr::DotCall { object, args, .. } => {
+                let obj_max = Self::find_max_slot(object);
+                let args_max = args.iter().filter_map(|arg| Self::find_max_slot(arg)).max();
+                match (obj_max, args_max) {
+                    (Some(o), Some(a)) => Some(o.max(a)),
+                    (Some(o), None) => Some(o),
+                    (None, Some(a)) => Some(a),
+                    (None, None) => None,
+                }
+            }
+            Expr::Range { start, end, step } => {
+                let start_max = Self::find_max_slot(start);
+                let end_max = Self::find_max_slot(end);
+                let step_max = step.as_ref().and_then(|s| Self::find_max_slot(s));
+                [start_max, end_max, step_max].into_iter().flatten().max()
+            }
+            Expr::ArrowFunction { body, .. } => Self::find_max_slot(body),
+            Expr::TypedFunction { head, params, return_type } => {
+                let head_max = Self::find_max_slot(head);
+                let params_max = params.iter().filter_map(|p| Self::find_max_slot(p)).max();
+                let return_max = Self::find_max_slot(return_type);
+                [head_max, params_max, return_max].into_iter().flatten().max()
+            }
+            Expr::InterpolatedString(parts) => parts
+                .iter()
+                .filter_map(|part| match part {
+                    InterpolationPart::Expression(expr) => Self::find_max_slot(expr),
+                    _ => None,
+                })
+                .max(),
+            Expr::PureFunction { body, .. } => Self::find_max_slot(body),
+            // These don't contain slots
+            Expr::Symbol(_) | Expr::Number(_) | Expr::String(_) | Expr::Pattern(_) => None,
+        }
     }
 }
 
@@ -709,5 +832,276 @@ mod tests {
             complex.to_string(),
             "<|\"data\" -> {1, 2}|> |> data.map[(x) => Times[x, 2]]"
         );
+    }
+
+    // Tests for PureFunction and Slot AST nodes
+    #[test]
+    fn test_slot_creation() {
+        let slot = Expr::slot();
+        assert_eq!(slot, Expr::Slot { number: None });
+        
+        let numbered_slot = Expr::numbered_slot(1);
+        assert_eq!(numbered_slot, Expr::Slot { number: Some(1) });
+        
+        let numbered_slot_5 = Expr::numbered_slot(5);
+        assert_eq!(numbered_slot_5, Expr::Slot { number: Some(5) });
+    }
+
+    #[test]
+    fn test_slot_display() {
+        let slot = Expr::slot();
+        assert_eq!(slot.to_string(), "#");
+        
+        let slot1 = Expr::numbered_slot(1);
+        assert_eq!(slot1.to_string(), "#1");
+        
+        let slot2 = Expr::numbered_slot(2);
+        assert_eq!(slot2.to_string(), "#2");
+        
+        let slot10 = Expr::numbered_slot(10);
+        assert_eq!(slot10.to_string(), "#10");
+    }
+
+    #[test]
+    fn test_pure_function_creation() {
+        let body = Expr::function(
+            Expr::symbol("Plus"),
+            vec![Expr::slot(), Expr::integer(1)]
+        );
+        let pure_func = Expr::pure_function(body.clone());
+        
+        match pure_func {
+            Expr::PureFunction { body: func_body, max_slot } => {
+                assert_eq!(*func_body, body);
+                assert_eq!(max_slot, None); // # has no number
+            },
+            _ => panic!("Expected PureFunction"),
+        }
+    }
+
+    #[test]
+    fn test_pure_function_display() {
+        let simple_slot = Expr::pure_function(Expr::slot());
+        assert_eq!(simple_slot.to_string(), "# &");
+        
+        let slot_plus_one = Expr::pure_function(
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::slot(), Expr::integer(1)]
+            )
+        );
+        assert_eq!(slot_plus_one.to_string(), "Plus[#, 1] &");
+        
+        let numbered_slots = Expr::pure_function(
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::numbered_slot(1), Expr::numbered_slot(2)]
+            )
+        );
+        assert_eq!(numbered_slots.to_string(), "Plus[#1, #2] &");
+    }
+
+    #[test]
+    fn test_find_max_slot_simple() {
+        // Test basic slot detection
+        assert_eq!(Expr::find_max_slot(&Expr::slot()), None);
+        assert_eq!(Expr::find_max_slot(&Expr::numbered_slot(1)), Some(1));
+        assert_eq!(Expr::find_max_slot(&Expr::numbered_slot(5)), Some(5));
+        
+        // Test non-slot expressions
+        assert_eq!(Expr::find_max_slot(&Expr::integer(42)), None);
+        assert_eq!(Expr::find_max_slot(&Expr::symbol("x")), None);
+        assert_eq!(Expr::find_max_slot(&Expr::string("hello")), None);
+    }
+
+    #[test]
+    fn test_find_max_slot_in_functions() {
+        // Function with slots in arguments
+        let func_with_slots = Expr::function(
+            Expr::symbol("Plus"),
+            vec![
+                Expr::numbered_slot(1),
+                Expr::numbered_slot(3),
+                Expr::numbered_slot(2)
+            ]
+        );
+        assert_eq!(Expr::find_max_slot(&func_with_slots), Some(3));
+        
+        // Function with slot in head
+        let func_with_slot_head = Expr::function(
+            Expr::numbered_slot(2),
+            vec![Expr::integer(1), Expr::integer(2)]
+        );
+        assert_eq!(Expr::find_max_slot(&func_with_slot_head), Some(2));
+        
+        // Function with no slots
+        let func_no_slots = Expr::function(
+            Expr::symbol("Plus"),
+            vec![Expr::integer(1), Expr::integer(2)]
+        );
+        assert_eq!(Expr::find_max_slot(&func_no_slots), None);
+    }
+
+    #[test]
+    fn test_find_max_slot_in_lists() {
+        let list_with_slots = Expr::list(vec![
+            Expr::numbered_slot(1),
+            Expr::integer(42),
+            Expr::numbered_slot(4),
+            Expr::numbered_slot(2)
+        ]);
+        assert_eq!(Expr::find_max_slot(&list_with_slots), Some(4));
+        
+        let list_no_slots = Expr::list(vec![
+            Expr::integer(1),
+            Expr::string("hello"),
+            Expr::symbol("x")
+        ]);
+        assert_eq!(Expr::find_max_slot(&list_no_slots), None);
+    }
+
+    #[test]
+    fn test_find_max_slot_in_rules() {
+        let rule_with_slots = Expr::rule(
+            Expr::numbered_slot(2),
+            Expr::function(
+                Expr::symbol("Times"),
+                vec![Expr::numbered_slot(2), Expr::numbered_slot(5)]
+            ),
+            false
+        );
+        assert_eq!(Expr::find_max_slot(&rule_with_slots), Some(5));
+    }
+
+    #[test]
+    fn test_find_max_slot_in_assignments() {
+        let assignment_with_slots = Expr::assignment(
+            Expr::symbol("x"),
+            Expr::numbered_slot(3),
+            false
+        );
+        assert_eq!(Expr::find_max_slot(&assignment_with_slots), Some(3));
+    }
+
+    #[test]
+    fn test_find_max_slot_in_pure_functions() {
+        let nested_pure_func = Expr::pure_function(
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::numbered_slot(1), Expr::numbered_slot(7)]
+            )
+        );
+        assert_eq!(Expr::find_max_slot(&nested_pure_func), Some(7));
+    }
+
+    #[test]
+    fn test_find_max_slot_complex_nesting() {
+        // Deep nesting: Plus[#1, Times[#3, List[#2, #8]]]
+        let complex_expr = Expr::function(
+            Expr::symbol("Plus"),
+            vec![
+                Expr::numbered_slot(1),
+                Expr::function(
+                    Expr::symbol("Times"),
+                    vec![
+                        Expr::numbered_slot(3),
+                        Expr::list(vec![
+                            Expr::numbered_slot(2),
+                            Expr::numbered_slot(8)
+                        ])
+                    ]
+                )
+            ]
+        );
+        assert_eq!(Expr::find_max_slot(&complex_expr), Some(8));
+    }
+
+    #[test]
+    fn test_pure_function_max_slot_calculation() {
+        // Test that max_slot is calculated correctly during creation
+        let body_with_slots = Expr::function(
+            Expr::symbol("Plus"),
+            vec![
+                Expr::numbered_slot(1),
+                Expr::numbered_slot(3),
+                Expr::slot() // # has no number
+            ]
+        );
+        let pure_func = Expr::pure_function(body_with_slots);
+        
+        match pure_func {
+            Expr::PureFunction { max_slot, .. } => {
+                assert_eq!(max_slot, Some(3));
+            },
+            _ => panic!("Expected PureFunction"),
+        }
+    }
+
+    #[test]
+    fn test_pure_function_empty_body() {
+        let empty_pure_func = Expr::pure_function(Expr::integer(42));
+        
+        match empty_pure_func {
+            Expr::PureFunction { max_slot, .. } => {
+                assert_eq!(max_slot, None);
+            },
+            _ => panic!("Expected PureFunction"),
+        }
+    }
+
+    #[test]
+    fn test_serialization_deserialization() {
+        use serde_json;
+        
+        // Test Slot serialization
+        let slot = Expr::slot();
+        let slot_json = serde_json::to_string(&slot).unwrap();
+        let slot_deserialized: Expr = serde_json::from_str(&slot_json).unwrap();
+        assert_eq!(slot, slot_deserialized);
+        
+        // Test numbered slot serialization
+        let numbered_slot = Expr::numbered_slot(5);
+        let numbered_slot_json = serde_json::to_string(&numbered_slot).unwrap();
+        let numbered_slot_deserialized: Expr = serde_json::from_str(&numbered_slot_json).unwrap();
+        assert_eq!(numbered_slot, numbered_slot_deserialized);
+        
+        // Test PureFunction serialization
+        let pure_func = Expr::pure_function(
+            Expr::function(
+                Expr::symbol("Plus"),
+                vec![Expr::numbered_slot(1), Expr::integer(1)]
+            )
+        );
+        let pure_func_json = serde_json::to_string(&pure_func).unwrap();
+        let pure_func_deserialized: Expr = serde_json::from_str(&pure_func_json).unwrap();
+        assert_eq!(pure_func, pure_func_deserialized);
+    }
+
+    #[test]
+    fn test_hash_and_equality() {
+        use std::collections::HashSet;
+        
+        // Test that equal slots have equal hashes
+        let slot1 = Expr::slot();
+        let slot2 = Expr::slot();
+        assert_eq!(slot1, slot2);
+        
+        let numbered_slot1 = Expr::numbered_slot(1);
+        let numbered_slot1_copy = Expr::numbered_slot(1);
+        assert_eq!(numbered_slot1, numbered_slot1_copy);
+        
+        // Test that different slots are not equal
+        let numbered_slot2 = Expr::numbered_slot(2);
+        assert_ne!(numbered_slot1, numbered_slot2);
+        assert_ne!(slot1, numbered_slot1);
+        
+        // Test hash set usage
+        let mut slot_set = HashSet::new();
+        slot_set.insert(slot1);
+        slot_set.insert(numbered_slot1.clone());
+        slot_set.insert(numbered_slot2);
+        slot_set.insert(numbered_slot1_copy); // Should not increase size
+        
+        assert_eq!(slot_set.len(), 3);
     }
 }

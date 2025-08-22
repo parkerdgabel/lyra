@@ -3,9 +3,8 @@
 //! This module provides comprehensive input validation capabilities including
 //! bracket/quote balance checking, syntax validation, and multiline expression detection.
 
-use crate::lexer::{Lexer, Token, TokenKind};
 use crate::repl::config::{ReplConfig, ValidationConfig};
-use rustyline::validate::{ValidationResult, ValidationContext};
+use rustyline::validate::ValidationResult;
 use rustyline::Result as RustylineResult;
 
 pub mod bracket_matcher;

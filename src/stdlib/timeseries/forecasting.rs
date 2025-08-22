@@ -5,7 +5,8 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
-use crate::stdlib::timeseries::core::{TimeSeries, Frequency, extract_timeseries};
+use super::core::{TimeSeries, extract_timeseries};
+
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -657,7 +658,7 @@ mod tests {
     #[test]
     fn test_simple_exponential_smoothing() {
         let values = vec![10.0, 12.0, 13.0, 12.0, 14.0, 16.0, 15.0, 17.0];
-        let series = TimeSeries::new(values, Frequency::Daily);
+        let series = TimeSeries::new(values);
         
         let params = ExponentialSmoothingParams {
             alpha: 0.3,
@@ -679,7 +680,7 @@ mod tests {
     #[test]
     fn test_double_exponential_smoothing() {
         let values = vec![10.0, 11.0, 12.5, 14.0, 15.5, 17.0, 18.5, 20.0];
-        let series = TimeSeries::new(values, Frequency::Daily);
+        let series = TimeSeries::new(values);
         
         let params = ExponentialSmoothingParams {
             alpha: 0.3,
@@ -704,7 +705,7 @@ mod tests {
     #[test]
     fn test_moving_average_simple() {
         let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-        let series = TimeSeries::new(values, Frequency::Daily);
+        let series = TimeSeries::new(values);
         
         let result = MovingAverageResult::simple(&series, 3).unwrap();
         
@@ -719,7 +720,7 @@ mod tests {
     #[test]
     fn test_moving_average_exponential() {
         let values = vec![10.0, 12.0, 11.0, 13.0, 15.0];
-        let series = TimeSeries::new(values, Frequency::Daily);
+        let series = TimeSeries::new(values);
         
         let result = MovingAverageResult::exponential(&series, 0.3).unwrap();
         

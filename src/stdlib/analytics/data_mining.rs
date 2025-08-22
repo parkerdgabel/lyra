@@ -4,9 +4,10 @@
 //! clustering, classification, association rules, and ensemble methods.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, LyObj};
+use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
 use rand::{thread_rng, Rng};
+use std::any::Any;
 
 /// Clustering Result - Foreign Object
 #[derive(Debug, Clone)]
@@ -23,8 +24,16 @@ impl Foreign for ClusteringResult {
     fn type_name(&self) -> &'static str {
         "ClusteringResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "algorithm" => Ok(Value::String(self.algorithm.clone())),
             "k" => Ok(Value::Integer(self.k as i64)),
@@ -47,9 +56,10 @@ impl Foreign for ClusteringResult {
                 }
                 Ok(Value::List(sizes.iter().map(|&size| Value::Integer(size as i64)).collect()))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for ClusteringResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "ClusteringResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -71,8 +81,16 @@ impl Foreign for ClassificationResult {
     fn type_name(&self) -> &'static str {
         "ClassificationResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "algorithm" => Ok(Value::String(self.algorithm.clone())),
             "accuracy" => Ok(Value::Real(self.accuracy)),
@@ -99,9 +117,10 @@ impl Foreign for ClassificationResult {
             "classes" => Ok(Value::List(
                 self.classes.iter().map(|s| Value::String(s.clone())).collect()
             )),
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for ClassificationResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "ClassificationResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -128,8 +147,16 @@ impl Foreign for AssociationRulesResult {
     fn type_name(&self) -> &'static str {
         "AssociationRulesResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "rules" => {
                 let rules_list: Vec<Value> = self.rules.iter()
@@ -171,9 +198,10 @@ impl Foreign for AssociationRulesResult {
                     .collect();
                 Ok(Value::List(top_rules))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for AssociationRulesResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "AssociationRulesResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -192,8 +220,16 @@ impl Foreign for DecisionTreeResult {
     fn type_name(&self) -> &'static str {
         "DecisionTreeResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "maxDepth" => Ok(Value::Integer(self.max_depth as i64)),
             "featureImportance" => Ok(Value::List(
@@ -206,13 +242,18 @@ impl Foreign for DecisionTreeResult {
             )),
             "predict" => {
                 // Simplified prediction logic
-                let features = extract_numeric_vector(&args[0])?;
-                let predicted_class = predict_with_tree(&features, &self.feature_importance)?;
+                let features = extract_numeric_vector(&args[0]).map_err(|e| ForeignError::RuntimeError {
+                    message: format!("Error extracting features: {:?}", e),
+                })?;
+                let predicted_class = predict_with_tree(&features, &self.feature_importance).map_err(|e| ForeignError::RuntimeError {
+                    message: format!("Error predicting: {:?}", e),
+                })?;
                 Ok(Value::String(predicted_class))
             },
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for DecisionTreeResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "DecisionTreeResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -231,8 +272,16 @@ impl Foreign for EnsembleResult {
     fn type_name(&self) -> &'static str {
         "EnsembleResult"
     }
+    
+    fn clone_boxed(&self) -> Box<dyn Foreign> {
+        Box::new(self.clone())
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> VmResult<Value> {
+    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "method" => Ok(Value::String(self.method.clone())),
             "models" => Ok(Value::List(
@@ -245,9 +294,10 @@ impl Foreign for EnsembleResult {
             "featureImportance" => Ok(Value::List(
                 self.feature_importance.iter().map(|&x| Value::Real(x)).collect()
             )),
-            _ => Err(VmError::Runtime(format!(
-                "Unknown method '{}' for EnsembleResult", method
-            ))),
+            _ => Err(ForeignError::UnknownMethod {
+                type_name: "EnsembleResult".to_string(),
+                method: method.to_string(),
+            }),
         }
     }
 }
@@ -664,9 +714,9 @@ fn perform_hierarchical_clustering(data: Vec<Vec<f64>>, k: usize, _options: Hash
     // Merge clusters until we have k clusters (simplified)
     while labels.iter().max().unwrap() - labels.iter().min().unwrap() + 1 > k {
         // Find closest pair and merge (simplified)
-        if let Some(merge_label) = labels.iter().max() {
+        if let Some(&merge_label) = labels.iter().max() {
             for label in &mut labels {
-                if *label == *merge_label {
+                if *label == merge_label {
                     *label = merge_label - 1;
                 }
             }

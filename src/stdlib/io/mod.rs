@@ -11,7 +11,7 @@
 //! - Error handling and validation
 
 use crate::vm::{Value, VmResult, VmError};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write, BufReader, BufWriter};
 use thiserror::Error;
@@ -530,5 +530,496 @@ fn value_to_binary(value: &Value) -> Result<Vec<u8>, IoError> {
         _ => Err(IoError::EncodingError {
             message: "Cannot convert value to binary".to_string()
         })
+    }
+}
+
+// Additional file operations for backward compatibility
+
+/// FileRead[filename] - Read entire file as string
+pub fn file_read(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (filename)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let mut contents = String::new();
+    let file = std::fs::File::open(&filename).map_err(|e| VmError::Runtime(format!("Failed to open {}: {}", filename, e)))?;
+    let mut reader = BufReader::new(file);
+    reader.read_to_string(&mut contents).map_err(|e| VmError::Runtime(format!("Failed to read {}: {}", filename, e)))?;
+
+    Ok(Value::String(contents))
+}
+
+/// FileReadLines[filename] - Read file as list of lines
+pub fn file_read_lines(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (filename)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let contents = std::fs::read_to_string(&filename).map_err(|e| VmError::Runtime(format!("Failed to read {}: {}", filename, e)))?;
+    let lines: Vec<Value> = contents.lines().map(|line| Value::String(line.to_string())).collect();
+
+    Ok(Value::List(lines))
+}
+
+/// FileWrite[filename, content] - Write content to file
+pub fn file_write(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (filename, content)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let content = match &args[1] {
+        Value::String(s) => s.clone(),
+        _ => format!("{:?}", args[1]) // Convert any value to string representation
+    };
+
+    std::fs::write(&filename, content).map_err(|e| VmError::Runtime(format!("Failed to write {}: {}", filename, e)))?;
+
+    Ok(Value::String(filename))
+}
+
+/// FileAppend[filename, content] - Append content to file
+pub fn file_append(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (filename, content)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let content = match &args[1] {
+        Value::String(s) => s.clone(),
+        _ => format!("{:?}", args[1])
+    };
+
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&filename)
+        .map_err(|e| VmError::Runtime(format!("Failed to open {} for append: {}", filename, e)))?;
+    
+    file.write_all(content.as_bytes()).map_err(|e| VmError::Runtime(format!("Failed to append to {}: {}", filename, e)))?;
+
+    Ok(Value::String(filename))
+}
+
+/// FileExists[filename] - Check if file exists
+pub fn file_exists(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (filename)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let exists = std::path::Path::new(&filename).exists();
+    Ok(Value::Boolean(exists))
+}
+
+/// FileSize[filename] - Get file size in bytes
+pub fn file_size(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (filename)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let metadata = std::fs::metadata(&filename).map_err(|e| VmError::Runtime(format!("Failed to get metadata for {}: {}", filename, e)))?;
+    Ok(Value::Integer(metadata.len() as i64))
+}
+
+/// FileDelete[filename] - Delete a file
+pub fn file_delete(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (filename)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let filename = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    std::fs::remove_file(&filename).map_err(|e| VmError::Runtime(format!("Failed to delete {}: {}", filename, e)))?;
+    Ok(Value::Boolean(true))
+}
+
+/// FileCopy[source, destination] - Copy a file
+pub fn file_copy(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 2 {
+        return Err(VmError::TypeError {
+            expected: "2 arguments (source, destination)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let source = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "source filename as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let destination = match &args[1] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "destination filename as string".to_string(),
+            actual: format!("{:?}", args[1]),
+        })
+    };
+
+    std::fs::copy(&source, &destination).map_err(|e| VmError::Runtime(format!("Failed to copy {} to {}: {}", source, destination, e)))?;
+    Ok(Value::String(destination))
+}
+
+/// DirectoryCreate[path] - Create a directory
+pub fn directory_create(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "directory path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    std::fs::create_dir_all(&path).map_err(|e| VmError::Runtime(format!("Failed to create directory {}: {}", path, e)))?;
+    Ok(Value::String(path))
+}
+
+/// DirectoryDelete[path] - Delete a directory
+pub fn directory_delete(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "directory path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    std::fs::remove_dir_all(&path).map_err(|e| VmError::Runtime(format!("Failed to delete directory {}: {}", path, e)))?;
+    Ok(Value::Boolean(true))
+}
+
+/// DirectoryExists[path] - Check if directory exists
+pub fn directory_exists(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "directory path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path_obj = std::path::Path::new(&path);
+    let exists = path_obj.exists() && path_obj.is_dir();
+    Ok(Value::Boolean(exists))
+}
+
+/// DirectoryList[path] - List directory contents
+pub fn directory_list(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "directory path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let entries = std::fs::read_dir(&path).map_err(|e| VmError::Runtime(format!("Failed to read directory {}: {}", path, e)))?;
+    
+    let mut file_list = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| VmError::Runtime(format!("Error reading directory entry: {}", e)))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        file_list.push(Value::String(name));
+    }
+
+    Ok(Value::List(file_list))
+}
+
+/// DirectorySize[path] - Get total size of directory
+pub fn directory_size(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "directory path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
+        let mut total_size = 0;
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_dir() {
+                total_size += calculate_dir_size(&entry.path())?;
+            } else {
+                total_size += metadata.len();
+            }
+        }
+        Ok(total_size)
+    }
+
+    let path_obj = std::path::Path::new(&path);
+    let size = calculate_dir_size(path_obj).map_err(|e| VmError::Runtime(format!("Failed to calculate directory size {}: {}", path, e)))?;
+    Ok(Value::Integer(size as i64))
+}
+
+/// DirectoryWatch[path] - Watch directory for changes (placeholder)
+pub fn directory_watch(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (directory path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // For now, just return the path (implement actual watching later)
+    Ok(args[0].clone())
+}
+
+/// PathJoin[parts...] - Join path components
+pub fn path_join(args: &[Value]) -> VmResult<Value> {
+    if args.is_empty() {
+        return Err(VmError::TypeError {
+            expected: "at least 1 argument".to_string(),
+            actual: "0 arguments".to_string(),
+        });
+    }
+
+    let mut path = std::path::PathBuf::new();
+    for arg in args {
+        match arg {
+            Value::String(s) => path.push(s),
+            _ => return Err(VmError::TypeError {
+                expected: "path component as string".to_string(),
+                actual: format!("{:?}", arg),
+            })
+        }
+    }
+
+    Ok(Value::String(path.to_string_lossy().to_string()))
+}
+
+/// PathSplit[path] - Split path into components
+pub fn path_split(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path_str = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path = std::path::Path::new(&path_str);
+    let components: Vec<Value> = path.components()
+        .map(|comp| Value::String(comp.as_os_str().to_string_lossy().to_string()))
+        .collect();
+
+    Ok(Value::List(components))
+}
+
+/// PathParent[path] - Get parent directory
+pub fn path_parent(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path_str = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path = std::path::Path::new(&path_str);
+    match path.parent() {
+        Some(parent) => Ok(Value::String(parent.to_string_lossy().to_string())),
+        None => Ok(Value::Missing)
+    }
+}
+
+/// PathFilename[path] - Get filename component
+pub fn path_filename(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path_str = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path = std::path::Path::new(&path_str);
+    match path.file_name() {
+        Some(filename) => Ok(Value::String(filename.to_string_lossy().to_string())),
+        None => Ok(Value::Missing)
+    }
+}
+
+/// PathExtension[path] - Get file extension
+pub fn path_extension(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path_str = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path = std::path::Path::new(&path_str);
+    match path.extension() {
+        Some(ext) => Ok(Value::String(ext.to_string_lossy().to_string())),
+        None => Ok(Value::Missing)
+    }
+}
+
+/// PathAbsolute[path] - Get absolute path
+pub fn path_absolute(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 1 {
+        return Err(VmError::TypeError {
+            expected: "1 argument (path)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let path_str = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(VmError::TypeError {
+            expected: "path as string".to_string(),
+            actual: format!("{:?}", args[0]),
+        })
+    };
+
+    let path = std::path::Path::new(&path_str);
+    match path.canonicalize() {
+        Ok(abs_path) => Ok(Value::String(abs_path.to_string_lossy().to_string())),
+        Err(e) => Err(VmError::Runtime(format!("Failed to get absolute path: {}", e)))
     }
 }

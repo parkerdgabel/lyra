@@ -52,6 +52,9 @@ pub enum CompactValue {
     
     /// Pattern expressions (store in shared pool)
     Pattern(Arc<ast::Pattern>),
+    
+    /// Complex values that cannot be compacted (fallback)
+    Complex(Arc<crate::vm::Value>),
 }
 
 impl CompactValue {
@@ -77,6 +80,10 @@ impl CompactValue {
             crate::vm::Value::Function(f) => CompactValue::Function(interner.intern_symbol_id(&f)),
             crate::vm::Value::Boolean(b) => CompactValue::Boolean(b),
             crate::vm::Value::Missing => CompactValue::Missing,
+            crate::vm::Value::Object(_) => {
+                // Objects cannot be compacted, store as complex value
+                CompactValue::Complex(Arc::new(value))
+            }
             crate::vm::Value::LyObj(obj) => CompactValue::LyObj(obj),
             crate::vm::Value::Quote(expr) => CompactValue::Quote(expr.into()),
             crate::vm::Value::Pattern(pattern) => CompactValue::Pattern(Arc::new(pattern)),
@@ -87,6 +94,14 @@ impl CompactValue {
                     CompactValue::from_value(*rhs, interner)
                 ];
                 CompactValue::List(Arc::new(rule_items))
+            },
+            crate::vm::Value::PureFunction { body } => {
+                // Store pure functions as complex values for now
+                CompactValue::Complex(Arc::new(crate::vm::Value::PureFunction { body }))
+            },
+            crate::vm::Value::Slot { number } => {
+                // Store slots as complex values for now
+                CompactValue::Complex(Arc::new(crate::vm::Value::Slot { number }))
             },
         }
     }
@@ -123,6 +138,7 @@ impl CompactValue {
             CompactValue::LyObj(obj) => crate::vm::Value::LyObj(obj.clone()),
             CompactValue::Quote(expr) => crate::vm::Value::Quote(Box::new((**expr).clone())),
             CompactValue::Pattern(pattern) => crate::vm::Value::Pattern((**pattern).clone()),
+            CompactValue::Complex(value) => (**value).clone(),
         }
     }
     
@@ -142,6 +158,7 @@ impl CompactValue {
             CompactValue::LyObj(_) => std::mem::size_of::<Self>() + 64, // Estimate
             CompactValue::Quote(_) => std::mem::size_of::<Self>() + 32, // Estimate
             CompactValue::Pattern(_) => std::mem::size_of::<Self>() + 24, // Estimate
+            CompactValue::Complex(_) => std::mem::size_of::<Self>() + 128, // Estimate for complex values
         }
     }
     
@@ -171,6 +188,7 @@ impl CompactValue {
             CompactValue::Missing => "Missing",
             CompactValue::LyObj(_) => "LyObj",
             CompactValue::Quote(_) => "Quote",
+            CompactValue::Complex(_) => "Complex",
             CompactValue::Pattern(_) => "Pattern",
         }
     }
@@ -239,6 +257,7 @@ pub enum SerializableValue {
     LyObjPlaceholder { type_name: String },
     QuotePlaceholder { expr_debug: String },
     PatternPlaceholder { pattern_debug: String },
+    ComplexPlaceholder { complex_debug: String },
 }
 
 impl CompactValue {
@@ -280,6 +299,9 @@ impl CompactValue {
             CompactValue::Pattern(pattern) => SerializableValue::PatternPlaceholder {
                 pattern_debug: format!("{:?}", pattern),
             },
+            CompactValue::Complex(_) => SerializableValue::ComplexPlaceholder {
+                complex_debug: "Complex".to_string(),
+            },
         }
     }
     
@@ -310,6 +332,7 @@ impl CompactValue {
             SerializableValue::LyObjPlaceholder { .. } => CompactValue::Missing,
             SerializableValue::QuotePlaceholder { .. } => CompactValue::Missing,
             SerializableValue::PatternPlaceholder { .. } => CompactValue::Missing,
+            SerializableValue::ComplexPlaceholder { .. } => CompactValue::Missing,
         }
     }
 }

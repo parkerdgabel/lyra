@@ -6,7 +6,6 @@
 //! - Usage examples
 //! - Context-sensitive help
 
-use crate::lexer::{Lexer, Token, TokenKind};
 use crate::repl::config::ReplConfig;
 use crate::stdlib::StandardLibrary;
 use std::collections::HashMap;

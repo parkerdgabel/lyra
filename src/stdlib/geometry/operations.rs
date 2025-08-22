@@ -9,7 +9,6 @@
 use super::{Point2D, Polygon, GeometricShape, value_to_points, points_to_value, convex_hull::convex_hull};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
-use std::f64::consts::PI;
 
 /// Minkowski sum of two polygons
 /// Returns the convex hull of all pairwise sums of vertices

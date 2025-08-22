@@ -256,6 +256,10 @@ pub enum AggregationFunction {
 }
 
 impl AggregationFunction {
+    pub fn name(&self) -> &'static str {
+        self.type_name()
+    }
+    
     pub fn type_name(&self) -> &'static str {
         match self {
             AggregationFunction::Count => "count",

@@ -14,7 +14,6 @@ use colored::*;
 use log::{debug, error, info, trace, warn};
 use std::any::Any;
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -148,10 +147,13 @@ impl InspectionResult {
             Value::Function(_) => "Function".to_string(),
             Value::Boolean(_) => "Boolean".to_string(),
             Value::Missing => "Missing".to_string(),
+            Value::Object(_) => "Object".to_string(),
             Value::LyObj(obj) => obj.type_name().to_string(),
             Value::Quote(_) => "Quote".to_string(),
             Value::Pattern(_) => "Pattern".to_string(),
             Value::Rule { .. } => "Rule".to_string(),
+            Value::PureFunction { .. } => "PureFunction".to_string(),
+            Value::Slot { .. } => "Slot".to_string(),
         };
 
         let structure = Self::format_structure(value, 0);
@@ -202,6 +204,7 @@ impl InspectionResult {
                 result.push_str(&format!("{}}}", indent_str));
                 result
             }
+            Value::Object(_) => format!("{}Object[...]", indent_str),
             Value::LyObj(obj) => {
                 format!("{}{}[...]", indent_str, obj.type_name().bright_purple())
             }
@@ -210,6 +213,8 @@ impl InspectionResult {
             Value::Rule { lhs, rhs } => {
                 format!("{}Rule[{} -> {}]", indent_str, Self::format_structure(lhs, indent + 1), Self::format_structure(rhs, indent + 1))
             },
+            Value::PureFunction { .. } => format!("{}PureFunction[...]", indent_str),
+            Value::Slot { .. } => format!("{}Slot[...]", indent_str),
         }
     }
 
@@ -1160,10 +1165,13 @@ fn estimate_value_size(value: &Value) -> usize {
         Value::List(items) => {
             items.iter().map(estimate_value_size).sum::<usize>() + 24 // Vec overhead
         }
+        Value::Object(_) => 48, // Estimate for object dictionaries
         Value::LyObj(_) => 64, // Estimate for Foreign objects
         Value::Quote(_) => 32, // Estimate for AST nodes
         Value::Pattern(_) => 32,
         Value::Rule { lhs, rhs } => 16 + estimate_value_size(lhs) + estimate_value_size(rhs), // Estimate for patterns
+        Value::PureFunction { body } => 32 + estimate_value_size(body), // Function overhead + body
+        Value::Slot { .. } => 8, // Minimal slot placeholder
     }
 }
 
@@ -1538,10 +1546,13 @@ pub fn type_of(args: &[Value]) -> VmResult<Value> {
         Value::Function(_) => "Function",
         Value::Boolean(_) => "Boolean",
         Value::Missing => "Missing",
+        Value::Object(_) => "Object",
         Value::LyObj(obj) => return Ok(Value::String(obj.type_name().to_string())),
         Value::Quote(_) => "Quote",
         Value::Pattern(_) => "Pattern",
         Value::Rule { .. } => "Rule",
+        Value::PureFunction { .. } => "PureFunction",
+        Value::Slot { .. } => "Slot",
     };
 
     Ok(Value::String(type_info.to_string()))

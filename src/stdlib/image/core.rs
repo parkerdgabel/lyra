@@ -6,7 +6,6 @@
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
-use std::path::Path;
 
 /// Color space representation for images
 #[derive(Debug, Clone, Copy, PartialEq)]

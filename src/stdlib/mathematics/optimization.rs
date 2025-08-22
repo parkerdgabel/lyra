@@ -21,7 +21,6 @@
 
 use crate::vm::{Value, VmError, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
-use std::collections::HashMap;
 use std::f64::consts::PI;
 
 const DEFAULT_TOLERANCE: f64 = 1e-8;

@@ -272,8 +272,6 @@ pub fn gauss_quadrature(f: &Value, a: f64, b: f64, n: usize) -> Result<Integrati
 ///
 /// Uses random sampling for high-dimensional integration
 pub fn monte_carlo_integration(f: &Value, a: f64, b: f64, n: usize, seed: Option<u64>) -> Result<IntegrationResult, String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
     
     // Simple linear congruential generator for reproducible results
     let mut rng_state = seed.unwrap_or(12345);

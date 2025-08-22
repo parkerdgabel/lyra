@@ -2,7 +2,7 @@
 //!
 //! Handles qualified name parsing, import statement resolution, and scope management.
 
-use super::{ModuleError, Module};
+use super::ModuleError;
 use super::registry::ModuleRegistry;
 use std::collections::HashMap;
 

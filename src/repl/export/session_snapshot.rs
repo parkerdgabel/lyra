@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{Utc, TimeZone};
 
 /// Complete snapshot of a REPL session
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,12 +327,18 @@ impl SessionEntry {
                     .collect();
                 format!("{{{}}}", items_str.join(", "))
             },
+            Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pat) => format!("Pattern[{:?}]", pat),
             Value::Rule { lhs, rhs } => format!("{} -> {}", 
                 self.value_to_string(lhs), 
                 self.value_to_string(rhs)),
+            Value::PureFunction { body } => format!("{} &", self.value_to_string(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            },
         }
     }
 }

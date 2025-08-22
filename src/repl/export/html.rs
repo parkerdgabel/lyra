@@ -731,6 +731,8 @@ body {
         let entry_type = match entry.cell_type {
             CellType::Code => "Code Expression",
             CellType::Meta => "Meta Command",
+            CellType::Markdown => "Markdown",
+            CellType::Raw => "Raw Text",
         };
         
         html.push_str(&format!("<article class=\"expression-entry\" id=\"{}\">\n", entry_id));
@@ -1017,8 +1019,18 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
                 let items_str: Vec<String> = items.iter().map(|v| self.value_to_string(v)).collect();
                 format!("{{{}}}", items_str.join(", "))
             }
-            Value::Function { name, .. } => format!("Function[{}]", name),
+            Value::Function(name) => format!("Function[{}]", name),
+            Value::Missing => "Missing".to_string(),
+            Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(_) => "Foreign[Object]".to_string(),
+            Value::Quote(expr) => format!("Hold[{:?}]", expr),
+            Value::Pattern(pattern) => format!("Pattern[{:?}]", pattern),
+            Value::Rule { lhs, rhs } => format!("{} -> {}", self.value_to_string(lhs), self.value_to_string(rhs)),
+            Value::PureFunction { body } => format!("{} &", self.value_to_string(body)),
+            Value::Slot { number } => match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            },
         }
     }
     
@@ -1031,8 +1043,15 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
             Value::Symbol(_) => "Symbol",
             Value::Boolean(_) => "Boolean",
             Value::List(_) => "List",
-            Value::Function { .. } => "Function",
+            Value::Function(_) => "Function",
+            Value::Missing => "Missing",
+            Value::Object(_) => "Object",
             Value::LyObj(_) => "Foreign",
+            Value::Quote(_) => "Quote",
+            Value::Pattern(_) => "Pattern",
+            Value::Rule { .. } => "Rule",
+            Value::PureFunction { .. } => "PureFunction",
+            Value::Slot { .. } => "Slot",
         }.to_string()
     }
 }

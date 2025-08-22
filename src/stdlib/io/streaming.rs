@@ -3,11 +3,9 @@
 //! Provides memory-efficient streaming import/export for large files that don't fit in memory.
 //! Supports chunked processing, progress callbacks, and async operations.
 
-use super::{IoError, FileFormat};
-use crate::vm::{Value, VmResult, VmError};
+use super::IoError;
+use crate::vm::Value;
 use std::io::{Read, Write, BufRead, BufReader, BufWriter};
-use std::fs::File;
-use std::path::Path;
 
 /// Configuration for streaming operations
 pub struct StreamingConfig {

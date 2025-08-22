@@ -27,7 +27,7 @@ impl Foreign for FeaturePoint {
         "FeaturePoint"
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "X" => Ok(Value::Real(self.x as f64)),
             "Y" => Ok(Value::Real(self.y as f64)),
@@ -68,7 +68,7 @@ impl Foreign for Contour {
         "Contour"
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "Points" => {
                 let points: Vec<Value> = self.points.iter()
@@ -120,7 +120,7 @@ impl Foreign for SegmentationResult {
         "SegmentationResult"
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "Labels" => Ok(Value::LyObj(LyObj::new(Box::new(self.labels.clone())))),
             "NumRegions" => Ok(Value::Integer(self.num_regions as i64)),

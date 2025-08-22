@@ -9,7 +9,6 @@ use super::{Simplex, SimplicialComplex, value_to_points};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
 use crate::stdlib::geometry::Point2D;
-use std::collections::{HashMap, HashSet};
 
 /// Build Vietoris-Rips complex from point cloud
 /// All simplices whose vertices are pairwise within distance radius
