@@ -477,23 +477,11 @@ impl StandardLibrary {
     }
 
     fn register_graph_functions(&mut self) {
-        // Graph creation functions
-        self.register("Graph", graph::graph);
-        self.register("DirectedGraph", graph::directed_graph);
-        self.register("AdjacencyMatrix", graph::adjacency_matrix);
-        
-        // Graph traversal algorithms
-        self.register("DepthFirstSearch", graph::depth_first_search);
-        self.register("BreadthFirstSearch", graph::breadth_first_search);
-        
-        // Shortest path algorithms
-        self.register("Dijkstra", graph::dijkstra);
-        
-        // Connectivity analysis
-        self.register("ConnectedComponents", graph::connected_components);
-        
-        // Graph properties
-        self.register("GraphProperties", graph::graph_properties);
+        // Use the centralized graph function registry
+        let graph_functions = graph::register_graph_functions();
+        for (name, function) in graph_functions {
+            self.register(&name, function);
+        }
     }
 
     fn register_optimization_functions(&mut self) {
@@ -867,27 +855,7 @@ impl StandardLibrary {
         self.register("PellNumber", combinatorics::pell_number_fn);
         self.register("JacobsthalNumber", combinatorics::jacobsthal_number_fn);
         
-        // Advanced Graph Algorithms (12 functions)
-        // Connectivity algorithms
-        self.register("MinimumSpanningTree", graph::minimum_spanning_tree);
-        self.register("MaximumFlow", graph::maximum_flow);
-        self.register("ArticulationPoints", graph::articulation_points);
-        self.register("Bridges", graph::bridges);
-        
-        // Optimization algorithms
-        self.register("GraphColoring", graph::graph_coloring);
-        self.register("HamiltonianPath", graph::hamiltonian_path);
-        self.register("EulerianPath", graph::eulerian_path);
-        self.register("VertexCover", graph::vertex_cover);
-        self.register("IndependentSet", graph::independent_set);
-        
-        // Analysis algorithms
-        self.register("BetweennessCentrality", graph::betweenness_centrality);
-        self.register("ClosenessCentrality", graph::closeness_centrality);
-        self.register("PageRank", graph::pagerank);
-        self.register("HITS", graph::hits);
-        self.register("CommunityDetection", graph::community_detection);
-        self.register("GraphIsomorphism", graph::graph_isomorphism);
+        // Advanced Graph Algorithms are now registered via register_graph_functions()
     }
 
     fn register_geometry_functions(&mut self) {
