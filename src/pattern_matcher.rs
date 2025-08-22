@@ -44,6 +44,18 @@ fn create_optimized_bindings() -> HashMap<String, Value> {
     HashMap::with_capacity(4)
 }
 
+/// Fast path for simple pattern matching without full recursive machinery
+#[inline(always)]
+fn try_simple_match(pattern: &Pattern, expr: &Value) -> Option<HashMap<String, Value>> {
+    match pattern {
+        Pattern::Blank { .. } => {
+            // Blank pattern matches anything
+            Some(HashMap::new())
+        }
+        _ => None, // Complex patterns need full matcher (simplified for now)
+    }
+}
+
 /// Pattern categorization for optimization
 #[derive(Debug, Clone, PartialEq)]
 pub enum PatternCategory {

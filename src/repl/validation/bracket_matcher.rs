@@ -59,7 +59,7 @@ impl BracketMatcher {
         let mut stack = VecDeque::new();
         let mut in_string = false;
         let mut string_quote_pos = None;
-        let mut chars: Vec<char> = input.chars().collect();
+        let chars: Vec<char> = input.chars().collect();
         let mut i = 0;
         
         while i < chars.len() {

@@ -139,7 +139,12 @@ impl RTree {
     
     /// Build the R-tree by inserting all points
     fn build_tree(&mut self) {
-        for (i, point) in self.data.iter().enumerate() {
+        // Collect the data first to avoid borrowing issues
+        let data_points: Vec<(usize, Vec<f64>)> = self.data.iter().enumerate()
+            .map(|(i, point)| (i, point.clone()))
+            .collect();
+            
+        for (i, point) in data_points {
             // Create point bounding box (min = max = point)
             let bbox = BoundingBox::new(point.clone(), point.clone()).unwrap();
             self.insert(bbox, i);
@@ -148,8 +153,11 @@ impl RTree {
     
     /// Insert a bounding box with associated point index
     fn insert(&mut self, bbox: BoundingBox, point_idx: usize) {
-        if let Some(ref mut root) = self.root {
-            let overflow = self.insert_recursive(root, bbox, point_idx);
+        if self.root.is_some() {
+            let overflow = {
+                let root = self.root.as_mut().unwrap();
+                self.insert_recursive(root, bbox, point_idx)
+            };
             
             // Handle root overflow by creating new root
             if let Some((bbox1, node1, bbox2, node2)) = overflow {

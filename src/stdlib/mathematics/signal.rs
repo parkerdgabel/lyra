@@ -21,71 +21,9 @@
 
 use crate::vm::{Value, VmError, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
+use crate::stdlib::common::Complex;
 use std::f64::consts::PI;
 
-/// Complex number representation for signal processing
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Complex {
-    pub real: f64,
-    pub imag: f64,
-}
-
-impl Complex {
-    pub fn new(real: f64, imag: f64) -> Self {
-        Complex { real, imag }
-    }
-
-    pub fn zero() -> Self {
-        Complex::new(0.0, 0.0)
-    }
-
-    pub fn from_polar(magnitude: f64, phase: f64) -> Self {
-        Complex::new(magnitude * phase.cos(), magnitude * phase.sin())
-    }
-
-    pub fn magnitude(&self) -> f64 {
-        (self.real * self.real + self.imag * self.imag).sqrt()
-    }
-
-    pub fn phase(&self) -> f64 {
-        self.imag.atan2(self.real)
-    }
-
-    pub fn conj(&self) -> Self {
-        Complex::new(self.real, -self.imag)
-    }
-}
-
-impl std::ops::Add for Complex {
-    type Output = Self;
-    fn add(self, other: Self) -> Self {
-        Complex::new(self.real + other.real, self.imag + other.imag)
-    }
-}
-
-impl std::ops::Sub for Complex {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self {
-        Complex::new(self.real - other.real, self.imag - other.imag)
-    }
-}
-
-impl std::ops::Mul for Complex {
-    type Output = Self;
-    fn mul(self, other: Self) -> Self {
-        Complex::new(
-            self.real * other.real - self.imag * other.imag,
-            self.real * other.imag + self.imag * other.real
-        )
-    }
-}
-
-impl std::ops::Mul<f64> for Complex {
-    type Output = Self;
-    fn mul(self, scalar: f64) -> Self {
-        Complex::new(self.real * scalar, self.imag * scalar)
-    }
-}
 
 /// Signal data container with metadata
 #[derive(Debug, Clone)]
@@ -958,13 +896,13 @@ fn compute_fft_recursive(samples: &[Complex]) -> VmResult<Vec<Complex>> {
 
 fn compute_ifft(spectrum: &[Complex]) -> VmResult<Vec<Complex>> {
     // IFFT is computed as conjugate of FFT of conjugated input, divided by N
-    let conjugated: Vec<Complex> = spectrum.iter().map(|c| c.conj()).collect();
+    let conjugated: Vec<Complex> = spectrum.iter().map(|c| c.conjugate()).collect();
     let fft_result = compute_fft(&conjugated)?;
     
     let n = spectrum.len() as f64;
     let result: Vec<Complex> = fft_result
         .into_iter()
-        .map(|c| c.conj() * (1.0 / n))
+        .map(|c| c.conjugate() * (1.0 / n))
         .collect();
     
     Ok(result)

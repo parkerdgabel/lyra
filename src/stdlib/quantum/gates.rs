@@ -8,7 +8,7 @@
 
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::{LyObj, Foreign, ForeignError};
-use super::{QuantumMatrix, Complex, validate_qubit_count};
+use super::{QuantumMatrix, Complex};
 use std::f64::consts::{PI, SQRT_2};
 
 /// Quantum Gate Foreign Object
@@ -43,7 +43,7 @@ impl Foreign for QuantumGate {
         match method {
             "matrix" => Ok(self.matrix_to_value()),
             "name" => Ok(Value::String(self.name.clone())),
-            "qubits" => Ok(Value::Number(self.n_qubits as f64)),
+            "qubits" => Ok(Value::Integer(self.n_qubits as i64)),
             "isUnitary" => Ok(Value::Boolean(self.matrix.is_unitary(1e-10))),
             "dagger" => {
                 let dagger_matrix = self.matrix.dagger();
@@ -60,7 +60,7 @@ impl Foreign for QuantumGate {
                 }
                 
                 if let Value::LyObj(other_obj) = &args[0] {
-                    if let Some(other_gate) = other_obj.as_any().downcast_ref::<QuantumGate>() {
+                    if let Some(other_gate) = other_obj.downcast_ref::<QuantumGate>() {
                         let product_matrix = self.matrix.tensor_product(&other_gate.matrix);
                         let product_gate = QuantumGate::new(
                             product_matrix, 
@@ -93,8 +93,8 @@ impl QuantumGate {
             for complex in row {
                 // Represent complex number as [real, imaginary]
                 row_values.push(Value::List(vec![
-                    Value::Number(complex.real),
-                    Value::Number(complex.imag),
+                    Value::Real(complex.real),
+                    Value::Real(complex.imag),
                 ]));
             }
             rows.push(Value::List(row_values));
@@ -162,7 +162,7 @@ pub fn phase_gate(args: &[Value]) -> VmResult<Value> {
         PI / 2.0 // Default S gate
     } else {
         match &args[0] {
-            Value::Number(p) => *p,
+            Value::Real(p) => *p,
             _ => return Err(VmError::Runtime("Phase must be a number".to_string())),
         }
     };
@@ -187,7 +187,7 @@ pub fn phase_gate(args: &[Value]) -> VmResult<Value> {
 /// T Gate (π/8 Gate)
 /// Matrix: [[1, 0], [0, e^(iπ/4)]]
 pub fn t_gate(_args: &[Value]) -> VmResult<Value> {
-    phase_gate(&[Value::Number(PI / 4.0)])
+    phase_gate(&[Value::Real(PI / 4.0)])
 }
 
 /// Rotation-X Gate
@@ -198,7 +198,7 @@ pub fn rotation_x_gate(args: &[Value]) -> VmResult<Value> {
     }
     
     let angle = match &args[0] {
-        Value::Number(a) => *a,
+        Value::Real(a) => *a,
         _ => return Err(VmError::Runtime("Angle must be a number".to_string())),
     };
     
@@ -222,7 +222,7 @@ pub fn rotation_y_gate(args: &[Value]) -> VmResult<Value> {
     }
     
     let angle = match &args[0] {
-        Value::Number(a) => *a,
+        Value::Real(a) => *a,
         _ => return Err(VmError::Runtime("Angle must be a number".to_string())),
     };
     
@@ -246,7 +246,7 @@ pub fn rotation_z_gate(args: &[Value]) -> VmResult<Value> {
     }
     
     let angle = match &args[0] {
-        Value::Number(a) => *a,
+        Value::Real(a) => *a,
         _ => return Err(VmError::Runtime("Angle must be a number".to_string())),
     };
     
@@ -344,7 +344,7 @@ pub fn controlled_gate(args: &[Value]) -> VmResult<Value> {
     
     let base_gate = match &args[0] {
         Value::LyObj(gate_obj) => {
-            if let Some(gate) = gate_obj.as_any().downcast_ref::<QuantumGate>() {
+            if let Some(gate) = gate_obj.downcast_ref::<QuantumGate>() {
                 gate
             } else {
                 return Err(VmError::Runtime("Argument must be a QuantumGate".to_string()));
@@ -380,7 +380,7 @@ pub fn multi_controlled_gate(args: &[Value]) -> VmResult<Value> {
     
     let base_gate = match &args[0] {
         Value::LyObj(gate_obj) => {
-            if let Some(gate) = gate_obj.as_any().downcast_ref::<QuantumGate>() {
+            if let Some(gate) = gate_obj.downcast_ref::<QuantumGate>() {
                 gate
             } else {
                 return Err(VmError::Runtime("First argument must be a QuantumGate".to_string()));
@@ -390,7 +390,7 @@ pub fn multi_controlled_gate(args: &[Value]) -> VmResult<Value> {
     };
     
     let control_count = match &args[1] {
-        Value::Number(n) => {
+        Value::Real(n) => {
             if *n < 1.0 || *n > 10.0 || n.fract() != 0.0 {
                 return Err(VmError::Runtime("Control count must be integer between 1 and 10".to_string()));
             }
@@ -456,19 +456,19 @@ pub fn custom_gate(args: &[Value]) -> VmResult<Value> {
         
         for element in row_data {
             let complex_val = match element {
-                Value::Number(real) => Complex::new(*real, 0.0),
+                Value::Real(real) => Complex::new(*real, 0.0),
                 Value::List(complex_pair) => {
                     if complex_pair.len() != 2 {
                         return Err(VmError::Runtime("Complex number must be [real, imag]".to_string()));
                     }
                     
                     let real = match &complex_pair[0] {
-                        Value::Number(r) => *r,
+                        Value::Real(r) => *r,
                         _ => return Err(VmError::Runtime("Real part must be a number".to_string())),
                     };
                     
                     let imag = match &complex_pair[1] {
-                        Value::Number(i) => *i,
+                        Value::Real(i) => *i,
                         _ => return Err(VmError::Runtime("Imaginary part must be a number".to_string())),
                     };
                     
@@ -503,7 +503,7 @@ mod tests {
         // Test Pauli-X
         let x_gate = pauli_x_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = x_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "X");
             assert_eq!(gate.n_qubits, 1);
             assert!(gate.matrix.is_unitary(1e-10));
@@ -512,14 +512,14 @@ mod tests {
         // Test Pauli-Y
         let y_gate = pauli_y_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = y_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "Y");
         }
         
         // Test Pauli-Z
         let z_gate = pauli_z_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = z_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "Z");
         }
     }
@@ -528,7 +528,7 @@ mod tests {
     fn test_hadamard_gate() {
         let h_gate = hadamard_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = h_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "H");
             assert!(gate.matrix.is_unitary(1e-10));
             
@@ -549,14 +549,14 @@ mod tests {
     fn test_rotation_gates() {
         let angle = PI / 4.0;
         
-        let rx_gate = rotation_x_gate(&[Value::Number(angle)]).unwrap();
-        let ry_gate = rotation_y_gate(&[Value::Number(angle)]).unwrap();
-        let rz_gate = rotation_z_gate(&[Value::Number(angle)]).unwrap();
+        let rx_gate = rotation_x_gate(&[Value::Real(angle)]).unwrap();
+        let ry_gate = rotation_y_gate(&[Value::Real(angle)]).unwrap();
+        let rz_gate = rotation_z_gate(&[Value::Real(angle)]).unwrap();
         
         // All rotation gates should be unitary
         for gate_value in [rx_gate, ry_gate, rz_gate] {
             if let Value::LyObj(gate_obj) = gate_value {
-                let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+                let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
                 assert!(gate.matrix.is_unitary(1e-10));
             }
         }
@@ -566,7 +566,7 @@ mod tests {
     fn test_cnot_gate() {
         let cnot = cnot_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = cnot {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "CNOT");
             assert_eq!(gate.n_qubits, 2);
             assert!(gate.matrix.is_unitary(1e-10));
@@ -583,7 +583,7 @@ mod tests {
     fn test_toffoli_gate() {
         let toffoli = toffoli_gate(&[]).unwrap();
         if let Value::LyObj(gate_obj) = toffoli {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "Toffoli");
             assert_eq!(gate.n_qubits, 3);
             assert!(gate.matrix.is_unitary(1e-10));
@@ -596,7 +596,7 @@ mod tests {
         let cx_gate = controlled_gate(&[x_gate]).unwrap();
         
         if let Value::LyObj(gate_obj) = cx_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(gate.name, "CX");
             assert_eq!(gate.n_qubits, 2);
             assert!(gate.matrix.is_unitary(1e-10));
@@ -608,14 +608,14 @@ mod tests {
         let h_gate = hadamard_gate(&[]).unwrap();
         
         if let Value::LyObj(gate_obj) = h_gate {
-            let gate = gate_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let gate = gate_obj.downcast_ref::<QuantumGate>().unwrap();
             
             // Test method calls
             let name_result = gate.call_method("name", &[]).unwrap();
             assert_eq!(name_result, Value::String("H".to_string()));
             
             let qubits_result = gate.call_method("qubits", &[]).unwrap();
-            assert_eq!(qubits_result, Value::Number(1.0));
+            assert_eq!(qubits_result, Value::Real(1.0));
             
             let unitary_result = gate.call_method("isUnitary", &[]).unwrap();
             assert_eq!(unitary_result, Value::Boolean(true));

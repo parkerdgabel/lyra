@@ -579,7 +579,7 @@ fn solve_linear_system(a: &[Vec<f32>], b: &[f32]) -> VmResult<Vec<f32>> {
         return Err(VmError::Runtime("Invalid matrix dimensions".to_string()));
     }
     
-    let mut aug_matrix = a.clone();
+    let mut aug_matrix = a.iter().map(|row| row.clone()).collect::<Vec<_>>();
     let mut b_vec = b.to_vec();
     
     // Forward elimination

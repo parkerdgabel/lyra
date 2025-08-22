@@ -553,7 +553,7 @@ impl Image {
         };
 
         let mut labels_data = vec![0.0; gray.data.len()];
-        let mut label = 1.0;
+        let label = 1.0;
 
         for i in 0..gray.data.len() {
             labels_data[i] = if gray.data[i] > threshold { label } else { 0.0 };

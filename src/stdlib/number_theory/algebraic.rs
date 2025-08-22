@@ -649,7 +649,7 @@ fn real_to_rational(x: f64, max_denominator: i64) -> (i64, i64) {
         return (0, 1);
     }
     
-    let mut num = x.floor() as i64;
+    let num = x.floor() as i64;
     let mut frac = x - x.floor();
     
     if frac < 1e-15 {

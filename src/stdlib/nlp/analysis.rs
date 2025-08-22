@@ -326,8 +326,8 @@ fn rule_based_sentiment_score(text: &str) -> (f64, f64) {
     let mut negative_score = 0.0;
     let mut current_intensifier = 1.0;
     
-    for token in tokens {
-        let word = normalize_word(&token);
+    for token in &tokens {
+        let word = normalize_word(token);
         
         // Check for intensifiers
         if let Some(&intensity) = intensifiers.get(word.as_str()) {

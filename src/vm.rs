@@ -23,6 +23,17 @@ pub enum VmError {
     DivisionByZero,
     #[error("Type error: expected {expected}, got {actual}")]
     TypeError { expected: String, actual: String },
+    #[error("Wrong number of arguments: {function_name} expects {expected}, got {actual}")]
+    ArityError { function_name: String, expected: usize, actual: usize },
+    #[error("Argument type error in {function_name}: parameter {param_index} expects {expected}, got {actual}")]
+    ArgumentTypeError { 
+        function_name: String, 
+        param_index: usize, 
+        expected: String, 
+        actual: String 
+    },
+    #[error("Unknown function: {function_name}")]
+    UnknownFunction { function_name: String },
     #[error("Call stack overflow")]
     CallStackOverflow,
     #[error("Cannot call non-function value")]
@@ -36,6 +47,13 @@ pub enum VmError {
 }
 
 pub type VmResult<T> = std::result::Result<T, VmError>;
+
+/// Conversion from ForeignError to VmError for spatial module compatibility
+impl From<crate::foreign::ForeignError> for VmError {
+    fn from(err: crate::foreign::ForeignError) -> Self {
+        VmError::Runtime(err.to_string())
+    }
+}
 
 /// A value that can be stored on the VM stack
 #[derive(Debug, Clone)]
@@ -177,27 +195,36 @@ impl std::hash::Hash for Value {
             },
             Value::Object(obj) => {
                 8u8.hash(state);
-                // Hash the entries in a deterministic order
-                let mut entries: Vec<_> = obj.iter().collect();
-                entries.sort_by_key(|(k, _)| *k);
-                entries.hash(state);
+                // Fast path: hash size first for quick differentiation
+                obj.len().hash(state);
+                
+                // Hash entries without allocation (deterministic order)
+                let mut keys: Vec<_> = obj.keys().collect();
+                keys.sort_unstable();
+                for key in keys {
+                    key.hash(state);
+                    if let Some(value) = obj.get(key) {
+                        value.hash(state);
+                    }
+                }
             },
             Value::LyObj(obj) => {
                 9u8.hash(state);
-                // Hash type name and debug representation for now
-                // Foreign objects could implement custom hashing
+                // Fast hash using just type name (avoid expensive debug formatting)
                 obj.type_name().hash(state);
+                // Use a simple hash based on the object's type and debug representation
+                // This is a fallback until proper object identity is implemented
                 format!("{:?}", obj).hash(state);
             },
             Value::Quote(expr) => {
                 10u8.hash(state);
-                // Hash the debug representation of the AST expression
-                format!("{:?}", expr).hash(state);
+                // Use pointer address for AST expressions to avoid expensive formatting
+                (expr.as_ref() as *const _ as usize).hash(state);
             },
             Value::Pattern(pattern) => {
                 11u8.hash(state);
-                // Hash the debug representation of the Pattern
-                format!("{:?}", pattern).hash(state);
+                // Pattern has proper Hash implementation, use it directly
+                pattern.hash(state);
             },
             Value::Rule { lhs, rhs } => {
                 12u8.hash(state);
@@ -238,6 +265,47 @@ impl PartialEq for Value {
                 a == b
             },
             _ => false,
+        }
+    }
+}
+
+impl Value {
+    /// Check if this value is cheap to clone (no heap allocations)
+    #[inline(always)]
+    pub fn is_cheap_clone(&self) -> bool {
+        matches!(self, 
+            Value::Integer(_) | 
+            Value::Real(_) | 
+            Value::Boolean(_) | 
+            Value::Missing |
+            Value::Slot { .. }
+        )
+    }
+    
+    /// Get an estimate of memory usage for this value
+    pub fn memory_size(&self) -> usize {
+        match self {
+            Value::Integer(_) => 8,
+            Value::Real(_) => 8,
+            Value::Boolean(_) => 1,
+            Value::Missing => 0,
+            Value::String(s) => s.len() + std::mem::size_of::<String>(),
+            Value::Symbol(s) => s.len() + std::mem::size_of::<String>(),
+            Value::List(items) => {
+                std::mem::size_of::<Vec<Value>>() + 
+                items.iter().map(|v| v.memory_size()).sum::<usize>()
+            }
+            Value::Function(name) => name.len() + std::mem::size_of::<String>(),
+            Value::Object(obj) => {
+                std::mem::size_of::<HashMap<String, Value>>() +
+                obj.iter().map(|(k, v)| k.len() + v.memory_size()).sum::<usize>()
+            }
+            Value::LyObj(_) => std::mem::size_of::<crate::foreign::LyObj>(),
+            Value::Quote(_) => std::mem::size_of::<Box<crate::ast::Expr>>(),
+            Value::Pattern(_) => std::mem::size_of::<crate::ast::Pattern>(),
+            Value::Rule { lhs, rhs } => lhs.memory_size() + rhs.memory_size(),
+            Value::PureFunction { body } => body.memory_size(),
+            Value::Slot { .. } => std::mem::size_of::<Option<usize>>(),
         }
     }
 }

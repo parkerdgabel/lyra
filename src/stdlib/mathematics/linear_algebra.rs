@@ -1337,7 +1337,7 @@ fn compute_jacobi_eigenvalues(matrix: &[Vec<f64>]) -> VmResult<(Vec<f64>, Vec<Ve
     }
     
     // Extract eigenvalues from diagonal
-    let mut eigenvalues: Vec<f64> = (0..n).map(|i| a[i][i]).collect();
+    let eigenvalues: Vec<f64> = (0..n).map(|i| a[i][i]).collect();
     
     // Sort eigenvalues and corresponding eigenvectors in descending order
     let mut indices: Vec<usize> = (0..n).collect();
@@ -1391,7 +1391,7 @@ fn solve_linear_system(a: &[Vec<f64>], b: &[Vec<f64>]) -> VmResult<(Vec<Vec<f64>
     // For each right-hand side vector
     for col in 0..b_cols {
         // Extract b column and apply permutation
-        let mut pb: Vec<f64> = (0..n).map(|i| {
+        let pb: Vec<f64> = (0..n).map(|i| {
             // Find which row in P has 1 in column i
             for row in 0..n {
                 if p[row][i] != 0.0 {

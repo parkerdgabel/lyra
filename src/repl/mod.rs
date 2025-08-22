@@ -16,21 +16,28 @@ pub mod hints;
 pub mod debug;
 pub mod export;
 pub mod server;
+pub mod enhanced_help;
+pub mod enhanced_error_handler;
 
 use crate::ast::Expr;
 use crate::compiler::Compiler;
 use crate::parser::Parser;
 use crate::vm::{Value, VirtualMachine};
+use crate::modules::registry::ModuleRegistry;
+use crate::stdlib::StandardLibrary;
+use crate::linker::FunctionRegistry;
 use multiline::MultilineBuffer;
 use completion::{LyraCompleter, SharedLyraCompleter};
 use config::{ReplConfig, HistoryConfig};
 use history::{HistoryEntry, SharedHistoryManager};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use file_ops::FileOperations;
 use docs::DocumentationSystem;
 use benchmark::BenchmarkSystem;
 use debug::DebugSystem;
 use export::{ExportManager, ExportFormat, SessionMetadata};
+use enhanced_help::EnhancedHelpSystem;
+use enhanced_error_handler::ReplErrorHandler;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -137,10 +144,14 @@ pub struct ReplEngine {
     completer: LyraCompleter,
     /// Documentation system
     docs: DocumentationSystem,
+    /// Enhanced help system
+    enhanced_help: EnhancedHelpSystem,
     /// Debug system
     debug_system: DebugSystem,
     /// Export manager for session exports
     export_manager: ExportManager,
+    /// Enhanced error handler
+    error_handler: ReplErrorHandler,
     /// Session checkpoints
     checkpoints: HashMap<String, SessionCheckpoint>,
 }
@@ -166,6 +177,12 @@ impl ReplEngine {
         let history_config = HistoryConfig::from_repl_config(&config);
         let history_manager = SharedHistoryManager::new(history_path, history_config)?;
         
+        // Initialize module registry and stdlib for enhanced help
+        let func_registry = Arc::new(RwLock::new(FunctionRegistry::new()));
+        let module_registry = Arc::new(ModuleRegistry::new(func_registry));
+        let stdlib = Arc::new(StandardLibrary::new());
+        let enhanced_help = EnhancedHelpSystem::new(module_registry, stdlib);
+        
         Ok(ReplEngine {
             vm,
             parser: dummy_parser,
@@ -177,8 +194,10 @@ impl ReplEngine {
             multiline_buffer: MultilineBuffer::new(),
             completer: LyraCompleter::new(),
             docs: DocumentationSystem::new(),
+            enhanced_help,
             debug_system: DebugSystem::new(),
             export_manager: ExportManager::new(),
+            error_handler: ReplErrorHandler::new(),
             checkpoints: HashMap::new(),
         })
     }
@@ -192,7 +211,60 @@ impl ReplEngine {
     pub fn evaluate_line(&mut self, input: &str) -> ReplResult<EvaluationResult> {
         let start_time = Instant::now();
         
-        // Handle meta commands first
+        // Handle enhanced help commands first
+        if input.starts_with("??") {
+            // Fuzzy search or category browsing
+            let search_term = &input[2..].trim();
+            if search_term.is_empty() {
+                return Ok(EvaluationResult {
+                    result: "Usage: ??search_term for fuzzy search or ??category for category browsing".to_string(),
+                    value: None,
+                    performance_info: None,
+                    execution_time: start_time.elapsed(),
+                });
+            }
+            
+            let result = if search_term.chars().all(|c| c.is_alphabetic() || c == '_') {
+                // Could be a category - try category first, then search
+                match self.enhanced_help.handle_category_browse(search_term) {
+                    Ok(category_result) if category_result.contains("Functions in category") => category_result,
+                    _ => self.enhanced_help.handle_fuzzy_search(search_term)?,
+                }
+            } else {
+                // General search
+                self.enhanced_help.handle_fuzzy_search(search_term)?
+            };
+            
+            return Ok(EvaluationResult {
+                result,
+                value: None,
+                performance_info: None,
+                execution_time: start_time.elapsed(),
+            });
+        }
+        
+        if input.starts_with('?') {
+            // Enhanced function help
+            let function_name = &input[1..].trim();
+            if function_name.is_empty() {
+                return Ok(EvaluationResult {
+                    result: "Usage: ?FunctionName for detailed help".to_string(),
+                    value: None,
+                    performance_info: None,
+                    execution_time: start_time.elapsed(),
+                });
+            }
+            
+            let result = self.enhanced_help.handle_help_function(function_name)?;
+            return Ok(EvaluationResult {
+                result,
+                value: None,
+                performance_info: None,
+                execution_time: start_time.elapsed(),
+            });
+        }
+        
+        // Handle meta commands
         if input.starts_with('%') {
             return self.handle_meta_command(input);
         }
@@ -1050,6 +1122,11 @@ impl ReplEngine {
         let help_text = r#"Lyra REPL Help
 ===============
 
+Enhanced Help System:
+  ?FunctionName    - Detailed help for specific function (signature, examples, related functions)
+  ??search_term    - Fuzzy search functions with typo suggestions
+  ??category       - Browse functions by category (??math, ??list, ??string, etc.)
+  
 Basic Commands:
   %help           - Show this help message
   %history        - Show command history
@@ -1256,7 +1333,6 @@ The REPL showcases Lyra's symbolic computation optimizations:
 
     /// Get auto-completion suggestions for the given input
     pub fn get_completions(&self, line: &str, pos: usize) -> Vec<String> {
-        // For now, let's provide a simple implementation that returns function names and variables
         let word_start = line[..pos]
             .rfind(|c: char| c.is_whitespace() || "()[]{},".contains(c))
             .map(|i| i + 1)
@@ -1265,24 +1341,60 @@ The REPL showcases Lyra's symbolic computation optimizations:
         let word = &line[word_start..pos];
         let mut completions = Vec::new();
 
-        // Complete function names
-        let function_names = self.completer.complete_functions(word);
-        completions.extend(function_names.into_iter().map(|p| p.replacement));
+        // Handle help command completions
+        if word.starts_with("??") {
+            // Category and search completions
+            let partial = &word[2..];
+            let suggestions = vec![
+                "??math".to_string(),
+                "??list".to_string(), 
+                "??string".to_string(),
+                "??sin".to_string(),
+                "??length".to_string(),
+                "??plus".to_string(),
+            ];
+            
+            completions.extend(suggestions.into_iter().filter(|s| s.starts_with(word)));
+        } else if word.starts_with('?') {
+            // Function help completions
+            let partial = &word[1..];
+            if !partial.is_empty() {
+                let function_suggestions = vec![
+                    "?Sin".to_string(),
+                    "?Cos".to_string(),
+                    "?Length".to_string(),
+                    "?Plus".to_string(),
+                    "?Map".to_string(),
+                    "?Head".to_string(),
+                    "?Tail".to_string(),
+                ];
+                completions.extend(function_suggestions.into_iter().filter(|s| s.to_lowercase().starts_with(&word.to_lowercase())));
+            }
+        } else {
+            // Use enhanced help system for context-aware suggestions
+            let context_suggestions = self.enhanced_help.get_context_suggestions(line, pos);
+            completions.extend(context_suggestions);
 
-        // Complete meta commands
-        if word.starts_with('%') {
-            let meta_completions = self.completer.complete_meta_commands(word);
-            completions.extend(meta_completions.into_iter().map(|p| p.replacement));
-        }
+            // Complete function names
+            let function_names = self.completer.complete_functions(word);
+            completions.extend(function_names.into_iter().map(|p| p.replacement));
 
-        // Complete variables
-        if let Ok(env) = self.environment.lock() {
-            let variable_completions = self.completer.complete_variables(word, &env);
-            completions.extend(variable_completions.into_iter().map(|p| p.replacement));
+            // Complete meta commands
+            if word.starts_with('%') {
+                let meta_completions = self.completer.complete_meta_commands(word);
+                completions.extend(meta_completions.into_iter().map(|p| p.replacement));
+            }
+
+            // Complete variables
+            if let Ok(env) = self.environment.lock() {
+                let variable_completions = self.completer.complete_variables(word, &env);
+                completions.extend(variable_completions.into_iter().map(|p| p.replacement));
+            }
         }
 
         completions.sort();
         completions.dedup();
+        completions.truncate(10); // Limit for better UX
         completions
     }
 

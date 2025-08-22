@@ -1,6 +1,6 @@
 use super::{
-    LyraType, TensorShape, TypeError, TypeResult, TypeEnvironment, TypeScheme,
-    TypeInferenceEngine, infer_expression_type, TypeConstraint
+    LyraType, TypeError, TypeResult, TypeEnvironment, TypeScheme,
+    TypeInferenceEngine
 };
 use crate::ast::{Expr, Pattern};
 use std::collections::HashMap;

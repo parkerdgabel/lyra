@@ -10,7 +10,8 @@
 
 use crate::vm::{Value, VmError, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
-use super::fft::{Complex, SignalData, SpectralResult, compute_fft, compute_ifft};
+use super::fft::{SignalData, SpectralResult, compute_fft, compute_ifft};
+use crate::stdlib::common::Complex;
 use std::f64::consts::PI;
 use rand::prelude::*;
 

@@ -26,26 +26,26 @@ pub fn register_bioinformatics_functions() -> std::collections::HashMap<String, 
     let mut functions = std::collections::HashMap::new();
     
     // Sequence Alignment Functions
-    functions.insert("GlobalAlignment".to_string(), alignment::global_alignment);
-    functions.insert("LocalAlignment".to_string(), alignment::local_alignment);
-    functions.insert("MultipleAlignment".to_string(), alignment::multiple_alignment);
-    functions.insert("BlastSearch".to_string(), alignment::blast_search);
+    functions.insert("GlobalAlignment".to_string(), alignment::global_alignment as crate::stdlib::StdlibFunction);
+    functions.insert("LocalAlignment".to_string(), alignment::local_alignment as crate::stdlib::StdlibFunction);
+    functions.insert("MultipleAlignment".to_string(), alignment::multiple_alignment as crate::stdlib::StdlibFunction);
+    functions.insert("BlastSearch".to_string(), alignment::blast_search as crate::stdlib::StdlibFunction);
     
     // Phylogenetic Functions
-    functions.insert("PhylogeneticTree".to_string(), phylogenetics::phylogenetic_tree);
-    functions.insert("NeighborJoining".to_string(), phylogenetics::neighbor_joining);
-    functions.insert("MaximumLikelihood".to_string(), phylogenetics::maximum_likelihood);
-    functions.insert("PairwiseDistance".to_string(), phylogenetics::pairwise_distance);
+    functions.insert("PhylogeneticTree".to_string(), phylogenetics::phylogenetic_tree as crate::stdlib::StdlibFunction);
+    functions.insert("NeighborJoining".to_string(), phylogenetics::neighbor_joining as crate::stdlib::StdlibFunction);
+    functions.insert("MaximumLikelihood".to_string(), phylogenetics::maximum_likelihood as crate::stdlib::StdlibFunction);
+    functions.insert("PairwiseDistance".to_string(), phylogenetics::pairwise_distance as crate::stdlib::StdlibFunction);
     
     // Genomics Functions
-    functions.insert("BiologicalSequence".to_string(), genomics::biological_sequence);
-    functions.insert("ReverseComplement".to_string(), genomics::reverse_complement);
-    functions.insert("Translate".to_string(), genomics::translate);
-    functions.insert("Transcribe".to_string(), genomics::transcribe);
-    functions.insert("GCContent".to_string(), genomics::gc_content);
-    functions.insert("FindORFs".to_string(), genomics::find_orfs);
-    functions.insert("FindMotifs".to_string(), genomics::find_motifs);
-    functions.insert("CodonUsage".to_string(), genomics::codon_usage);
+    functions.insert("BiologicalSequence".to_string(), genomics::biological_sequence as crate::stdlib::StdlibFunction);
+    functions.insert("ReverseComplement".to_string(), genomics::reverse_complement as crate::stdlib::StdlibFunction);
+    functions.insert("Translate".to_string(), genomics::translate as crate::stdlib::StdlibFunction);
+    functions.insert("Transcribe".to_string(), genomics::transcribe as crate::stdlib::StdlibFunction);
+    functions.insert("GCContent".to_string(), genomics::gc_content as crate::stdlib::StdlibFunction);
+    functions.insert("FindORFs".to_string(), genomics::find_orfs as crate::stdlib::StdlibFunction);
+    functions.insert("FindMotifs".to_string(), genomics::find_motifs as crate::stdlib::StdlibFunction);
+    functions.insert("CodonUsage".to_string(), genomics::codon_usage as crate::stdlib::StdlibFunction);
     
     functions
 }

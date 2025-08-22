@@ -5,7 +5,6 @@
 use super::{Simplex, Filtration, PersistenceInterval, PersistenceDiagram, SimplicialComplex};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
-use crate::stdlib::geometry::Point2D;
 use std::collections::{HashMap, HashSet};
 
 /// Compute persistent homology using the standard algorithm

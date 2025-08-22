@@ -164,7 +164,7 @@ pub mod collection_utils {
 
 /// String and symbol processing utilities
 pub mod string_utils {
-    use super::*;
+    
     
     /// Normalize symbol names for consistent comparison
     pub fn normalize_symbol_name(name: &str) -> String {

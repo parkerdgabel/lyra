@@ -342,11 +342,13 @@ pub fn extract_sparse_matrix(value: &Value) -> VmResult<&GenericSparseMatrix> {
     }
 }
 
-/// Extract mutable sparse matrix from Value
-pub fn extract_sparse_matrix_mut(value: &mut Value) -> VmResult<&mut GenericSparseMatrix> {
+/// Extract sparse matrix from Value and clone it for modification
+/// Since LyObj doesn't support mutable access, we clone and return a new matrix
+pub fn extract_sparse_matrix_for_modification(value: &Value) -> VmResult<GenericSparseMatrix> {
     match value {
         Value::LyObj(obj) => {
-            obj.downcast_mut::<GenericSparseMatrix>()
+            obj.downcast_ref::<GenericSparseMatrix>()
+                .cloned()
                 .ok_or_else(|| VmError::TypeError {
                     expected: "SparseMatrix".to_string(),
                     actual: obj.type_name().to_string(),

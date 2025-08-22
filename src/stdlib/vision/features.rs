@@ -383,7 +383,7 @@ fn build_gaussian_pyramid(image: &Image, num_octaves: usize, num_scales: usize, 
         let scale_factor = 2.0_f32.powi(octave as i32);
         
         // Create base image for this octave
-        let mut current_image = if octave == 0 {
+        let current_image = if octave == 0 {
             image.clone()
         } else {
             // Downsample previous octave's image
@@ -728,7 +728,7 @@ fn compute_brief_descriptor(keypoint: &KeyPoint, image: &Image, patch_size: usiz
     let radius = patch_size / 2;
     
     // Pre-defined test pattern (simplified)
-    let mut bit_idx = 0;
+    let bit_idx = 0;
     for i in 0..descriptor_length {
         let (p1x, p1y, p2x, p2y) = generate_test_points(i, radius);
         

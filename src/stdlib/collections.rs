@@ -29,14 +29,23 @@ pub fn set_create(args: &[Value]) -> VmResult<Value> {
 
     match &args[0] {
         Value::List(items) => {
-            let mut unique_items = Vec::new();
-            let mut seen = HashSet::new();
+            // Early return for empty lists
+            if items.is_empty() {
+                return Ok(Value::List(Vec::new()));
+            }
+            
+            // Pre-allocate with reasonable capacity to reduce reallocations
+            let mut unique_items = Vec::with_capacity(items.len().min(1024));
+            let mut seen = HashSet::with_capacity(items.len().min(1024));
             
             for item in items {
                 if seen.insert(item.clone()) {
                     unique_items.push(item.clone());
                 }
             }
+            
+            // Shrink to exact size to save memory
+            unique_items.shrink_to_fit();
             
             Ok(Value::List(unique_items))
         }
@@ -57,14 +66,28 @@ pub fn set_union(args: &[Value]) -> VmResult<Value> {
 
     match (&args[0], &args[1]) {
         (Value::List(set1), Value::List(set2)) => {
-            let mut union_set = HashSet::new();
+            // Early return optimizations
+            if set1.is_empty() {
+                return Ok(Value::List(set2.clone()));
+            }
+            if set2.is_empty() {
+                return Ok(Value::List(set1.clone()));
+            }
             
-            // Add all items from both sets
+            // Pre-allocate with better capacity estimation
+            let estimated_capacity = (set1.len() + set2.len()).min(2048);
+            let mut union_set = HashSet::with_capacity(estimated_capacity);
+            
+            // Add all items from both sets in one pass
             for item in set1.iter().chain(set2.iter()) {
                 union_set.insert(item.clone());
             }
             
-            Ok(Value::List(union_set.into_iter().collect()))
+            // Convert to Vec and shrink
+            let mut result: Vec<Value> = union_set.into_iter().collect();
+            result.shrink_to_fit();
+            
+            Ok(Value::List(result))
         }
         _ => Err(VmError::TypeError {
             expected: "List, List".to_string(),
@@ -73,7 +96,7 @@ pub fn set_union(args: &[Value]) -> VmResult<Value> {
     }
 }
 
-/// Intersection of two sets
+/// Intersection of two sets  
 pub fn set_intersection(args: &[Value]) -> VmResult<Value> {
     if args.len() != 2 {
         return Err(VmError::Runtime(format!(
@@ -83,11 +106,30 @@ pub fn set_intersection(args: &[Value]) -> VmResult<Value> {
 
     match (&args[0], &args[1]) {
         (Value::List(set1), Value::List(set2)) => {
-            let set1_hash: HashSet<_> = set1.iter().cloned().collect();
-            let set2_hash: HashSet<_> = set2.iter().cloned().collect();
+            // Early return for empty sets
+            if set1.is_empty() || set2.is_empty() {
+                return Ok(Value::List(Vec::new()));
+            }
             
-            let intersection: Vec<Value> = set1_hash.intersection(&set2_hash).cloned().collect();
+            // Optimize by using smaller set for hash lookup
+            let (smaller, larger) = if set1.len() <= set2.len() {
+                (set1, set2)
+            } else {
+                (set2, set1)
+            };
             
+            // Build hash set from smaller collection
+            let smaller_hash: HashSet<_> = smaller.iter().collect();
+            
+            // Check larger collection against smaller hash set
+            let mut intersection = Vec::with_capacity(smaller.len());
+            for item in larger {
+                if smaller_hash.contains(item) {
+                    intersection.push(item.clone());
+                }
+            }
+            
+            intersection.shrink_to_fit();
             Ok(Value::List(intersection))
         }
         _ => Err(VmError::TypeError {
@@ -224,7 +266,7 @@ impl Dictionary {
     }
 
     fn from_pairs(pairs: &[Value]) -> Result<Self, ForeignError> {
-        let mut dict = Dictionary::new();
+        let dict = Dictionary::new();
         
         for pair in pairs {
             match pair {

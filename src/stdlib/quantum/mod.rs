@@ -6,9 +6,9 @@
 //! All quantum objects are implemented as Foreign objects using the LyObj wrapper
 //! to maintain VM simplicity while providing powerful quantum simulation capabilities.
 
-use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{LyObj, Foreign, ForeignError};
-use std::collections::HashMap;
+use crate::vm::VmError;
+use crate::foreign::ForeignError;
+use crate::stdlib::common::Complex;
 
 pub mod gates;
 pub mod circuits;
@@ -49,81 +49,6 @@ pub fn foreign_to_vm_error(err: ForeignError) -> VmError {
     }
 }
 
-/// Complex number representation for quantum amplitudes
-#[derive(Debug, Clone, PartialEq)]
-pub struct Complex {
-    pub real: f64,
-    pub imag: f64,
-}
-
-impl Complex {
-    pub fn new(real: f64, imag: f64) -> Self {
-        Self { real, imag }
-    }
-    
-    pub fn zero() -> Self {
-        Self::new(0.0, 0.0)
-    }
-    
-    pub fn one() -> Self {
-        Self::new(1.0, 0.0)
-    }
-    
-    pub fn i() -> Self {
-        Self::new(0.0, 1.0)
-    }
-    
-    pub fn magnitude(&self) -> f64 {
-        (self.real * self.real + self.imag * self.imag).sqrt()
-    }
-    
-    pub fn magnitude_squared(&self) -> f64 {
-        self.real * self.real + self.imag * self.imag
-    }
-    
-    pub fn conjugate(&self) -> Self {
-        Self::new(self.real, -self.imag)
-    }
-    
-    pub fn phase(&self) -> f64 {
-        self.imag.atan2(self.real)
-    }
-}
-
-impl std::ops::Add for Complex {
-    type Output = Complex;
-    
-    fn add(self, other: Complex) -> Complex {
-        Complex::new(self.real + other.real, self.imag + other.imag)
-    }
-}
-
-impl std::ops::Sub for Complex {
-    type Output = Complex;
-    
-    fn sub(self, other: Complex) -> Complex {
-        Complex::new(self.real - other.real, self.imag - other.imag)
-    }
-}
-
-impl std::ops::Mul for Complex {
-    type Output = Complex;
-    
-    fn mul(self, other: Complex) -> Complex {
-        Complex::new(
-            self.real * other.real - self.imag * other.imag,
-            self.real * other.imag + self.imag * other.real,
-        )
-    }
-}
-
-impl std::ops::Mul<f64> for Complex {
-    type Output = Complex;
-    
-    fn mul(self, scalar: f64) -> Complex {
-        Complex::new(self.real * scalar, self.imag * scalar)
-    }
-}
 
 /// Quantum matrix representation for gates and operations
 #[derive(Debug, Clone)]

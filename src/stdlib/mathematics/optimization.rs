@@ -21,7 +21,6 @@
 
 use crate::vm::{Value, VmError, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
-use std::f64::consts::PI;
 
 const DEFAULT_TOLERANCE: f64 = 1e-8;
 const DEFAULT_MAX_ITERATIONS: usize = 1000;
@@ -1131,6 +1130,7 @@ impl Foreign for IntegrationResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
     
     #[test]
     fn test_newton_method_quadratic() {

@@ -4,7 +4,7 @@
 //! - Topological feature extraction
 //! - Mapper algorithm for visualization
 
-use super::{SimplicialComplex, TopologicalFeatures, PersistenceDiagram, value_to_points, compute_betti_numbers_full, vietoris_rips_complex, compute_persistent_homology, Filtration, Simplex};
+use super::{TopologicalFeatures, value_to_points, compute_betti_numbers_full, vietoris_rips_complex, compute_persistent_homology, Filtration, Simplex};
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::LyObj;
 use crate::stdlib::geometry::Point2D;

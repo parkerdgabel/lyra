@@ -137,7 +137,7 @@ impl LyraInputValidator {
             ValidationStatus::Valid => {
                 Ok(ValidationResult::Valid(None))
             }
-            ValidationStatus::Incomplete { reason, .. } => {
+            ValidationStatus::Incomplete {  .. } => {
                 // Signal that input is incomplete and needs continuation
                 Ok(ValidationResult::Incomplete)
             }

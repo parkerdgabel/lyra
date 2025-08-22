@@ -9,11 +9,19 @@ The Lyra Standard Library provides a comprehensive set of functions for symbolic
 ```
 src/stdlib/
 ├── mod.rs              # Standard library registry and exports
-├── list.rs             # List operations (Length, Head, Tail, etc.)
+├── list.rs             # List operations (Length, Head, Tail, Map, Apply)
 ├── string.rs           # String operations (StringJoin, StringLength, etc.)
 ├── math.rs             # Mathematical functions (Sin, Cos, Exp, etc.)
 ├── rules.rs            # Pattern matching and replacement rules
 ├── tensor.rs           # Tensor operations and linear algebra
+├── sparse/             # Sparse matrix operations
+│   ├── core.rs         # Sparse matrix core infrastructure
+│   ├── coo.rs          # Coordinate (COO) format implementation
+│   └── operations.rs   # Matrix arithmetic (add, multiply, transpose)
+├── spatial/            # Spatial data structures and algorithms
+│   ├── core.rs         # Spatial indexing infrastructure
+│   ├── kdtree.rs       # K-Dimensional Tree for low-dimensional spaces
+│   └── balltree.rs     # Ball Tree for high-dimensional spaces
 └── CLAUDE.md           # This documentation file
 ```
 
@@ -44,7 +52,20 @@ src/stdlib/
 - `RuleDelayed[lhs, rhs]` - Create delayed replacement rule
 - `ReplaceAll[expr, rule]` - Apply replacement rules
 
-### 5. Tensor Operations (8 functions)
+### 5. Sparse Matrix Operations (7 functions)
+- `SparseAdd[matrix1, matrix2]` - Add two sparse matrices
+- `SparseMultiply[matrix1, matrix2]` - Multiply two sparse matrices  
+- `SparseTranspose[matrix]` - Transpose a sparse matrix
+- `SparseShape[matrix]` - Get matrix dimensions
+- `SparseNNZ[matrix]` - Get number of non-zero elements
+- `SparseDensity[matrix]` - Get matrix density (nnz / total_elements)
+- `SparseToDense[matrix]` - Convert to dense representation
+
+### 6. Spatial Data Structures (2 functions)
+- `KDTree[points, metric, leafSize]` - Create K-Dimensional Tree for nearest neighbor searches
+- `BallTree[points, metric, leafSize]` - Create Ball Tree for high-dimensional spaces
+
+### 7. Tensor Operations (8 functions)
 
 #### Basic Tensor Operations (5 functions)
 - `Array[list]` - Create tensor from nested lists
@@ -215,11 +236,78 @@ result = Dot[Transpose[Array[{{1, 2}, {3, 4}}]], Array[{1, 0}]]
 Maximum[result, 0]  (* Chained operations *)
 ```
 
+## Week 7 Enhancements: New Functionality
+
+### Enhanced Map/Apply Functions
+
+The Map and Apply functions have been completely reimplemented to support both built-in functions and pure functions:
+
+```wolfram
+(* Map with built-in functions *)
+Map[Sin, {0, 1.57, 3.14}]  (* → {0, 0.99999, -0.00001} *)
+Map[Plus[1], {1, 2, 3}]    (* → {2, 3, 4} *)
+Map[Length, {{1, 2}, {3, 4, 5}}]  (* → {2, 3} *)
+
+(* Map with pure functions *)
+Map[#^2 &, {1, 2, 3, 4}]   (* → {1, 4, 9, 16} *)
+Map[# + 10 &, {1, 2, 3}]   (* → {11, 12, 13} *)
+
+(* Apply operations *)
+Apply[Plus, {1, 2, 3, 4, 5}]  (* → 15 *)
+Apply[Times, {2, 3, 4}]       (* → 24 *)
+Apply[Max, {5, 2, 8, 1}]      (* → 8 *)
+```
+
+### Sparse Matrix Operations
+
+Complete sparse matrix infrastructure with COO format and basic operations:
+
+```wolfram
+(* Create sparse matrices from triplets *)
+matrix1 = SparseFromTriplets[{{0, 0, 1.0}, {1, 1, 2.0}}, {2, 2}]
+matrix2 = SparseFromTriplets[{{0, 1, 3.0}, {1, 0, 4.0}}, {2, 2}]
+
+(* Matrix operations *)
+sum = SparseAdd[matrix1, matrix2]
+product = SparseMultiply[matrix1, matrix2]
+transposed = SparseTranspose[matrix1]
+
+(* Matrix properties *)
+SparseShape[matrix1]     (* → {2, 2} *)
+SparseNNZ[matrix1]       (* → 2 *)
+SparseDensity[matrix1]   (* → 0.5 *)
+
+(* Convert to dense *)
+dense = SparseToDense[matrix1]  (* → {{1.0, 0.0}, {0.0, 2.0}} *)
+```
+
+### Spatial Data Structures
+
+High-performance spatial indexing for nearest neighbor searches:
+
+```wolfram
+(* Create KD-Tree for low-dimensional data *)
+points2D = {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}}
+kdtree = KDTree[points2D, "Euclidean", 10]
+
+(* Create Ball Tree for high-dimensional data *)
+pointsHD = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}
+balltree = BallTree[pointsHD, "Euclidean", 5]
+
+(* Spatial queries (via method calls) *)
+kdtree.KNearestNeighbors[{2.0, 3.0}, 2]     (* Find 2 closest points *)
+kdtree.RadiusNeighbors[{2.0, 3.0}, 3.0]     (* Find points within radius *)
+kdtree.RangeQuery[{0, 0}, {4, 4}]           (* Find points in rectangle *)
+```
+
 ## Testing Coverage
 
 The standard library has comprehensive test coverage:
 - **62 tensor operation tests** (all passing)
-- **Edge case handling** (division by zero, incompatible shapes)
+- **Map/Apply function tests** (built-in and pure function support)
+- **7 sparse matrix operation tests** (COO format, arithmetic, properties)
+- **Spatial data structure tests** (KD-Tree and Ball-Tree construction and queries)
+- **Edge case handling** (division by zero, incompatible shapes, empty data)
 - **Integration tests** with VM
 - **Snapshot testing** for consistent output formatting
 

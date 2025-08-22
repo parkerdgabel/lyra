@@ -33,7 +33,7 @@
 pub mod core;
 pub mod kdtree;
 pub mod balltree;
-pub mod rtree;
+// pub mod rtree;  // TODO: Fix borrowing issues in insert_recursive
 // pub mod quadtree;
 // pub mod octree;
 // pub mod vptree;
@@ -46,7 +46,7 @@ pub mod rtree;
 pub use core::*;
 pub use kdtree::*;
 pub use balltree::*;
-pub use rtree::*;
+// pub use rtree::*;
 // pub use quadtree::*;
 // pub use octree::*;
 // pub use vptree::*;

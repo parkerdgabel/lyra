@@ -6,11 +6,11 @@
 //! - Topological feature extraction
 //! - Mapper algorithm for visualization
 
-use crate::vm::{Value, VmResult, VmError};
+use crate::vm::{Value, VmResult};
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::stdlib::geometry::Point2D;
 use std::any::Any;
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::HashMap;
 
 pub mod homology;
 pub mod complexes;

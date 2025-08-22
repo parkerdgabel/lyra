@@ -240,7 +240,7 @@ impl KDTree {
             
             // Convert max heap to sorted vector (closest first)
             let mut results = Vec::new();
-            while let Some(Reverse((dist, idx))) = heap.pop() {
+            while let Some(Reverse((OrderedFloat(dist), idx))) = heap.pop() {
                 results.push((idx, dist));
             }
             results.reverse();
@@ -256,7 +256,7 @@ impl KDTree {
         node: &KDNode,
         query: &[f64],
         k: usize,
-        heap: &mut BinaryHeap<Reverse<(f64, usize)>>,
+        heap: &mut BinaryHeap<Reverse<(OrderedFloat, usize)>>,
         stats: &mut SearchStats,
     ) {
         stats.nodes_visited += 1;
@@ -267,11 +267,11 @@ impl KDTree {
         
         // Add to heap if we need more points or this is closer
         if heap.len() < k {
-            heap.push(Reverse((distance, node.point_idx)));
-        } else if let Some(&Reverse((max_dist, _))) = heap.peek() {
+            heap.push(Reverse((OrderedFloat(distance), node.point_idx)));
+        } else if let Some(&Reverse((OrderedFloat(max_dist), _))) = heap.peek() {
             if distance < max_dist {
                 heap.pop();
-                heap.push(Reverse((distance, node.point_idx)));
+                heap.push(Reverse((OrderedFloat(distance), node.point_idx)));
             }
         }
         
@@ -289,7 +289,7 @@ impl KDTree {
         }
         
         // Check if we need to visit second child
-        let current_worst_dist = heap.peek().map(|Reverse((d, _))| *d).unwrap_or(f64::INFINITY);
+        let current_worst_dist = heap.peek().map(|Reverse((OrderedFloat(d), _))| *d).unwrap_or(f64::INFINITY);
         let plane_distance = (query_coord - node.split_value).abs();
         
         if heap.len() < k || plane_distance < current_worst_dist {
@@ -484,7 +484,19 @@ impl Foreign for KDTree {
 
 // Needed for k-nearest neighbor heap
 use std::collections::BinaryHeap;
-use std::cmp::Reverse;
+use std::cmp::{Reverse, Ordering};
+
+/// Wrapper for f64 that implements Ord for use in BinaryHeap
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+struct OrderedFloat(f64);
+
+impl Eq for OrderedFloat {}
+
+impl Ord for OrderedFloat {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.partial_cmp(&other.0).unwrap_or(Ordering::Equal)
+    }
+}
 
 // ===============================
 // KDTREE CONSTRUCTOR FUNCTIONS

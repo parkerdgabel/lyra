@@ -25,6 +25,7 @@ pub mod vm_components;
 pub mod compiler_components;
 pub mod unified_errors;
 pub mod common_utils;
+pub mod error_enhancement;
 
 pub use error::{Error, Result};
 pub use unified_errors::{LyraUnifiedError, LyraResult};

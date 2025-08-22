@@ -491,11 +491,16 @@ pub fn louvain_communities(graph: &Graph) -> CommunityResult {
     let mut community_map = HashMap::new();
     let mut next_id = 0;
     
-    for (vertex, &community) in &communities {
+    // First pass: build the mapping
+    for (_, &community) in &communities {
         if !community_map.contains_key(&community) {
             community_map.insert(community, next_id);
             next_id += 1;
         }
+    }
+    
+    // Second pass: update the communities
+    for (vertex, &community) in communities.clone().iter() {
         communities.insert(*vertex, community_map[&community]);
     }
 

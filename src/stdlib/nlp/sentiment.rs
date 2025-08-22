@@ -473,7 +473,7 @@ pub fn statistical_sentiment(args: &[Value]) -> VmResult<Value> {
             }
             _ => return Err(VmError::TypeError {
                 expected: "list of [text, label] pairs".to_string(),
-                got: format!("{:?}", item)
+                actual: format!("{:?}", item)
             }),
         }
     }

@@ -8,7 +8,7 @@
 
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::{LyObj, Foreign, ForeignError};
-use super::{QuantumMatrix, Complex, QuantumState, validate_qubit_count, validate_qubit_index};
+use super::{Complex, QuantumState, validate_qubit_count, validate_qubit_index};
 use super::gates::QuantumGate;
 use std::collections::HashMap;
 
@@ -36,21 +36,21 @@ impl QuantumCircuit {
         }
     }
     
-    pub fn add_gate(&mut self, gate: QuantumGate, qubits: Vec<usize>) -> Result<(), VmError> {
+    pub fn add_gate(&mut self, gate: QuantumGate, qubits: Vec<usize>) -> Result<(), ForeignError> {
         // Validate qubit indices
         for &qubit in &qubits {
             if qubit >= self.n_qubits {
-                return Err(VmError::Runtime(
-                    format!("Qubit index {} out of range for {}-qubit circuit", qubit, self.n_qubits)
-                ));
+                return Err(ForeignError::RuntimeError { 
+                    message: format!("Qubit index {} out of range for {}-qubit circuit", qubit, self.n_qubits)
+                });
             }
         }
         
         // Validate gate qubit count
         if gate.n_qubits != qubits.len() {
-            return Err(VmError::Runtime(
-                format!("Gate requires {} qubits, but {} specified", gate.n_qubits, qubits.len())
-            ));
+            return Err(ForeignError::RuntimeError { 
+                message: format!("Gate requires {} qubits, but {} specified", gate.n_qubits, qubits.len())
+            });
         }
         
         self.gates.push(CircuitGate {
@@ -62,20 +62,20 @@ impl QuantumCircuit {
         Ok(())
     }
     
-    pub fn add_controlled_gate(&mut self, gate: QuantumGate, qubits: Vec<usize>, controls: Vec<usize>) -> Result<(), VmError> {
+    pub fn add_controlled_gate(&mut self, gate: QuantumGate, qubits: Vec<usize>, controls: Vec<usize>) -> Result<(), ForeignError> {
         // Validate all qubit indices
         for &qubit in qubits.iter().chain(controls.iter()) {
             if qubit >= self.n_qubits {
-                return Err(VmError::Runtime(
-                    format!("Qubit index {} out of range for {}-qubit circuit", qubit, self.n_qubits)
-                ));
+                return Err(ForeignError::RuntimeError { 
+                    message: format!("Qubit index {} out of range for {}-qubit circuit", qubit, self.n_qubits)
+                });
             }
         }
         
         // Check for overlapping qubits
         for &control in &controls {
             if qubits.contains(&control) {
-                return Err(VmError::Runtime("Control and target qubits cannot overlap".to_string()));
+                return Err(ForeignError::RuntimeError { message: "Control and target qubits cannot overlap".to_string() });
             }
         }
         
@@ -88,11 +88,11 @@ impl QuantumCircuit {
         Ok(())
     }
     
-    pub fn add_measurement(&mut self, qubit: usize, classical_bit: usize) -> Result<(), VmError> {
+    pub fn add_measurement(&mut self, qubit: usize, classical_bit: usize) -> Result<(), ForeignError> {
         if qubit >= self.n_qubits {
-            return Err(VmError::Runtime(
-                format!("Qubit index {} out of range", qubit)
-            ));
+            return Err(ForeignError::RuntimeError { 
+                message: format!("Qubit index {} out of range", qubit)
+            });
         }
         
         self.measurements.insert(qubit, classical_bit);
@@ -108,11 +108,11 @@ impl QuantumCircuit {
         self.gates.len()
     }
     
-    pub fn execute(&self, initial_state: &QuantumState) -> Result<(QuantumState, HashMap<usize, usize>), VmError> {
+    pub fn execute(&self, initial_state: &QuantumState) -> Result<(QuantumState, HashMap<usize, usize>), ForeignError> {
         if initial_state.n_qubits != self.n_qubits {
-            return Err(VmError::Runtime(
-                format!("State has {} qubits, circuit expects {}", initial_state.n_qubits, self.n_qubits)
-            ));
+            return Err(ForeignError::RuntimeError { 
+                message: format!("State has {} qubits, circuit expects {}", initial_state.n_qubits, self.n_qubits)
+            });
         }
         
         let mut state = initial_state.clone();
@@ -193,7 +193,7 @@ impl Foreign for QuantumCircuit {
                 
                 let gate = match &args[0] {
                     Value::LyObj(gate_obj) => {
-                        if let Some(g) = gate_obj.as_any().downcast_ref::<QuantumGate>() {
+                        if let Some(g) = gate_obj.downcast_ref::<QuantumGate>() {
                             g.clone()
                         } else {
                             return Err(ForeignError::InvalidArgumentType {
@@ -215,20 +215,24 @@ impl Foreign for QuantumCircuit {
                         let mut qubits = Vec::new();
                         for qubit_val in qubit_list {
                             match qubit_val {
-                                Value::Number(q) => {
-                                    let qubit_idx = validate_qubit_index(*q, self.n_qubits)?;
+                                Value::Real(q) => {
+                                    let qubit_idx = validate_qubit_index(*q, self.n_qubits)
+                                        .map_err(|e| ForeignError::RuntimeError { message: e.to_string() })?;
                                     qubits.push(qubit_idx);
                                 }
-                                _ => return Err(VmError::Runtime("Qubit indices must be numbers".to_string())),
+                                _ => return Err(ForeignError::RuntimeError { 
+                                    message: "Qubit indices must be numbers".to_string()
+                                }),
                             }
                         }
                         qubits
                     }
-                    Value::Number(q) => {
-                        let qubit_idx = validate_qubit_index(*q, self.n_qubits)?;
+                    Value::Real(q) => {
+                        let qubit_idx = validate_qubit_index(*q, self.n_qubits)
+                            .map_err(|e| ForeignError::RuntimeError { message: e.to_string() })?;
                         vec![qubit_idx]
                     }
-                    _ => return Err(VmError::Runtime("Qubit specification must be number or list".to_string())),
+                    _ => return Err(ForeignError::RuntimeError { message: "Qubit specification must be number or list".to_string() }),
                 };
                 
                 circuit.add_gate(gate, qubits)?;
@@ -236,24 +240,25 @@ impl Foreign for QuantumCircuit {
             }
             "addMeasurement" => {
                 if args.len() != 2 {
-                    return Err(VmError::Runtime("addMeasurement requires qubit and classical bit indices".to_string()));
+                    return Err(ForeignError::RuntimeError { message: "addMeasurement requires qubit and classical bit indices".to_string() });
                 }
                 
                 let mut circuit = self.clone();
                 
                 let qubit = match &args[0] {
-                    Value::Number(q) => validate_qubit_index(*q, self.n_qubits)?,
-                    _ => return Err(VmError::Runtime("Qubit index must be a number".to_string())),
+                    Value::Real(q) => validate_qubit_index(*q, self.n_qubits)
+                            .map_err(|e| ForeignError::RuntimeError { message: e.to_string() })?,
+                    _ => return Err(ForeignError::RuntimeError { message: "Qubit index must be a number".to_string() }),
                 };
                 
                 let classical_bit = match &args[1] {
-                    Value::Number(c) => {
+                    Value::Real(c) => {
                         if *c < 0.0 || c.fract() != 0.0 {
-                            return Err(VmError::Runtime("Classical bit index must be non-negative integer".to_string()));
+                            return Err(ForeignError::RuntimeError { message: "Classical bit index must be non-negative integer".to_string() });
                         }
                         *c as usize
                     }
-                    _ => return Err(VmError::Runtime("Classical bit index must be a number".to_string())),
+                    _ => return Err(ForeignError::RuntimeError { message: "Classical bit index must be a number".to_string() }),
                 };
                 
                 circuit.add_measurement(qubit, classical_bit)?;
@@ -261,18 +266,18 @@ impl Foreign for QuantumCircuit {
             }
             "execute" => {
                 if args.len() != 1 {
-                    return Err(VmError::Runtime("execute requires a quantum state".to_string()));
+                    return Err(ForeignError::RuntimeError { message: "execute requires a quantum state".to_string() });
                 }
                 
                 let state = match &args[0] {
                     Value::LyObj(state_obj) => {
-                        if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+                        if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                             &s.state
                         } else {
-                            return Err(VmError::Runtime("Argument must be a QubitRegister".to_string()));
+                            return Err(ForeignError::RuntimeError { message: "Argument must be a QubitRegister".to_string() });
                         }
                     }
-                    _ => return Err(VmError::Runtime("Argument must be a QubitRegister".to_string())),
+                    _ => return Err(ForeignError::RuntimeError { message: "Argument must be a QubitRegister".to_string() }),
                 };
                 
                 let (final_state, measurements) = self.execute(state)?;
@@ -281,8 +286,8 @@ impl Foreign for QuantumCircuit {
                 let final_state_obj = QubitRegister { state: final_state };
                 let measurements_list: Vec<Value> = measurements.iter()
                     .map(|(&bit, &result)| Value::List(vec![
-                        Value::Number(bit as f64),
-                        Value::Number(result as f64),
+                        Value::Real(bit as f64),
+                        Value::Real(result as f64),
                     ]))
                     .collect();
                 
@@ -291,9 +296,9 @@ impl Foreign for QuantumCircuit {
                     Value::List(measurements_list),
                 ]))
             }
-            "depth" => Ok(Value::Number(self.depth() as f64)),
-            "gateCount" => Ok(Value::Number(self.gate_count() as f64)),
-            "qubits" => Ok(Value::Number(self.n_qubits as f64)),
+            "depth" => Ok(Value::Real(self.depth() as f64)),
+            "gateCount" => Ok(Value::Real(self.gate_count() as f64)),
+            "qubits" => Ok(Value::Real(self.n_qubits as f64)),
             _ => Err(ForeignError::UnknownMethod {
                 type_name: "QubitRegister".to_string(),
                 method: method.to_string(),
@@ -344,14 +349,14 @@ impl Foreign for QubitRegister {
                     
                     for i in 0..state.n_qubits {
                         let measurement = state.measure_qubit(i)?;
-                        results.push(Value::Number(measurement as f64));
+                        results.push(Value::Real(measurement as f64));
                     }
                     
                     Ok(Value::List(results))
                 } else if args.len() == 1 {
                     // Measure specific qubit
                     let qubit = match &args[0] {
-                        Value::Number(q) => validate_qubit_index(*q, self.state.n_qubits).map_err(|e| ForeignError::RuntimeError { message: e.to_string() })?,
+                        Value::Real(q) => validate_qubit_index(*q, self.state.n_qubits).map_err(|e| ForeignError::RuntimeError { message: e.to_string() })?,
                         _ => return Err(ForeignError::InvalidArgumentType {
                             method: "measure".to_string(),
                             expected: "Number".to_string(),
@@ -365,7 +370,7 @@ impl Foreign for QubitRegister {
                     // Return [measurement_result, new_state]
                     let new_register = QubitRegister::from_state(state);
                     Ok(Value::List(vec![
-                        Value::Number(measurement as f64),
+                        Value::Real(measurement as f64),
                         Value::LyObj(LyObj::new(Box::new(new_register))),
                     ]))
                 } else {
@@ -379,15 +384,15 @@ impl Foreign for QubitRegister {
             "probabilities" => {
                 let probs = self.state.probabilities();
                 let prob_values: Vec<Value> = probs.iter()
-                    .map(|&p| Value::Number(p))
+                    .map(|&p| Value::Real(p))
                     .collect();
                 Ok(Value::List(prob_values))
             }
             "amplitudes" => {
                 let amp_values: Vec<Value> = self.state.amplitudes.iter()
                     .map(|amp| Value::List(vec![
-                        Value::Number(amp.real),
-                        Value::Number(amp.imag),
+                        Value::Real(amp.real),
+                        Value::Real(amp.imag),
                     ]))
                     .collect();
                 Ok(Value::List(amp_values))
@@ -419,7 +424,7 @@ pub fn quantum_circuit(args: &[Value]) -> VmResult<Value> {
     }
     
     let n_qubits = match &args[0] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n).map_err(|e| VmError::Runtime(e.to_string()))?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -434,7 +439,7 @@ pub fn qubit_register(args: &[Value]) -> VmResult<Value> {
     }
     
     let n_qubits = match &args[0] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n).map_err(|e| VmError::Runtime(e.to_string()))?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -450,7 +455,7 @@ pub fn circuit_add_gate(args: &[Value]) -> VmResult<Value> {
     
     let mut circuit = match &args[0] {
         Value::LyObj(circuit_obj) => {
-            if let Some(c) = circuit_obj.as_any().downcast_ref::<QuantumCircuit>() {
+            if let Some(c) = circuit_obj.downcast_ref::<QuantumCircuit>() {
                 c.clone()
             } else {
                 return Err(VmError::Runtime("First argument must be a QuantumCircuit".to_string()));
@@ -461,7 +466,7 @@ pub fn circuit_add_gate(args: &[Value]) -> VmResult<Value> {
     
     let gate = match &args[1] {
         Value::LyObj(gate_obj) => {
-            if let Some(g) = gate_obj.as_any().downcast_ref::<QuantumGate>() {
+            if let Some(g) = gate_obj.downcast_ref::<QuantumGate>() {
                 g.clone()
             } else {
                 return Err(VmError::Runtime("Second argument must be a QuantumGate".to_string()));
@@ -474,16 +479,18 @@ pub fn circuit_add_gate(args: &[Value]) -> VmResult<Value> {
     let qubits = if args.len() == 3 {
         // Single argument for qubits
         match &args[2] {
-            Value::Number(q) => {
-                let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)?;
+            Value::Real(q) => {
+                let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)
+                .map_err(|e| VmError::Runtime(e.to_string()))?;
                 vec![qubit_idx]
             }
             Value::List(qubit_list) => {
                 let mut qubits = Vec::new();
                 for qubit_val in qubit_list {
                     match qubit_val {
-                        Value::Number(q) => {
-                            let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)?;
+                        Value::Real(q) => {
+                            let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)
+                .map_err(|e| VmError::Runtime(e.to_string()))?;
                             qubits.push(qubit_idx);
                         }
                         _ => return Err(VmError::Runtime("Qubit indices must be numbers".to_string())),
@@ -498,8 +505,9 @@ pub fn circuit_add_gate(args: &[Value]) -> VmResult<Value> {
         let mut qubits = Vec::new();
         for arg in &args[2..] {
             match arg {
-                Value::Number(q) => {
-                    let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)?;
+                Value::Real(q) => {
+                    let qubit_idx = validate_qubit_index(*q, circuit.n_qubits)
+                .map_err(|e| VmError::Runtime(e.to_string()))?;
                     qubits.push(qubit_idx);
                 }
                 _ => return Err(VmError::Runtime("Qubit indices must be numbers".to_string())),
@@ -508,7 +516,7 @@ pub fn circuit_add_gate(args: &[Value]) -> VmResult<Value> {
         qubits
     };
     
-    circuit.add_gate(gate, qubits)?;
+    circuit.add_gate(gate, qubits).map_err(|e| VmError::Runtime(e.to_string()))?;
     Ok(Value::LyObj(LyObj::new(Box::new(circuit))))
 }
 
@@ -520,7 +528,7 @@ pub fn execute_circuit(args: &[Value]) -> VmResult<Value> {
     
     let circuit = match &args[0] {
         Value::LyObj(circuit_obj) => {
-            if let Some(c) = circuit_obj.as_any().downcast_ref::<QuantumCircuit>() {
+            if let Some(c) = circuit_obj.downcast_ref::<QuantumCircuit>() {
                 c
             } else {
                 return Err(VmError::Runtime("First argument must be a QuantumCircuit".to_string()));
@@ -531,7 +539,7 @@ pub fn execute_circuit(args: &[Value]) -> VmResult<Value> {
     
     let initial_state = match &args[1] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 &s.state
             } else {
                 return Err(VmError::Runtime("Second argument must be a QubitRegister".to_string()));
@@ -540,13 +548,13 @@ pub fn execute_circuit(args: &[Value]) -> VmResult<Value> {
         _ => return Err(VmError::Runtime("Second argument must be a QubitRegister".to_string())),
     };
     
-    let (final_state, measurements) = circuit.execute(initial_state)?;
+    let (final_state, measurements) = circuit.execute(initial_state).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     let final_register = QubitRegister::from_state(final_state);
     let measurements_list: Vec<Value> = measurements.iter()
         .map(|(&bit, &result)| Value::List(vec![
-            Value::Number(bit as f64),
-            Value::Number(result as f64),
+            Value::Real(bit as f64),
+            Value::Real(result as f64),
         ]))
         .collect();
     
@@ -564,7 +572,7 @@ pub fn measure_qubit(args: &[Value]) -> VmResult<Value> {
     
     let register = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("First argument must be a QubitRegister".to_string()));
@@ -574,14 +582,15 @@ pub fn measure_qubit(args: &[Value]) -> VmResult<Value> {
     };
     
     let qubit = match &args[1] {
-        Value::Number(q) => validate_qubit_index(*q, register.state.n_qubits)?,
+        Value::Real(q) => validate_qubit_index(*q, register.state.n_qubits)
+            .map_err(|e| VmError::Runtime(e.to_string()))?,
         _ => return Err(VmError::Runtime("Qubit index must be a number".to_string())),
     };
     
     let mut state = register.state.clone();
     let measurement = state.measure_qubit(qubit)?;
     
-    Ok(Value::Number(measurement as f64))
+    Ok(Value::Real(measurement as f64))
 }
 
 // State Preparation Functions
@@ -596,19 +605,19 @@ pub fn create_qubit_state(args: &[Value]) -> VmResult<Value> {
     
     for arg in args {
         let amplitude = match arg {
-            Value::Number(real) => Complex::new(*real, 0.0),
+            Value::Real(real) => Complex::new(*real, 0.0),
             Value::List(complex_pair) => {
                 if complex_pair.len() != 2 {
                     return Err(VmError::Runtime("Complex amplitude must be [real, imag]".to_string()));
                 }
                 
                 let real = match &complex_pair[0] {
-                    Value::Number(r) => *r,
+                    Value::Real(r) => *r,
                     _ => return Err(VmError::Runtime("Real part must be a number".to_string())),
                 };
                 
                 let imag = match &complex_pair[1] {
-                    Value::Number(i) => *i,
+                    Value::Real(i) => *i,
                     _ => return Err(VmError::Runtime("Imaginary part must be a number".to_string())),
                 };
                 
@@ -632,7 +641,7 @@ pub fn create_superposition_state(args: &[Value]) -> VmResult<Value> {
         1 // Default to single qubit
     } else {
         match &args[0] {
-            Value::Number(n) => validate_qubit_count(*n)?,
+            Value::Real(n) => validate_qubit_count(*n)?,
             _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
         }
     };
@@ -653,7 +662,7 @@ pub fn create_bell_state(args: &[Value]) -> VmResult<Value> {
         0 // Default to |Φ+⟩
     } else {
         match &args[0] {
-            Value::Number(t) => {
+            Value::Real(t) => {
                 if *t < 0.0 || *t > 3.0 || t.fract() != 0.0 {
                     return Err(VmError::Runtime("Bell state type must be 0, 1, 2, or 3".to_string()));
                 }
@@ -689,7 +698,7 @@ pub fn state_probabilities(args: &[Value]) -> VmResult<Value> {
     
     let register = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("Argument must be a QubitRegister".to_string()));
@@ -700,7 +709,7 @@ pub fn state_probabilities(args: &[Value]) -> VmResult<Value> {
     
     let probabilities = register.state.probabilities();
     let prob_values: Vec<Value> = probabilities.iter()
-        .map(|&p| Value::Number(p))
+        .map(|&p| Value::Real(p))
         .collect();
     
     Ok(Value::List(prob_values))
@@ -714,7 +723,7 @@ pub fn normalize_state(args: &[Value]) -> VmResult<Value> {
     
     let register = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("Argument must be a QubitRegister".to_string()));
@@ -738,7 +747,7 @@ pub fn partial_trace(args: &[Value]) -> VmResult<Value> {
     
     let _register = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("First argument must be a QubitRegister".to_string()));
@@ -749,7 +758,7 @@ pub fn partial_trace(args: &[Value]) -> VmResult<Value> {
     
     let _qubits_to_trace = match &args[1] {
         Value::List(qubit_list) => qubit_list,
-        Value::Number(_q) => {
+        Value::Real(_q) => {
             // Single qubit to trace out
             return Err(VmError::Runtime("Partial trace not yet implemented".to_string()));
         }
@@ -767,10 +776,10 @@ mod tests {
 
     #[test]
     fn test_quantum_circuit_creation() {
-        let circuit = quantum_circuit(&[Value::Number(3.0)]).unwrap();
+        let circuit = quantum_circuit(&[Value::Real(3.0)]).unwrap();
         
         if let Value::LyObj(circuit_obj) = circuit {
-            let circuit = circuit_obj.as_any().downcast_ref::<QuantumCircuit>().unwrap();
+            let circuit = circuit_obj.downcast_ref::<QuantumCircuit>().unwrap();
             assert_eq!(circuit.n_qubits, 3);
             assert_eq!(circuit.gates.len(), 0);
         }
@@ -778,10 +787,10 @@ mod tests {
 
     #[test]
     fn test_qubit_register_creation() {
-        let register = qubit_register(&[Value::Number(2.0)]).unwrap();
+        let register = qubit_register(&[Value::Real(2.0)]).unwrap();
         
         if let Value::LyObj(register_obj) = register {
-            let register = register_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+            let register = register_obj.downcast_ref::<QubitRegister>().unwrap();
             assert_eq!(register.state.n_qubits, 2);
             assert_eq!(register.state.amplitudes.len(), 4);
             assert_eq!(register.state.amplitudes[0].real, 1.0); // |00⟩ state
@@ -790,13 +799,13 @@ mod tests {
 
     #[test]
     fn test_circuit_gate_addition() {
-        let circuit = quantum_circuit(&[Value::Number(2.0)]).unwrap();
+        let circuit = quantum_circuit(&[Value::Real(2.0)]).unwrap();
         let h_gate = hadamard_gate(&[]).unwrap();
         
-        let modified_circuit = circuit_add_gate(&[circuit, h_gate, Value::Number(0.0)]).unwrap();
+        let modified_circuit = circuit_add_gate(&[circuit, h_gate, Value::Real(0.0)]).unwrap();
         
         if let Value::LyObj(circuit_obj) = modified_circuit {
-            let circuit = circuit_obj.as_any().downcast_ref::<QuantumCircuit>().unwrap();
+            let circuit = circuit_obj.downcast_ref::<QuantumCircuit>().unwrap();
             assert_eq!(circuit.gates.len(), 1);
             assert_eq!(circuit.gates[0].qubits, vec![0]);
         }
@@ -804,10 +813,10 @@ mod tests {
 
     #[test]
     fn test_bell_state_creation() {
-        let bell_state = create_bell_state(&[Value::Number(0.0)]).unwrap();
+        let bell_state = create_bell_state(&[Value::Real(0.0)]).unwrap();
         
         if let Value::LyObj(state_obj) = bell_state {
-            let register = state_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+            let register = state_obj.downcast_ref::<QubitRegister>().unwrap();
             let probs = register.state.probabilities();
             
             // |Φ+⟩ = (|00⟩ + |11⟩)/√2 should have 50% probability each for |00⟩ and |11⟩
@@ -820,10 +829,10 @@ mod tests {
 
     #[test]
     fn test_superposition_state() {
-        let superposition = create_superposition_state(&[Value::Number(2.0)]).unwrap();
+        let superposition = create_superposition_state(&[Value::Real(2.0)]).unwrap();
         
         if let Value::LyObj(state_obj) = superposition {
-            let register = state_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+            let register = state_obj.downcast_ref::<QubitRegister>().unwrap();
             let probs = register.state.probabilities();
             
             // Equal superposition should have 25% probability for each basis state
@@ -835,27 +844,27 @@ mod tests {
 
     #[test]
     fn test_state_measurement() {
-        let register = qubit_register(&[Value::Number(1.0)]).unwrap();
-        let measurement = measure_qubit(&[register, Value::Number(0.0)]).unwrap();
+        let register = qubit_register(&[Value::Real(1.0)]).unwrap();
+        let measurement = measure_qubit(&[register, Value::Real(0.0)]).unwrap();
         
         // |0⟩ state should always measure 0
-        assert_eq!(measurement, Value::Number(0.0));
+        assert_eq!(measurement, Value::Real(0.0));
     }
 
     #[test]
     fn test_circuit_execution() {
-        let circuit = quantum_circuit(&[Value::Number(1.0)]).unwrap();
+        let circuit = quantum_circuit(&[Value::Real(1.0)]).unwrap();
         let x_gate = pauli_x_gate(&[]).unwrap();
-        let circuit_with_gate = circuit_add_gate(&[circuit, x_gate, Value::Number(0.0)]).unwrap();
+        let circuit_with_gate = circuit_add_gate(&[circuit, x_gate, Value::Real(0.0)]).unwrap();
         
-        let initial_state = qubit_register(&[Value::Number(1.0)]).unwrap();
+        let initial_state = qubit_register(&[Value::Real(1.0)]).unwrap();
         let result = execute_circuit(&[circuit_with_gate, initial_state]).unwrap();
         
         if let Value::List(results) = result {
             assert_eq!(results.len(), 2); // [final_state, measurements]
             
             if let Value::LyObj(final_state_obj) = &results[0] {
-                let final_register = final_state_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+                let final_register = final_state_obj.downcast_ref::<QubitRegister>().unwrap();
                 // After X gate, |0⟩ → |1⟩
                 assert!((final_register.state.amplitudes[0].magnitude() - 0.0).abs() < 1e-10);
                 assert!((final_register.state.amplitudes[1].magnitude() - 1.0).abs() < 1e-10);

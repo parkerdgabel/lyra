@@ -357,7 +357,7 @@ fn neighbor_joining_impl(sequences: &[String]) -> PhylogeneticTree {
         .map(|(i, seq)| TreeNode::new_leaf(format!("seq_{}", i)))
         .collect();
     
-    let mut taxa: Vec<String> = sequences
+    let taxa: Vec<String> = sequences
         .iter()
         .enumerate()
         .map(|(i, _)| format!("seq_{}", i))
@@ -429,7 +429,7 @@ fn neighbor_joining_impl(sequences: &[String]) -> PhylogeneticTree {
         // Update distance matrix and nodes
         let mut new_matrix = vec![vec![0.0; current_n - 1]; current_n - 1];
         let mut new_nodes = Vec::new();
-        let mut new_row_idx = 0;
+        let new_row_idx = 0;
         
         // Add the new internal node first
         new_nodes.push(new_node);

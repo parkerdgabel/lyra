@@ -1,7 +1,6 @@
 use super::{
-    LyraType, TensorShape, TypeError, TypeResult, TypeEnvironment, TypeScheme, 
-    TypeSubstitution, TypeVar, TypeVarGenerator, TypeConstraint,
-    unification::{ConstraintSolver, Unifier, unify_types}
+    LyraType, TypeError, TypeResult, TypeEnvironment, TypeScheme, TypeVarGenerator, TypeConstraint,
+    unification::{ConstraintSolver, Unifier}
 };
 use crate::ast::{Expr, Number, Pattern};
 

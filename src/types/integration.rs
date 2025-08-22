@@ -1,9 +1,8 @@
 use super::{
-    LyraType, TensorShape, TypeError, TypeResult, TypeEnvironment, TypeScheme,
-    TypeInferenceEngine, TypeChecker, infer_expression_type, check_expression_safety
+    LyraType, TensorShape, TypeEnvironment, TypeScheme, TypeChecker, infer_expression_type
 };
 use crate::{
-    ast::{Expr, Number},
+    ast::Expr,
     compiler::{Compiler, CompilerError, CompilerResult},
     vm::{Value, VirtualMachine, VmError},
     error::Error,
@@ -410,7 +409,7 @@ pub fn create_stdlib_type_environment() -> TypeEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Symbol, Expr};
+    use crate::ast::{Symbol, Expr, Number};
 
     #[test]
     fn test_typed_compiler() {

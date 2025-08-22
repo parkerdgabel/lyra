@@ -483,7 +483,7 @@ impl CorrelatedEquilibrium {
         // For 2-player games, find distribution that maximizes sum of payoffs
         // subject to incentive compatibility constraints
         let mut best_distribution = HashMap::new();
-        let mut best_welfare = f64::NEG_INFINITY;
+        let best_welfare = f64::NEG_INFINITY;
         
         // Simple approach: try uniform distribution over all action profiles
         // and check which ones satisfy incentive compatibility

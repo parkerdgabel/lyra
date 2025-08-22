@@ -526,7 +526,7 @@ fn reverse_complement_dna(dna: &str) -> String {
     
     dna.chars()
         .rev()
-        .map(|ch| complement_map.get(&ch).unwrap_or(&ch))
+        .map(|ch| *complement_map.get(&ch).unwrap_or(&ch))
         .collect()
 }
 

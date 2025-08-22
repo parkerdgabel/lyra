@@ -17,6 +17,18 @@ use std::collections::BinaryHeap;
 use std::cmp::Reverse;
 use std::time::Instant;
 
+/// Wrapper for f64 that implements Ord for use in BinaryHeap
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+struct OrderedFloat(f64);
+
+impl Eq for OrderedFloat {}
+
+impl std::cmp::Ord for OrderedFloat {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
 /// Ball tree node structure
 #[derive(Debug, Clone)]
 struct BallNode {
@@ -129,8 +141,8 @@ impl BallTree {
         let furthest_idx = indices.iter()
             .enumerate()
             .max_by(|(_, &a), (_, &b)| {
-                let dist_a = self.metric.distance(&center, &self.data[*a]);
-                let dist_b = self.metric.distance(&center, &self.data[*b]);
+                let dist_a = self.metric.distance(&center, &self.data[a]);
+                let dist_b = self.metric.distance(&center, &self.data[b]);
                 dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(_, &idx)| idx)
@@ -282,7 +294,7 @@ impl BallTree {
             
             // Convert max heap to sorted vector (closest first)
             let mut results = Vec::new();
-            while let Some(Reverse((dist, idx))) = heap.pop() {
+            while let Some(Reverse((OrderedFloat(dist), idx))) = heap.pop() {
                 results.push((idx, dist));
             }
             results.reverse();
@@ -298,7 +310,7 @@ impl BallTree {
         node: &BallNode,
         query: &[f64],
         k: usize,
-        heap: &mut BinaryHeap<Reverse<(f64, usize)>>,
+        heap: &mut BinaryHeap<Reverse<(OrderedFloat, usize)>>,
         stats: &mut SearchStats,
     ) {
         stats.nodes_visited += 1;
@@ -314,11 +326,11 @@ impl BallTree {
                 stats.distance_calculations += 1;
                 
                 if heap.len() < k {
-                    heap.push(Reverse((distance, point_idx)));
-                } else if let Some(&Reverse((max_dist, _))) = heap.peek() {
+                    heap.push(Reverse((OrderedFloat(distance), point_idx)));
+                } else if let Some(&Reverse((OrderedFloat(max_dist), _))) = heap.peek() {
                     if distance < max_dist {
                         heap.pop();
-                        heap.push(Reverse((distance, point_idx)));
+                        heap.push(Reverse((OrderedFloat(distance), point_idx)));
                     }
                 }
             }
@@ -326,7 +338,7 @@ impl BallTree {
         }
         
         // For internal nodes, check if we need to explore children
-        let current_worst_dist = heap.peek().map(|Reverse((d, _))| *d).unwrap_or(f64::INFINITY);
+        let current_worst_dist = heap.peek().map(|Reverse((OrderedFloat(d), _))| *d).unwrap_or(f64::INFINITY);
         
         // Check if the ball could contain better points
         let min_possible_distance = (center_distance - node.radius).max(0.0);
@@ -350,7 +362,7 @@ impl BallTree {
                 let child_center_dist = self.metric.distance(query, &child.center);
                 let child_min_dist = (child_center_dist - child.radius).max(0.0);
                 
-                let current_worst = heap.peek().map(|Reverse((d, _))| *d).unwrap_or(f64::INFINITY);
+                let current_worst = heap.peek().map(|Reverse((OrderedFloat(d), _))| *d).unwrap_or(f64::INFINITY);
                 if heap.len() < k || child_min_dist < current_worst {
                     self.k_nearest_recursive(child, query, k, heap, stats);
                 } else {
@@ -491,7 +503,8 @@ impl BallTree {
     ) {
         // Check if ball could intersect with the range
         let mut ball_could_intersect = true;
-        for (i, (&center_coord, &radius)) in node.center.iter().zip(std::iter::repeat(node.radius)).enumerate() {
+        for (i, &center_coord) in node.center.iter().enumerate() {
+            let radius = node.radius;
             let min_ball = center_coord - radius;
             let max_ball = center_coord + radius;
             

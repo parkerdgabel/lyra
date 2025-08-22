@@ -9,9 +9,9 @@
 //! - Shor's algorithm components
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{LyObj, Foreign, ForeignError};
+use crate::foreign::LyObj;
 use super::{QuantumMatrix, Complex, QuantumState, validate_qubit_count, validate_qubit_index};
-use super::circuits::{QuantumCircuit, QubitRegister, CircuitGate};
+use super::circuits::{QuantumCircuit, QubitRegister};
 use super::gates::QuantumGate;
 use std::f64::consts::PI;
 
@@ -23,7 +23,7 @@ pub fn quantum_fourier_transform(args: &[Value]) -> VmResult<Value> {
     }
     
     let n_qubits = match &args[0] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n)?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -33,20 +33,20 @@ pub fn quantum_fourier_transform(args: &[Value]) -> VmResult<Value> {
     for i in 0..n_qubits {
         // Apply Hadamard gate
         let h_gate = create_hadamard_gate();
-        circuit.add_gate(h_gate, vec![i])?;
+        circuit.add_gate(h_gate, vec![i]).map_err(|e| VmError::Runtime(e.to_string()))?;
         
         // Apply controlled phase gates
         for j in (i + 1)..n_qubits {
             let phase_angle = PI / (1 << (j - i)) as f64; // 2π/2^(j-i+1)
             let cp_gate = create_controlled_phase_gate(phase_angle);
-            circuit.add_gate(cp_gate, vec![j, i])?; // Control on j, target on i
+            circuit.add_gate(cp_gate, vec![j, i]).map_err(|e| VmError::Runtime(e.to_string()))?; // Control on j, target on i
         }
     }
     
     // Swap qubits to reverse the order (QFT convention)
     for i in 0..(n_qubits / 2) {
         let swap_gate = create_swap_gate();
-        circuit.add_gate(swap_gate, vec![i, n_qubits - 1 - i])?;
+        circuit.add_gate(swap_gate, vec![i, n_qubits - 1 - i]).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     Ok(Value::LyObj(LyObj::new(Box::new(circuit))))
@@ -59,7 +59,7 @@ pub fn inverse_quantum_fourier_transform(args: &[Value]) -> VmResult<Value> {
     }
     
     let n_qubits = match &args[0] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n)?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -70,7 +70,7 @@ pub fn inverse_quantum_fourier_transform(args: &[Value]) -> VmResult<Value> {
     // First, swap qubits back
     for i in 0..(n_qubits / 2) {
         let swap_gate = create_swap_gate();
-        circuit.add_gate(swap_gate, vec![i, n_qubits - 1 - i])?;
+        circuit.add_gate(swap_gate, vec![i, n_qubits - 1 - i]).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     // Apply inverse operations in reverse order
@@ -79,12 +79,12 @@ pub fn inverse_quantum_fourier_transform(args: &[Value]) -> VmResult<Value> {
         for j in ((i + 1)..n_qubits).rev() {
             let phase_angle = -PI / (1 << (j - i)) as f64; // Negative phase for inverse
             let cp_gate = create_controlled_phase_gate(phase_angle);
-            circuit.add_gate(cp_gate, vec![j, i])?;
+            circuit.add_gate(cp_gate, vec![j, i]).map_err(|e| VmError::Runtime(e.to_string()))?;
         }
         
         // Apply Hadamard gate
         let h_gate = create_hadamard_gate();
-        circuit.add_gate(h_gate, vec![i])?;
+        circuit.add_gate(h_gate, vec![i]).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     Ok(Value::LyObj(LyObj::new(Box::new(circuit))))
@@ -99,7 +99,7 @@ pub fn grovers_search(args: &[Value]) -> VmResult<Value> {
     
     let oracle = match &args[0] {
         Value::LyObj(oracle_obj) => {
-            if let Some(o) = oracle_obj.as_any().downcast_ref::<QuantumGate>() {
+            if let Some(o) = oracle_obj.downcast_ref::<QuantumGate>() {
                 o
             } else {
                 return Err(VmError::Runtime("First argument must be an oracle (QuantumGate)".to_string()));
@@ -109,7 +109,7 @@ pub fn grovers_search(args: &[Value]) -> VmResult<Value> {
     };
     
     let n_qubits = match &args[1] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n)?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -122,7 +122,7 @@ pub fn grovers_search(args: &[Value]) -> VmResult<Value> {
     // Step 1: Create uniform superposition
     for i in 0..n_qubits {
         let h_gate = create_hadamard_gate();
-        circuit.add_gate(h_gate, vec![i])?;
+        circuit.add_gate(h_gate, vec![i]).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     // Step 2: Calculate optimal number of iterations
@@ -132,11 +132,11 @@ pub fn grovers_search(args: &[Value]) -> VmResult<Value> {
     // Step 3: Grover iterations
     for _ in 0..optimal_iterations {
         // Apply oracle
-        circuit.add_gate(oracle.clone(), (0..n_qubits).collect())?;
+        circuit.add_gate(oracle.clone(), (0..n_qubits).collect()).map_err(|e| VmError::Runtime(e.to_string()))?;
         
         // Apply diffusion operator (inversion about average)
-        let diffusion_gate = create_grover_diffusion_operator(n_qubits)?;
-        circuit.add_gate(diffusion_gate, (0..n_qubits).collect())?;
+        let diffusion_gate = create_grover_diffusion_operator(n_qubits).map_err(|e| VmError::Runtime(e.to_string()))?;
+        circuit.add_gate(diffusion_gate, (0..n_qubits).collect()).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     Ok(Value::LyObj(LyObj::new(Box::new(circuit))))
@@ -149,7 +149,7 @@ pub fn grover_oracle(args: &[Value]) -> VmResult<Value> {
     }
     
     let marked_item = match &args[0] {
-        Value::Number(item) => {
+        Value::Real(item) => {
             if *item < 0.0 || item.fract() != 0.0 {
                 return Err(VmError::Runtime("Marked item must be non-negative integer".to_string()));
             }
@@ -159,7 +159,7 @@ pub fn grover_oracle(args: &[Value]) -> VmResult<Value> {
     };
     
     let n_qubits = match &args[1] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n)?,
         _ => return Err(VmError::Runtime("Number of qubits must be a number".to_string())),
     };
     
@@ -187,7 +187,7 @@ pub fn quantum_phase_estimation(args: &[Value]) -> VmResult<Value> {
     
     let unitary = match &args[0] {
         Value::LyObj(unitary_obj) => {
-            if let Some(u) = unitary_obj.as_any().downcast_ref::<QuantumGate>() {
+            if let Some(u) = unitary_obj.downcast_ref::<QuantumGate>() {
                 u
             } else {
                 return Err(VmError::Runtime("First argument must be a unitary gate".to_string()));
@@ -198,7 +198,7 @@ pub fn quantum_phase_estimation(args: &[Value]) -> VmResult<Value> {
     
     let _eigenstate = match &args[1] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("Second argument must be a quantum state".to_string()));
@@ -208,7 +208,7 @@ pub fn quantum_phase_estimation(args: &[Value]) -> VmResult<Value> {
     };
     
     let counting_qubits = match &args[2] {
-        Value::Number(n) => validate_qubit_count(*n)?,
+        Value::Real(n) => validate_qubit_count(*n)?,
         _ => return Err(VmError::Runtime("Counting qubits must be a number".to_string())),
     };
     
@@ -218,7 +218,7 @@ pub fn quantum_phase_estimation(args: &[Value]) -> VmResult<Value> {
     // Step 1: Create superposition in counting qubits
     for i in 0..counting_qubits {
         let h_gate = create_hadamard_gate();
-        circuit.add_gate(h_gate, vec![i])?;
+        circuit.add_gate(h_gate, vec![i]).map_err(|e| VmError::Runtime(e.to_string()))?;
     }
     
     // Step 2: Apply controlled unitary operations
@@ -228,17 +228,17 @@ pub fn quantum_phase_estimation(args: &[Value]) -> VmResult<Value> {
         // Apply U^(2^i) controlled by qubit i
         for _ in 0..power {
             // This is a simplified version - full implementation would create controlled-U
-            let controlled_u = create_controlled_unitary(unitary)?;
+            let controlled_u = create_controlled_unitary(unitary).map_err(|e| VmError::Runtime(e.to_string()))?;
             let control_qubits = vec![i];
             let target_qubits: Vec<usize> = (counting_qubits..total_qubits).collect();
             
-            circuit.add_controlled_gate(controlled_u, target_qubits, control_qubits)?;
+            circuit.add_controlled_gate(controlled_u, target_qubits, control_qubits).map_err(|e| VmError::Runtime(e.to_string()))?;
         }
     }
     
     // Step 3: Apply inverse QFT to counting qubits
-    let inv_qft = create_inverse_qft_for_range(counting_qubits)?;
-    circuit.add_gate(inv_qft, (0..counting_qubits).collect())?;
+    let inv_qft = create_inverse_qft_for_range(counting_qubits).map_err(|e| VmError::Runtime(e.to_string()))?;
+    circuit.add_gate(inv_qft, (0..counting_qubits).collect()).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     Ok(Value::LyObj(LyObj::new(Box::new(circuit))))
 }
@@ -251,7 +251,7 @@ pub fn quantum_teleportation(args: &[Value]) -> VmResult<Value> {
     
     let state_to_teleport = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 if s.state.n_qubits != 1 {
                     return Err(VmError::Runtime("Can only teleport single-qubit states".to_string()));
                 }
@@ -272,18 +272,18 @@ pub fn quantum_teleportation(args: &[Value]) -> VmResult<Value> {
     
     // Step 1: Create Bell pair between qubits 1 and 2
     let h_gate = create_hadamard_gate();
-    circuit.add_gate(h_gate, vec![1])?;
+    circuit.add_gate(h_gate.clone(), vec![1]).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     let cnot_gate = create_cnot_gate();
-    circuit.add_gate(cnot_gate, vec![1, 2])?; // Control: 1, Target: 2
+    circuit.add_gate(cnot_gate.clone(), vec![1, 2]).map_err(|e| VmError::Runtime(e.to_string()))?; // Control: 1, Target: 2
     
     // Step 2: Bell measurement on qubits 0 and 1
-    circuit.add_gate(cnot_gate.clone(), vec![0, 1])?; // Control: 0, Target: 1
-    circuit.add_gate(h_gate.clone(), vec![0])?;
+    circuit.add_gate(cnot_gate.clone(), vec![0, 1]).map_err(|e| VmError::Runtime(e.to_string()))?; // Control: 0, Target: 1
+    circuit.add_gate(h_gate.clone(), vec![0]).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     // Step 3: Add measurements
-    circuit.add_measurement(0, 0)?; // Measure qubit 0 to classical bit 0
-    circuit.add_measurement(1, 1)?; // Measure qubit 1 to classical bit 1
+    circuit.add_measurement(0, 0).map_err(|e| VmError::Runtime(e.to_string()))?; // Measure qubit 0 to classical bit 0
+    circuit.add_measurement(1, 1).map_err(|e| VmError::Runtime(e.to_string()))?; // Measure qubit 1 to classical bit 1
     
     // Step 4: Conditional operations on qubit 2 based on measurements
     // (This would be handled during circuit execution based on measurement results)
@@ -301,14 +301,14 @@ pub fn quantum_teleportation(args: &[Value]) -> VmResult<Value> {
     let initial_register = QubitRegister::from_state(initial_state);
     
     // Execute the circuit
-    let (final_state, measurements) = circuit.execute(&initial_register.state)?;
+    let (final_state, measurements) = circuit.execute(&initial_register.state).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     // Return the teleportation results
     let final_register = QubitRegister::from_state(final_state);
     let measurements_list: Vec<Value> = measurements.iter()
         .map(|(&bit, &result)| Value::List(vec![
-            Value::Number(bit as f64),
-            Value::Number(result as f64),
+            Value::Real(bit as f64),
+            Value::Real(result as f64),
         ]))
         .collect();
     
@@ -326,7 +326,7 @@ pub fn three_qubit_encode(args: &[Value]) -> VmResult<Value> {
     
     let data_qubit = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 if s.state.n_qubits != 1 {
                     return Err(VmError::Runtime("Can only encode single-qubit states".to_string()));
                 }
@@ -360,7 +360,7 @@ pub fn apply_bit_flip_error(args: &[Value]) -> VmResult<Value> {
     
     let encoded_state = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("First argument must be a quantum state".to_string()));
@@ -370,7 +370,7 @@ pub fn apply_bit_flip_error(args: &[Value]) -> VmResult<Value> {
     };
     
     let qubit_index = match &args[1] {
-        Value::Number(q) => validate_qubit_index(*q, encoded_state.state.n_qubits)?,
+        Value::Real(q) => validate_qubit_index(*q, encoded_state.state.n_qubits)?,
         _ => return Err(VmError::Runtime("Qubit index must be a number".to_string())),
     };
     
@@ -391,7 +391,7 @@ pub fn three_qubit_correct(args: &[Value]) -> VmResult<Value> {
     
     let encoded_state = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 if s.state.n_qubits != 3 {
                     return Err(VmError::Runtime("Three-qubit correction requires 3-qubit state".to_string()));
                 }
@@ -412,12 +412,12 @@ pub fn three_qubit_correct(args: &[Value]) -> VmResult<Value> {
     let cnot_gate = create_cnot_gate();
     
     // First syndrome qubit (parity of qubits 0 and 1)
-    circuit.add_gate(cnot_gate.clone(), vec![0, 3])?;
-    circuit.add_gate(cnot_gate.clone(), vec![1, 3])?;
+    circuit.add_gate(cnot_gate.clone(), vec![0, 3]).map_err(|e| VmError::Runtime(e.to_string()))?;
+    circuit.add_gate(cnot_gate.clone(), vec![1, 3]).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     // Second syndrome qubit (parity of qubits 1 and 2)
-    circuit.add_gate(cnot_gate.clone(), vec![1, 4])?;
-    circuit.add_gate(cnot_gate.clone(), vec![2, 4])?;
+    circuit.add_gate(cnot_gate.clone(), vec![1, 4]).map_err(|e| VmError::Runtime(e.to_string()))?;
+    circuit.add_gate(cnot_gate.clone(), vec![2, 4]).map_err(|e| VmError::Runtime(e.to_string()))?;
     
     // Error correction based on syndrome
     // This is a simplified implementation
@@ -434,7 +434,7 @@ pub fn three_qubit_decode(args: &[Value]) -> VmResult<Value> {
     
     let encoded_state = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 if s.state.n_qubits != 3 {
                     return Err(VmError::Runtime("Three-qubit decoding requires 3-qubit state".to_string()));
                 }
@@ -469,7 +469,7 @@ pub fn entanglement_measure(args: &[Value]) -> VmResult<Value> {
     
     let _state = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 s
             } else {
                 return Err(VmError::Runtime("Argument must be a quantum state".to_string()));
@@ -480,7 +480,7 @@ pub fn entanglement_measure(args: &[Value]) -> VmResult<Value> {
     
     // For now, return a placeholder value
     // Full implementation would calculate von Neumann entropy of reduced density matrix
-    Ok(Value::Number(0.5)) // Placeholder entanglement measure
+    Ok(Value::Real(0.5)) // Placeholder entanglement measure
 }
 
 /// Measure Bell state and return correlations
@@ -491,7 +491,7 @@ pub fn measure_bell_state(args: &[Value]) -> VmResult<Value> {
     
     let state = match &args[0] {
         Value::LyObj(state_obj) => {
-            if let Some(s) = state_obj.as_any().downcast_ref::<QubitRegister>() {
+            if let Some(s) = state_obj.downcast_ref::<QubitRegister>() {
                 if s.state.n_qubits != 2 {
                     return Err(VmError::Runtime("Bell state measurement requires 2-qubit state".to_string()));
                 }
@@ -509,8 +509,8 @@ pub fn measure_bell_state(args: &[Value]) -> VmResult<Value> {
     let measurement_1 = measurement_state.measure_qubit(1)?;
     
     Ok(Value::List(vec![
-        Value::Number(measurement_0 as f64),
-        Value::Number(measurement_1 as f64),
+        Value::Real(measurement_0 as f64),
+        Value::Real(measurement_1 as f64),
     ]))
 }
 
@@ -617,10 +617,10 @@ mod tests {
 
     #[test]
     fn test_qft_creation() {
-        let qft = quantum_fourier_transform(&[Value::Number(3.0)]).unwrap();
+        let qft = quantum_fourier_transform(&[Value::Real(3.0)]).unwrap();
         
         if let Value::LyObj(circuit_obj) = qft {
-            let circuit = circuit_obj.as_any().downcast_ref::<QuantumCircuit>().unwrap();
+            let circuit = circuit_obj.downcast_ref::<QuantumCircuit>().unwrap();
             assert_eq!(circuit.n_qubits, 3);
             assert!(circuit.gates.len() > 0); // Should have gates
         }
@@ -628,10 +628,10 @@ mod tests {
 
     #[test]
     fn test_grover_oracle_creation() {
-        let oracle = grover_oracle(&[Value::Number(2.0), Value::Number(2.0)]).unwrap();
+        let oracle = grover_oracle(&[Value::Real(2.0), Value::Real(2.0)]).unwrap();
         
         if let Value::LyObj(oracle_obj) = oracle {
-            let oracle_gate = oracle_obj.as_any().downcast_ref::<QuantumGate>().unwrap();
+            let oracle_gate = oracle_obj.downcast_ref::<QuantumGate>().unwrap();
             assert_eq!(oracle_gate.n_qubits, 2);
             assert!(oracle_gate.matrix.is_unitary(1e-10));
             
@@ -642,11 +642,11 @@ mod tests {
 
     #[test]
     fn test_grovers_search() {
-        let oracle = grover_oracle(&[Value::Number(1.0), Value::Number(2.0)]).unwrap();
-        let grover_circuit = grovers_search(&[oracle, Value::Number(2.0)]).unwrap();
+        let oracle = grover_oracle(&[Value::Real(1.0), Value::Real(2.0)]).unwrap();
+        let grover_circuit = grovers_search(&[oracle, Value::Real(2.0)]).unwrap();
         
         if let Value::LyObj(circuit_obj) = grover_circuit {
-            let circuit = circuit_obj.as_any().downcast_ref::<QuantumCircuit>().unwrap();
+            let circuit = circuit_obj.downcast_ref::<QuantumCircuit>().unwrap();
             assert_eq!(circuit.n_qubits, 2);
             // Should have initial Hadamards + Grover iterations
             assert!(circuit.gates.len() >= 2); // At least H gates for superposition
@@ -664,7 +664,7 @@ mod tests {
         let encoded = three_qubit_encode(&[Value::LyObj(LyObj::new(Box::new(test_register)))]).unwrap();
         
         if let Value::LyObj(encoded_obj) = encoded {
-            let encoded_register = encoded_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+            let encoded_register = encoded_obj.downcast_ref::<QubitRegister>().unwrap();
             assert_eq!(encoded_register.state.n_qubits, 3);
             
             // Check that only |000⟩ and |111⟩ have non-zero amplitudes
@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_bell_state_measurement() {
-        let bell_state = super::super::circuits::create_bell_state(&[Value::Number(0.0)]).unwrap();
+        let bell_state = super::super::circuits::create_bell_state(&[Value::Real(0.0)]).unwrap();
         let measurement = measure_bell_state(&[bell_state]).unwrap();
         
         if let Value::List(results) = measurement {
@@ -689,7 +689,7 @@ mod tests {
             // Both measurements should be numbers (0 or 1)
             for result in results {
                 match result {
-                    Value::Number(n) => assert!(n == 0.0 || n == 1.0),
+                    Value::Real(n) => assert!(n == 0.0 || n == 1.0),
                     _ => panic!("Measurement result should be a number"),
                 }
             }
@@ -711,7 +711,7 @@ mod tests {
             // Should have final state and measurement results
             match &results[0] {
                 Value::LyObj(state_obj) => {
-                    let _final_state = state_obj.as_any().downcast_ref::<QubitRegister>().unwrap();
+                    let _final_state = state_obj.downcast_ref::<QubitRegister>().unwrap();
                     // Final state should be a 3-qubit state
                 }
                 _ => panic!("First result should be a quantum state"),

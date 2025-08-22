@@ -143,7 +143,7 @@ impl StringInterner {
     
     /// Create a new string interner
     pub fn new() -> Self {
-        let mut interner = Self {
+        let interner = Self {
             dynamic_cache: RwLock::new(HashMap::with_capacity(1024)),
             arena: RwLock::new(Vec::with_capacity(1024)),
             symbol_table: DashMap::with_capacity(2048),
@@ -163,73 +163,90 @@ impl StringInterner {
     
     /// Intern a string, returning an efficient reference
     pub fn intern(&self, s: &str) -> InternedString {
-        // First check static symbols (O(1) for common cases)
-        for &static_str in Self::COMMON_SYMBOLS {
-            if s == static_str {
-                self.stats.write().static_hits += 1;
-                return InternedString::from_static(static_str);
-            }
-        }
+        // Fast path: Use intern_symbol_id for new interning system (faster)
+        let symbol_id = self.intern_symbol_id(s);
         
-        // Check dynamic cache
-        {
-            let cache = self.dynamic_cache.read();
-            if let Some(&interned) = cache.get(s) {
-                self.stats.write().dynamic_hits += 1;
+        // For backwards compatibility, create InternedString from resolved symbol
+        if let Some(resolved) = self.resolve_symbol(symbol_id) {
+            // Check if it's a static symbol first
+            for &static_str in Self::COMMON_SYMBOLS {
+                if resolved == static_str {
+                    return InternedString::from_static(static_str);
+                }
+            }
+            
+            // Check dynamic cache
+            {
+                let cache = self.dynamic_cache.read();
+                if let Some(&interned) = cache.get(&resolved) {
+                    return interned;
+                }
+            }
+            
+            // Create new interned string for backwards compatibility
+            let mut cache = self.dynamic_cache.write();
+            let mut arena = self.arena.write();
+            
+            // Double-check in case another thread added it
+            if let Some(&interned) = cache.get(&resolved) {
                 return interned;
             }
+            
+            // Add to arena and cache
+            arena.push(resolved.clone());
+            let last_string = arena.last().unwrap();
+            let interned = InternedString { ptr: last_string.as_str() as *const str };
+            
+            cache.insert(resolved, interned);
+            interned
+        } else {
+            // Fallback to empty static string
+            InternedString::from_static("")
         }
-        
-        // Need to intern a new string
-        let mut cache = self.dynamic_cache.write();
-        let mut arena = self.arena.write();
-        let mut stats = self.stats.write();
-        
-        // Double-check in case another thread added it
-        if let Some(&interned) = cache.get(s) {
-            stats.dynamic_hits += 1;
-            return interned;
-        }
-        
-        // Add to arena and cache
-        let owned = s.to_string();
-        arena.push(owned);
-        let last_string = arena.last().unwrap();
-        let interned = InternedString { ptr: last_string.as_str() as *const str };
-        
-        cache.insert(s.to_string(), interned);
-        stats.dynamic_misses += 1;
-        stats.total_interned += 1;
-        stats.total_bytes += s.len();
-        
-        interned
     }
     
     /// NEW: Intern a string and return a compact SymbolId (4 bytes vs 16+ bytes)
     pub fn intern_symbol_id(&self, s: &str) -> SymbolId {
-        // Check if already exists
+        // Fast path: Check if already exists (most common case)
         if let Some(symbol_id) = self.symbol_table.get(s) {
-            self.stats.write().dynamic_hits += 1;
+            // Increment stats without blocking other readers
+            if let Some(mut stats) = self.stats.try_write() {
+                stats.dynamic_hits += 1;
+            }
             return *symbol_id;
         }
         
-        // Allocate new ID
-        let new_id = if s.is_empty() {
-            0 // Reserve 0 for empty string
-        } else {
-            self.next_symbol_id.fetch_add(1, Ordering::Relaxed)
-        };
+        // Handle empty string as special case
+        if s.is_empty() {
+            return SymbolId::EMPTY;
+        }
         
+        // Allocate new ID
+        let new_id = self.next_symbol_id.fetch_add(1, Ordering::Relaxed);
         let symbol_id = SymbolId::new(new_id);
         
-        // Store both directions of mapping
-        self.symbol_table.insert(s.to_string(), symbol_id);
-        self.symbol_strings.insert(new_id, s.into());
+        // Store both directions of mapping (avoid double allocation)
+        let owned_string: Box<str> = s.into();
         
-        // Update stats
-        self.stats.write().dynamic_misses += 1;
-        self.stats.write().total_interned += 1;
-        self.stats.write().total_bytes += s.len();
+        // Check for race condition after allocation
+        if let Some(existing_id) = self.symbol_table.get(s) {
+            // Another thread got there first, return existing ID
+            if let Some(mut stats) = self.stats.try_write() {
+                stats.dynamic_hits += 1;
+            }
+            return *existing_id;
+        }
+        
+        // Actually insert the new mapping
+        self.symbol_table.insert(owned_string.to_string(), symbol_id);
+        self.symbol_strings.insert(new_id, owned_string);
+        
+        // Update stats (non-blocking)
+        if let Some(mut stats) = self.stats.try_write() {
+            stats.dynamic_misses += 1;
+            stats.total_interned += 1;
+            stats.total_bytes += s.len();
+        }
         
         symbol_id
     }

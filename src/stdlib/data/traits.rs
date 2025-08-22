@@ -5,7 +5,7 @@
 
 use crate::vm::Value;
 use crate::foreign::ForeignError;
-use crate::stdlib::data::aggregation::{AggregationSpec, AggregationSet};
+use crate::stdlib::data::aggregation::AggregationSet;
 use std::collections::HashMap;
 
 /// Core trait for columnar data structures (tables, data frames, etc.)

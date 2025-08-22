@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use sysinfo::{System, Pid, PidExt, SystemExt, ProcessExt, UserExt, CpuExt, RefreshKind, ProcessRefreshKind};
+use sysinfo::{System, PidExt, SystemExt, ProcessExt, UserExt, CpuExt, RefreshKind, ProcessRefreshKind};
 use std::any::Any;
 
 /// Error types for system operations

@@ -192,6 +192,16 @@ impl LyObj {
     }
 }
 
+/// Conversion from VmError to ForeignError
+/// This enables using the ? operator when calling VM functions from Foreign object methods
+impl From<crate::vm::VmError> for ForeignError {
+    fn from(vm_error: crate::vm::VmError) -> Self {
+        ForeignError::RuntimeError {
+            message: vm_error.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

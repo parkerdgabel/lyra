@@ -475,7 +475,7 @@ impl SymbolSuggestionEngine {
         }
         
         // Check if we're in a function call
-        if let Ok(mut lexer) = Lexer::new(before_cursor).tokenize() {
+        if let Ok(lexer) = Lexer::new(before_cursor).tokenize() {
             // Look for pattern: Symbol[
             for (i, token) in lexer.iter().enumerate() {
                 if let TokenKind::Symbol(_) = token.kind {
@@ -616,7 +616,7 @@ impl SymbolSuggestionEngine {
     }
     
     fn check_context_warnings(&self, context: &AnalysisContext) -> Vec<String> {
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         
         // Check for potential naming conflicts
         if context.context_type == ContextType::VariableAssignment {

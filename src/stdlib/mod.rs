@@ -26,8 +26,8 @@ pub mod mathematics;
 pub mod ml;
 pub mod result;
 pub mod rules;
-// pub mod sparse;
-// pub mod spatial;
+pub mod sparse;
+pub mod spatial;
 pub mod analytics;
 // pub mod statistics; // CONSOLIDATED into analytics/statistics.rs
 pub mod string;
@@ -50,6 +50,11 @@ pub mod bioinformatics;
 pub mod signal;
 pub mod quantum;
 pub mod nlp;
+
+// New infrastructure and algorithm modules
+pub mod common;
+pub mod algorithms;
+pub mod data_structures;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -90,8 +95,8 @@ impl StandardLibrary {
         stdlib.register_timeseries_functions();
         stdlib.register_clustering_functions();
         stdlib.register_numerical_functions();
-        // stdlib.register_sparse_functions();
-        // stdlib.register_spatial_functions();
+        stdlib.register_sparse_functions();
+        stdlib.register_spatial_functions();
         stdlib.register_result_functions();
         stdlib.register_async_functions();
         stdlib.register_network_functions();
@@ -109,6 +114,8 @@ impl StandardLibrary {
         stdlib.register_finance_functions();
         stdlib.register_quantum_functions();
         stdlib.register_nlp_functions();
+        stdlib.register_algorithm_functions();
+        stdlib.register_data_structure_functions();
 
         stdlib
     }
@@ -603,29 +610,36 @@ impl StandardLibrary {
         self.register("MiniBatchKMeans", clustering::kmeans::mini_batch_kmeans);
     }
 
-    // fn register_sparse_functions(&mut self) {
-    //     // CSR format functions
-    //     self.register("CSRMatrix", sparse::csr::csr_matrix);
-    //     self.register("CSRFromTriplets", sparse::csr::csr_from_triplets);
-    //     self.register("CSRFromDense", sparse::csr::csr_from_dense);
-    //     
-    //     // CSC format functions
-    //     self.register("CSCMatrix", sparse::csc::csc_matrix);
-    //     self.register("CSCFromTriplets", sparse::csc::csc_from_triplets);
-    //     self.register("CSCFromDense", sparse::csc::csc_from_dense);
-    //     
-    //     // COO format functions
-    //     self.register("COOMatrix", sparse::coo::coo_matrix);
-    //     self.register("COOFromTriplets", sparse::coo::coo_from_triplets);
-    //     self.register("COOFromDense", sparse::coo::coo_from_dense);
-    // }
+    fn register_sparse_functions(&mut self) {
+        // Core matrix creation functions
+        self.register("CSRMatrix", sparse::csr::csr_matrix);
+        self.register("CSCMatrix", sparse::csc::csc_matrix);
+        self.register("COOMatrix", sparse::coo::coo_matrix);
+        
+        // Sparse matrix operations
+        self.register("SparseAdd", sparse::operations::sparse_add);
+        self.register("SparseMultiply", sparse::operations::sparse_multiply);
+        self.register("SparseTranspose", sparse::operations::sparse_transpose);
+        
+        // Matrix information functions
+        self.register("SparseShape", sparse::operations::sparse_shape);
+        self.register("SparseNNZ", sparse::operations::sparse_nnz);
+        self.register("SparseDensity", sparse::operations::sparse_density);
+        
+        // Conversion functions
+        self.register("SparseToDense", sparse::operations::sparse_to_dense);
+    }
 
-    // fn register_spatial_functions(&mut self) {
-    //     // Core spatial tree functions
-    //     self.register("KDTree", spatial::kdtree::kdtree);
-    //     self.register("BallTree", spatial::balltree::balltree);
-    //     self.register("RTree", spatial::rtree::rtree);
-    // }
+    fn register_spatial_functions(&mut self) {
+        // Note: Spatial module has compilation issues that need to be fixed
+        // For now, registering minimal functions that are closer to working
+        // TODO: Fix error type conversions and f64 ordering issues in spatial module
+        
+        // Core spatial tree functions (commented out due to compilation issues)
+        // self.register("KDTree", spatial::kdtree::kdtree);
+        // self.register("BallTree", spatial::balltree::balltree);
+        // self.register("RTree", spatial::rtree::rtree);
+    }
 
     fn register_numerical_functions(&mut self) {
         // Root finding and equation solving
@@ -1316,6 +1330,119 @@ impl StandardLibrary {
         self.register("StableMarriage", game_theory::stable_marriage);
         self.register("AssignmentProblem", game_theory::assignment_problem);
         self.register("StableAssignment", game_theory::stable_assignment);
+    }
+
+    fn register_algorithm_functions(&mut self) {
+        // Core Computer Science Algorithms
+        
+        // Sorting Algorithms (6 functions)
+        self.register("Sort", algorithms::sort_list);
+        self.register("QuickSort", algorithms::quicksort_list);
+        self.register("MergeSort", algorithms::mergesort_list);
+        self.register("HeapSort", algorithms::heapsort_list);
+        self.register("InsertionSort", algorithms::insertion_sort_list);
+        self.register("IsSorted", algorithms::is_sorted);
+        
+        // Search Algorithms (5 functions)
+        self.register("BinarySearch", algorithms::binary_search);
+        self.register("BinarySearchFirst", algorithms::binary_search_first);
+        self.register("BinarySearchLast", algorithms::binary_search_last);
+        self.register("LinearSearch", algorithms::linear_search);
+        self.register("InterpolationSearch", algorithms::interpolation_search);
+        
+        // String Algorithms (9 functions)
+        self.register("KMPSearch", algorithms::kmp_search);
+        self.register("EditDistance", algorithms::edit_distance);
+        self.register("BoyerMooreSearch", algorithms::boyer_moore_search);
+        self.register("RabinKarpSearch", algorithms::rabin_karp_search);
+        self.register("HammingDistance", algorithms::hamming_distance);
+        self.register("JaroWinklerDistance", algorithms::jaro_winkler_distance);
+        self.register("LongestCommonSubstring", algorithms::longest_common_substring);
+        self.register("SuffixArray", algorithms::suffix_array);
+        self.register("ZAlgorithm", algorithms::z_algorithm);
+        
+        // Compression Algorithms (2 functions - more to be implemented)
+        self.register("RunLengthEncode", algorithms::run_length_encode);
+        self.register("RunLengthDecode", algorithms::run_length_decode);
+    }
+
+    fn register_data_structure_functions(&mut self) {
+        // Data Structure Algorithms
+        
+        // Binary Heap Operations (9 functions)
+        self.register("BinaryHeap", data_structures::heap::binary_heap);
+        self.register("BinaryMaxHeap", data_structures::heap::binary_max_heap);
+        self.register("HeapInsert", data_structures::heap::heap_insert);
+        self.register("HeapExtractMin", data_structures::heap::heap_extract_min);
+        self.register("HeapExtractMax", data_structures::heap::heap_extract_max);
+        self.register("HeapPeek", data_structures::heap::heap_peek);
+        self.register("HeapSize", data_structures::heap::heap_size);
+        self.register("HeapIsEmpty", data_structures::heap::heap_is_empty);
+        self.register("HeapMerge", data_structures::heap::heap_merge);
+        
+        // Queue Operations (4 functions)
+        self.register("Queue", data_structures::queue::queue);
+        self.register("Enqueue", data_structures::queue::enqueue);
+        self.register("Dequeue", data_structures::queue::dequeue);
+        self.register("QueueFront", data_structures::queue::queue_front);
+        
+        // Stack Operations (4 functions)
+        self.register("Stack", data_structures::stack::stack);
+        self.register("Push", data_structures::stack::push);
+        self.register("Pop", data_structures::stack::pop);
+        self.register("StackTop", data_structures::stack::stack_top);
+        
+        // Priority Queue Operations (10 functions)
+        self.register("PriorityQueue", data_structures::priority_queue::priority_queue);
+        self.register("MinPriorityQueue", data_structures::priority_queue::min_priority_queue);
+        self.register("PQInsert", data_structures::priority_queue::pq_insert);
+        self.register("PQExtract", data_structures::priority_queue::pq_extract);
+        self.register("PQPeek", data_structures::priority_queue::pq_peek);
+        self.register("PQPeekPriority", data_structures::priority_queue::pq_peek_priority);
+        self.register("PQSize", data_structures::priority_queue::pq_size);
+        self.register("PQIsEmpty", data_structures::priority_queue::pq_is_empty);
+        self.register("PQContains", data_structures::priority_queue::pq_contains);
+        self.register("PQMerge", data_structures::priority_queue::pq_merge);
+        
+        // Binary Search Tree Operations (11 functions)
+        self.register("BST", data_structures::trees::bst::bst_new);
+        self.register("BSTInsert", data_structures::trees::bst::bst_insert);
+        self.register("BSTSearch", data_structures::trees::bst::bst_search);
+        self.register("BSTDelete", data_structures::trees::bst::bst_delete);
+        self.register("BSTMin", data_structures::trees::bst::bst_min);
+        self.register("BSTMax", data_structures::trees::bst::bst_max);
+        self.register("BSTInOrder", data_structures::trees::bst::bst_inorder);
+        self.register("BSTPreOrder", data_structures::trees::bst::bst_preorder);
+        self.register("BSTPostOrder", data_structures::trees::bst::bst_postorder);
+        self.register("BSTHeight", data_structures::trees::bst::bst_height);
+        self.register("BSTBalance", data_structures::trees::bst::bst_is_balanced);
+        
+        // Trie (Prefix Tree) Operations (12 functions)
+        self.register("Trie", data_structures::trees::trie::trie_new);
+        self.register("TrieInsert", data_structures::trees::trie::trie_insert);
+        self.register("TrieInsertWithValue", data_structures::trees::trie::trie_insert_with_value);
+        self.register("TrieSearch", data_structures::trees::trie::trie_search);
+        self.register("TrieStartsWith", data_structures::trees::trie::trie_starts_with);
+        self.register("TrieGet", data_structures::trees::trie::trie_get);
+        self.register("TrieDelete", data_structures::trees::trie::trie_delete);
+        self.register("TrieWordsWithPrefix", data_structures::trees::trie::trie_get_words_with_prefix);
+        self.register("TrieAllWords", data_structures::trees::trie::trie_get_all_words);
+        self.register("TrieSize", data_structures::trees::trie::trie_size);
+        self.register("TrieIsEmpty", data_structures::trees::trie::trie_is_empty);
+        self.register("TrieLongestPrefix", data_structures::trees::trie::trie_longest_common_prefix);
+        
+        // Disjoint Set (Union-Find) Operations (11 functions)
+        self.register("DisjointSet", data_structures::disjoint_set::disjoint_set_new);
+        self.register("DSFind", data_structures::disjoint_set::disjoint_set_find);
+        self.register("DSUnion", data_structures::disjoint_set::disjoint_set_union);
+        self.register("DSConnected", data_structures::disjoint_set::disjoint_set_connected);
+        self.register("DSSetSize", data_structures::disjoint_set::disjoint_set_set_size);
+        self.register("DSCount", data_structures::disjoint_set::disjoint_set_count);
+        self.register("DSTotalElements", data_structures::disjoint_set::disjoint_set_total_elements);
+        self.register("DSGetMembers", data_structures::disjoint_set::disjoint_set_get_members);
+        self.register("DSGetAllSets", data_structures::disjoint_set::disjoint_set_get_all_sets);
+        self.register("DSGetRoots", data_structures::disjoint_set::disjoint_set_get_roots);
+        self.register("DSReset", data_structures::disjoint_set::disjoint_set_reset);
     }
 }
 

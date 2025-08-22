@@ -1354,7 +1354,7 @@ pub fn eulerian_path(args: &[Value]) -> VmResult<Value> {
         });
     }
 
-    let mut graph = extract_graph(&args[0])?;
+    let graph = extract_graph(&args[0])?;
     
     if graph.vertices.is_empty() {
         return Ok(Value::List(vec![]));

@@ -105,7 +105,7 @@ impl HintConfig {
     /// Create hint config from REPL config
     pub fn from_repl_config(config: &ReplConfig) -> Self {
         // For now use defaults, but this can be extended with specific hint settings
-        let mut hint_config = Self::default();
+        let hint_config = Self::default();
         
         // Respect display settings
         if !config.display.colors {

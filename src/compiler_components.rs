@@ -1,10 +1,9 @@
 // Compiler Components Module
 // This module contains extracted components from the compiler for better organization
 
-use crate::ast::{Expr, Pattern};
+use crate::ast::Expr;
 use crate::bytecode::{Instruction, OpCode};
-use crate::compiler::{CompilerError, CompilerResult, EnhancedFunctionSignature, SimpleFunctionSignature};
-use crate::vm::Value;
+use crate::compiler::{CompilerError, CompilerResult, EnhancedFunctionSignature};
 use std::collections::HashMap;
 
 /// Attribute processor responsible for handling function attributes like Hold, Listable, etc.

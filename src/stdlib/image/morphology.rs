@@ -6,7 +6,6 @@
 use crate::foreign::LyObj;
 use crate::vm::{Value, VmResult, VmError};
 use crate::stdlib::image::core::Image;
-use crate::stdlib::image::ColorSpace;
 
 // ===============================
 // STRUCTURING ELEMENTS
@@ -371,6 +370,7 @@ fn parse_structuring_element(value: &Value) -> VmResult<StructuringElement> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stdlib::image::ColorSpace;
 
     #[test]
     fn test_structuring_element_circle() {

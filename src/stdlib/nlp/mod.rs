@@ -4,7 +4,6 @@
 //! All complex text types are implemented as Foreign objects following the LyObj pattern.
 
 use crate::vm::{Value, VmResult};
-use crate::foreign::{LyObj, Foreign};
 use std::collections::HashMap;
 
 pub mod text;

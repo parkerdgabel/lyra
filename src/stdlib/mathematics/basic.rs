@@ -2,139 +2,72 @@
 
 use crate::vm::{Value, VmError, VmResult};
 
-/// Trigonometric sine function
-/// Usage: Sin[0] -> 0.0, Sin[Pi/2] -> 1.0
-pub fn sin(args: &[Value]) -> VmResult<Value> {
+/// Fast numeric value extraction for math operations
+#[inline(always)]
+fn extract_number(value: &Value) -> Result<f64, VmError> {
+    match value {
+        Value::Integer(n) => Ok(*n as f64),
+        Value::Real(r) => Ok(*r),
+        _ => Err(VmError::TypeError {
+            expected: "Number".to_string(),
+            actual: format!("{:?}", value),
+        }),
+    }
+}
+
+/// Extract number with arity check in one operation
+#[inline(always)]
+fn extract_single_number(args: &[Value]) -> Result<f64, VmError> {
     if args.len() != 1 {
         return Err(VmError::TypeError {
             expected: "exactly 1 argument".to_string(),
             actual: format!("{} arguments", args.len()),
         });
     }
+    extract_number(&args[0])
+}
 
-    let x = match &args[0] {
-        Value::Integer(n) => *n as f64,
-        Value::Real(r) => *r,
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Number".to_string(),
-                actual: format!("{:?}", args[0]),
-            })
-        }
-    };
-
+/// Trigonometric sine function
+/// Usage: Sin[0] -> 0.0, Sin[Pi/2] -> 1.0
+pub fn sin(args: &[Value]) -> VmResult<Value> {
+    let x = extract_single_number(args)?;
     Ok(Value::Real(x.sin()))
 }
 
 /// Trigonometric cosine function
 /// Usage: Cos[0] -> 1.0, Cos[Pi] -> -1.0
 pub fn cos(args: &[Value]) -> VmResult<Value> {
-    if args.len() != 1 {
-        return Err(VmError::TypeError {
-            expected: "exactly 1 argument".to_string(),
-            actual: format!("{} arguments", args.len()),
-        });
-    }
-
-    let x = match &args[0] {
-        Value::Integer(n) => *n as f64,
-        Value::Real(r) => *r,
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Number".to_string(),
-                actual: format!("{:?}", args[0]),
-            })
-        }
-    };
-
+    let x = extract_single_number(args)?;
     Ok(Value::Real(x.cos()))
 }
 
 /// Trigonometric tangent function
 /// Usage: Tan[0] -> 0.0, Tan[Pi/4] -> 1.0
 pub fn tan(args: &[Value]) -> VmResult<Value> {
-    if args.len() != 1 {
-        return Err(VmError::TypeError {
-            expected: "exactly 1 argument".to_string(),
-            actual: format!("{} arguments", args.len()),
-        });
-    }
-
-    let x = match &args[0] {
-        Value::Integer(n) => *n as f64,
-        Value::Real(r) => *r,
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Number".to_string(),
-                actual: format!("{:?}", args[0]),
-            })
-        }
-    };
-
+    let x = extract_single_number(args)?;
     Ok(Value::Real(x.tan()))
 }
 
 /// Exponential function (e^x)
 /// Usage: Exp[0] -> 1.0, Exp[1] -> 2.718...
 pub fn exp(args: &[Value]) -> VmResult<Value> {
-    if args.len() != 1 {
-        return Err(VmError::TypeError {
-            expected: "exactly 1 argument".to_string(),
-            actual: format!("{} arguments", args.len()),
-        });
-    }
-
-    let x = match &args[0] {
-        Value::Integer(n) => *n as f64,
-        Value::Real(r) => *r,
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Number".to_string(),
-                actual: format!("{:?}", args[0]),
-            })
-        }
-    };
-
+    let x = extract_single_number(args)?;
     Ok(Value::Real(x.exp()))
 }
 
 /// Natural logarithm function
 /// Usage: Log[1] -> 0.0, Log[E] -> 1.0
 pub fn log(args: &[Value]) -> VmResult<Value> {
-    if args.len() != 1 {
+    let x = extract_single_number(args)?;
+    
+    // Fast validation for positive numbers
+    if x <= 0.0 {
         return Err(VmError::TypeError {
-            expected: "exactly 1 argument".to_string(),
-            actual: format!("{} arguments", args.len()),
+            expected: "positive number".to_string(),
+            actual: format!("non-positive number: {}", x),
         });
     }
-
-    let x = match &args[0] {
-        Value::Integer(n) => {
-            if *n <= 0 {
-                return Err(VmError::TypeError {
-                    expected: "positive number".to_string(),
-                    actual: format!("non-positive integer: {}", n),
-                });
-            }
-            *n as f64
-        }
-        Value::Real(r) => {
-            if *r <= 0.0 {
-                return Err(VmError::TypeError {
-                    expected: "positive number".to_string(),
-                    actual: format!("non-positive real: {}", r),
-                });
-            }
-            *r
-        }
-        _ => {
-            return Err(VmError::TypeError {
-                expected: "Number".to_string(),
-                actual: format!("{:?}", args[0]),
-            })
-        }
-    };
-
+    
     Ok(Value::Real(x.ln()))
 }
 
