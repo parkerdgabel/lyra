@@ -12,6 +12,7 @@ use crate::stdlib::ml::quantum_bridge::{
 };
 use crate::stdlib::quantum::QubitRegister;
 use std::f64::consts::PI;
+use std::collections::HashMap;
 
 /// Quantum neural network layer with hybrid classical-quantum-classical architecture
 ///
@@ -65,6 +66,10 @@ pub struct QuantumLayer {
     // Parameter management for ML integration
     /// Parameter manager handles conversion between f64 quantum parameters and ML Tensors
     pub parameter_manager: QuantumCircuitParameterManager,
+    
+    // Hybrid gradient computation
+    /// Hybrid gradient computer for quantum-classical gradient flow
+    pub hybrid_gradient_computer: Option<HybridGradientComputer>,
 }
 
 impl QuantumLayer {
@@ -120,6 +125,7 @@ impl QuantumLayer {
             layer_name,
             initialized: false,
             parameter_manager: QuantumCircuitParameterManager::new(),
+            hybrid_gradient_computer: None,
         })
     }
     
@@ -152,6 +158,96 @@ impl QuantumLayer {
             self.parameter_manager.sync_to_circuit(circuit)?;
         }
         Ok(())
+    }
+    
+    /// Get total parameter count across all layer components
+    pub fn parameter_count(&self) -> usize {
+        let mut count = 0;
+        
+        // Classical preprocessing parameters
+        if let Some(ref preprocessing) = self.classical_preprocessing {
+            count += preprocessing.data.len();
+        }
+        
+        // Quantum circuit parameters
+        if let Some(ref circuit) = self.circuit {
+            count += circuit.parameter_count();
+        }
+        
+        // Classical postprocessing parameters
+        if let Some(ref postprocessing) = self.classical_postprocessing {
+            count += postprocessing.data.len();
+        }
+        if let Some(ref bias) = self.bias {
+            count += bias.data.len();
+        }
+        
+        count
+    }
+    
+    /// Enable hybrid gradient computation for this layer
+    pub fn enable_hybrid_gradients(&mut self) -> MLResult<()> {
+        if !self.initialized {
+            return Err(MLError::InvalidLayer {
+                reason: "Layer must be initialized before enabling hybrid gradients".to_string(),
+            });
+        }
+        
+        self.hybrid_gradient_computer = Some(HybridGradientComputer::new());
+        Ok(())
+    }
+    
+    /// Enable hybrid gradient computation with custom configuration
+    pub fn enable_hybrid_gradients_with_config(&mut self, max_cache_size: usize, parallel_evaluation: bool) -> MLResult<()> {
+        if !self.initialized {
+            return Err(MLError::InvalidLayer {
+                reason: "Layer must be initialized before enabling hybrid gradients".to_string(),
+            });
+        }
+        
+        self.hybrid_gradient_computer = Some(HybridGradientComputer::with_config(max_cache_size, parallel_evaluation));
+        Ok(())
+    }
+    
+    /// Compute hybrid gradients for this quantum layer
+    pub fn compute_hybrid_gradients(
+        &mut self,
+        input_batch: &[Tensor],
+        loss_gradients: &[Dual]
+    ) -> MLResult<HybridGradients> {
+        
+        // Initialize hybrid gradient computer if not already done
+        if self.hybrid_gradient_computer.is_none() {
+            self.enable_hybrid_gradients()?;
+        }
+        
+        // Ensure layer is initialized
+        if !self.initialized {
+            return Err(MLError::InvalidLayer {
+                reason: "Layer must be initialized before computing hybrid gradients".to_string(),
+            });
+        }
+        
+        // Extract the hybrid gradient computer to avoid borrowing conflicts
+        let mut gradient_computer = self.hybrid_gradient_computer.take().unwrap();
+        let result = gradient_computer.compute_hybrid_gradients(self, input_batch, loss_gradients);
+        
+        // Put the gradient computer back
+        self.hybrid_gradient_computer = Some(gradient_computer);
+        
+        result
+    }
+    
+    /// Get hybrid gradient computation statistics for performance monitoring
+    pub fn get_gradient_statistics(&self) -> Option<(usize, usize)> {
+        self.hybrid_gradient_computer.as_ref().map(|computer| computer.cache_statistics())
+    }
+    
+    /// Clear hybrid gradient cache to free memory
+    pub fn clear_gradient_cache(&mut self) {
+        if let Some(ref mut computer) = self.hybrid_gradient_computer {
+            computer.clear_cache();
+        }
     }
     
     /// Initialize quantum components and classical weights
@@ -551,5 +647,400 @@ impl QuantumCircuitParameters for VariationalCircuit {
         // Similar to above, the actual parameter management happens at QuantumLayer level
         // with proper synchronization between f64 and Tensor representations
         Vec::new()
+    }
+}
+
+/// Result type for hybrid gradient computation combining quantum and classical gradients
+#[derive(Debug, Clone)]
+pub struct HybridGradients {
+    /// Quantum parameter gradients computed via parameter shift rule
+    pub quantum_gradients: Vec<f64>,
+    /// Classical gradients formatted as Dual numbers for ML framework integration
+    pub classical_gradients: Vec<Tensor>,
+    /// Computational cost metrics for performance monitoring
+    pub computation_cost: GradientComputationCost,
+}
+
+/// Metrics for hybrid gradient computation cost and performance
+#[derive(Debug, Clone)]
+pub struct GradientComputationCost {
+    /// Number of quantum circuit evaluations performed
+    pub circuit_evaluations: usize,
+    /// Time spent on quantum gradient computation (milliseconds)
+    pub quantum_compute_time_ms: u64,
+    /// Time spent on classical gradient computation (milliseconds)  
+    pub classical_compute_time_ms: u64,
+    /// Number of cached gradient lookups used
+    pub cache_hits: usize,
+    /// Number of parallel parameter shift evaluations
+    pub parallel_evaluations: usize,
+}
+
+impl Default for GradientComputationCost {
+    fn default() -> Self {
+        Self {
+            circuit_evaluations: 0,
+            quantum_compute_time_ms: 0,
+            classical_compute_time_ms: 0,
+            cache_hits: 0,
+            parallel_evaluations: 0,
+        }
+    }
+}
+
+/// Parameter synchronization between quantum (f64) and classical (Dual) parameter spaces
+#[derive(Debug, Clone)]
+pub struct ParameterSynchronizer {
+    /// Mapping from quantum parameter index to classical tensor position
+    quantum_to_classical: HashMap<usize, (usize, usize)>, // (tensor_idx, element_idx)
+    /// Mapping from classical parameter to quantum parameter index
+    classical_to_quantum: HashMap<String, usize>,
+    /// Parameter value synchronization state
+    sync_state: ParameterSyncState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParameterSyncState {
+    /// Parameters are synchronized between quantum and classical systems
+    Synchronized,
+    /// Quantum parameters have been updated, classical needs sync
+    QuantumUpdated,
+    /// Classical parameters have been updated, quantum needs sync
+    ClassicalUpdated,
+    /// Both systems have been updated, full resynchronization needed
+    Desynchronized,
+}
+
+impl ParameterSynchronizer {
+    pub fn new() -> Self {
+        Self {
+            quantum_to_classical: HashMap::new(),
+            classical_to_quantum: HashMap::new(),
+            sync_state: ParameterSyncState::Synchronized,
+        }
+    }
+    
+    /// Register parameter mapping between quantum and classical systems
+    pub fn register_parameter_mapping(&mut self, quantum_idx: usize, tensor_idx: usize, element_idx: usize, param_name: String) {
+        self.quantum_to_classical.insert(quantum_idx, (tensor_idx, element_idx));
+        self.classical_to_quantum.insert(param_name, quantum_idx);
+    }
+    
+    /// Synchronize gradients from quantum parameter shift to classical Dual numbers
+    pub fn sync_quantum_to_classical_gradients(
+        &mut self, 
+        quantum_gradients: &[f64], 
+        classical_tensors: &mut [Tensor]
+    ) -> MLResult<()> {
+        for (quantum_idx, &quantum_grad) in quantum_gradients.iter().enumerate() {
+            if let Some((tensor_idx, element_idx)) = self.quantum_to_classical.get(&quantum_idx) {
+                if *tensor_idx < classical_tensors.len() {
+                    let tensor = &mut classical_tensors[*tensor_idx];
+                    if *element_idx < tensor.data.len() {
+                        // Update the derivative component of the Dual number
+                        tensor.data[*element_idx] = Dual::new(
+                            tensor.data[*element_idx].value(),
+                            quantum_grad
+                        );
+                    }
+                }
+            }
+        }
+        
+        self.sync_state = ParameterSyncState::Synchronized;
+        Ok(())
+    }
+    
+    /// Mark synchronization state when quantum parameters are updated
+    pub fn mark_quantum_updated(&mut self) {
+        self.sync_state = match &self.sync_state {
+            ParameterSyncState::Synchronized => ParameterSyncState::QuantumUpdated,
+            ParameterSyncState::ClassicalUpdated => ParameterSyncState::Desynchronized,
+            _ => self.sync_state.clone(),
+        };
+    }
+    
+    /// Mark synchronization state when classical parameters are updated
+    pub fn mark_classical_updated(&mut self) {
+        self.sync_state = match &self.sync_state {
+            ParameterSyncState::Synchronized => ParameterSyncState::ClassicalUpdated,
+            ParameterSyncState::QuantumUpdated => ParameterSyncState::Desynchronized,
+            _ => self.sync_state.clone(),
+        };
+    }
+}
+
+/// Core hybrid gradient computation system bridging quantum and classical gradients
+#[derive(Debug, Clone)]
+pub struct HybridGradientComputer {
+    /// Parameter synchronization between quantum and classical systems
+    parameter_synchronizer: ParameterSynchronizer,
+    /// Simple gradient cache for frequently computed parameter patterns
+    gradient_cache: HashMap<String, Vec<f64>>,
+    /// Cache hit statistics
+    cache_hits: usize,
+    /// Maximum cache size to prevent unbounded memory growth
+    max_cache_size: usize,
+    /// Flag to enable/disable parallel parameter shift evaluation
+    parallel_evaluation: bool,
+}
+
+impl HybridGradientComputer {
+    /// Create new hybrid gradient computer with default configuration
+    pub fn new() -> Self {
+        Self {
+            parameter_synchronizer: ParameterSynchronizer::new(),
+            gradient_cache: HashMap::new(),
+            cache_hits: 0,
+            max_cache_size: 1000, // Reasonable default for gradient caching
+            parallel_evaluation: true,
+        }
+    }
+    
+    /// Create hybrid gradient computer with custom configuration
+    pub fn with_config(max_cache_size: usize, parallel_evaluation: bool) -> Self {
+        Self {
+            parameter_synchronizer: ParameterSynchronizer::new(),
+            gradient_cache: HashMap::new(),
+            cache_hits: 0,
+            max_cache_size,
+            parallel_evaluation,
+        }
+    }
+    
+    /// Core hybrid gradient computation bridging quantum and classical systems
+    pub fn compute_hybrid_gradients(
+        &mut self,
+        quantum_layer: &QuantumLayer,
+        input_batch: &[Tensor],
+        loss_gradients: &[Dual] // Gradients backpropagated from loss function
+    ) -> MLResult<HybridGradients> {
+        let start_time = std::time::Instant::now();
+        let mut cost = GradientComputationCost::default();
+        
+        // Step 1: Extract quantum circuit and verify initialization
+        let circuit = quantum_layer.circuit.as_ref().ok_or_else(|| MLError::InvalidLayer {
+            reason: "QuantumLayer circuit not initialized".to_string(),
+        })?;
+        
+        let observables = &quantum_layer.measurement_observables;
+        if observables.is_empty() {
+            return Err(MLError::InvalidLayer {
+                reason: "QuantumLayer observables not initialized".to_string(),
+            });
+        }
+        
+        // Step 2: Prepare quantum states from input batch
+        let quantum_states = self.prepare_quantum_states(quantum_layer, input_batch)?;
+        
+        // Step 3: Compute quantum parameter gradients
+        let quantum_gradients = if self.parallel_evaluation {
+            self.compute_parallel_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+        } else {
+            self.compute_sequential_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+        };
+        
+        // Step 4: Convert quantum gradients to classical Dual format
+        let classical_gradients = self.convert_quantum_to_classical_gradients(
+            &quantum_gradients, 
+            loss_gradients,
+            quantum_layer.parameter_count()
+        )?;
+        
+        // Step 5: Update computation cost metrics
+        cost.quantum_compute_time_ms = start_time.elapsed().as_millis() as u64;
+        cost.cache_hits = self.cache_hits;
+        
+        Ok(HybridGradients {
+            quantum_gradients,
+            classical_gradients,
+            computation_cost: cost,
+        })
+    }
+    
+    /// Prepare quantum states from classical input tensors (with caching for efficiency)
+    fn prepare_quantum_states(
+        &self,
+        quantum_layer: &QuantumLayer,
+        input_batch: &[Tensor]
+    ) -> MLResult<Vec<QubitRegister>> {
+        let mut quantum_states = Vec::with_capacity(input_batch.len());
+        
+        for input_tensor in input_batch {
+            // Classical preprocessing (if configured)
+            let preprocessed = if let Some(ref preprocessing_weights) = quantum_layer.classical_preprocessing {
+                input_tensor.matmul(preprocessing_weights)?
+            } else {
+                input_tensor.clone()
+            };
+            
+            // Quantum encoding using feature map
+            let feature_map = quantum_layer.feature_map.as_ref().ok_or_else(|| MLError::InvalidLayer {
+                reason: "QuantumLayer feature map not initialized".to_string(),
+            })?;
+            
+            let quantum_state = feature_map.encode(&preprocessed)?;
+            quantum_states.push(quantum_state);
+        }
+        
+        Ok(quantum_states)
+    }
+    
+    /// Compute quantum gradients using basic sequential parameter shift rule
+    fn compute_sequential_quantum_gradients(
+        &mut self,
+        circuit: &VariationalCircuit, 
+        quantum_states: &[QubitRegister],
+        observables: &[PauliStringObservable],
+        cost: &mut GradientComputationCost
+    ) -> MLResult<Vec<f64>> {
+        
+        // Check cache first
+        let cache_key = self.generate_cache_key(circuit)?;
+        if let Some(cached_gradients) = self.gradient_cache.get(&cache_key) {
+            self.cache_hits += 1;
+            cost.cache_hits += 1;
+            return Ok(cached_gradients.clone());
+        }
+        
+        let param_count = circuit.parameter_count();
+        let mut gradients = vec![0.0; param_count];
+        
+        // Sequential parameter shift evaluation
+        for param_idx in 0..param_count {
+            let mut param_gradient = 0.0;
+            
+            // Average gradient over all quantum states and observables
+            for quantum_state in quantum_states {
+                for observable in observables {
+                    let grad = self.compute_single_parameter_gradient(
+                        circuit, quantum_state, observable, param_idx, cost
+                    )?;
+                    param_gradient += grad;
+                }
+            }
+            
+            // Average over states and observables
+            param_gradient /= (quantum_states.len() * observables.len()) as f64;
+            gradients[param_idx] = param_gradient;
+        }
+        
+        // Cache the computed gradients
+        self.cache_gradient(&cache_key, &gradients);
+        
+        Ok(gradients)
+    }
+    
+    /// Compute quantum gradients using parallel parameter shift evaluation
+    /// For now, implement as sequential (parallel implementation in Step 2)
+    fn compute_parallel_quantum_gradients(
+        &mut self,
+        circuit: &VariationalCircuit,
+        quantum_states: &[QubitRegister],
+        observables: &[PauliStringObservable],
+        cost: &mut GradientComputationCost
+    ) -> MLResult<Vec<f64>> {
+        // TODO: Implement parallel evaluation in Step 2
+        // For now, delegate to sequential implementation
+        self.compute_sequential_quantum_gradients(circuit, quantum_states, observables, cost)
+    }
+    
+    /// Compute gradient for a single parameter using parameter shift rule
+    fn compute_single_parameter_gradient(
+        &self,
+        circuit: &VariationalCircuit,
+        quantum_state: &QubitRegister, 
+        observable: &PauliStringObservable,
+        param_idx: usize,
+        cost: &mut GradientComputationCost
+    ) -> MLResult<f64> {
+        
+        let shift_value = PI / 2.0; // Standard parameter shift
+        let mut circuit_forward = circuit.clone();
+        let mut circuit_backward = circuit.clone();
+        
+        // Get current parameters and apply shifts
+        let mut params = circuit.get_all_parameters();
+        
+        // Forward shift: θᵢ → θᵢ + π/2
+        params[param_idx] += shift_value;
+        circuit_forward.set_all_parameters(&params)?;
+        let forward_state = circuit_forward.forward(quantum_state)?;
+        let forward_expectation = observable.expectation_value(&forward_state)?;
+        cost.circuit_evaluations += 1;
+        
+        // Backward shift: θᵢ → θᵢ - π/2  
+        params[param_idx] -= 2.0 * shift_value; // θᵢ + π/2 - 2(π/2) = θᵢ - π/2
+        circuit_backward.set_all_parameters(&params)?;
+        let backward_state = circuit_backward.forward(quantum_state)?;
+        let backward_expectation = observable.expectation_value(&backward_state)?;
+        cost.circuit_evaluations += 1;
+        
+        // Parameter shift rule: ∂⟨H⟩/∂θ = (1/2) * [⟨H⟩(θ + π/2) - ⟨H⟩(θ - π/2)]
+        let gradient = 0.5 * (forward_expectation - backward_expectation);
+        
+        Ok(gradient)
+    }
+    
+    /// Convert quantum gradients to classical Dual number format
+    fn convert_quantum_to_classical_gradients(
+        &self,
+        quantum_gradients: &[f64],
+        loss_gradients: &[Dual],
+        parameter_count: usize
+    ) -> MLResult<Vec<Tensor>> {
+        
+        let mut classical_gradients = Vec::new();
+        
+        // Create tensor for each quantum parameter with proper gradient
+        for (param_idx, &quantum_grad) in quantum_gradients.iter().enumerate() {
+            // Apply chain rule with loss gradient
+            let chain_rule_gradient = if param_idx < loss_gradients.len() {
+                quantum_grad * loss_gradients[param_idx].derivative()
+            } else {
+                quantum_grad // No loss gradient available, use quantum gradient directly
+            };
+            
+            // Create tensor with gradient-enabled Dual number
+            let tensor_data = vec![Dual::new(0.0, chain_rule_gradient)];
+            let tensor = Tensor::new(tensor_data, vec![1])?;
+            classical_gradients.push(tensor);
+        }
+        
+        Ok(classical_gradients)
+    }
+    
+    /// Generate cache key for gradient caching based on circuit parameters
+    fn generate_cache_key(&self, circuit: &VariationalCircuit) -> MLResult<String> {
+        let params = circuit.get_all_parameters();
+        // Simple cache key: concatenate rounded parameter values
+        let key = params.iter()
+            .map(|p| format!("{:.6}", p)) // 6 decimal precision for caching
+            .collect::<Vec<_>>()
+            .join(",");
+        Ok(key)
+    }
+    
+    /// Cache computed gradients with size management
+    fn cache_gradient(&mut self, cache_key: &str, gradients: &[f64]) {
+        // Simple cache size management: remove random entry if at capacity
+        if self.gradient_cache.len() >= self.max_cache_size {
+            if let Some(key_to_remove) = self.gradient_cache.keys().next().cloned() {
+                self.gradient_cache.remove(&key_to_remove);
+            }
+        }
+        
+        self.gradient_cache.insert(cache_key.to_string(), gradients.to_vec());
+    }
+    
+    /// Clear gradient cache (useful for memory management)
+    pub fn clear_cache(&mut self) {
+        self.gradient_cache.clear();
+        self.cache_hits = 0;
+    }
+    
+    /// Get cache statistics for performance monitoring
+    pub fn cache_statistics(&self) -> (usize, usize) {
+        (self.gradient_cache.len(), self.cache_hits)
     }
 }

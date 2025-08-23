@@ -1,10 +1,15 @@
 //! Neural Network Layer Implementations
 //!
 //! This module provides all layer types available in the Wolfram Language ML framework,
-//! including Linear, Convolution, Pooling, Recurrent, and Attention layers.
+//! including Linear, Convolution, Pooling, Recurrent, Attention, and Quantum layers.
+
+pub mod quantum;
 
 use crate::stdlib::autodiff::Dual;
 use super::{MLResult, MLError};
+
+// Re-export quantum layer types
+pub use quantum::QuantumLayer;
 
 /// Base trait for all neural network layers
 pub trait Layer: std::fmt::Debug {
