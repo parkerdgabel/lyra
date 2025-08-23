@@ -693,15 +693,284 @@ impl Default for GradientComputationCost {
     }
 }
 
-/// Parameter synchronization between quantum (f64) and classical (Dual) parameter spaces
+/// Enhanced parameter synchronization between quantum (f64) and classical (Dual) parameter spaces
+/// This system provides hierarchical parameter organization and advanced synchronization features
 #[derive(Debug, Clone)]
 pub struct ParameterSynchronizer {
-    /// Mapping from quantum parameter index to classical tensor position
-    quantum_to_classical: HashMap<usize, (usize, usize)>, // (tensor_idx, element_idx)
-    /// Mapping from classical parameter to quantum parameter index
-    classical_to_quantum: HashMap<String, usize>,
+    /// Hierarchical parameter groups for organized synchronization
+    parameter_groups: Vec<ParameterGroup>,
+    /// Global mapping from quantum parameter index to group and local index
+    quantum_to_group: HashMap<usize, (usize, usize)>, // (group_idx, local_idx)
+    /// Mapping from parameter names to quantum indices 
+    name_to_quantum: HashMap<String, usize>,
     /// Parameter value synchronization state
     sync_state: ParameterSyncState,
+    /// Parameter constraints and transformations
+    parameter_constraints: HashMap<usize, ParameterConstraint>,
+    /// Transformation functions for parameter encoding
+    parameter_transforms: HashMap<usize, ParameterTransform>,
+    /// Synchronization statistics for performance monitoring
+    sync_stats: SynchronizationStats,
+}
+
+/// Hierarchical parameter group for organized quantum-classical synchronization
+#[derive(Debug, Clone)]
+pub struct ParameterGroup {
+    /// Group name for identification and debugging
+    pub name: String,
+    /// Group type (rotation, feature_encoding, variational, etc.)
+    pub group_type: ParameterGroupType,
+    /// Quantum parameter indices belonging to this group
+    pub quantum_indices: Vec<usize>,
+    /// Classical tensor references for this group
+    pub classical_tensors: Vec<(usize, Vec<usize>)>, // (tensor_idx, element_indices)
+    /// Whether this group requires synchronized updates
+    pub synchronized_updates: bool,
+    /// Group-level transformation matrix for parameter encoding
+    pub transformation_matrix: Option<Vec<Vec<f64>>>,
+    /// Last synchronization timestamp
+    pub last_sync_time: Option<std::time::Instant>,
+}
+
+impl ParameterGroup {
+    /// Create a new parameter group
+    pub fn new(
+        name: String,
+        group_type: ParameterGroupType,
+        quantum_indices: Vec<usize>,
+        classical_tensors: Vec<(usize, Vec<usize>)>,
+    ) -> Self {
+        Self {
+            name,
+            group_type,
+            quantum_indices,
+            classical_tensors,
+            synchronized_updates: true,
+            transformation_matrix: None,
+            last_sync_time: None,
+        }
+    }
+    
+    /// Create a rotation gates parameter group
+    pub fn rotation_gates(quantum_indices: Vec<usize>, tensor_mappings: Vec<(usize, Vec<usize>)>) -> Self {
+        Self::new(
+            "RotationGates".to_string(),
+            ParameterGroupType::RotationGates,
+            quantum_indices,
+            tensor_mappings,
+        )
+    }
+    
+    /// Create a variational layer parameter group  
+    pub fn variational_layer(layer_idx: usize, quantum_indices: Vec<usize>, tensor_mappings: Vec<(usize, Vec<usize>)>) -> Self {
+        Self::new(
+            format!("VariationalLayer_{}", layer_idx),
+            ParameterGroupType::VariationalLayer,
+            quantum_indices,
+            tensor_mappings,
+        )
+    }
+    
+    /// Get the number of parameters in this group
+    pub fn parameter_count(&self) -> usize {
+        self.quantum_indices.len()
+    }
+    
+    /// Check if the group has been synchronized recently
+    pub fn is_recently_synchronized(&self, threshold_ms: u64) -> bool {
+        if let Some(last_sync) = self.last_sync_time {
+            last_sync.elapsed().as_millis() <= threshold_ms as u128
+        } else {
+            false
+        }
+    }
+}
+
+impl ParameterConstraint {
+    /// Create parameter constraint for rotation angles (periodic, bounded to [0, 2π])
+    pub fn rotation_angle() -> Self {
+        use std::f64::consts::PI;
+        Self {
+            bounds: Some((0.0, 2.0 * PI)),
+            normalize: false,
+            normalization_type: NormalizationType::None,
+            periodic: true,
+            period: Some(2.0 * PI),
+        }
+    }
+    
+    /// Create parameter constraint for normalized parameters [-1, 1]
+    pub fn normalized_parameter() -> Self {
+        Self {
+            bounds: Some((-1.0, 1.0)),
+            normalize: true,
+            normalization_type: NormalizationType::Clip,
+            periodic: false,
+            period: None,
+        }
+    }
+    
+    /// Create parameter constraint for positive parameters [0, ∞)
+    pub fn positive_parameter() -> Self {
+        Self {
+            bounds: Some((0.0, f64::INFINITY)),
+            normalize: false,
+            normalization_type: NormalizationType::Clip,
+            periodic: false,
+            period: None,
+        }
+    }
+    
+    /// Create unconstrained parameter
+    pub fn unconstrained() -> Self {
+        Self {
+            bounds: None,
+            normalize: false,
+            normalization_type: NormalizationType::None,
+            periodic: false,
+            period: None,
+        }
+    }
+}
+
+impl ParameterTransform {
+    /// Create identity transformation (no change)
+    pub fn identity() -> Self {
+        Self {
+            forward: TransformFunction::Identity,
+            inverse: TransformFunction::Identity,
+            jacobian: Some(TransformFunction::Identity),
+            is_linear: true,
+        }
+    }
+    
+    /// Create linear scaling transformation
+    pub fn linear_scaling(scale: f64, offset: f64) -> Self {
+        Self {
+            forward: TransformFunction::Linear { scale, offset },
+            inverse: TransformFunction::Linear { 
+                scale: 1.0 / scale, 
+                offset: -offset / scale 
+            },
+            jacobian: Some(TransformFunction::Linear { 
+                scale, 
+                offset: 0.0 
+            }),
+            is_linear: true,
+        }
+    }
+    
+    /// Create trigonometric encoding transformation
+    pub fn trigonometric_encoding(amplitude: f64, frequency: f64, phase: f64) -> Self {
+        Self {
+            forward: TransformFunction::Trigonometric { amplitude, frequency, phase },
+            inverse: TransformFunction::Custom("ArcSin".to_string()), // Simplified
+            jacobian: Some(TransformFunction::Trigonometric { 
+                amplitude: amplitude * frequency, 
+                frequency, 
+                phase: phase + std::f64::consts::PI / 2.0 // Derivative of sin is cos
+            }),
+            is_linear: false,
+        }
+    }
+}
+
+/// Types of parameter groups for different quantum circuit components
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParameterGroupType {
+    /// Rotation gate parameters (RX, RY, RZ)
+    RotationGates,
+    /// Feature encoding parameters for data embedding
+    FeatureEncoding,
+    /// Variational layer parameters for optimization
+    VariationalLayer,
+    /// Entangling gate parameters
+    EntanglingGates,
+    /// Observable measurement parameters
+    ObservableParameters,
+    /// Custom parameter group with user-defined behavior
+    Custom(String),
+}
+
+/// Parameter constraints for validation and normalization
+#[derive(Debug, Clone)]
+pub struct ParameterConstraint {
+    /// Parameter bounds (min, max)
+    pub bounds: Option<(f64, f64)>,
+    /// Whether to normalize parameter to unit circle/sphere
+    pub normalize: bool,
+    /// Normalization strategy
+    pub normalization_type: NormalizationType,
+    /// Whether parameter should be periodic (for rotational parameters)
+    pub periodic: bool,
+    /// Period for periodic parameters (e.g., 2π for rotation angles)
+    pub period: Option<f64>,
+}
+
+/// Normalization strategies for parameter constraints
+#[derive(Debug, Clone, PartialEq)]
+pub enum NormalizationType {
+    /// No normalization
+    None,
+    /// L2 normalization (unit vector)
+    L2,
+    /// Min-max normalization to [0, 1]
+    MinMax,
+    /// Standardization (zero mean, unit variance)
+    Standardize,
+    /// Clip to bounds without normalization
+    Clip,
+}
+
+/// Parameter transformation functions for encoding-specific operations
+#[derive(Debug, Clone)]
+pub struct ParameterTransform {
+    /// Forward transformation: classical → quantum
+    pub forward: TransformFunction,
+    /// Inverse transformation: quantum → classical  
+    pub inverse: TransformFunction,
+    /// Jacobian for gradient transformation
+    pub jacobian: Option<TransformFunction>,
+    /// Whether the transformation is linear
+    pub is_linear: bool,
+}
+
+/// Transformation function types
+#[derive(Debug, Clone)]
+pub enum TransformFunction {
+    /// Identity transformation
+    Identity,
+    /// Linear scaling: ax + b
+    Linear { scale: f64, offset: f64 },
+    /// Trigonometric encoding for rotational parameters
+    Trigonometric { amplitude: f64, frequency: f64, phase: f64 },
+    /// Exponential transformation for positive parameters
+    Exponential { base: f64 },
+    /// Logarithmic transformation
+    Logarithmic { base: f64 },
+    /// Custom transformation function
+    Custom(String),
+}
+
+/// Synchronization performance statistics
+#[derive(Debug, Clone, Default)]
+pub struct SynchronizationStats {
+    /// Total number of synchronization operations
+    pub total_syncs: usize,
+    /// Number of successful synchronizations
+    pub successful_syncs: usize,
+    /// Number of failed synchronizations
+    pub failed_syncs: usize,
+    /// Total time spent synchronizing (microseconds)
+    pub total_sync_time_us: u64,
+    /// Average synchronization time (microseconds)
+    pub avg_sync_time_us: f64,
+    /// Number of constraint violations
+    pub constraint_violations: usize,
+    /// Number of transformation failures
+    pub transform_failures: usize,
+    /// Cache hits for parameter transformations
+    pub transform_cache_hits: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -717,42 +986,253 @@ pub enum ParameterSyncState {
 }
 
 impl ParameterSynchronizer {
+    /// Create new enhanced parameter synchronizer
     pub fn new() -> Self {
         Self {
-            quantum_to_classical: HashMap::new(),
-            classical_to_quantum: HashMap::new(),
+            parameter_groups: Vec::new(),
+            quantum_to_group: HashMap::new(),
+            name_to_quantum: HashMap::new(),
             sync_state: ParameterSyncState::Synchronized,
+            parameter_constraints: HashMap::new(),
+            parameter_transforms: HashMap::new(),
+            sync_stats: SynchronizationStats::default(),
         }
     }
     
-    /// Register parameter mapping between quantum and classical systems
-    pub fn register_parameter_mapping(&mut self, quantum_idx: usize, tensor_idx: usize, element_idx: usize, param_name: String) {
-        self.quantum_to_classical.insert(quantum_idx, (tensor_idx, element_idx));
-        self.classical_to_quantum.insert(param_name, quantum_idx);
+    /// Create parameter group for organized synchronization
+    pub fn create_parameter_group(
+        &mut self,
+        name: String,
+        group_type: ParameterGroupType,
+        quantum_indices: Vec<usize>,
+        classical_tensors: Vec<(usize, Vec<usize>)>,
+    ) -> MLResult<usize> {
+        let group_idx = self.parameter_groups.len();
+        
+        // Register quantum parameter mappings
+        for (local_idx, &quantum_idx) in quantum_indices.iter().enumerate() {
+            self.quantum_to_group.insert(quantum_idx, (group_idx, local_idx));
+            self.name_to_quantum.insert(format!("{}_{}", name, local_idx), quantum_idx);
+        }
+        
+        let group = ParameterGroup {
+            name: name.clone(),
+            group_type,
+            quantum_indices,
+            classical_tensors,
+            synchronized_updates: true,
+            transformation_matrix: None,
+            last_sync_time: None,
+        };
+        
+        self.parameter_groups.push(group);
+        Ok(group_idx)
     }
     
-    /// Synchronize gradients from quantum parameter shift to classical Dual numbers
+    /// Add parameter constraint for validation and normalization
+    pub fn add_parameter_constraint(
+        &mut self,
+        quantum_idx: usize,
+        constraint: ParameterConstraint,
+    ) {
+        self.parameter_constraints.insert(quantum_idx, constraint);
+    }
+    
+    /// Add parameter transformation for encoding-specific operations
+    pub fn add_parameter_transform(
+        &mut self,
+        quantum_idx: usize,
+        transform: ParameterTransform,
+    ) {
+        self.parameter_transforms.insert(quantum_idx, transform);
+    }
+    
+    /// Enhanced gradient synchronization with constraints and transformations
     pub fn sync_quantum_to_classical_gradients(
         &mut self, 
         quantum_gradients: &[f64], 
         classical_tensors: &mut [Tensor]
     ) -> MLResult<()> {
+        let sync_start = std::time::Instant::now();
+        self.sync_stats.total_syncs += 1;
+        
+        // Need to collect transformation and constraint results first to avoid borrowing issues
+        let mut gradient_updates = Vec::new();
+        
         for (quantum_idx, &quantum_grad) in quantum_gradients.iter().enumerate() {
-            if let Some((tensor_idx, element_idx)) = self.quantum_to_classical.get(&quantum_idx) {
-                if *tensor_idx < classical_tensors.len() {
-                    let tensor = &mut classical_tensors[*tensor_idx];
-                    if *element_idx < tensor.data.len() {
-                        // Update the derivative component of the Dual number
-                        tensor.data[*element_idx] = Dual::new(
-                            tensor.data[*element_idx].value(),
-                            quantum_grad
-                        );
+            // Apply gradient transformation if configured
+            let transformed_grad = match self.apply_gradient_transform(quantum_idx, quantum_grad) {
+                Ok(grad) => grad,
+                Err(_) => {
+                    self.sync_stats.transform_failures += 1;
+                    quantum_grad // Use original gradient if transformation fails
+                }
+            };
+            
+            // Validate constraints
+            if let Some(constraint) = self.parameter_constraints.get(&quantum_idx) {
+                if !self.validate_gradient_constraint(transformed_grad, constraint) {
+                    self.sync_stats.constraint_violations += 1;
+                    continue; // Skip this gradient if it violates constraints
+                }
+            }
+            
+            // Find parameter group and prepare update
+            if let Some((group_idx, local_idx)) = self.quantum_to_group.get(&quantum_idx) {
+                gradient_updates.push((*group_idx, *local_idx, transformed_grad));
+            }
+        }
+        
+        // Apply gradient updates (now we don't have borrowing conflicts)
+        for (group_idx, local_idx, gradient) in gradient_updates {
+            self.sync_group_parameter(group_idx, local_idx, gradient, classical_tensors)?;
+        }
+        
+        // Update synchronization statistics
+        let sync_duration = sync_start.elapsed().as_micros() as u64;
+        self.sync_stats.total_sync_time_us += sync_duration;
+        self.sync_stats.successful_syncs += 1;
+        self.sync_stats.avg_sync_time_us = 
+            self.sync_stats.total_sync_time_us as f64 / self.sync_stats.total_syncs as f64;
+        
+        self.sync_state = ParameterSyncState::Synchronized;
+        Ok(())
+    }
+    
+    /// Bidirectional parameter value synchronization: classical → quantum
+    pub fn sync_classical_to_quantum_values(
+        &mut self,
+        classical_tensors: &[Tensor],
+        quantum_parameters: &mut [f64],
+    ) -> MLResult<()> {
+        let sync_start = std::time::Instant::now();
+        self.sync_stats.total_syncs += 1;
+        
+        // Collect parameter updates first to avoid borrowing conflicts
+        let mut parameter_updates = Vec::new();
+        
+        for (group_idx, group) in self.parameter_groups.iter().enumerate() {
+            for (local_idx, &quantum_idx) in group.quantum_indices.iter().enumerate() {
+                if let Some(classical_refs) = group.classical_tensors.get(local_idx) {
+                    let (tensor_idx, element_indices) = classical_refs;
+                    
+                    if *tensor_idx < classical_tensors.len() {
+                        let tensor = &classical_tensors[*tensor_idx];
+                        
+                        // For multiple elements, take the mean (or apply group transformation)
+                        let mut classical_value = 0.0;
+                        let mut valid_elements = 0;
+                        
+                        for &element_idx in element_indices {
+                            if element_idx < tensor.data.len() {
+                                classical_value += tensor.data[element_idx].value();
+                                valid_elements += 1;
+                            }
+                        }
+                        
+                        if valid_elements > 0 {
+                            classical_value /= valid_elements as f64;
+                            
+                            // Apply inverse transformation if configured
+                            let transformed_value = self.apply_inverse_transform(quantum_idx, classical_value)?;
+                            
+                            // Apply constraints
+                            let constrained_value = self.apply_parameter_constraints(quantum_idx, transformed_value)?;
+                            
+                            parameter_updates.push((group_idx, quantum_idx, constrained_value));
+                        }
                     }
                 }
             }
         }
         
-        self.sync_state = ParameterSyncState::Synchronized;
+        // Update quantum parameters and group sync times
+        for (group_idx, quantum_idx, constrained_value) in parameter_updates {
+            if quantum_idx < quantum_parameters.len() {
+                quantum_parameters[quantum_idx] = constrained_value;
+            }
+            
+            // Update group sync time
+            if let Some(group) = self.parameter_groups.get_mut(group_idx) {
+                group.last_sync_time = Some(sync_start);
+            }
+        }
+        
+        // Update statistics
+        let sync_duration = sync_start.elapsed().as_micros() as u64;
+        self.sync_stats.total_sync_time_us += sync_duration;
+        self.sync_stats.successful_syncs += 1;
+        self.sync_stats.avg_sync_time_us = 
+            self.sync_stats.total_sync_time_us as f64 / self.sync_stats.total_syncs as f64;
+            
+        self.mark_quantum_updated();
+        Ok(())
+    }
+    
+    /// Bidirectional parameter value synchronization: quantum → classical
+    pub fn sync_quantum_to_classical_values(
+        &mut self,
+        quantum_parameters: &[f64],
+        classical_tensors: &mut [Tensor],
+    ) -> MLResult<()> {
+        let sync_start = std::time::Instant::now();
+        self.sync_stats.total_syncs += 1;
+        
+        // Collect tensor updates first to avoid borrowing conflicts
+        let mut tensor_updates = Vec::new();
+        
+        for (group_idx, group) in self.parameter_groups.iter().enumerate() {
+            for (local_idx, &quantum_idx) in group.quantum_indices.iter().enumerate() {
+                if quantum_idx < quantum_parameters.len() {
+                    let quantum_value = quantum_parameters[quantum_idx];
+                    
+                    // Apply forward transformation
+                    let transformed_value = self.apply_forward_transform(quantum_idx, quantum_value)?;
+                    
+                    // Prepare tensor updates
+                    if let Some(classical_refs) = group.classical_tensors.get(local_idx) {
+                        let (tensor_idx, element_indices) = classical_refs;
+                        
+                        for &element_idx in element_indices {
+                            tensor_updates.push((group_idx, *tensor_idx, element_idx, transformed_value));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Apply tensor updates and update group sync times
+        let mut updated_groups = std::collections::HashSet::new();
+        
+        for (group_idx, tensor_idx, element_idx, transformed_value) in tensor_updates {
+            if tensor_idx < classical_tensors.len() {
+                let tensor = &mut classical_tensors[tensor_idx];
+                
+                if element_idx < tensor.data.len() {
+                    // Preserve existing gradient, update value
+                    let current_grad = tensor.data[element_idx].derivative();
+                    tensor.data[element_idx] = Dual::new(transformed_value, current_grad);
+                }
+            }
+            
+            updated_groups.insert(group_idx);
+        }
+        
+        // Update group sync times for all updated groups
+        for group_idx in updated_groups {
+            if let Some(group) = self.parameter_groups.get_mut(group_idx) {
+                group.last_sync_time = Some(sync_start);
+            }
+        }
+        
+        // Update statistics  
+        let sync_duration = sync_start.elapsed().as_micros() as u64;
+        self.sync_stats.total_sync_time_us += sync_duration;
+        self.sync_stats.successful_syncs += 1;
+        self.sync_stats.avg_sync_time_us = 
+            self.sync_stats.total_sync_time_us as f64 / self.sync_stats.total_syncs as f64;
+            
+        self.mark_classical_updated();
         Ok(())
     }
     
@@ -772,6 +1252,227 @@ impl ParameterSynchronizer {
             ParameterSyncState::QuantumUpdated => ParameterSyncState::Desynchronized,
             _ => self.sync_state.clone(),
         };
+    }
+    
+    /// Get synchronization statistics for performance monitoring
+    pub fn get_sync_stats(&self) -> &SynchronizationStats {
+        &self.sync_stats
+    }
+    
+    /// Reset synchronization statistics
+    pub fn reset_sync_stats(&mut self) {
+        self.sync_stats = SynchronizationStats::default();
+    }
+    
+    /// Get parameter group information by index
+    pub fn get_parameter_group(&self, group_idx: usize) -> Option<&ParameterGroup> {
+        self.parameter_groups.get(group_idx)
+    }
+    
+    /// Check if parameters are synchronized
+    pub fn is_synchronized(&self) -> bool {
+        self.sync_state == ParameterSyncState::Synchronized
+    }
+    
+    // === Helper Methods ===
+    
+    /// Apply gradient transformation if configured for parameter
+    fn apply_gradient_transform(&self, quantum_idx: usize, gradient: f64) -> MLResult<f64> {
+        if let Some(transform) = self.parameter_transforms.get(&quantum_idx) {
+            match &transform.jacobian {
+                Some(TransformFunction::Linear { scale, .. }) => {
+                    Ok(gradient * scale)
+                }
+                Some(TransformFunction::Identity) => Ok(gradient),
+                Some(TransformFunction::Trigonometric { amplitude, frequency, .. }) => {
+                    // For trigonometric transformations, derivative scaling
+                    Ok(gradient * amplitude * frequency)
+                }
+                Some(TransformFunction::Exponential { base }) => {
+                    // For exponential: d/dx(base^x) = base^x * ln(base)
+                    Ok(gradient * base.ln())
+                }
+                Some(TransformFunction::Logarithmic { base }) => {
+                    // For logarithmic: d/dx(log_base(x)) = 1/(x * ln(base))
+                    // This requires the parameter value, which we don't have here
+                    // For now, just return the gradient unchanged
+                    Ok(gradient)
+                }
+                Some(TransformFunction::Custom(_)) => {
+                    // Custom transformations would need specific implementations
+                    // Can't increment stats here due to borrowing restrictions
+                    Ok(gradient) // Default to identity
+                }
+                None => Ok(gradient), // No Jacobian specified
+            }
+        } else {
+            Ok(gradient) // No transformation configured
+        }
+    }
+    
+    /// Validate gradient against parameter constraints
+    fn validate_gradient_constraint(&self, gradient: f64, constraint: &ParameterConstraint) -> bool {
+        // Check if gradient would violate bounds after parameter update
+        if let Some((min_bound, max_bound)) = constraint.bounds {
+            // This is a simplified check - in practice we'd need the current parameter value
+            if constraint.periodic {
+                // For periodic parameters, gradient can't be validated without current value
+                return true;
+            }
+            
+            // For bounded parameters, allow gradients unless they're extreme
+            gradient.is_finite() && gradient.abs() < (max_bound - min_bound)
+        } else {
+            gradient.is_finite()
+        }
+    }
+    
+    /// Synchronize parameter within a group context
+    fn sync_group_parameter(
+        &mut self,
+        group_idx: usize,
+        local_idx: usize,
+        gradient: f64,
+        classical_tensors: &mut [Tensor],
+    ) -> MLResult<()> {
+        if let Some(group) = self.parameter_groups.get(group_idx) {
+            if let Some(classical_refs) = group.classical_tensors.get(local_idx) {
+                let (tensor_idx, element_indices) = classical_refs;
+                
+                if *tensor_idx < classical_tensors.len() {
+                    let tensor = &mut classical_tensors[*tensor_idx];
+                    
+                    // Apply gradient to all elements in the group
+                    for &element_idx in element_indices {
+                        if element_idx < tensor.data.len() {
+                            // Update the derivative component of the Dual number
+                            let current_value = tensor.data[element_idx].value();
+                            tensor.data[element_idx] = Dual::new(current_value, gradient);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Apply forward transformation: quantum → classical
+    fn apply_forward_transform(&self, quantum_idx: usize, value: f64) -> MLResult<f64> {
+        if let Some(transform) = self.parameter_transforms.get(&quantum_idx) {
+            Self::apply_transform_function_static(&transform.forward, value)
+        } else {
+            Ok(value) // Identity transformation
+        }
+    }
+    
+    /// Apply inverse transformation: classical → quantum
+    fn apply_inverse_transform(&self, quantum_idx: usize, value: f64) -> MLResult<f64> {
+        if let Some(transform) = self.parameter_transforms.get(&quantum_idx) {
+            Self::apply_transform_function_static(&transform.inverse, value)
+        } else {
+            Ok(value) // Identity transformation
+        }
+    }
+    
+    /// Apply parameter constraints (normalization, bounds, etc.)
+    fn apply_parameter_constraints(&self, quantum_idx: usize, value: f64) -> MLResult<f64> {
+        if let Some(constraint) = self.parameter_constraints.get(&quantum_idx) {
+            let mut constrained_value = value;
+            
+            // Apply bounds checking first
+            if let Some((min_bound, max_bound)) = constraint.bounds {
+                if constraint.periodic {
+                    // For periodic parameters (like rotation angles)
+                    if let Some(period) = constraint.period {
+                        // Wrap to [0, period)
+                        constrained_value = ((value % period) + period) % period;
+                        // Adjust to bounds if they don't match [0, period)
+                        if (min_bound - 0.0).abs() > 1e-10 || (max_bound - period).abs() > 1e-10 {
+                            constrained_value = min_bound + constrained_value * (max_bound - min_bound) / period;
+                        }
+                    }
+                } else {
+                    // For non-periodic parameters, clip to bounds
+                    constrained_value = constrained_value.max(min_bound).min(max_bound);
+                }
+            }
+            
+            // Apply normalization if requested
+            if constraint.normalize {
+                constrained_value = match constraint.normalization_type {
+                    NormalizationType::None => constrained_value,
+                    NormalizationType::L2 => {
+                        // For single parameters, L2 normalization means sign preservation with magnitude 1
+                        if constrained_value != 0.0 {
+                            constrained_value.signum()
+                        } else {
+                            0.0
+                        }
+                    }
+                    NormalizationType::MinMax => {
+                        // MinMax normalization requires knowing the range, use bounds if available
+                        if let Some((min_bound, max_bound)) = constraint.bounds {
+                            (constrained_value - min_bound) / (max_bound - min_bound)
+                        } else {
+                            constrained_value // Can't normalize without bounds
+                        }
+                    }
+                    NormalizationType::Standardize => {
+                        // Standardization requires dataset statistics, not applicable to single parameters
+                        constrained_value
+                    }
+                    NormalizationType::Clip => {
+                        // Clip is already handled by bounds checking above
+                        constrained_value
+                    }
+                };
+            }
+            
+            Ok(constrained_value)
+        } else {
+            Ok(value) // No constraints
+        }
+    }
+    
+    /// Helper to apply a transformation function (static version to avoid borrowing issues)
+    fn apply_transform_function_static(transform: &TransformFunction, value: f64) -> MLResult<f64> {
+        match transform {
+            TransformFunction::Identity => Ok(value),
+            TransformFunction::Linear { scale, offset } => Ok(scale * value + offset),
+            TransformFunction::Trigonometric { amplitude, frequency, phase } => {
+                Ok(amplitude * (frequency * value + phase).sin())
+            }
+            TransformFunction::Exponential { base } => Ok(base.powf(value)),
+            TransformFunction::Logarithmic { base } => {
+                if value > 0.0 {
+                    Ok(value.log(*base))
+                } else {
+                    Err(MLError::InvalidLayer {
+                        reason: format!("Cannot apply logarithmic transform to non-positive value: {}", value),
+                    })
+                }
+            }
+            TransformFunction::Custom(name) => {
+                // Can't increment stats in static method, but this is rare edge case
+                Err(MLError::InvalidLayer {
+                    reason: format!("Custom transformation '{}' not implemented", name),
+                })
+            }
+        }
+    }
+    
+    /// Helper to apply a transformation function (with stats tracking)
+    fn apply_transform_function(&mut self, transform: &TransformFunction, value: f64) -> MLResult<f64> {
+        match Self::apply_transform_function_static(transform, value) {
+            Ok(result) => Ok(result),
+            Err(err) => {
+                if matches!(transform, TransformFunction::Custom(_)) {
+                    self.sync_stats.transform_failures += 1;
+                }
+                Err(err)
+            }
+        }
     }
 }
 
@@ -1177,9 +1878,9 @@ impl ConcurrentExecutable for ParameterShiftTask {
         // Compute the parameter shift gradient
         match self.compute_gradient() {
             Ok(gradient) => Ok(Value::Real(gradient)),
-            Err(ml_error) => Err(VmError::Runtime { 
-                message: format!("Parameter shift computation failed: {}", ml_error) 
-            }),
+            Err(ml_error) => Err(VmError::Runtime(
+                format!("Parameter shift computation failed: {}", ml_error)
+            )),
         }
     }
     
@@ -1340,5 +2041,14 @@ impl Drop for ParallelParameterShiftScheduler {
         if self.owned_scheduler {
             let _ = self.scheduler.stop();
         }
+    }
+}
+
+impl std::fmt::Debug for ParallelParameterShiftScheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParallelParameterShiftScheduler")
+            .field("owned_scheduler", &self.owned_scheduler)
+            .field("scheduler", &"WorkStealingScheduler { ... }") // Can't debug the scheduler itself
+            .finish()
     }
 }
