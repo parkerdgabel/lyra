@@ -20,6 +20,7 @@ pub mod evaluation;
 pub mod mlops;
 pub mod wrapper;
 pub mod bio_integration;
+pub mod quantum_bridge;
 
 // Re-export main types for convenience
 pub use netchain::NetChain;
@@ -33,6 +34,7 @@ pub use automl::{AutoMLSystem, AutoMLResult, MLPipelineBuilder, MLPipelineResult
 pub use evaluation::{DataSplitter, EvaluationMetrics, CrossValidator, ModelSelector, HyperparameterOptimizer, ModelEvaluator, ClassificationReport, RegressionReport, CrossValidationResult, EvaluationResult, ScoringMetric};
 pub use mlops::{ExperimentTracker, ModelRegistry, MLOpsManager, Experiment, ExperimentStatus, ModelArtifact, DeploymentInfo, TrackedExperimentResult, ExperimentSummary, MLOpsUtils};
 pub use bio_integration::{SequenceEncoding, SequencePreprocessor, SequenceDataset, BioMLWorkflow};
+pub use quantum_bridge::{QuantumFeatureMap, QuantumDataEncoder, EncodingType, NormalizationStrategy};
 
 /// Result type for ML operations
 pub type MLResult<T> = Result<T, MLError>;

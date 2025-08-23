@@ -344,6 +344,15 @@ impl StandardLibrary {
         self.register("BiologicalSequenceToML", ml::bio_integration::biological_sequence_to_ml);
         self.register("SequenceDataset", ml::bio_integration::sequence_dataset);
         self.register("TrainSequenceClassifier", ml::bio_integration::train_sequence_classifier);
+        
+        // Quantum-ML bridge functions
+        self.register("QuantumFeatureMap", ml::quantum_bridge::quantum_feature_map);
+        self.register("QuantumDataEncoder", ml::quantum_bridge::quantum_data_encoder);
+        self.register("EncodeToQuantumState", ml::quantum_bridge::encode_to_quantum_state);
+        self.register("ParameterizedGate", ml::quantum_bridge::parameterized_gate);
+        self.register("VariationalCircuit", ml::quantum_bridge::variational_circuit);
+        self.register("PauliObservable", ml::quantum_bridge::pauli_observable);
+        self.register("QuantumGradientComputer", ml::quantum_bridge::quantum_gradient_computer);
     }
 
     fn register_io_functions(&mut self) {
