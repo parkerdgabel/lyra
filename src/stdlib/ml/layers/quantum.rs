@@ -1702,7 +1702,7 @@ impl HybridGradientComputer {
         quantum_gradients: &[f64],
         loss_gradients: &[Dual],
         parameter_count: usize,
-    ) -> MLResult<Vec<Dual>> {
+    ) -> MLResult<Vec<Tensor>> {
         if quantum_gradients.len() != parameter_count {
             return Err(MLError::GradientComputationError {
                 reason: format!(
@@ -1726,8 +1726,9 @@ impl HybridGradientComputer {
             // Enhanced chain rule with parameter coupling consideration
             let enhanced_gradient = quantum_grad * loss_grad_value;
             
-            // Create dual number with enhanced gradient
-            classical_gradients.push(Dual::variable(enhanced_gradient));
+            // Create tensor with enhanced gradient (scalar tensor)
+            let gradient_tensor = Tensor::new(vec![Dual::variable(enhanced_gradient)], vec![1])?;
+            classical_gradients.push(gradient_tensor);
         }
         
         Ok(classical_gradients)
@@ -2759,7 +2760,8 @@ impl EnhancedChainRuleComputer {
         let final_state = circuit_copy.forward(quantum_state)?;
         
         // Measure the observable on the resulting state
-        observable.measure_expectation(&final_state)
+        // Use 0 shots for noiseless expectation value (exact quantum measurement)
+        observable.measure_state(&final_state, 0)
             .map_err(|e| MLError::DataError {
                 reason: format!("Failed to measure observable: {:?}", e),
             })

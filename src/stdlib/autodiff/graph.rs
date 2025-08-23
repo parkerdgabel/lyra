@@ -81,6 +81,8 @@ pub enum Operation {
     Sum,
     /// Mean reduction: output = mean(input1)
     Mean,
+    /// Quantum operation: output = quantum_circuit(input1)
+    QuantumOp { layer_name: String },
 }
 
 impl Operation {
@@ -90,6 +92,7 @@ impl Operation {
             Operation::Input { .. } => 0,
             Operation::Add | Operation::Sub | Operation::Mul | Operation::Div 
             | Operation::Pow | Operation::Min | Operation::Max => 2,
+            Operation::QuantumOp { .. } => 1, // Quantum operations are unary (for now)
             _ => 1,
         }
     }
@@ -130,6 +133,7 @@ impl Operation {
             Operation::Sigmoid => "Sigmoid",
             Operation::Sum => "Sum",
             Operation::Mean => "Mean",
+            Operation::QuantumOp { .. } => "QuantumOp",
         }
     }
 }
@@ -476,6 +480,19 @@ impl ComputationGraph {
         Ok(self.add_node(node))
     }
     
+    /// Add a quantum operation node to the graph
+    pub fn add_quantum_op(
+        &mut self,
+        input: NodeId,
+        layer_name: String,
+    ) -> AutodiffResult<NodeId> {
+        self.add_unary_op(
+            Operation::QuantumOp { layer_name },
+            input,
+            true, // Quantum operations always require gradients
+        )
+    }
+    
     /// Get a node by ID
     pub fn get_node(&self, id: NodeId) -> AutodiffResult<&GraphNode> {
         self.nodes.get(&id).ok_or_else(|| AutodiffError::GraphError {
@@ -561,6 +578,11 @@ impl ComputationGraph {
                     Operation::Sigmoid => 1.0 / (1.0 + (-input_values[0]).exp()),
                     Operation::Sum => input_values[0], // For single value
                     Operation::Mean => input_values[0], // For single value
+                    Operation::QuantumOp { .. } => {
+                        // Quantum operations are handled separately during specialized forward passes
+                        // This is a placeholder - actual value computed by quantum layers
+                        f64::NAN
+                    },
                     Operation::Input { .. } => unreachable!("Leaf nodes should not be computed"),
                 };
                 
@@ -798,6 +820,11 @@ impl ComputationGraph {
             },
             Operation::Sum => vec![1.0],
             Operation::Mean => vec![1.0],
+            Operation::QuantumOp { .. } => {
+                // Quantum operations require specialized gradient computation
+                // This is handled by the quantum gradient system
+                vec![1.0] // Placeholder derivative
+            },
             Operation::Input { .. } => vec![],
         }
     }
@@ -913,6 +940,10 @@ impl ComputationGraph {
             }
             Operation::Mean => {
                 node.partial_derivatives = vec![1.0];
+            }
+            Operation::QuantumOp { .. } => {
+                // Quantum operations use specialized gradient computation
+                node.partial_derivatives = vec![1.0]; // Placeholder derivative
             }
             Operation::Input { .. } => {}
         }
