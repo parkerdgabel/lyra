@@ -59,4 +59,7 @@ pub enum MLError {
     
     #[error("Autodiff error: {0}")]
     AutodiffError(#[from] crate::stdlib::autodiff::AutodiffError),
+    
+    #[error("Gradient computation error: {reason}")]
+    GradientComputationError { reason: String },
 }

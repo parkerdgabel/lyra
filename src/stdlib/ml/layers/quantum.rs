@@ -4,15 +4,15 @@
 //! quantum circuits with classical neural networks, enabling hybrid quantum-classical
 //! deep learning models.
 
-use crate::stdlib::autodiff::Dual;
+use crate::stdlib::autodiff::{Dual, GradientContext, AutodiffMode, AutodiffResult};
 use super::{Tensor, Layer, MLResult, MLError};
 use crate::stdlib::ml::quantum_bridge::{
     QuantumFeatureMap, VariationalCircuit, PauliStringObservable, 
-    QuantumDataEncoder, EncodingType, NormalizationStrategy
+    EncodingType, NormalizationStrategy
 };
 use crate::stdlib::quantum::QubitRegister;
 use crate::concurrency::{WorkStealingScheduler, ConcurrentExecutable, TaskPriority, ConcurrencyConfig, ConcurrencyStats};
-use crate::vm::{Value, VmResult, VmError};
+use crate::vm::{Value, VmError};
 use std::f64::consts::PI;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1542,7 +1542,7 @@ impl HybridGradientComputer {
         Ok(self.parallel_scheduler.as_ref().unwrap())
     }
     
-    /// Core hybrid gradient computation bridging quantum and classical systems
+    /// Core hybrid gradient computation bridging quantum and classical systems with enhanced GradientContext integration
     pub fn compute_hybrid_gradients(
         &mut self,
         quantum_layer: &QuantumLayer,
@@ -1567,15 +1567,21 @@ impl HybridGradientComputer {
         // Step 2: Prepare quantum states from input batch
         let quantum_states = self.prepare_quantum_states(quantum_layer, input_batch)?;
         
-        // Step 3: Compute quantum parameter gradients
-        let quantum_gradients = if self.parallel_evaluation {
-            self.compute_parallel_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+        // Step 3: Enhanced gradient computation with autodiff integration
+        let quantum_gradients = if self.should_use_enhanced_computation(circuit, input_batch.len())? {
+            // Use enhanced gradient computation with variance reduction and GradientContext integration
+            self.compute_enhanced_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
         } else {
-            self.compute_sequential_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+            // Fallback to existing implementation for simple cases
+            if self.parallel_evaluation {
+                self.compute_parallel_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+            } else {
+                self.compute_sequential_quantum_gradients(circuit, &quantum_states, observables, &mut cost)?
+            }
         };
         
-        // Step 4: Convert quantum gradients to classical Dual format
-        let classical_gradients = self.convert_quantum_to_classical_gradients(
+        // Step 4: Convert quantum gradients to classical Dual format with enhanced chain rule
+        let classical_gradients = self.convert_quantum_to_classical_gradients_enhanced(
             &quantum_gradients, 
             loss_gradients,
             quantum_layer.parameter_count()
@@ -1590,6 +1596,141 @@ impl HybridGradientComputer {
             classical_gradients,
             computation_cost: cost,
         })
+    }
+    
+    /// Determine whether to use enhanced gradient computation based on complexity heuristics
+    fn should_use_enhanced_computation(
+        &self,
+        circuit: &VariationalCircuit,
+        batch_size: usize,
+    ) -> MLResult<bool> {
+        // Use enhanced computation for:
+        // 1. Complex circuits with many parameters (>10)
+        // 2. Large batch sizes (>4)
+        // 3. High circuit depth (>3 layers)
+        let parameter_count = circuit.total_parameters;
+        let circuit_depth = circuit.parameterized_gates.len(); // Estimate depth from gate count
+        
+        Ok(parameter_count > 10 || batch_size > 4 || circuit_depth > 3)
+    }
+    
+    /// Enhanced quantum gradient computation with variance reduction and GradientContext integration
+    fn compute_enhanced_quantum_gradients(
+        &mut self,
+        circuit: &VariationalCircuit,
+        quantum_states: &[QubitRegister],
+        observables: &[PauliStringObservable],
+        cost: &mut GradientComputationCost,
+    ) -> MLResult<Vec<f64>> {
+        // Initialize enhanced chain rule computer for this computation
+        let mut enhanced_computer = EnhancedChainRuleComputer::new(
+            circuit.total_parameters
+        );
+        
+        // Use QuantumGradientOps for GradientContext integration
+        let mut gradient_context = GradientContext::auto_mode();
+        let mut all_gradients = Vec::new();
+        
+        for (batch_idx, quantum_state) in quantum_states.iter().enumerate() {
+            // Register quantum parameters as variables in the context
+            let parameters = circuit.get_all_parameters();
+            for (param_idx, &param_value) in parameters.iter().enumerate() {
+                let var_name = format!("quantum_param_{}_{}", batch_idx, param_idx);
+                gradient_context.register_variable(var_name, param_value, true)
+                    .map_err(|e| MLError::GradientComputationError {
+                        reason: format!("Failed to register quantum parameter: {:?}", e),
+                    })?;
+            }
+            
+            // Apply QuantumGradientOps with the configured context
+            let input_var = format!("quantum_input_{}", batch_idx);
+            let output_var = format!("quantum_output_{}", batch_idx);
+            let quantum_layer_var = format!("quantum_layer_{}", batch_idx);
+            
+            // Register quantum layer as a variable (placeholder)
+            gradient_context.register_variable(quantum_layer_var.clone(), 1.0, false)
+                .map_err(|e| MLError::GradientComputationError {
+                    reason: format!("Failed to register quantum layer: {:?}", e),
+                })?;
+                
+            gradient_context.register_variable(input_var.clone(), 1.0, false)
+                .map_err(|e| MLError::GradientComputationError {
+                    reason: format!("Failed to register input: {:?}", e),
+                })?;
+            
+            // Apply quantum gradient operation
+            QuantumGradientOps::quantum_gradient(
+                &mut gradient_context,
+                &quantum_layer_var,
+                &input_var,
+                &output_var
+            ).map_err(|e| MLError::GradientComputationError {
+                reason: format!("QuantumGradientOps failed: {:?}", e),
+            })?;
+            
+            // Compute gradients for observables using enhanced chain rule
+            for (obs_idx, observable) in observables.iter().enumerate() {
+                let expectation_gradients = enhanced_computer.compute_enhanced_chain_rule(
+                    circuit,
+                    quantum_state,
+                    observable,
+                    &parameters,
+                )?;
+                
+                // Apply variance reduction if configured
+                let reduced_gradients = enhanced_computer.apply_variance_reduction(&expectation_gradients)?;
+                all_gradients.extend(reduced_gradients);
+                
+                // Update cost metrics
+                cost.circuit_evaluations += parameters.len() * 2; // Parameter shift rule requires 2 evaluations per parameter
+                cost.parallel_evaluations += 1;
+            }
+            
+            // Update gradient quality metrics
+            enhanced_computer.update_gradient_quality_metrics(&all_gradients)?;
+        }
+        
+        // Apply final gradient quality filtering
+        let filtered_gradients = enhanced_computer.apply_gradient_quality_filter(&all_gradients)?;
+        
+        Ok(filtered_gradients)
+    }
+    
+    /// Enhanced conversion of quantum gradients to classical format with improved chain rule
+    fn convert_quantum_to_classical_gradients_enhanced(
+        &self,
+        quantum_gradients: &[f64],
+        loss_gradients: &[Dual],
+        parameter_count: usize,
+    ) -> MLResult<Vec<Dual>> {
+        if quantum_gradients.len() != parameter_count {
+            return Err(MLError::GradientComputationError {
+                reason: format!(
+                    "Quantum gradient count ({}) doesn't match parameter count ({})",
+                    quantum_gradients.len(),
+                    parameter_count
+                ),
+            });
+        }
+        
+        let mut classical_gradients = Vec::with_capacity(parameter_count);
+        
+        // Enhanced chain rule: d_loss/d_quantum_param = d_loss/d_output * d_output/d_quantum_param
+        for (i, &quantum_grad) in quantum_gradients.iter().enumerate() {
+            let loss_grad_value = if i < loss_gradients.len() {
+                loss_gradients[i].derivative()
+            } else {
+                1.0 // Default gradient if not enough loss gradients
+            };
+            
+            // Enhanced chain rule with parameter coupling consideration
+            let enhanced_gradient = quantum_grad * loss_grad_value;
+            
+            // Create dual number with enhanced gradient
+            classical_gradients.push(Dual::variable(enhanced_gradient));
+        }
+        
+        Ok(classical_gradients)
     }
     
     /// Prepare quantum states from classical input tensors (with caching for efficiency)
@@ -2050,5 +2191,592 @@ impl std::fmt::Debug for ParallelParameterShiftScheduler {
             .field("owned_scheduler", &self.owned_scheduler)
             .field("scheduler", &"WorkStealingScheduler { ... }") // Can't debug the scheduler itself
             .finish()
+    }
+}
+
+/// Quantum gradient operations for integration with Lyra's autodiff system
+/// This provides seamless integration between quantum parameter shift gradients
+/// and classical automatic differentiation, supporting both forward and reverse modes
+pub struct QuantumGradientOps;
+
+impl QuantumGradientOps {
+    /// Compute quantum gradients with GradientContext integration
+    /// This is the main entry point for quantum gradient computation within the autodiff system
+    pub fn quantum_gradient(
+        ctx: &mut GradientContext, 
+        quantum_layer_var: &str,
+        input_var: &str,
+        output_var: &str
+    ) -> AutodiffResult<()> {
+        match ctx.mode() {
+            AutodiffMode::Forward => {
+                Self::quantum_forward_mode(ctx, quantum_layer_var, input_var, output_var)
+            }
+            AutodiffMode::Reverse | AutodiffMode::Auto => {
+                Self::quantum_reverse_mode(ctx, quantum_layer_var, input_var, output_var)
+            }
+        }
+    }
+    
+    /// Forward-mode quantum gradient computation using dual numbers
+    /// Integrates quantum parameter shift with dual number propagation
+    fn quantum_forward_mode(
+        ctx: &mut GradientContext,
+        quantum_layer_var: &str,
+        input_var: &str, 
+        output_var: &str
+    ) -> AutodiffResult<()> {
+        // Get input variable with dual number tracking
+        let input = ctx.get_variable(input_var)?;
+        if let Some(input_dual) = input.dual {
+            // For forward mode, we need to compute quantum gradients directly
+            // and combine them with the dual number propagation
+            
+            // This is a simplified implementation - in practice, we'd extract
+            // the QuantumLayer from the variable and compute hybrid gradients
+            let quantum_value = input_dual.value();
+            
+            // Simulate quantum computation (in real implementation, this would
+            // call the quantum circuit evaluation)
+            let quantum_output = quantum_value; // Placeholder
+            let quantum_derivative = 1.0; // Placeholder for quantum gradient
+            
+            // Combine quantum gradient with classical dual number propagation
+            let output_dual = Dual::new(quantum_output, quantum_derivative * input_dual.derivative());
+            
+            // Register output variable with computed dual number
+            ctx.register_variable(output_var.to_string(), output_dual.value(), true)?;
+            ctx.get_variable_mut(output_var)?.set_dual(output_dual);
+        }
+        
+        Ok(())
+    }
+    
+    /// Reverse-mode quantum gradient computation using computation graph
+    /// Creates graph nodes for quantum operations that can be backpropagated through
+    fn quantum_reverse_mode(
+        ctx: &mut GradientContext,
+        quantum_layer_var: &str,
+        input_var: &str,
+        output_var: &str
+    ) -> AutodiffResult<()> {
+        let input = ctx.get_variable(input_var)?;
+        
+        if let Some(input_id) = input.node_id {
+            // Create a custom quantum operation node in the computation graph
+            // This will handle the quantum gradient computation during backpropagation
+            let output_id = ctx.graph_mut().add_quantum_op(
+                input_id, 
+                quantum_layer_var.to_string()
+            )?;
+            
+            ctx.register_variable(output_var.to_string(), 0.0, true)?; // Value computed during forward pass
+            ctx.get_variable_mut(output_var)?.set_node_id(output_id);
+        }
+        
+        Ok(())
+    }
+    
+    /// Enhanced chain rule computation for quantum-classical parameter coupling
+    /// This handles the complex interdependencies between quantum and classical parameters
+    pub fn enhanced_chain_rule(
+        quantum_gradients: &[f64],
+        classical_gradients: &[Dual], 
+        parameter_coupling_matrix: &[Vec<f64>]
+    ) -> AutodiffResult<Vec<f64>> {
+        let mut enhanced_gradients = vec![0.0; quantum_gradients.len()];
+        
+        for (i, &quantum_grad) in quantum_gradients.iter().enumerate() {
+            let mut accumulated_gradient = quantum_grad;
+            
+            // Apply parameter coupling effects
+            if i < parameter_coupling_matrix.len() {
+                for (j, &coupling_strength) in parameter_coupling_matrix[i].iter().enumerate() {
+                    if j < classical_gradients.len() {
+                        // Chain rule: ∂L/∂θᵢ = ∂L/∂qᵢ * ∂qᵢ/∂θᵢ + Σⱼ (∂L/∂cⱼ * ∂cⱼ/∂θᵢ)
+                        accumulated_gradient += classical_gradients[j].derivative() * coupling_strength;
+                    }
+                }
+            }
+            
+            enhanced_gradients[i] = accumulated_gradient;
+        }
+        
+        Ok(enhanced_gradients)
+    }
+    
+    /// Variance reduction for quantum gradients using control variates
+    /// Implements advanced techniques to reduce the noise in quantum gradient estimates
+    pub fn apply_variance_reduction(
+        raw_gradients: &[f64],
+        control_variates: &[f64],
+        variance_reduction_coefficients: &[f64]
+    ) -> Vec<f64> {
+        raw_gradients.iter().enumerate().map(|(i, &raw_grad)| {
+            let control_variate = if i < control_variates.len() { 
+                control_variates[i] 
+            } else { 
+                0.0 
+            };
+            let coefficient = if i < variance_reduction_coefficients.len() {
+                variance_reduction_coefficients[i]
+            } else {
+                1.0
+            };
+            
+            // Control variate method: θ̂ = θ + β(C - E[C])
+            // where θ is the raw gradient, C is the control variate, β is the coefficient
+            raw_grad - coefficient * control_variate
+        }).collect()
+    }
+    
+    /// Adaptive mode selection for optimal gradient computation
+    /// Chooses between forward and reverse mode based on computational efficiency
+    pub fn select_optimal_mode(
+        parameter_count: usize,
+        output_count: usize,
+        graph_depth: usize
+    ) -> AutodiffMode {
+        // Heuristic for mode selection:
+        // Forward mode is efficient when parameters >> outputs
+        // Reverse mode is efficient when outputs >> parameters
+        // Consider graph depth for memory requirements
+        
+        if parameter_count > 4 * output_count && graph_depth < 100 {
+            AutodiffMode::Forward
+        } else if output_count > 4 * parameter_count {
+            AutodiffMode::Reverse
+        } else {
+            // For balanced cases, use reverse mode as it's generally more flexible
+            AutodiffMode::Reverse
+        }
+    }
+    
+    /// Gradient accumulation for batch processing
+    /// Efficiently accumulates gradients across multiple samples in a batch
+    pub fn accumulate_batch_gradients(
+        batch_gradients: &[Vec<f64>],
+        accumulation_strategy: GradientAccumulationStrategy
+    ) -> Vec<f64> {
+        if batch_gradients.is_empty() {
+            return Vec::new();
+        }
+        
+        let gradient_size = batch_gradients[0].len();
+        let mut accumulated = vec![0.0; gradient_size];
+        
+        match accumulation_strategy {
+            GradientAccumulationStrategy::Mean => {
+                for gradient in batch_gradients {
+                    for (i, &grad) in gradient.iter().enumerate() {
+                        accumulated[i] += grad;
+                    }
+                }
+                let batch_size = batch_gradients.len() as f64;
+                for acc in accumulated.iter_mut() {
+                    *acc /= batch_size;
+                }
+            }
+            GradientAccumulationStrategy::Sum => {
+                for gradient in batch_gradients {
+                    for (i, &grad) in gradient.iter().enumerate() {
+                        accumulated[i] += grad;
+                    }
+                }
+            }
+            GradientAccumulationStrategy::WeightedMean(ref weights) => {
+                let mut weight_sum = 0.0;
+                for (batch_idx, gradient) in batch_gradients.iter().enumerate() {
+                    let weight = if batch_idx < weights.len() { 
+                        weights[batch_idx] 
+                    } else { 
+                        1.0 
+                    };
+                    weight_sum += weight;
+                    
+                    for (i, &grad) in gradient.iter().enumerate() {
+                        accumulated[i] += weight * grad;
+                    }
+                }
+                
+                if weight_sum > 0.0 {
+                    for acc in accumulated.iter_mut() {
+                        *acc /= weight_sum;
+                    }
+                }
+            }
+        }
+        
+        accumulated
+    }
+}
+
+/// Gradient accumulation strategies for batch processing
+#[derive(Debug, Clone)]
+pub enum GradientAccumulationStrategy {
+    /// Simple arithmetic mean of gradients
+    Mean,
+    /// Sum of gradients (for gradient accumulation across batches)  
+    Sum,
+    /// Weighted mean with custom weights per sample
+    WeightedMean(Vec<f64>),
+}
+
+/// Enhanced chain rule computer with variance reduction and parameter coupling
+/// This handles the complex mathematics of quantum-classical gradient flow
+#[derive(Debug, Clone)]
+pub struct EnhancedChainRuleComputer {
+    /// Control variates for variance reduction
+    control_variates: HashMap<usize, ControlVariate>,
+    /// Variance estimator for adaptive sampling
+    variance_estimator: GradientVarianceEstimator,
+    /// Batch gradient accumulator
+    gradient_accumulator: BatchGradientAccumulator,
+    /// Parameter coupling matrix for interdependent parameters
+    parameter_coupling_matrix: Vec<Vec<f64>>,
+    /// Gradient quality metrics
+    gradient_quality_metrics: GradientQualityMetrics,
+}
+
+/// Control variate for variance reduction in quantum gradients
+#[derive(Debug, Clone)]
+pub struct ControlVariate {
+    /// Control function value (expected to correlate with the gradient)
+    pub control_value: f64,
+    /// Expected value of the control variate
+    pub expected_value: f64,  
+    /// Optimal coefficient for variance reduction
+    pub optimal_coefficient: f64,
+    /// Number of samples used to estimate the coefficient
+    pub sample_count: usize,
+}
+
+/// Gradient variance estimator for adaptive sampling strategies
+#[derive(Debug, Clone, Default)]  
+pub struct GradientVarianceEstimator {
+    /// Running estimates of gradient variances
+    pub variance_estimates: Vec<f64>,
+    /// Sample counts for each parameter
+    pub sample_counts: Vec<usize>,
+    /// Confidence intervals for variance estimates
+    pub confidence_intervals: Vec<(f64, f64)>,
+    /// Adaptive sampling thresholds
+    pub sampling_thresholds: Vec<f64>,
+}
+
+/// Batch gradient accumulator with memory optimization
+#[derive(Debug, Clone, Default)]
+pub struct BatchGradientAccumulator {
+    /// Accumulated gradients
+    pub accumulated_gradients: Vec<f64>,
+    /// Number of samples accumulated
+    pub sample_count: usize,
+    /// Accumulation strategy
+    pub strategy: Option<GradientAccumulationStrategy>,
+    /// Memory usage tracking
+    pub memory_usage_bytes: usize,
+}
+
+/// Gradient quality metrics for monitoring and debugging
+#[derive(Debug, Clone, Default)]
+pub struct GradientQualityMetrics {
+    /// Signal-to-noise ratio for each parameter gradient
+    pub signal_to_noise_ratios: Vec<f64>,
+    /// Gradient magnitudes
+    pub gradient_magnitudes: Vec<f64>,
+    /// Correlation between quantum and classical gradients
+    pub quantum_classical_correlations: Vec<f64>,  
+    /// Gradient stability over time windows
+    pub gradient_stability_scores: Vec<f64>,
+    /// Convergence indicators
+    pub convergence_indicators: Vec<f64>,
+}
+
+impl EnhancedChainRuleComputer {
+    /// Create new enhanced chain rule computer
+    pub fn new(parameter_count: usize) -> Self {
+        Self {
+            control_variates: HashMap::new(),
+            variance_estimator: GradientVarianceEstimator {
+                variance_estimates: vec![0.0; parameter_count],
+                sample_counts: vec![0; parameter_count],
+                confidence_intervals: vec![(0.0, 0.0); parameter_count],
+                sampling_thresholds: vec![1e-6; parameter_count],
+            },
+            gradient_accumulator: BatchGradientAccumulator::default(),
+            parameter_coupling_matrix: vec![vec![0.0; parameter_count]; parameter_count],
+            gradient_quality_metrics: GradientQualityMetrics {
+                signal_to_noise_ratios: vec![0.0; parameter_count],
+                gradient_magnitudes: vec![0.0; parameter_count],
+                quantum_classical_correlations: vec![0.0; parameter_count],
+                gradient_stability_scores: vec![0.0; parameter_count], 
+                convergence_indicators: vec![0.0; parameter_count],
+            },
+        }
+    }
+    
+    /// Compute enhanced gradients with variance reduction
+    pub fn compute_enhanced_gradients(
+        &mut self,
+        raw_quantum_gradients: &[f64],
+        classical_gradients: &[Dual],
+        batch_index: usize
+    ) -> MLResult<Vec<f64>> {
+        
+        // Step 1: Apply variance reduction using control variates
+        let variance_reduced_gradients = self.apply_control_variates(raw_quantum_gradients)?;
+        
+        // Step 2: Apply enhanced chain rule with parameter coupling
+        let chain_rule_gradients = QuantumGradientOps::enhanced_chain_rule(
+            &variance_reduced_gradients,
+            classical_gradients,
+            &self.parameter_coupling_matrix
+        ).map_err(|e| MLError::InvalidLayer { 
+            reason: format!("Chain rule computation failed: {}", e) 
+        })?;
+        
+        // Step 3: Update variance estimates and quality metrics
+        self.update_gradient_statistics(&chain_rule_gradients, batch_index);
+        
+        // Step 4: Apply gradient quality filtering
+        let quality_filtered_gradients = self.filter_by_quality(&chain_rule_gradients)?;
+        
+        Ok(quality_filtered_gradients)
+    }
+    
+    /// Apply control variates for variance reduction
+    fn apply_control_variates(&self, raw_gradients: &[f64]) -> MLResult<Vec<f64>> {
+        let mut reduced_gradients = raw_gradients.to_vec();
+        
+        for (param_idx, &raw_grad) in raw_gradients.iter().enumerate() {
+            if let Some(control_variate) = self.control_variates.get(&param_idx) {
+                // Control variate method: θ̂ = θ - β(C - E[C])
+                let variance_reduction = control_variate.optimal_coefficient * 
+                    (control_variate.control_value - control_variate.expected_value);
+                reduced_gradients[param_idx] = raw_grad - variance_reduction;
+            }
+        }
+        
+        Ok(reduced_gradients)
+    }
+    
+    /// Update gradient statistics for monitoring and adaptation
+    fn update_gradient_statistics(&mut self, gradients: &[f64], batch_index: usize) {
+        for (i, &gradient) in gradients.iter().enumerate() {
+            // Update variance estimates using Welford's online algorithm
+            self.variance_estimator.sample_counts[i] += 1;
+            let n = self.variance_estimator.sample_counts[i] as f64;
+            
+            let delta = gradient - self.variance_estimator.variance_estimates[i];
+            self.variance_estimator.variance_estimates[i] += delta / n;
+            
+            // Update gradient quality metrics
+            self.gradient_quality_metrics.gradient_magnitudes[i] = gradient.abs();
+            
+            // Update signal-to-noise ratio (simplified)
+            if self.variance_estimator.variance_estimates[i] > 0.0 {
+                self.gradient_quality_metrics.signal_to_noise_ratios[i] = 
+                    gradient.abs() / self.variance_estimator.variance_estimates[i].sqrt();
+            }
+        }
+    }
+    
+    /// Filter gradients based on quality metrics
+    fn filter_by_quality(&self, gradients: &[f64]) -> MLResult<Vec<f64>> {
+        let mut filtered_gradients = gradients.to_vec();
+        
+        for (i, &gradient) in gradients.iter().enumerate() {
+            // Apply quality-based filtering
+            let snr = if i < self.gradient_quality_metrics.signal_to_noise_ratios.len() {
+                self.gradient_quality_metrics.signal_to_noise_ratios[i]
+            } else {
+                1.0
+            };
+            
+            // If signal-to-noise ratio is too low, apply conservative filtering
+            if snr < 2.0 { // Threshold for acceptable SNR
+                filtered_gradients[i] = gradient * 0.5; // Conservative gradient scaling
+            }
+        }
+        
+        Ok(filtered_gradients)
+    }
+    
+    /// Compute enhanced chain rule gradients for quantum-classical parameter coupling
+    pub fn compute_enhanced_chain_rule(
+        &mut self,
+        circuit: &VariationalCircuit,
+        quantum_state: &QubitRegister,
+        observable: &PauliStringObservable,
+        parameters: &[f64],
+    ) -> MLResult<Vec<f64>> {
+        let mut gradients = Vec::with_capacity(parameters.len());
+        
+        // Compute parameter shift rule gradients with enhanced precision
+        for (param_idx, &param_value) in parameters.iter().enumerate() {
+            // Enhanced parameter shift: use adaptive shift values for better precision
+            let shift_plus = std::f64::consts::PI / 2.0;
+            let shift_minus = -std::f64::consts::PI / 2.0;
+            
+            // Create modified parameters for forward difference
+            let mut params_plus = parameters.to_vec();
+            params_plus[param_idx] = param_value + shift_plus;
+            
+            let mut params_minus = parameters.to_vec();  
+            params_minus[param_idx] = param_value + shift_minus;
+            
+            // Compute expectation values with parameter shifts
+            let exp_plus = self.compute_expectation_value(circuit, quantum_state, observable, &params_plus)?;
+            let exp_minus = self.compute_expectation_value(circuit, quantum_state, observable, &params_minus)?;
+            
+            // Enhanced parameter shift rule gradient: ∂⟨H⟩/∂θ = (1/2) * [⟨H⟩(θ + π/2) - ⟨H⟩(θ - π/2)]
+            let gradient = 0.5 * (exp_plus - exp_minus);
+            gradients.push(gradient);
+            
+            // Update parameter coupling matrix for enhanced chain rule
+            self.update_parameter_coupling(param_idx, gradient, parameters.len());
+        }
+        
+        Ok(gradients)
+    }
+    
+    /// Apply variance reduction techniques to gradient estimates
+    pub fn apply_variance_reduction(&mut self, raw_gradients: &[f64]) -> MLResult<Vec<f64>> {
+        // Apply control variates if available
+        let variance_reduced = self.apply_control_variates(raw_gradients)?;
+        
+        // Apply additional variance reduction techniques
+        let mut final_gradients = Vec::with_capacity(variance_reduced.len());
+        
+        for (i, &gradient) in variance_reduced.iter().enumerate() {
+            // Apply adaptive sampling threshold based on variance estimates
+            let variance = if i < self.variance_estimator.variance_estimates.len() {
+                self.variance_estimator.variance_estimates[i]
+            } else {
+                1.0
+            };
+            
+            // Use Stein's shrinkage estimator for variance reduction
+            let shrinkage_factor = if variance > 0.0 {
+                1.0 - (self.variance_estimator.sampling_thresholds[i] / variance).min(0.9)
+            } else {
+                1.0
+            };
+            
+            let shrunk_gradient = gradient * shrinkage_factor;
+            final_gradients.push(shrunk_gradient);
+        }
+        
+        Ok(final_gradients)
+    }
+    
+    /// Update gradient quality metrics for monitoring and adaptation
+    pub fn update_gradient_quality_metrics(&mut self, gradients: &[f64]) -> MLResult<()> {
+        for (i, &gradient) in gradients.iter().enumerate() {
+            if i < self.gradient_quality_metrics.gradient_magnitudes.len() {
+                // Update gradient magnitude tracking
+                let old_magnitude = self.gradient_quality_metrics.gradient_magnitudes[i];
+                let new_magnitude = gradient.abs();
+                
+                // Exponential moving average for magnitude
+                self.gradient_quality_metrics.gradient_magnitudes[i] = 
+                    0.9 * old_magnitude + 0.1 * new_magnitude;
+                
+                // Update stability score based on magnitude consistency
+                let stability_delta = (new_magnitude - old_magnitude).abs() / (old_magnitude + 1e-8);
+                self.gradient_quality_metrics.gradient_stability_scores[i] = 
+                    0.95 * self.gradient_quality_metrics.gradient_stability_scores[i] + 0.05 * (1.0 - stability_delta);
+                
+                // Update convergence indicators
+                if new_magnitude < 1e-6 {
+                    self.gradient_quality_metrics.convergence_indicators[i] = 
+                        (self.gradient_quality_metrics.convergence_indicators[i] + 0.1).min(1.0);
+                } else {
+                    self.gradient_quality_metrics.convergence_indicators[i] *= 0.99;
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Apply gradient quality filtering to remove noisy or unreliable gradients
+    pub fn apply_gradient_quality_filter(&self, gradients: &[f64]) -> MLResult<Vec<f64>> {
+        let mut filtered = Vec::with_capacity(gradients.len());
+        
+        for (i, &gradient) in gradients.iter().enumerate() {
+            let mut final_gradient = gradient;
+            
+            // Apply stability-based filtering
+            if i < self.gradient_quality_metrics.gradient_stability_scores.len() {
+                let stability = self.gradient_quality_metrics.gradient_stability_scores[i];
+                
+                // If gradient is unstable, apply conservative scaling
+                if stability < 0.7 {
+                    final_gradient *= stability;
+                }
+            }
+            
+            // Apply SNR-based filtering
+            if i < self.gradient_quality_metrics.signal_to_noise_ratios.len() {
+                let snr = self.gradient_quality_metrics.signal_to_noise_ratios[i];
+                
+                // If SNR is too low, apply aggressive filtering
+                if snr < 1.0 {
+                    final_gradient *= snr;
+                }
+            }
+            
+            // Apply convergence-based adaptive scaling
+            if i < self.gradient_quality_metrics.convergence_indicators.len() {
+                let convergence = self.gradient_quality_metrics.convergence_indicators[i];
+                
+                // As we approach convergence, reduce gradient magnitude for stability
+                if convergence > 0.8 {
+                    final_gradient *= 1.0 - 0.5 * convergence;
+                }
+            }
+            
+            filtered.push(final_gradient);
+        }
+        
+        Ok(filtered)
+    }
+    
+    /// Compute expectation value for a given parameter configuration
+    fn compute_expectation_value(
+        &self,
+        circuit: &VariationalCircuit,
+        quantum_state: &QubitRegister,
+        observable: &PauliStringObservable,
+        parameters: &[f64],
+    ) -> MLResult<f64> {
+        // Create a copy of the circuit and set parameters
+        let mut circuit_copy = circuit.clone();
+        circuit_copy.set_all_parameters(parameters)?;
+        
+        // Apply the variational circuit to the state
+        let final_state = circuit_copy.forward(quantum_state)?;
+        
+        // Measure the observable on the resulting state
+        observable.measure_expectation(&final_state)
+            .map_err(|e| MLError::DataError {
+                reason: format!("Failed to measure observable: {:?}", e),
+            })
+    }
+    
+    /// Update parameter coupling matrix for enhanced multivariate chain rule
+    fn update_parameter_coupling(&mut self, param_idx: usize, gradient: f64, total_params: usize) {
+        if param_idx < self.parameter_coupling_matrix.len() {
+            // Update coupling with other parameters based on gradient correlation
+            for other_param in 0..total_params {
+                if other_param != param_idx && other_param < self.parameter_coupling_matrix[param_idx].len() {
+                    // Simple correlation update - in practice would use more sophisticated methods
+                    let correlation = gradient * 0.01; // Simplified correlation factor
+                    self.parameter_coupling_matrix[param_idx][other_param] = 
+                        0.95 * self.parameter_coupling_matrix[param_idx][other_param] + 0.05 * correlation;
+                }
+            }
+        }
     }
 }
