@@ -904,6 +904,73 @@ impl VariationalCircuit {
         }
         Ok(())
     }
+    
+    /// Extract parameters as Tensor objects for ML framework compatibility
+    pub fn parameters_as_tensors(&self) -> MLResult<Vec<Tensor>> {
+        let mut tensor_params = Vec::new();
+        
+        for gate in &self.parameterized_gates {
+            for &param in &gate.parameters {
+                // Convert each f64 parameter to a Tensor with gradient tracking
+                let tensor_data = vec![crate::stdlib::autodiff::Dual::variable(param)];
+                let tensor = Tensor::new(tensor_data, vec![1])?;
+                tensor_params.push(tensor);
+            }
+        }
+        
+        Ok(tensor_params)
+    }
+
+    /// Extract mutable references to parameters as Tensor objects
+    /// This is a bit tricky because we need to maintain the f64 -> Tensor mapping
+    /// We'll return new Tensors and provide an update method
+    pub fn parameters_as_tensors_mut(&mut self) -> MLResult<Vec<Tensor>> {
+        self.parameters_as_tensors()
+    }
+
+    /// Update internal f64 parameters from Tensor objects after gradient updates
+    pub fn update_parameters_from_tensors(&mut self, tensor_params: &[Tensor]) -> MLResult<()> {
+        let mut param_idx = 0;
+        
+        for gate in &mut self.parameterized_gates {
+            for param in &mut gate.parameters {
+                if param_idx >= tensor_params.len() {
+                    return Err(MLError::DataError {
+                        reason: format!("Not enough tensor parameters provided. Expected at least {}, got {}", 
+                                       param_idx + 1, tensor_params.len()),
+                    });
+                }
+                
+                let tensor = &tensor_params[param_idx];
+                if tensor.data.len() != 1 {
+                    return Err(MLError::DataError {
+                        reason: format!("Parameter tensor at index {} must be scalar (size 1), got size {}", 
+                                       param_idx, tensor.data.len()),
+                    });
+                }
+                
+                // Extract the value from the Dual number (ignore gradient for parameter updates)
+                *param = tensor.data[0].value();
+                param_idx += 1;
+            }
+        }
+        
+        if param_idx != tensor_params.len() {
+            return Err(MLError::DataError {
+                reason: format!("Parameter count mismatch. Expected {}, got {}", 
+                               param_idx, tensor_params.len()),
+            });
+        }
+        
+        Ok(())
+    }
+
+    /// Get total number of parameters across all gates
+    pub fn parameter_count(&self) -> usize {
+        self.parameterized_gates.iter()
+            .map(|gate| gate.parameters.len())
+            .sum()
+    }
 }
 
 impl Foreign for VariationalCircuit {
