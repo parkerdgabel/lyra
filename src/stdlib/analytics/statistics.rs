@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::any::Any;
 
 // Import required statistical libraries
-use statrs::statistics::Statistics;
 use statrs::distribution::{Normal, StudentsT, ChiSquared, ContinuousCDF};
 
 /// Statistical Model Results - Foreign Object

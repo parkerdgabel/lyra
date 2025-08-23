@@ -14,9 +14,67 @@ use rayon::prelude::*;
 use parking_lot::RwLock;
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::ast::{Pattern, Expr};
+use crate::ast::{Pattern, Expr, Symbol, Number};
 use crate::pattern_matcher::{MatchResult, PatternMatcher, MatchingContext};
 use super::{ConcurrencyConfig, ConcurrencyStats, ConcurrencyError, WorkStealingScheduler, TaskPriority};
+
+/// Convert a Value to an Expr for pattern matching
+fn value_to_expr(value: &Value) -> Expr {
+    match value {
+        Value::Integer(n) => Expr::Number(Number::Integer(*n)),
+        Value::Real(f) => Expr::Number(Number::Real(*f)),
+        Value::String(s) => Expr::String(s.clone()),
+        Value::Symbol(name) => Expr::Symbol(Symbol { name: name.clone() }),
+        Value::List(items) => {
+            let expr_items: Vec<Expr> = items.iter().map(value_to_expr).collect();
+            Expr::List(expr_items)
+        },
+        Value::Function(name) => {
+            // For functions, represent as a symbol
+            Expr::Symbol(Symbol { name: name.clone() })
+        },
+        Value::Boolean(b) => {
+            // For booleans, represent as a symbol
+            Expr::Symbol(Symbol { name: if *b { "True" } else { "False" }.to_string() })
+        },
+        Value::Missing => {
+            // For missing values, represent as a symbol
+            Expr::Symbol(Symbol { name: "Missing".to_string() })
+        },
+        Value::Object(_) => {
+            // For objects, represent as a symbol
+            Expr::Symbol(Symbol { name: "Object".to_string() })
+        },
+        Value::LyObj(_) => {
+            // For foreign objects, represent as a symbol
+            Expr::Symbol(Symbol { name: "ForeignObject".to_string() })
+        },
+        Value::Quote(expr) => {
+            // For quoted expressions, return the inner expression
+            *expr.clone()
+        },
+        Value::Pattern(_) => {
+            // For patterns, represent as a symbol
+            Expr::Symbol(Symbol { name: "Pattern".to_string() })
+        },
+        Value::Rule { lhs: _, rhs: _ } => {
+            // For rules, represent as a symbol
+            Expr::Symbol(Symbol { name: "Rule".to_string() })
+        },
+        Value::PureFunction { body: _ } => {
+            // For pure functions, represent as a symbol
+            Expr::Symbol(Symbol { name: "PureFunction".to_string() })
+        },
+        Value::Slot { number } => {
+            // For slots, represent as a symbol
+            let name = match number {
+                Some(n) => format!("#{}", n),
+                None => "#".to_string(),
+            };
+            Expr::Symbol(Symbol { name })
+        },
+    }
+}
 
 /// Cache key for pattern matching results
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,7 +113,7 @@ impl PatternCacheKey {
 }
 
 /// Cached pattern matching result
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CachedMatchResult {
     /// The match result
     pub result: MatchResult,
@@ -266,7 +324,7 @@ impl ParallelPatternMatcher {
     
     /// Match a value against multiple patterns in parallel
     pub fn match_parallel(
-        &self,
+        &mut self,
         expression: &Value,
         patterns: &[Pattern],
     ) -> VmResult<Vec<MatchResult>> {
@@ -280,9 +338,10 @@ impl ParallelPatternMatcher {
         // Create matching context
         let context = MatchingContext::new();
         
-        // Parallel matching using rayon
+        // TODO: Use parallel matching once PatternMatcher is Send+Sync
+        // Issue: FastPathMatcher trait doesn't implement Send+Sync
         let results: Vec<_> = patterns
-            .par_iter()
+            .iter()
             .enumerate()
             .map(|(index, pattern)| {
                 let cache_key = PatternCacheKey::new(expression, pattern, &context);
@@ -295,15 +354,14 @@ impl ParallelPatternMatcher {
                 
                 self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
                 
-                // Perform the actual match
-                let match_result = self.sequential_matcher.match_pattern(expression, pattern, &context);
+                // Perform the actual match - convert Value to Expr first
+                let expr = value_to_expr(expression);
+                let match_result = self.sequential_matcher.match_pattern(&expr, pattern);
                 
                 // Cache the result
-                if let Ok(ref result) = match_result {
-                    self.cache.put(cache_key, result.clone());
-                }
+                self.cache.put(cache_key, match_result.clone());
                 
-                (index, match_result.unwrap_or(MatchResult::Failure { reason: "No match found".to_string() }))
+                (index, match_result)
             })
             .collect();
         
@@ -330,7 +388,7 @@ impl ParallelPatternMatcher {
     
     /// Sequential pattern matching fallback
     fn match_sequential(
-        &self,
+        &mut self,
         expression: &Value,
         patterns: &[Pattern],
     ) -> VmResult<Vec<MatchResult>> {
@@ -349,9 +407,9 @@ impl ParallelPatternMatcher {
             
             self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
             
-            // Perform the match
-            let match_result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
+            // Perform the match - convert Value to Expr first
+            let expr = value_to_expr(expression);
+            let match_result = self.sequential_matcher.match_pattern(&expr, pattern);
             
             // Cache the result
             self.cache.put(cache_key, match_result.clone());
@@ -363,7 +421,7 @@ impl ParallelPatternMatcher {
     
     /// Match a value against patterns with custom context
     pub fn match_with_context(
-        &self,
+        &mut self,
         expression: &Value,
         patterns: &[Pattern],
         context: &MatchingContext,
@@ -373,9 +431,9 @@ impl ParallelPatternMatcher {
             return self.match_sequential_with_context(expression, patterns, context);
         }
         
-        // Parallel matching with custom context
+        // TODO: Use parallel matching once PatternMatcher is Send+Sync
         let results: Vec<_> = patterns
-            .par_iter()
+            .iter()
             .enumerate()
             .map(|(index, pattern)| {
                 let cache_key = PatternCacheKey::new(expression, pattern, context);
@@ -388,15 +446,14 @@ impl ParallelPatternMatcher {
                 
                 self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
                 
-                // Perform the actual match
-                let match_result = self.sequential_matcher.match_pattern(expression, pattern, context);
+                // Perform the actual match - convert Value to Expr first
+                let expr = value_to_expr(expression);
+                let match_result = self.sequential_matcher.match_pattern(&expr, pattern);
                 
                 // Cache the result
-                if let Ok(ref result) = match_result {
-                    self.cache.put(cache_key, result.clone());
-                }
+                self.cache.put(cache_key, match_result.clone());
                 
-                (index, match_result.unwrap_or(MatchResult::Failure { reason: "No match found".to_string() }))
+                (index, match_result)
             })
             .collect();
         
@@ -412,7 +469,7 @@ impl ParallelPatternMatcher {
     
     /// Sequential pattern matching with custom context
     fn match_sequential_with_context(
-        &self,
+        &mut self,
         expression: &Value,
         patterns: &[Pattern],
         context: &MatchingContext,
@@ -431,9 +488,9 @@ impl ParallelPatternMatcher {
             
             self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
             
-            // Perform the match
-            let match_result = self.sequential_matcher.match_pattern(expression, pattern, context)
-                .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
+            // Perform the match - convert Value to Expr first
+            let expr = value_to_expr(expression);
+            let match_result = self.sequential_matcher.match_pattern(&expr, pattern);
             
             // Cache the result
             self.cache.put(cache_key, match_result.clone());
@@ -445,17 +502,17 @@ impl ParallelPatternMatcher {
     
     /// Find the first matching pattern in parallel
     pub fn find_first_match(
-        &self,
+        &mut self,
         expression: &Value,
         patterns: &[Pattern],
     ) -> VmResult<Option<(usize, MatchResult)>> {
         let context = MatchingContext::new();
         
-        // Use parallel find to stop early on first match
+        // TODO: Use parallel find once PatternMatcher is Send+Sync
         let result = patterns
-            .par_iter()
+            .iter()
             .enumerate()
-            .find_map_first(|(index, pattern)| {
+            .find_map(|(index, pattern)| {
                 let cache_key = PatternCacheKey::new(expression, pattern, &context);
                 
                 // Check cache first
@@ -465,9 +522,9 @@ impl ParallelPatternMatcher {
                 } else {
                     self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
                     
-                    // Perform the actual match
-                    let result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                        .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
+                    // Perform the actual match - convert Value to Expr first
+                    let expr = value_to_expr(expression);
+                    let result = self.sequential_matcher.match_pattern(&expr, pattern);
                     
                     // Cache the result
                     self.cache.put(cache_key, result.clone());
@@ -476,7 +533,7 @@ impl ParallelPatternMatcher {
                 
                 // Return the first successful match
                 match match_result {
-                    MatchResult::Failure { reason: "No match found".to_string() } => None,
+                    MatchResult::Failure { reason } if reason == "No match found" => None,
                     result => Some((index, result)),
                 }
             });
@@ -487,17 +544,17 @@ impl ParallelPatternMatcher {
     
     /// Apply rules in parallel
     pub fn apply_rules_parallel(
-        &self,
+        &mut self,
         expression: &Value,
         rules: &[(Pattern, Expr)],
     ) -> VmResult<Option<Value>> {
         let context = MatchingContext::new();
         
-        // Find first matching rule in parallel
+        // TODO: Use parallel rule matching once PatternMatcher is Send+Sync
         let matching_rule = rules
-            .par_iter()
+            .iter()
             .enumerate()
-            .find_map_first(|(index, (pattern, _replacement))| {
+            .find_map(|(index, (pattern, _replacement))| {
                 let cache_key = PatternCacheKey::new(expression, pattern, &context);
                 
                 // Check cache first
@@ -507,9 +564,9 @@ impl ParallelPatternMatcher {
                 } else {
                     self.stats.pattern_cache_misses.fetch_add(1, Ordering::Relaxed);
                     
-                    // Perform the actual match
-                    let result = self.sequential_matcher.match_pattern(expression, pattern, &context)
-                        .unwrap_or(MatchResult::Failure { reason: "No match found".to_string() });
+                    // Perform the actual match - convert Value to Expr first
+                    let expr = value_to_expr(expression);
+                    let result = self.sequential_matcher.match_pattern(&expr, pattern);
                     
                     // Cache the result
                     self.cache.put(cache_key, result.clone());
@@ -518,7 +575,7 @@ impl ParallelPatternMatcher {
                 
                 // Return the first successful match with its index
                 match match_result {
-                    MatchResult::Failure { reason: "No match found".to_string() } => None,
+                    MatchResult::Failure { reason } if reason == "No match found" => None,
                     result => Some((index, result)),
                 }
             });

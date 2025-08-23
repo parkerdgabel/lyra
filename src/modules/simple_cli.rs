@@ -407,7 +407,7 @@ license = "Unknown"
         Ok(())
     }
     
-    async fn cmd_info(&mut self, package: &str, version: Option<&str>) -> Result<(), String> {
+    async fn cmd_info(&mut self, package: &str, _version: Option<&str>) -> Result<(), String> {
         println!("ℹ️  Package information for {}:", package);
         
         let cache_dir = get_cache_dir();

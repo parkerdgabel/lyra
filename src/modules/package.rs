@@ -380,7 +380,7 @@ impl PackageManager {
             })
     }
     
-    fn compile_module(&self, source_dir: &Path, manifest: &PackageManifest) -> Result<Module, ModuleError> {
+    fn compile_module(&self, _source_dir: &Path, manifest: &PackageManifest) -> Result<Module, ModuleError> {
         // Create a basic module from the manifest for now
         // In a full implementation, this would compile Lyra source code
         let metadata = ModuleMetadata {
@@ -399,7 +399,7 @@ impl PackageManager {
         Ok(Module::new(metadata))
     }
     
-    fn load_compiled_module(&self, path: &Path) -> Result<Module, ModuleError> {
+    fn load_compiled_module(&self, _path: &Path) -> Result<Module, ModuleError> {
         // For now, create an empty module
         // In a full implementation, this would deserialize a binary module format
         let metadata = ModuleMetadata {
@@ -418,7 +418,7 @@ impl PackageManager {
         Ok(Module::new(metadata))
     }
     
-    fn save_compiled_module(&self, module: &Module, path: &Path) -> Result<(), ModuleError> {
+    fn save_compiled_module(&self, _module: &Module, path: &Path) -> Result<(), ModuleError> {
         // For now, just create an empty file
         // In a full implementation, this would serialize the module to a binary format
         fs::write(path, b"")
@@ -429,7 +429,7 @@ impl PackageManager {
         Ok(())
     }
     
-    fn calculate_checksum(&self, module: &Module) -> Result<String, ModuleError> {
+    fn calculate_checksum(&self, _module: &Module) -> Result<String, ModuleError> {
         // For now, return a simple checksum
         // In a full implementation, this would calculate SHA-256 of module content
         Ok("sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string())
@@ -517,7 +517,7 @@ impl PackageRegistry for LocalRegistry {
         Ok(manifest.package)
     }
     
-    async fn download(&self, name: &str, version: &Version) -> Result<PackageBundle, ModuleError> {
+    async fn download(&self, _name: &str, _version: &Version) -> Result<PackageBundle, ModuleError> {
         Err(ModuleError::PackageError {
             message: "Local registry does not support downloads".to_string(),
         })
@@ -665,7 +665,7 @@ impl DependencyResolver {
         Ok(ResolutionPlan { packages, order })
     }
     
-    async fn find_satisfying_version(&self, name: &str, constraint: &VersionConstraint) -> Result<Version, ModuleError> {
+    async fn find_satisfying_version(&self, _name: &str, constraint: &VersionConstraint) -> Result<Version, ModuleError> {
         // For now, return a default version that satisfies the constraint
         match constraint {
             VersionConstraint::Exact(v) => Ok(v.clone()),
@@ -676,7 +676,7 @@ impl DependencyResolver {
         }
     }
     
-    async fn get_package_dependencies(&self, name: &str, version: &Version) -> Result<Vec<Dependency>, ModuleError> {
+    async fn get_package_dependencies(&self, _name: &str, _version: &Version) -> Result<Vec<Dependency>, ModuleError> {
         // For now, return empty dependencies
         // In a real implementation, this would fetch the package's dependencies from its manifest
         Ok(Vec::new())
@@ -699,7 +699,7 @@ impl PackageVerifier {
         PackageVerifier {}
     }
     
-    pub fn verify_package(&self, bundle: &PackageBundle) -> Result<(), ModuleError> {
+    pub fn verify_package(&self, _bundle: &PackageBundle) -> Result<(), ModuleError> {
         // For now, always pass verification
         // In a real implementation, this would:
         // - Verify package signature

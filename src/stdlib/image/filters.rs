@@ -3,7 +3,7 @@
 //! This module provides comprehensive image filtering and enhancement functions
 //! including Gaussian filtering, median filtering, edge detection, and rotation.
 
-use crate::foreign::{Foreign, LyObj};
+use crate::foreign::LyObj;
 use crate::vm::{Value, VmResult, VmError};
 use crate::stdlib::image::core::{Image, ColorSpace, InterpolationMethod};
 use std::f32::consts::PI;

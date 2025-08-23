@@ -232,8 +232,8 @@ impl ConcurrencySystem {
     }
     
     /// Stop the concurrency system gracefully
-    pub fn stop(&self) -> Result<()> {
-        self.actor_system.stop()?;
+    pub async fn stop(&self) -> Result<()> {
+        self.actor_system.stop().await?;
         self.scheduler.stop()?;
         Ok(())
     }
@@ -282,7 +282,12 @@ impl ConcurrencySystem {
         expression: &Value,
         patterns: &[crate::ast::Pattern],
     ) -> VmResult<Vec<crate::pattern_matcher::MatchResult>> {
-        self.pattern_matcher.match_parallel(expression, patterns)
+        // TODO: Fix thread safety issues with ParallelPatternMatcher
+        // Issue: match_parallel requires &mut self but pattern_matcher is in Arc
+        // For now, return placeholder result
+        Ok(vec![crate::pattern_matcher::MatchResult::Failure { 
+            reason: "Parallel pattern matching not yet implemented".to_string() 
+        }; patterns.len()])
     }
 }
 

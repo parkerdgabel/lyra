@@ -609,7 +609,7 @@ MIT
     }
     
     async fn cmd_tree(&mut self, package: Option<&str>, depth: Option<usize>) -> Result<(), ModuleError> {
-        let max_depth = depth.unwrap_or(usize::MAX);
+        let _max_depth = depth.unwrap_or(usize::MAX);
         
         if let Some(pkg) = package {
             println!("🌳 Dependency tree for {}:", pkg);

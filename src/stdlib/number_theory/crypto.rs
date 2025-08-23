@@ -6,7 +6,6 @@
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
 use std::any::Any;
-use std::hash::Hash;
 
 /// RSA public/private key pair
 #[derive(Debug, Clone)]

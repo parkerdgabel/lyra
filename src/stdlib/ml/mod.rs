@@ -12,13 +12,27 @@ pub mod training;
 pub mod losses;
 pub mod optimizers;
 pub mod metrics;
+pub mod preprocessing;
+pub mod dataloader;
+pub mod performance;
+pub mod automl;
+pub mod evaluation;
+pub mod mlops;
 pub mod wrapper;
+pub mod bio_integration;
 
 // Re-export main types for convenience
 pub use netchain::NetChain;
 pub use netgraph::NetGraph;
 pub use layers::*;  // This includes the Tensor type from layers.rs
-pub use training::NetTrain;
+pub use training::{NetTrain, DatasetTargetExtraction};
+pub use preprocessing::{MLPreprocessor, StandardScaler, OneHotEncoder, MissingValueHandler, OutlierRemover, AutoPreprocessor, ImputationStrategy, OutlierMethod, AdvancedPreprocessingPipeline, PipelineBuilder, PipelineRegistry, PreprocessingFactory, EnhancedAutoPreprocessor};
+pub use dataloader::{DataLoader, DataLoaderConfig, DataLoaderFactory, StreamingDataLoader};
+pub use performance::{LazyTensor, ParallelPreprocessingPipeline, AdaptiveDataLoader, StreamingPreprocessor, MLPerformanceOptimizer, MLPerformanceMonitor};
+pub use automl::{AutoMLSystem, AutoMLResult, MLPipelineBuilder, MLPipelineResult, AutoMLQuickStart, MLWorkflow, MLPatterns, ModelComplexity, PerformancePriority, ProblemType, DataType, ValidationStrategy};
+pub use evaluation::{DataSplitter, EvaluationMetrics, CrossValidator, ModelSelector, HyperparameterOptimizer, ModelEvaluator, ClassificationReport, RegressionReport, CrossValidationResult, EvaluationResult, ScoringMetric};
+pub use mlops::{ExperimentTracker, ModelRegistry, MLOpsManager, Experiment, ExperimentStatus, ModelArtifact, DeploymentInfo, TrackedExperimentResult, ExperimentSummary, MLOpsUtils};
+pub use bio_integration::{SequenceEncoding, SequencePreprocessor, SequenceDataset, BioMLWorkflow};
 
 /// Result type for ML operations
 pub type MLResult<T> = Result<T, MLError>;

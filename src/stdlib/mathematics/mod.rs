@@ -89,8 +89,96 @@ pub fn register_mathematics_functions() -> HashMap<String, fn(&[Value]) -> VmRes
     functions.insert("ChebyshevU".to_string(), special::chebyshev_u as fn(&[Value]) -> VmResult<Value>);
     functions.insert("GegenbauerC".to_string(), special::gegenbauer_c as fn(&[Value]) -> VmResult<Value>);
 
-    // Note: Add other modules (differential, interpolation, linear_algebra, optimization, signal)
-    // as they get integrated into the mathematics module
+    // Linear Algebra functions (from linear_algebra.rs)
+    functions.insert("SVD".to_string(), linear_algebra::svd as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("QRDecomposition".to_string(), linear_algebra::qr_decomposition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LUDecomposition".to_string(), linear_algebra::lu_decomposition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("CholeskyDecomposition".to_string(), linear_algebra::cholesky_decomposition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("EigenDecomposition".to_string(), linear_algebra::eigen_decomposition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("SchurDecomposition".to_string(), linear_algebra::schur_decomposition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LinearSolve".to_string(), linear_algebra::linear_solve as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LeastSquares".to_string(), linear_algebra::least_squares as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PseudoInverse".to_string(), linear_algebra::pseudo_inverse as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MatrixPower".to_string(), linear_algebra::matrix_power as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MatrixFunction".to_string(), linear_algebra::matrix_function as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Tr".to_string(), linear_algebra::matrix_trace as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MatrixRank".to_string(), linear_algebra::matrix_rank as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MatrixCondition".to_string(), linear_algebra::matrix_condition as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MatrixNorm".to_string(), linear_algebra::matrix_norm as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Det".to_string(), linear_algebra::determinant as fn(&[Value]) -> VmResult<Value>);
+
+    // Optimization functions (from optimization.rs)
+    functions.insert("FindRoot".to_string(), optimization::find_root as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NewtonMethod".to_string(), optimization::newton_method_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("BisectionMethod".to_string(), optimization::bisection_method_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("SecantMethod".to_string(), optimization::secant_method_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Minimize".to_string(), optimization::minimize as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Maximize".to_string(), optimization::maximize as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NIntegrate".to_string(), optimization::n_integrate as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("GaussianQuadrature".to_string(), optimization::gaussian_quadrature as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MonteCarloIntegration".to_string(), optimization::monte_carlo_integration as fn(&[Value]) -> VmResult<Value>);
+
+    // Signal Processing functions (from signal.rs)
+    functions.insert("FFT".to_string(), signal::fft as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("InverseFourierTransform".to_string(), signal::ifft as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("DCT".to_string(), signal::dct as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PowerSpectrum".to_string(), signal::power_spectrum as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Periodogram".to_string(), signal::periodogram as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Spectrogram".to_string(), signal::spectrogram as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PSDEstimate".to_string(), signal::psd_estimate as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HammingWindow".to_string(), signal::hamming_window as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HanningWindow".to_string(), signal::hanning_window as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("BlackmanWindow".to_string(), signal::blackman_window as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("ApplyWindow".to_string(), signal::apply_window as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Convolve".to_string(), signal::convolve as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("CrossCorrelation".to_string(), signal::cross_correlation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("AutoCorrelation".to_string(), signal::auto_correlation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LowPassFilter".to_string(), signal::low_pass_filter as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HighPassFilter".to_string(), signal::high_pass_filter as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("MedianFilter".to_string(), signal::median_filter as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HilbertTransform".to_string(), signal::hilbert_transform as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("ZeroPadding".to_string(), signal::zero_padding as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PhaseUnwrap".to_string(), signal::phase_unwrap as fn(&[Value]) -> VmResult<Value>);
+
+    // Differential Equations functions (from differential.rs)
+    functions.insert("NDSolve".to_string(), differential::nd_solve as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("DSolve".to_string(), differential::d_solve as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("DEigensystem".to_string(), differential::d_eigensystem as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PDSolve".to_string(), differential::pd_solve as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LaplacianFilter".to_string(), differential::laplacian_filter as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("WaveEquation".to_string(), differential::wave_equation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("VectorCalculus".to_string(), differential::vector_calculus as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Gradient".to_string(), differential::gradient as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Divergence".to_string(), differential::divergence as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("Curl".to_string(), differential::curl as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("RungeKutta".to_string(), differential::runge_kutta as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("AdamsBashforth".to_string(), differential::adams_bashforth as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("BDF".to_string(), differential::bdf as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("BesselJ".to_string(), differential::bessel_j as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HermiteH".to_string(), differential::hermite_h as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LegendreP".to_string(), differential::legendre_p as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LaplaceTransform".to_string(), differential::laplace_transform as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("ZTransform".to_string(), differential::z_transform as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("HankelTransform".to_string(), differential::hankel_transform as fn(&[Value]) -> VmResult<Value>);
+
+    // Interpolation functions (from interpolation.rs)
+    functions.insert("Interpolation".to_string(), interpolation::interpolation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("SplineInterpolation".to_string(), interpolation::spline_interpolation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("PolynomialInterpolation".to_string(), interpolation::polynomial_interpolation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NIntegrateAdvanced".to_string(), interpolation::n_integrate_advanced as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("GaussLegendre".to_string(), interpolation::gauss_legendre as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("AdaptiveQuadrature".to_string(), interpolation::adaptive_quadrature_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("FindRootAdvanced".to_string(), interpolation::find_root_advanced as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("BrentMethod".to_string(), interpolation::brent_method_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NewtonRaphson".to_string(), interpolation::newton_raphson_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NonlinearFit".to_string(), interpolation::nonlinear_fit as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("LeastSquaresFit".to_string(), interpolation::least_squares_fit as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("SplineFit".to_string(), interpolation::spline_fit as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("NDerivative".to_string(), interpolation::n_derivative as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("FiniteDifference".to_string(), interpolation::finite_difference_wrapper as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("RichardsonExtrapolation".to_string(), interpolation::richardson_extrapolation as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("ErrorEstimate".to_string(), interpolation::error_estimate as fn(&[Value]) -> VmResult<Value>);
+    functions.insert("AdaptiveMethod".to_string(), interpolation::adaptive_method as fn(&[Value]) -> VmResult<Value>);
 
     functions
 }
@@ -102,8 +190,8 @@ pub use basic::{
 };
 pub use calculus::*;
 pub use special::*;
-// pub use differential::*;
-// pub use interpolation::*;
-// pub use linear_algebra::*;
-// pub use optimization::*;
-// pub use signal::*;
+pub use differential::*;
+pub use interpolation::*;
+pub use linear_algebra::*;
+pub use optimization::*;
+pub use signal::*;

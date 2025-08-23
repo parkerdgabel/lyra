@@ -6,6 +6,7 @@
 
 use crate::vm::Value;
 use crate::foreign::{Foreign, ForeignError, LyObj};
+#[cfg(test)]
 use std::any::Any;
 use std::fmt;
 
@@ -72,7 +73,7 @@ macro_rules! impl_foreign {
                 Box::new(self.clone())
             }
             
-            fn as_any(&self) -> &dyn std::any::Any {
+            fn as_any(&self) -> &dyn Any {
                 self
             }
         }

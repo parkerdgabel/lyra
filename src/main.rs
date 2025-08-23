@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
 use lyra::{compiler::Compiler, parser::Parser as LyraParser, Result, repl::ReplEngine, stdlib::StandardLibrary};
 use lyra::repl::enhanced_helper::EnhancedLyraHelper;
-use rustyline::{error::ReadlineError, DefaultEditor, Editor, Config};
-use rustyline::completion::Completer;
+use rustyline::{error::ReadlineError, Editor, Config};
 use std::{fs, path::PathBuf, process::{Command, Stdio}};
 use walkdir::WalkDir;
 

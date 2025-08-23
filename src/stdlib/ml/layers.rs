@@ -78,6 +78,13 @@ impl Tensor {
         Self { data, shape }
     }
     
+    /// Create zero tensor with gradients enabled (for accumulation)
+    pub fn zeros_with_grad(shape: Vec<usize>) -> Self {
+        let size: usize = shape.iter().product();
+        let data = vec![Dual::variable(0.0); size];
+        Self { data, shape }
+    }
+    
     /// Create tensor with random normal values
     pub fn randn(shape: Vec<usize>) -> Self {
         let size: usize = shape.iter().product();
@@ -137,11 +144,11 @@ impl Tensor {
             });
         }
         
-        let mut result = vec![Dual::constant(0.0); m * n];
+        let mut result = vec![Dual::variable(0.0); m * n];
         
         for i in 0..m {
             for j in 0..n {
-                let mut sum = Dual::constant(0.0);
+                let mut sum = Dual::variable(0.0);
                 for k in 0..k1 {
                     let a_val = self.data[i * k1 + k];
                     let b_val = other.data[k * n + j];
@@ -492,9 +499,9 @@ impl Layer for SoftmaxLayer {
                 .map(|&x| (x - Dual::constant(max_val)).exp())
                 .collect();
             
-            // Compute sum of exponentials
+            // Compute sum of exponentials with gradient tracking
             let sum_exp = exp_values.iter()
-                .fold(Dual::constant(0.0), |acc, &x| acc + x);
+                .fold(Dual::variable(0.0), |acc, &x| acc + x);
             
             // Normalize by sum
             for exp_val in exp_values {
@@ -769,7 +776,7 @@ impl Layer for ConvolutionLayer {
             for out_c in 0..self.output_channels {
                 for out_y in 0..out_h {
                     for out_x in 0..out_w {
-                        let mut conv_sum = Dual::constant(0.0);
+                        let mut conv_sum = Dual::variable(0.0);
                         
                         // Convolution operation
                         for in_c in 0..input_channels {
@@ -986,7 +993,7 @@ impl Layer for PoolingLayer {
                                 max_val
                             },
                             PoolFunction::Mean => {
-                                let mut sum_val = Dual::constant(0.0);
+                                let mut sum_val = Dual::variable(0.0);
                                 let mut count = 0;
                                 
                                 for ky in 0..kh {
@@ -1008,7 +1015,7 @@ impl Layer for PoolingLayer {
                                 if count > 0 {
                                     sum_val / Dual::constant(count as f64)
                                 } else {
-                                    Dual::constant(0.0)
+                                    Dual::variable(0.0)
                                 }
                             },
                         };
@@ -1555,7 +1562,7 @@ impl Layer for DropoutLayer {
             let random_val: f64 = rand::random();
             if random_val < self.drop_probability {
                 // Drop this element
-                output_data.push(Dual::constant(0.0));
+                output_data.push(Dual::variable(0.0));
             } else {
                 // Keep and scale this element
                 output_data.push(val * Dual::constant(scale));
@@ -1691,10 +1698,10 @@ impl BatchNormalizationLayer {
         let total_elements = batch_size * spatial_size;
         
         // Compute mean for each channel
-        let mut channel_means = vec![Dual::constant(0.0); num_features];
+        let mut channel_means = vec![Dual::variable(0.0); num_features];
         
         for c in 0..num_features {
-            let mut sum = Dual::constant(0.0);
+            let mut sum = Dual::variable(0.0);
             for n in 0..batch_size {
                 for s in 0..spatial_size {
                     let idx = match input.shape.len() {
@@ -1716,10 +1723,10 @@ impl BatchNormalizationLayer {
         }
         
         // Compute variance for each channel
-        let mut channel_vars = vec![Dual::constant(0.0); num_features];
+        let mut channel_vars = vec![Dual::variable(0.0); num_features];
         
         for c in 0..num_features {
-            let mut sum_sq_diff = Dual::constant(0.0);
+            let mut sum_sq_diff = Dual::variable(0.0);
             for n in 0..batch_size {
                 for s in 0..spatial_size {
                     let idx = match input.shape.len() {
@@ -2527,3 +2534,88 @@ mod tests {
     }
 }
 
+// Test gradient tracking in the enhanced ML tensor system
+
+#[cfg(test)]
+mod test {
+    use crate::stdlib::ml::layers::Tensor;
+    use crate::stdlib::autodiff::Dual;
+    
+    #[test]
+    fn test_tensor_gradient_tracking() {
+        // Create tensors with gradient-enabled values
+        let data1 = vec![Dual::variable(2.0), Dual::variable(3.0)];
+        let tensor1 = Tensor::new(data1, vec![2]).unwrap();
+        
+        let data2 = vec![Dual::variable(4.0), Dual::variable(5.0)];
+        let tensor2 = Tensor::new(data2, vec![2]).unwrap();
+        
+        // Test addition preserves gradients
+        let result = tensor1.add(&tensor2).unwrap();
+        
+        // Check that result values are correct
+        assert_eq!(result.data[0].value(), 6.0); // 2.0 + 4.0
+        assert_eq!(result.data[1].value(), 8.0); // 3.0 + 5.0
+        
+        // Check that gradients are preserved (should be 1.0 for variables)
+        assert_eq!(result.data[0].derivative(), 2.0); // 1.0 + 1.0
+        assert_eq!(result.data[1].derivative(), 2.0); // 1.0 + 1.0
+        
+        println!("✅ Gradient tracking test passed!");
+    }
+    
+    #[test]
+    fn test_matrix_multiplication_gradients() {
+        // Create 2x2 matrices with gradient tracking
+        let a_data = vec![
+            Dual::variable(1.0), Dual::variable(2.0),
+            Dual::variable(3.0), Dual::variable(4.0)
+        ];
+        let matrix_a = Tensor::new(a_data, vec![2, 2]).unwrap();
+        
+        let b_data = vec![
+            Dual::variable(5.0), Dual::variable(6.0),
+            Dual::variable(7.0), Dual::variable(8.0)
+        ];
+        let matrix_b = Tensor::new(b_data, vec![2, 2]).unwrap();
+        
+        // Test matrix multiplication
+        let result = matrix_a.matmul(&matrix_b).unwrap();
+        
+        // Check result values
+        // [1, 2] * [5, 6] = [1*5 + 2*7, 1*6 + 2*8] = [19, 22]
+        // [3, 4]   [7, 8]   [3*5 + 4*7, 3*6 + 4*8]   [43, 50]
+        assert_eq!(result.data[0].value(), 19.0);
+        assert_eq!(result.data[1].value(), 22.0);
+        assert_eq!(result.data[2].value(), 43.0);
+        assert_eq!(result.data[3].value(), 50.0);
+        
+        // Gradients should be non-zero (indicating proper tracking)
+        for dual in &result.data {
+            assert!(dual.derivative() != 0.0, "Gradient should be tracked in matrix multiplication");
+        }
+        
+        println!("✅ Matrix multiplication gradient tracking test passed!");
+    }
+    
+    #[test]
+    fn test_activation_function_gradients() {
+        // Test ReLU activation
+        let data = vec![Dual::variable(-1.0), Dual::variable(2.0), Dual::variable(0.0)];
+        let tensor = Tensor::new(data, vec![3]).unwrap();
+        
+        let activated = tensor.relu();
+        
+        // Check ReLU values
+        assert_eq!(activated.data[0].value(), 0.0); // max(-1, 0) = 0
+        assert_eq!(activated.data[1].value(), 2.0); // max(2, 0) = 2
+        assert_eq!(activated.data[2].value(), 0.0); // max(0, 0) = 0
+        
+        // Check gradients are computed (should be 0 for negative inputs, 1 for positive)
+        assert_eq!(activated.data[0].derivative(), 0.0); // derivative of ReLU at negative input
+        assert_eq!(activated.data[1].derivative(), 1.0); // derivative of ReLU at positive input
+        assert_eq!(activated.data[2].derivative(), 0.0); // derivative of ReLU at zero
+        
+        println!("✅ ReLU activation gradient tracking test passed!");
+    }
+}

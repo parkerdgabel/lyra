@@ -3,8 +3,8 @@
 //! Provides the foundational traits, enums, and utility functions for spatial data structures.
 //! This module defines the common interface that all spatial trees implement.
 
-use crate::foreign::{Foreign, ForeignError, LyObj};
-use crate::vm::{Value, VmResult, VmError};
+use crate::foreign::{Foreign, ForeignError};
+use crate::vm::{Value};
 use std::any::Any;
 use std::collections::HashMap;
 

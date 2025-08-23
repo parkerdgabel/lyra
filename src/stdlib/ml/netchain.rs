@@ -34,6 +34,10 @@ pub struct NetChain {
     input_shape: Option<Vec<usize>>,
     /// Output shape (computed from layer composition)
     output_shape: Option<Vec<usize>>,
+    /// Intermediate activations for backpropagation
+    activations: Vec<Tensor>,
+    /// Whether to store activations (for training mode)
+    training_mode: bool,
 }
 
 impl NetChain {
@@ -48,6 +52,8 @@ impl NetChain {
             initialized: false,
             input_shape: None,
             output_shape: None,
+            activations: Vec::new(),
+            training_mode: true,  // Default to training mode
         }
     }
     
@@ -59,6 +65,8 @@ impl NetChain {
             initialized: false,
             input_shape: None,
             output_shape: None,
+            activations: Vec::new(),
+            training_mode: true,  // Default to training mode
         }
     }
     
@@ -82,6 +90,7 @@ impl NetChain {
         self.layers.push(layer);
         self.initialized = false; // Need to reinitialize
         self.output_shape = None;
+        self.activations.clear(); // Clear stored activations
     }
     
     /// Insert a layer at a specific position
@@ -95,6 +104,7 @@ impl NetChain {
         self.layers.insert(index, layer);
         self.initialized = false;
         self.output_shape = None;
+        self.activations.clear(); // Clear stored activations
         Ok(())
     }
     
@@ -108,6 +118,7 @@ impl NetChain {
         
         self.initialized = false;
         self.output_shape = None;
+        self.activations.clear(); // Clear stored activations
         Ok(self.layers.remove(index))
     }
     
@@ -134,12 +145,24 @@ impl NetChain {
             }
         }
         
+        // Clear previous activations if in training mode
+        if self.training_mode {
+            self.activations.clear();
+            self.activations.push(input.clone()); // Store input as first activation
+        }
+        
         // Sequential forward pass through all layers
         let mut current_output = input.clone();
         
         for (i, layer) in self.layers.iter().enumerate() {
             match layer.forward(&current_output) {
-                Ok(output) => current_output = output,
+                Ok(output) => {
+                    current_output = output;
+                    // Store activation for backpropagation if in training mode
+                    if self.training_mode {
+                        self.activations.push(current_output.clone());
+                    }
+                },
                 Err(e) => {
                     return Err(MLError::NetworkError {
                         reason: format!("Forward pass failed at layer {} ({}): {}", i, layer.name(), e),
@@ -270,6 +293,60 @@ impl NetChain {
         &self.name
     }
     
+    /// Set training mode (enables activation storage for backpropagation)
+    pub fn train(&mut self) {
+        self.training_mode = true;
+        self.activations.clear();
+    }
+    
+    /// Set evaluation mode (disables activation storage for faster inference)
+    pub fn eval(&mut self) {
+        self.training_mode = false;
+        self.activations.clear();
+    }
+    
+    /// Check if the network is in training mode
+    pub fn is_training(&self) -> bool {
+        self.training_mode
+    }
+    
+    /// Get stored activations (for debugging or advanced backpropagation)
+    pub fn get_activations(&self) -> &[Tensor] {
+        &self.activations
+    }
+    
+    /// Perform backward pass (compute gradients with respect to parameters)
+    /// This is automatically called during training via the autodiff system
+    /// The gradients are stored in the Dual numbers of the parameters
+    pub fn backward(&mut self, output_gradient: &Tensor) -> MLResult<Tensor> {
+        if !self.training_mode {
+            return Err(MLError::NetworkError {
+                reason: "Cannot perform backward pass in evaluation mode. Call .train() first.".to_string(),
+            });
+        }
+        
+        if self.activations.is_empty() {
+            return Err(MLError::NetworkError {
+                reason: "No activations stored. Call forward() first.".to_string(),
+            });
+        }
+        
+        // For now, return the output gradient as the input gradient
+        // This is a simplified implementation - in a full system we would
+        // implement proper layer-wise backward passes here
+        Ok(output_gradient.clone())
+    }
+    
+    /// Clear stored gradients (reset for new training step)
+    pub fn zero_grad(&mut self) {
+        // Reset gradients in all parameters to zero
+        for param in self.parameters_mut() {
+            for dual in &mut param.data {
+                *dual = crate::stdlib::autodiff::Dual::variable(dual.value());
+            }
+        }
+    }
+    
     /// Clone the network with a new name
     pub fn clone_with_name(&self, new_name: String) -> Self {
         Self {
@@ -278,6 +355,8 @@ impl NetChain {
             initialized: self.initialized,
             input_shape: self.input_shape.clone(),
             output_shape: self.output_shape.clone(),
+            activations: Vec::new(), // Don't clone activations
+            training_mode: self.training_mode,
         }
     }
 }
@@ -290,6 +369,8 @@ impl Clone for NetChain {
             initialized: self.initialized,
             input_shape: self.input_shape.clone(),
             output_shape: self.output_shape.clone(),
+            activations: Vec::new(), // Don't clone activations
+            training_mode: self.training_mode,
         }
     }
 }

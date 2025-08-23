@@ -6,7 +6,6 @@
 use crate::vm::{Value, VmResult, VmError};
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
-use statrs::statistics::Statistics;
 use std::any::Any;
 
 /// Time Series Decomposition Result - Foreign Object

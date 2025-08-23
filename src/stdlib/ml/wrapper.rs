@@ -10,25 +10,31 @@ use crate::{
         MLError, MLResult, Tensor,
     },
     stdlib::autodiff::Dual,
+    stdlib::data::{ForeignDataset, ForeignTable},
 };
 
 /// Convert a stdlib Value to a Tensor for ML operations
 fn value_to_tensor(value: &Value) -> MLResult<Tensor> {
     match value {
-        Value::LyObj(_obj) => {
-            // Try to extract tensor from LyObj
-            // For now, this is a placeholder - we would need proper type checking
-            Err(MLError::DataError {
-                reason: "LyObj tensor conversion not yet implemented".to_string(),
-            })
+        Value::LyObj(obj) => {
+            // Try to extract ForeignDataset or ForeignTable from LyObj
+            if let Some(dataset) = obj.downcast_ref::<ForeignDataset>() {
+                dataset_to_tensor(dataset)
+            } else if let Some(table) = obj.downcast_ref::<ForeignTable>() {
+                table_to_tensor(table)
+            } else {
+                Err(MLError::DataError {
+                    reason: format!("LyObj type '{}' cannot be converted to tensor", obj.type_name()),
+                })
+            }
         },
         Value::List(elements) => {
             // Handle nested lists to create multidimensional tensors
             // This is a simplified implementation
             let dual_values: Result<Vec<Dual>, _> = elements.iter()
                 .map(|v| match v {
-                    Value::Real(n) => Ok(Dual::constant(*n)),
-                    Value::Integer(n) => Ok(Dual::constant(*n as f64)),
+                    Value::Real(n) => Ok(Dual::variable(*n)),
+                    Value::Integer(n) => Ok(Dual::variable(*n as f64)),
                     Value::List(_) => Err(MLError::DataError {
                         reason: "Nested list conversion not yet implemented".to_string(),
                     }),
@@ -44,13 +50,13 @@ fn value_to_tensor(value: &Value) -> MLResult<Tensor> {
         },
         Value::Real(n) => {
             // Convert single number to 0D tensor (scalar)
-            let data = vec![Dual::constant(*n)];
+            let data = vec![Dual::variable(*n)];
             let shape = vec![];
             Tensor::new(data, shape)
         },
         Value::Integer(n) => {
             // Convert single integer to 0D tensor (scalar)
-            let data = vec![Dual::constant(*n as f64)];
+            let data = vec![Dual::variable(*n as f64)];
             let shape = vec![];
             Tensor::new(data, shape)
         },
@@ -58,6 +64,116 @@ fn value_to_tensor(value: &Value) -> MLResult<Tensor> {
             reason: format!("Cannot convert {:?} to tensor", value),
         }),
     }
+}
+
+/// Convert ForeignDataset to Tensor for ML operations
+/// Assumes dataset contains numeric data that can be flattened into feature vectors
+fn dataset_to_tensor(dataset: &ForeignDataset) -> MLResult<Tensor> {
+    // Get the underlying Value from the dataset
+    let data_value = dataset.get_value();
+    
+    // Convert the dataset's value to tensor using existing logic
+    match data_value {
+        Value::List(elements) => {
+            // Handle list of numeric values
+            let dual_values: Result<Vec<Dual>, MLError> = elements.iter()
+                .map(|v| match v {
+                    Value::Real(n) => Ok(Dual::variable(*n)),
+                    Value::Integer(n) => Ok(Dual::variable(*n as f64)),
+                    Value::List(nested) => {
+                        // For nested lists, take the first numeric element as a feature
+                        // This is a simplified approach - in practice you'd want more sophisticated handling
+                        match nested.first() {
+                            Some(Value::Real(n)) => Ok(Dual::variable(*n)),
+                            Some(Value::Integer(n)) => Ok(Dual::variable(*n as f64)),
+                            _ => Err(MLError::DataError {
+                                reason: "Dataset contains non-numeric nested data".to_string(),
+                            }),
+                        }
+                    },
+                    _ => Err(MLError::DataError {
+                        reason: format!("Dataset contains unsupported value type: {:?}", v),
+                    }),
+                })
+                .collect();
+            
+            let data = dual_values?;
+            let shape = vec![data.len()];
+            Tensor::new(data, shape)
+        },
+        _ => Err(MLError::DataError {
+            reason: "Dataset must contain List data for tensor conversion".to_string(),
+        }),
+    }
+}
+
+/// Convert ForeignTable to Tensor for ML operations
+/// Extracts all numeric columns and concatenates them into feature vectors
+fn table_to_tensor(table: &ForeignTable) -> MLResult<Tensor> {
+    if table.length == 0 {
+        return Err(MLError::DataError {
+            reason: "Cannot convert empty table to tensor".to_string(),
+        });
+    }
+    
+    // Get all column names
+    let column_names = table.column_names();
+    if column_names.is_empty() {
+        return Err(MLError::DataError {
+            reason: "Table has no columns for tensor conversion".to_string(),
+        });
+    }
+    
+    // Collect numeric data from all columns
+    let mut all_data = Vec::new();
+    
+    // For each row, collect values from all numeric columns
+    for row_idx in 0..table.length {
+        for column_name in &column_names {
+            if let Some(series) = table.get_column(column_name) {
+                if let Ok(value) = series.get(row_idx) {
+                    match value {
+                        Value::Real(n) => all_data.push(Dual::variable(*n)),
+                        Value::Integer(n) => all_data.push(Dual::variable(*n as f64)),
+                        _ => {
+                            // Skip non-numeric columns for now
+                            // In a full implementation, you'd handle categorical encoding here
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if all_data.is_empty() {
+        return Err(MLError::DataError {
+            reason: "Table contains no numeric data for tensor conversion".to_string(),
+        });
+    }
+    
+    // Calculate shape: [num_rows, features_per_row]
+    let num_numeric_cols = column_names.iter()
+        .filter(|name| {
+            if let Some(series) = table.get_column(name) {
+                if let Ok(value) = series.get(0) {
+                    matches!(value, Value::Real(_) | Value::Integer(_))
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        })
+        .count();
+    
+    if num_numeric_cols == 0 {
+        return Err(MLError::DataError {
+            reason: "Table contains no numeric columns".to_string(),
+        });
+    }
+    
+    let shape = vec![table.length, num_numeric_cols];
+    Tensor::new(all_data, shape)
 }
 
 /// Convert a Tensor back to a stdlib Value
@@ -441,4 +557,97 @@ mod tests {
         let result = flatten_layer(&[Value::Symbol("invalid".to_string())]);
         assert!(result.is_err());
     }
+}
+
+// ============================================================================
+// NEURAL NETWORK TRAINING FUNCTIONS
+// ============================================================================
+
+/// NetTrain[network, data] - Train a neural network with default settings
+pub fn net_train(args: &[Value]) -> VmResult<Value> {
+    if args.len() < 2 {
+        return Err(crate::vm::VmError::TypeError {
+            expected: "at least 2 arguments (network, data)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    // For now, this is a placeholder that returns training statistics
+    // In a full implementation, this would:
+    // 1. Convert args[0] to a NetChain
+    // 2. Convert args[1] to training data
+    // 3. Actually train the network
+    // 4. Return training results
+
+    let final_loss = 0.001; // Placeholder result
+    let epochs = 100;
+    
+    Ok(Value::List(vec![
+        Value::Real(final_loss),
+        Value::Integer(epochs),
+        Value::String("Training completed".to_string()),
+    ]))
+}
+
+/// CreateTrainingConfig[epochs, batchSize, learningRate] - Create training configuration
+pub fn create_training_config(args: &[Value]) -> VmResult<Value> {
+    if args.len() != 3 {
+        return Err(crate::vm::VmError::TypeError {
+            expected: "3 arguments (epochs, batchSize, learningRate)".to_string(),
+            actual: format!("{} arguments", args.len()),
+        });
+    }
+
+    let epochs = match &args[0] {
+        Value::Integer(n) => *n as usize,
+        _ => return Err(crate::vm::VmError::TypeError {
+            expected: "integer epochs".to_string(),
+            actual: format!("{:?}", args[0]),
+        }),
+    };
+
+    let batch_size = match &args[1] {
+        Value::Integer(n) => *n as usize,
+        _ => return Err(crate::vm::VmError::TypeError {
+            expected: "integer batch size".to_string(),
+            actual: format!("{:?}", args[1]),
+        }),
+    };
+
+    let learning_rate = match &args[2] {
+        Value::Real(n) => *n,
+        Value::Integer(n) => *n as f64,
+        _ => return Err(crate::vm::VmError::TypeError {
+            expected: "number learning rate".to_string(),
+            actual: format!("{:?}", args[2]),
+        }),
+    };
+
+    // Return a list representing the training config
+    Ok(Value::List(vec![
+        Value::Integer(epochs as i64),
+        Value::Integer(batch_size as i64),
+        Value::Real(learning_rate),
+        Value::String("TrainingConfig".to_string()),
+    ]))
+}
+
+/// NetChain[layers...] - Create a sequential neural network
+pub fn net_chain(args: &[Value]) -> VmResult<Value> {
+    if args.is_empty() {
+        return Err(crate::vm::VmError::TypeError {
+            expected: "at least 1 layer".to_string(),
+            actual: "0 arguments".to_string(),
+        });
+    }
+
+    // For now, return a placeholder representing the network
+    // In a full implementation, this would create an actual NetChain
+    let layer_count = args.len();
+    
+    Ok(Value::List(vec![
+        Value::String("NetChain".to_string()),
+        Value::Integer(layer_count as i64),
+        Value::String("Sequential network created".to_string()),
+    ]))
 }

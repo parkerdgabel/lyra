@@ -253,7 +253,7 @@ impl ReplSession {
     }
 
     /// Sync variables from VM state
-    async fn sync_variables(&self, vm: &VirtualMachine) {
+    async fn sync_variables(&self, _vm: &VirtualMachine) {
         let mut variables = self.variables.write().await;
         variables.clear();
         

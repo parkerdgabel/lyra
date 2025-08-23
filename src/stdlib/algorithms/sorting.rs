@@ -52,9 +52,7 @@ fn default_compare(a: &Value, b: &Value) -> Ordering {
         }
         
         // Mixed type comparisons - use consistent type ordering
-        (Value::Integer(_), Value::Real(_)) => Ordering::Less, // Handled above
         (Value::Integer(_), _) => Ordering::Less,
-        (Value::Real(_), Value::Integer(_)) => Ordering::Greater, // Handled above
         (Value::Real(_), _) => Ordering::Less,
         (Value::String(_), Value::Integer(_) | Value::Real(_)) => Ordering::Greater,
         (Value::String(_), _) => Ordering::Less,

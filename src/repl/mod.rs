@@ -622,7 +622,7 @@ impl ReplEngine {
             "%debug-status" => self.handle_debug_status_command(),
             
             // Performance profiling commands
-            "%profile" | "%prof" => self.handle_profile_command(&parts),
+            "%prof" => self.handle_profile_command(&parts),
             "%profile-report" | "%prof-report" | "%preport" => self.handle_profile_report_command(),
             "%profile-export" | "%prof-export" | "%pexport" => self.handle_profile_export_command(&parts),
             "%profile-summary" | "%prof-summary" | "%psummary" => self.handle_profile_summary_command(),

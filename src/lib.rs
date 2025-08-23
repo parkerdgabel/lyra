@@ -1,8 +1,8 @@
 pub mod ast;
 pub mod bytecode;
 pub mod compiler;
-// TODO: Concurrency module needs additional fixes for match expressions - postponed
-// pub mod concurrency;
+// Re-enabling concurrency module for Week 8 Day 6A
+pub mod concurrency;
 pub mod error;
 pub mod foreign;
 pub mod format;

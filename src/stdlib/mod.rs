@@ -11,7 +11,7 @@
 use crate::vm::{Value, VmResult};
 use std::collections::HashMap;
 
-// pub mod async_ops;  // Removed due to compilation issues
+pub mod async_ops;  // Re-enabling for Week 8 Day 5
 pub mod autodiff;
 pub mod secure_wrapper;
 pub mod clustering;
@@ -330,10 +330,20 @@ impl StandardLibrary {
         self.register("Sequential", ml::wrapper::sequential_layer);
         self.register("Identity", ml::wrapper::identity_layer);
         
+        // Neural network training functions
+        self.register("NetTrain", ml::wrapper::net_train);
+        self.register("NetChain", ml::wrapper::net_chain);
+        self.register("CreateTrainingConfig", ml::wrapper::create_training_config);
+        
         // Tensor utility functions
         self.register("TensorShape", ml::wrapper::tensor_shape);
         self.register("TensorRank", ml::wrapper::tensor_rank);
         self.register("TensorSize", ml::wrapper::tensor_size);
+        
+        // Bio-ML integration functions
+        self.register("BiologicalSequenceToML", ml::bio_integration::biological_sequence_to_ml);
+        self.register("SequenceDataset", ml::bio_integration::sequence_dataset);
+        self.register("TrainSequenceClassifier", ml::bio_integration::train_sequence_classifier);
     }
 
     fn register_io_functions(&mut self) {
@@ -703,8 +713,11 @@ impl StandardLibrary {
     }
     
     fn register_async_functions(&mut self) {
-        // Async operations temporarily disabled due to compilation issues
-        // TODO: Re-enable after fixing thread safety issues in async_ops module
+        // Register async operations using the concurrency system
+        let async_functions = async_ops::get_async_functions();
+        for (name, function) in async_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_network_functions(&mut self) {

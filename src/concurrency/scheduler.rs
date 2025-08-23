@@ -165,18 +165,19 @@ impl Worker {
     
     /// Start the worker thread
     fn start(&mut self, other_stealers: Vec<Stealer<Task>>) {
-        self.other_stealers = other_stealers;
         self.running.store(true, Ordering::Relaxed);
         
         let id = self.id;
-        let local_queue = self.local_queue.clone();
+        // Take ownership of the local queue instead of cloning
+        let local_queue = std::mem::replace(&mut self.local_queue, CrossbeamWorker::new_fifo());
         let global_queue = Arc::clone(&self.global_queue);
-        let other_stealers = self.other_stealers.clone();
         let config = self.config.clone();
         let stats = Arc::clone(&self.stats);
         let worker_stats = Arc::clone(&self.worker_stats);
         let running = Arc::clone(&self.running);
         let numa_node = self.numa_node;
+        // Capture other_stealers for the closure
+        let other_stealers = other_stealers;
         
         let handle = thread::Builder::new()
             .name(format!("lyra-worker-{}", id))
@@ -429,21 +430,33 @@ impl WorkStealingScheduler {
         
         let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
         
+        // Get properties before moving computation
+        let priority = computation.priority();
+        let is_parallelizable = computation.is_parallelizable();
+        let cost_estimate = computation.cost_estimate();
+        
         let task = Task {
             id: task_id,
-            priority: computation.priority(),
+            priority,
             computation: Box::new(computation),
             created_at: Instant::now(),
             dependencies: Vec::new(),
-            stealable: computation.is_parallelizable(),
-            cost_estimate: computation.cost_estimate(),
+            stealable: is_parallelizable,
+            cost_estimate,
         };
         
         // Try to push to a worker's local queue first for cache locality
-        if let Some(worker) = self.find_least_loaded_worker() {
-            worker.push_local(task);
+        if let Some(worker_index) = self.find_least_loaded_worker_index() {
+            let workers = self.workers.read();
+            if let Some(worker) = workers.get(worker_index) {
+                worker.push_local(task);
+            } else {
+                // Worker not found, use global queue
+                drop(workers);
+                self.global_queue.push(task);
+            }
         } else {
-            // Fall back to global queue
+            // No workers available, fall back to global queue
             self.global_queue.push(task);
         }
         
@@ -470,11 +483,13 @@ impl WorkStealingScheduler {
         Ok(task_id)
     }
     
-    /// Find the worker with the smallest queue
-    fn find_least_loaded_worker(&self) -> Option<&Worker> {
+    /// Find the worker with the smallest queue (returns index)
+    fn find_least_loaded_worker_index(&self) -> Option<usize> {
         let workers = self.workers.read();
         workers.iter()
-            .min_by_key(|w| w.worker_stats.queue_size.load(Ordering::Relaxed))
+            .enumerate()
+            .min_by_key(|(_, w)| w.worker_stats.queue_size.load(Ordering::Relaxed))
+            .map(|(index, _)| index)
     }
     
     /// Get the number of NUMA nodes on the system
