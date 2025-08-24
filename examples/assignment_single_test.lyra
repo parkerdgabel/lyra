@@ -1,3 +1,0 @@
-(* Simple assignment test - assign and immediately retrieve *)
-x = 42
-x

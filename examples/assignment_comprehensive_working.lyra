@@ -1,5 +1,0 @@
-(* Comprehensive Assignment Test *)
-(* This demonstrates that assignments work when they are the final expression *)
-
-(* Test 1: Basic immediate assignment *)
-result1 = 42

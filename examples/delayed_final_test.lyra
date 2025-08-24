@@ -1,2 +1,0 @@
-(* Delayed assignment as the final statement *)
-y := 100
