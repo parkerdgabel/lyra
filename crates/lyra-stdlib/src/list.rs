@@ -26,7 +26,14 @@ pub fn register_list(ev: &mut Evaluator) {
                 ("result".to_string(), Value::Integer(2)),
             ]))
         ]),
-        tool_spec!("Join", summary: "Concatenate two lists", params: ["a","b"], tags: ["list"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))])), examples: [
+        tool_spec!("Join", summary: "Concatenate two lists", params: ["a","b"], tags: ["list"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("a".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+                ("b".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+            ]))),
+            ("required".to_string(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])),
+        ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))])), examples: [
             Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([
                     ("a".to_string(), Value::List(vec![Value::Integer(1)])),
@@ -35,12 +42,40 @@ pub fn register_list(ev: &mut Evaluator) {
                 ("result".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)])),
             ]))
         ]),
-        tool_spec!("Total", summary: "Sum elements in a list", params: ["list"], tags: ["list","math"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
+        tool_spec!("Total", summary: "Sum elements in a list", params: ["list"], tags: ["list","math"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([(String::from("list"), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))])))]))),
+            ("required".to_string(), Value::List(vec![Value::String("list".into())])),
+        ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
         tool_spec!("Part", summary: "Index into list/assoc", params: ["subject","index"], tags: ["list","assoc"]),
-        tool_spec!("Range", summary: "Create a numeric range", params: ["a","b"], tags: ["list","math"]),
-        tool_spec!("Flatten", summary: "Flatten list by a level", params: ["list","levels"], tags: ["list"]),
-        tool_spec!("Partition", summary: "Partition list into fixed-size chunks", params: ["list","n","step"], tags: ["list"]),
-        tool_spec!("Transpose", summary: "Transpose a list of lists", params: ["rows"], tags: ["list"]),
+        tool_spec!("Range", summary: "Create a numeric range", params: ["a","b"], tags: ["list","math"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("a".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+                ("b".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+            ]))),
+        ]))),
+        tool_spec!("Flatten", summary: "Flatten list by a level", params: ["list","levels"], tags: ["list"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("list".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+                ("levels".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+            ]))),
+        ]))),
+        tool_spec!("Partition", summary: "Partition list into fixed-size chunks", params: ["list","n","step"], tags: ["list"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("list".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+                ("n".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+                ("step".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+            ]))),
+            ("required".to_string(), Value::List(vec![Value::String("list".into()), Value::String("n".into())])),
+        ]))),
+        tool_spec!("Transpose", summary: "Transpose a list of lists", params: ["rows"], tags: ["list"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([(String::from("rows"), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))])))]))),
+            ("required".to_string(), Value::List(vec![Value::String("rows".into())])),
+        ]))),
     ]);
 }
 

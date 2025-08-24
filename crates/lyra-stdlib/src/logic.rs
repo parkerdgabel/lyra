@@ -1,7 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
-#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tools::{add_specs, schema_object_value};
 #[cfg(feature = "tools")] use crate::tool_spec;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -20,16 +20,16 @@ pub fn register_logic(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        tool_spec!("Equal", summary: "Test equality across arguments", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("Less", summary: "Strictly increasing sequence", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("LessEqual", summary: "Non-decreasing sequence", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("Greater", summary: "Strictly decreasing sequence", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("GreaterEqual", summary: "Non-increasing sequence", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("And", summary: "Logical AND (short-circuit)", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("Or", summary: "Logical OR (short-circuit)", params: ["args"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("Not", summary: "Logical NOT", params: ["x"], tags: ["logic"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("EvenQ", summary: "Is integer even?", params: ["n"], tags: ["logic","math"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
-        tool_spec!("OddQ", summary: "Is integer odd?", params: ["n"], tags: ["logic","math"], output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("Equal", summary: "Test equality across arguments", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("Less", summary: "Strictly increasing sequence", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("LessEqual", summary: "Non-decreasing sequence", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("Greater", summary: "Strictly decreasing sequence", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("GreaterEqual", summary: "Non-increasing sequence", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("And", summary: "Logical AND (short-circuit)", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("Or", summary: "Logical OR (short-circuit)", params: ["args"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("args"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("array")))]))) ], vec![]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("Not", summary: "Logical NOT", params: ["x"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("x"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))) ], vec![String::from("x")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("EvenQ", summary: "Is integer even?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("OddQ", summary: "Is integer odd?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
     ]);
 }
 

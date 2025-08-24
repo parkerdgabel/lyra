@@ -6,6 +6,7 @@ use std::sync::{OnceLock, Mutex};
 
 // Minimal in-memory tool registry storing self-describing specs as Assoc Values
 static TOOL_REG: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
+static CAPABILITIES: OnceLock<Mutex<Option<std::collections::HashSet<String>>>> = OnceLock::new();
 
 fn tool_reg() -> &'static Mutex<HashMap<String, Value>> {
     TOOL_REG.get_or_init(|| Mutex::new(HashMap::new()))
@@ -98,6 +99,8 @@ pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsDryRun", tools_dry_run as NativeFn, Attributes::HOLD_ALL);
     ev.register("ToolsExportOpenAI", tools_export_openai as NativeFn, Attributes::empty());
     ev.register("ToolsExportBundle", tools_export_bundle as NativeFn, Attributes::empty());
+    ev.register("ToolsSetCapabilities", tools_set_capabilities as NativeFn, Attributes::LISTABLE);
+    ev.register("ToolsGetCapabilities", tools_get_capabilities as NativeFn, Attributes::empty());
 }
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -330,9 +333,17 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     // Apply filter if provided
+    // Optional global capability gate
+    let granted_caps: std::collections::HashSet<String> = CAPABILITIES
+        .get_or_init(|| Mutex::new(None))
+        .lock().unwrap()
+        .as_ref()
+        .cloned()
+        .unwrap_or_default();
     let filtered = match filter {
         Value::Assoc(f) if !f.is_empty() => {
             let eff_filter: std::collections::HashSet<String> = match f.get("effects") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
+            let caps_filter: std::collections::HashSet<String> = match f.get("capabilities") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
             let tag_filter: std::collections::HashSet<String> = match f.get("tags") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
             out.into_iter().filter(|v| {
                 if let Value::Assoc(m) = v {
@@ -341,6 +352,16 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         let mut have: std::collections::HashSet<String> = Default::default();
                         if let Some(Value::List(effs)) = m.get("effects") { for e in effs { if let Some(s)=value_to_string(e) { have.insert(s.to_lowercase()); } } }
                         ok = eff_filter.is_subset(&have);
+                    }
+                    if ok && (!caps_filter.is_empty() || !granted_caps.is_empty()) {
+                        // Effective capability set
+                        let want = if !caps_filter.is_empty() { &caps_filter } else { &granted_caps };
+                        if !want.is_empty() {
+                            let mut effs: std::collections::HashSet<String> = Default::default();
+                            if let Some(Value::List(effs_v)) = m.get("effects") { for e in effs_v { if let Some(s)=value_to_string(e) { effs.insert(s.to_lowercase()); } } }
+                            // Require all effects ⊆ want
+                            ok = effs.is_subset(want);
+                        }
                     }
                     if ok && !tag_filter.is_empty() {
                         let mut have: std::collections::HashSet<String> = Default::default();
@@ -354,6 +375,29 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         _ => out,
     };
     Value::List(filtered)
+}
+
+// ToolsSetCapabilities[List[String]] -> True
+fn tools_set_capabilities(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("ToolsSetCapabilities".into())), args } }
+    let caps: Option<std::collections::HashSet<String>> = match &args[0] {
+        Value::List(vs) => Some(vs.iter().filter_map(|v| value_to_string(v)).map(|s| s.to_lowercase()).collect()),
+        _ => None,
+    };
+    if let Some(set) = caps {
+        let mu = CAPABILITIES.get_or_init(|| Mutex::new(None));
+        *mu.lock().unwrap() = Some(set);
+        Value::Boolean(true)
+    } else { Value::Boolean(false) }
+}
+
+// ToolsGetCapabilities[] -> List[String]
+fn tools_get_capabilities(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsGetCapabilities".into())), args } }
+    let mu = CAPABILITIES.get_or_init(|| Mutex::new(None));
+    if let Some(set) = mu.lock().unwrap().as_ref() {
+        Value::List(set.iter().cloned().map(Value::String).collect())
+    } else { Value::List(vec![]) }
 }
 
 // ToolsCards[cursor?, limit?] -> <|"items"->List, "next_cursor"->String|>

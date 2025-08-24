@@ -55,8 +55,18 @@ pub fn register_math(ev: &mut Evaluator) {
                 ("result".to_string(), Value::Integer(2)),
             ]))
         ]),
-        tool_spec!("Min", summary: "Minimum of values or list", params: ["args"], tags: ["math"]),
-        tool_spec!("Max", summary: "Maximum of values or list", params: ["args"], tags: ["math"]),
+        tool_spec!("Min", summary: "Minimum of values or list", params: ["args"], tags: ["math"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+            ]))),
+        ]))),
+        tool_spec!("Max", summary: "Maximum of values or list", params: ["args"], tags: ["math"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+            ]))),
+        ]))),
     ]);
 }
 
