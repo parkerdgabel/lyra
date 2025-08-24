@@ -3,7 +3,6 @@ use lyra_rewrite as rw;
 
 fn sym(s: &str) -> Value { Value::Symbol(s.into()) }
 fn int(n: i64) -> Value { Value::Integer(n) }
-fn list(xs: Vec<Value>) -> Value { Value::List(xs) }
 fn call(h: &str, args: Vec<Value>) -> Value { Value::expr(sym(h), args) }
 
 #[test]

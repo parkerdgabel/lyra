@@ -130,7 +130,7 @@ fn type_name_of(v: &Value) -> &'static str {
 fn validate_against_schema(schema: &Value, provided: &Value) -> (bool, Vec<Value>) {
     let mut ok = true;
     let mut errors: Vec<Value> = Vec::new();
-    let mut check_type = |expected: &str, v: &Value, path: &str, errors: &mut Vec<Value>| -> bool {
+    let check_type = |expected: &str, v: &Value, path: &str, errors: &mut Vec<Value>| -> bool {
         let actual = type_name_of(v);
         if expected != actual {
             errors.push(Value::Assoc(HashMap::from([
@@ -594,7 +594,7 @@ fn tools_export_openai(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ToolsExportBundle[] -> all registered specs as a list (machine-cachable)
-fn tools_export_bundle(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn tools_export_bundle(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsExportBundle".into())), args } }
     let reg = tool_reg().lock().unwrap();
     Value::List(reg.values().cloned().collect())

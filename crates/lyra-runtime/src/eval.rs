@@ -9,7 +9,6 @@ use lyra_core::schema::schema_of;
 use std::sync::OnceLock;
 use std::collections::VecDeque;
 use std::cell::RefCell;
-use std::ops::Deref;
 use lyra_rewrite::defs::{DefinitionStore, DefKind};
 use lyra_rewrite::rule::{Rule, RuleSet};
 
@@ -748,15 +747,12 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
         }
     }
-    // Capture env for worker evaluators to inherit lexical bindings
-    let env_snapshot = ev.env.clone();
     // Capture env so sub-evaluations inherit current lexical bindings
     let env_snapshot = ev.env.clone();
     match ev.eval(target) {
         Value::List(items) => {
             let token = ev.cancel_token.clone();
-    let env_snapshot = ev.env.clone();
-    let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
+            let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
             if ev.trace_enabled {
                 let data = Value::Assoc(vec![
@@ -934,13 +930,12 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
         }
     }
-        // Capture env so sub-evaluations inherit current lexical bindings
+    // Capture env so sub-evaluations inherit current lexical bindings
     let env_snapshot = ev.env.clone();
     match ev.eval(target) {
         Value::List(items) => {
             let token = ev.cancel_token.clone();
-    let env_snapshot = ev.env.clone();
-    let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
+            let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
             if ev.trace_enabled {
                 let data = Value::Assoc(vec![
@@ -1536,7 +1531,7 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             return ev.eval(out);
         }
         [expr, rules_v, Value::Integer(n)] => {
-            let mut limit = (*n as isize).max(0) as usize;
+            let limit = (*n as isize).max(0) as usize;
             let rules = collect_rules(ev, rules_v.clone());
             let target = ev.eval(expr.clone());
             let env_snapshot = ev.env.clone();
@@ -1628,7 +1623,7 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceFirst".into())), args } }
     let rules = collect_rules(ev, args[1].clone());
     let target = ev.eval(args[0].clone());
-    let mut limit = 1usize;
+    let limit = 1usize;
     let env_snapshot = ev.env.clone();
     let pred = |pred: &Value, arg: &Value| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());

@@ -1123,7 +1123,6 @@ fn template_render(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let start = i + if triple {3} else {2};
                 // find end
                 let mut j = start;
-                let end_pat = if triple { "}}}" } else { "}}" };
                 while j < chars.len() {
                     if !triple && j+1 < chars.len() && chars[j] == '}' && chars[j+1] == '}' { break; }
                     if triple && j+2 < chars.len() && chars[j] == '}' && chars[j+1] == '}' && chars[j+2] == '}' { break; }

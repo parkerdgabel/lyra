@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = ["core"]
 core = []
+concurrency_tests = []
 
 [dependencies]
 lyra-core = { path = "../lyra-core" }

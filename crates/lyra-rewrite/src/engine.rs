@@ -1,5 +1,5 @@
 use lyra_core::value::Value;
-use crate::matcher::{Bindings, MatcherCtx, match_rule_with, substitute_named};
+use crate::matcher::{MatcherCtx, match_rule_with, substitute_named};
 use crate::nets::{PatternNet, build_net_for_rules};
 
 pub fn rewrite_once_with_ctx(ctx: &MatcherCtx, v: Value, rules: &[(Value, Value)]) -> Value {
