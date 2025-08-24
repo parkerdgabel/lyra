@@ -10,6 +10,7 @@ anyhow = { workspace = true }
 lyra-core = { path = "../lyra-core" }
 lyra-parser = { path = "../lyra-parser" }
 lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib" }
 
 [[bin]]
 name = "lyra"
