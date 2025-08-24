@@ -174,3 +174,39 @@ fn parallel_evaluate_basic() {
     let s = eval_one("ParallelEvaluate[{Plus[1,2], Times[2,3]}]");
     assert_eq!(s, "{3, 6}");
 }
+
+#[test]
+fn map_async_with_options_throttles() {
+    // MapAsync spawns Futures; per-call opts restrict to 1
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("Scope[<|MaxThreads->4|>, Gather[MapAsync[(x)=>BusyWait[10], {1,2,3,4}, <|MaxThreads->1|>]]]");
+    let vals = p.parse_all().expect("parse");
+    let expr = vals.into_iter().last().unwrap();
+    let start = Instant::now();
+    let _out = ev.eval(expr);
+    let elapsed = start.elapsed();
+    // With ~50ms per item (BusyWait[10]) and MaxThreads 1, total >= ~120ms for 4 items including overhead
+    assert!(elapsed.as_millis() >= 120, "Too fast: {:?}", elapsed);
+}
+
+#[test]
+fn end_scope_cleans_registry() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    // sid = StartScope[<||>]
+    let mut p1 = Parser::from_source("sid = StartScope[<||>]");
+    for v in p1.parse_all().unwrap() { let _ = ev.eval(v); }
+    // First EndScope[sid] -> True
+    let mut p2 = Parser::from_source("EndScope[sid]");
+    let out1 = ev.eval(p2.parse_all().unwrap().into_iter().last().unwrap());
+    let s1 = format_value(&out1);
+    assert_eq!(s1, "True");
+    // Second EndScope[sid] -> False
+    let mut p3 = Parser::from_source("EndScope[sid]");
+    let out2 = ev.eval(p3.parse_all().unwrap().into_iter().last().unwrap());
+    let s2 = format_value(&out2);
+    assert_eq!(s2, "False");
+}

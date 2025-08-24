@@ -304,20 +304,22 @@ result = Await[future, Timeout -> 30];
 
 Note: In this branch today, the following primitives are available and scoped with simple budgets:
 ```lyra
-# Futures and data-parallel
-Future[expr]
+# Futures and data-parallel (with optional per-call budgets)
+Future[expr, <|MaxThreads->2, TimeBudgetMs->200|>]
 Await[future]
-ParallelMap[(x)=>f[x], {1,2,3,4}]
-ParallelTable[Times[i,i], {i, 1, 10}]
+ParallelMap[(x)=>f[x], {1,2,3,4}, <|MaxThreads->4|>]
+ParallelTable[Times[i,i], {i, 1, 10}, <|TimeBudgetMs->500|>]
+ParallelEvaluate[{Plus[1,2], Times[2,3]}, <|MaxThreads->2|>]
 
 # Structured scopes with budgets (cooperative)
 Scope[<|MaxThreads->2, TimeBudgetMs->100|>, ParallelTable[BusyWait[20], {i,1,6}]]
 
-# Start a reusable scope, run work inside it, then cancel all
+# Start a reusable scope, run work inside it, then cancel all and end it
 sid = StartScope[<|MaxThreads->4|>];
 InScope[sid, f = Future[BusyWait[100]]; g = Future[BusyWait[100]]];
 CancelScope[sid];
 {Await[f], Await[g]}  (* returns failures with tag Cancel::abort *)
+EndScope[sid]
 ```
 
 ## 🏢 Real-World Applications

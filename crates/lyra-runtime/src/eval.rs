@@ -510,10 +510,21 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args } }
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args } }
     let f = args[0].clone();
     let v = ev.eval(args[1].clone());
-    Value::List(map_async_rec(ev, f, v))
+    let opts = if args.len() >= 3 { Some(ev.eval(args[2].clone())) } else { None };
+    // If options are provided, apply MaxThreads/TimeBudget to the current evaluator for the duration of this call
+    let (old_lim, old_dead) = (ev.thread_limiter.clone(), ev.deadline);
+    if let Some(Value::Assoc(m)) = &opts {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ev.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+    }
+    let out_list = Value::List(map_async_rec(ev, f, v, None));
+    // restore
+    ev.thread_limiter = old_lim;
+    ev.deadline = old_dead;
+    out_list
 }
 
 fn gather(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -596,10 +607,10 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // unused trace helper removed
 
-fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value) -> Vec<Value> {
+fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value, opts: Option<Value>) -> Vec<Value> {
     match v {
         Value::List(items) => items.into_iter().map(|it| {
-            let mapped = map_async_rec(ev, f.clone(), it);
+            let mapped = map_async_rec(ev, f.clone(), it, opts.clone());
             if mapped.len()==1 { mapped.into_iter().next().unwrap() } else { Value::List(mapped) }
         }).collect(),
         other => {

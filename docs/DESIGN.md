@@ -45,11 +45,11 @@ Scope: Full language re-architecture, from parser to packages
   - `Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]` (HoldAll)
     - Applies a per-scope cooperative cancel token, a thread budget (limiter), and a wall-clock deadline (Instant-based) while evaluating `body`.
     - Workers spawned by `Future`, `ParallelMap`, and `ParallelTable` inherit the scope token, limiter, and deadline.
-  - `StartScope[opts] -> ScopeId[id]`, `InScope[ScopeId[id], body]`, `CancelScope[ScopeId[id]]` for group cancellation and re-entrant scoping across statements.
+  - `StartScope[opts] -> ScopeId[id]`, `InScope[ScopeId[id], body]`, `CancelScope[ScopeId[id]]`, `EndScope[ScopeId[id]]` for group cancellation and lifecycle control across statements.
   - Current behavior: naive thread-per-task with a shared limiter; cooperative cancellation checked in evaluator and selected primitives (`BusyWait`). Future work: unify with a work-stealing scheduler, broader cooperative checks, and structured lifetimes/cleanup for scope IDs.
 - Primitives:
-  - Futures/Tasks: `Future[expr]`, `Await`, `MapAsync`, `Gather`.
-  - Data-parallel: `ParallelMap`, `ParallelTable`, `ParallelEvaluate` (planned).
+  - Futures/Tasks: `Future[expr, opts?]`, `Await`, `MapAsync[f, list, opts?]`, `Gather`.
+  - Data-parallel: `ParallelMap[f, list, opts?]`, `ParallelTable[expr, spec, opts?]`, `ParallelEvaluate[exprs, opts?]`.
   - Actors/Channels: `Actor[handlers]`, `Channel[T]` (bounded/unbounded), backpressure. (planned)
   - Streams: windowed aggregates, joins, CEP; pull-based with backpressure; composition via pipelines. (planned)
 - Scheduler: work-stealing pools; cooperative interrupts; deterministic by default for pure compute.
