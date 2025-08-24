@@ -18,6 +18,7 @@ pub fn schema_of(v: &Value) -> Value {
         Value::BigReal(_) => Value::String("BigReal/v1".into()),
         Value::Rational { .. } => Value::String("Rational/v1".into()),
         Value::Complex { .. } => Value::String("Complex/v1".into()),
+        Value::PackedArray { .. } => Value::String("PackedArray/v1".into()),
         Value::String(_) => Value::String("String/v1".into()),
         Value::Symbol(_) => Value::String("Symbol/v1".into()),
         Value::Boolean(_) => Value::String("Boolean/v1".into()),

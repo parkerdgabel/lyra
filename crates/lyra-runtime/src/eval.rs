@@ -1389,6 +1389,7 @@ fn value_order(v: &Value) -> String {
         Value::BigReal(s) => format!("1b:{s}"),
         Value::Rational { num, den } => format!("1r:{}/{}", num, den),
         Value::Complex { re, im } => format!("1c:{}+{}i", value_order(re), value_order(im)),
+        Value::PackedArray { shape, .. } => format!("1p:[{}]", shape.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("x")),
         Value::String(s) => format!("2:{s}"),
         Value::Symbol(s) => format!("3:{s}"),
         Value::Boolean(b) => format!("4:{}", if *b {1}else{0}),

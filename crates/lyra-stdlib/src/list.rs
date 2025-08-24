@@ -16,6 +16,9 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Flatten", flatten as NativeFn, Attributes::empty());
     ev.register("Partition", partition as NativeFn, Attributes::empty());
     ev.register("Transpose", transpose as NativeFn, Attributes::empty());
+    ev.register("PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
+    ev.register("PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
+    ev.register("PackedShape", packed_shape as NativeFn, Attributes::empty());
     ev.register("Part", part as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
@@ -239,6 +242,72 @@ fn transpose(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Value::List(out)
         }
         other => other,
+    }
+}
+
+fn infer_shape(v: &Value) -> Option<Vec<usize>> {
+    match v {
+        Value::List(items) => {
+            if items.is_empty() { return Some(vec![0]); }
+            let mut shape = infer_shape(&items[0])?;
+            for it in items.iter().skip(1) {
+                let shp = infer_shape(it)?;
+                if shp != shape { return None; }
+            }
+            let mut out = vec![items.len()];
+            out.extend(shape.drain(..));
+            Some(out)
+        }
+        Value::Integer(_) | Value::Real(_) | Value::Rational{..} | Value::BigReal(_) => Some(vec![]),
+        _ => None,
+    }
+}
+
+fn flatten_numeric_rowmajor(v: &Value, out: &mut Vec<f64>) -> bool {
+    match v {
+        Value::List(items) => { for it in items { if !flatten_numeric_rowmajor(it, out) { return false; } } true }
+        Value::Integer(n) => { out.push(*n as f64); true }
+        Value::Real(x) => { out.push(*x); true }
+        Value::Rational { num, den } => { if *den==0 { return false } out.push((*num as f64)/(*den as f64)); true }
+        Value::BigReal(s) => { if let Ok(x)=s.parse::<f64>() { out.push(x); true } else { false } }
+        _ => false,
+    }
+}
+
+fn build_list_from_flat(shape: &[usize], data: &[f64], idx: &mut usize) -> Value {
+    if shape.is_empty() { let x = data[*idx]; *idx += 1; Value::Real(x) }
+    else {
+        let dim = shape[0];
+        let mut items: Vec<Value> = Vec::with_capacity(dim);
+        for _ in 0..dim { items.push(build_list_from_flat(&shape[1..], data, idx)); }
+        Value::List(items)
+    }
+}
+
+fn packed_array(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("PackedArray".into())), args } }
+    let v = ev.eval(args[0].clone());
+    if let Some(shape) = infer_shape(&v) {
+        let mut flat: Vec<f64> = Vec::new();
+        if !flatten_numeric_rowmajor(&v, &mut flat) { return Value::Expr { head: Box::new(Value::Symbol("PackedArray".into())), args: vec![v] } }
+        return Value::PackedArray { shape, data: flat };
+    }
+    Value::Expr { head: Box::new(Value::Symbol("PackedArray".into())), args: vec![v] }
+}
+
+fn packed_to_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("PackedToList".into())), args } }
+    match ev.eval(args[0].clone()) {
+        Value::PackedArray { shape, data } => { let mut idx=0usize; build_list_from_flat(&shape, &data, &mut idx) }
+        other => Value::Expr { head: Box::new(Value::Symbol("PackedToList".into())), args: vec![other] },
+    }
+}
+
+fn packed_shape(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("PackedShape".into())), args } }
+    match ev.eval(args[0].clone()) {
+        Value::PackedArray { shape, .. } => Value::List(shape.into_iter().map(|d| Value::Integer(d as i64)).collect()),
+        other => Value::Expr { head: Box::new(Value::Symbol("PackedShape".into())), args: vec![other] },
     }
 }
 

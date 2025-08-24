@@ -9,6 +9,10 @@ pub fn format_value(v: &Value) -> String {
         Value::BigReal(s) => s.clone(),
         Value::Rational { num, den } => format!("{}/{}", num, den),
         Value::Complex { re, im } => format!("Complex[{}, {}]", format_value(re), format_value(im)),
+        Value::PackedArray { shape, .. } => {
+            let dims: Vec<String> = shape.iter().map(|d| d.to_string()).collect();
+            format!("PackedArray[{{{}}}]", dims.join(", "))
+        }
         Value::String(s) => format!("\"{}\"", s),
         Value::Symbol(s) => s.clone(),
         Value::Boolean(b) => if *b { "True".into() } else { "False".into() },

@@ -10,6 +10,7 @@ pub enum Value {
     BigReal(String),
     Rational { num: i64, den: i64 },
     Complex { re: Box<Value>, im: Box<Value> },
+    PackedArray { shape: Vec<usize>, data: Vec<f64> },
     String(String),
     Symbol(String),
     Boolean(bool),
