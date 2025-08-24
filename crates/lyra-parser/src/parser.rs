@@ -82,9 +82,27 @@ impl Parser {
         let mut alt_args: Vec<Value> = vec![lhs];
         loop {
             self.skip_ws();
-            // avoid '|>' and '||'
+            // avoid '|>' and '||', and only treat '|' as Alternative when the next
+            // non-whitespace token can start an expression
             if self.starts_with("|>") || self.starts_with("||") { break; }
-            if self.peekc()==Some('|') { self.nextc(); self.skip_ws(); let rhs_alt = self.parse_logical()?; alt_args.push(rhs_alt); continue; }
+            if self.peekc()==Some('|') {
+                // Lookahead: only consume as Alternative if a valid expr follows
+                let save = self.pos;
+                self.nextc();
+                self.skip_ws();
+                let c = self.peekc();
+                let expr_start = match c {
+                    Some('(') | Some('{') | Some('"') | Some('_') | Some('#') => true,
+                    Some('<') => self.starts_with("<|"),
+                    Some(ch) if ch.is_ascii_digit() => true,
+                    Some(ch) if is_ident_start(ch) => true,
+                    _ => false,
+                };
+                if !expr_start { self.pos = save; break; }
+                let rhs_alt = self.parse_logical()?;
+                alt_args.push(rhs_alt);
+                continue;
+            }
             break;
         }
         let lhs_final = if alt_args.len()>1 { Value::expr(Value::Symbol("Alternative".into()), alt_args) } else { alt_args.pop().unwrap() };
@@ -352,25 +370,93 @@ impl Parser {
     fn parse_assoc(&mut self) -> ParseResult<Value> {
         let mut pairs: Vec<(String, Value)> = Vec::new();
         self.skip_ws();
-        if !self.starts_with("|>") {
-            loop {
-                let key = match self.peekc() {
-                    Some('"') => match self.parse_string()? { Value::String(s) => s, _ => unreachable!() },
-                    Some(c) if is_ident_start(c) => match self.parse_symbol()? { Value::Symbol(s) => s, _ => unreachable!() },
-                    _ => return Err(LyraError::Parse("expected association key".into())),
-                };
-                self.skip_ws();
-                if !self.eat_str("->") { return Err(LyraError::Parse("expected '->'".into())); }
-                self.skip_ws();
-                let val = self.expr()?;
-                pairs.push((key, val));
-                self.skip_ws();
-                if self.peekc()==Some(',') { self.nextc(); self.skip_ws(); continue; }
-                break;
+        // Handle empty association
+        if self.starts_with("|>") { self.pos += 2; return Ok(Value::assoc(Vec::<(String, Value)>::new())); }
+        loop {
+            // Key: string or symbol
+            let key = match self.peekc() {
+                Some('"') => match self.parse_string()? { Value::String(s) => s, _ => unreachable!() },
+                Some(c) if is_ident_start(c) => match self.parse_symbol()? { Value::Symbol(s) => s, _ => unreachable!() },
+                _ => return Err(LyraError::Parse("expected association key".into())),
+            };
+            self.skip_ws();
+            if !self.eat_str("->") { return Err(LyraError::Parse("expected '->'".into())); }
+            self.skip_ws();
+            // Parse value up to next ',' or '|>' at top level (respect nesting)
+            let (val, ended_assoc) = self.parse_value_until_assoc_delim()?;
+            pairs.push((key, val));
+            if ended_assoc { return Ok(Value::assoc(pairs)); }
+            // Else a comma was consumed; continue to next pair
+            self.skip_ws();
+        }
+    }
+
+    // Parse a value expression within an Association, stopping at the next top-level
+    // comma or at the closing '|>' of the current association. Returns (value, ended_assoc)
+    fn parse_value_until_assoc_delim(&mut self) -> ParseResult<(Value, bool)> {
+        let start_pos = self.pos;
+        let mut i = self.pos;
+        let len = self.src.len();
+        let mut depth_paren = 0i32;
+        let mut depth_brack = 0i32;
+        let mut depth_brace = 0i32;
+        let mut depth_assoc = 0i32; // nested associations inside value
+        let mut in_string = false;
+        while i < len {
+            let c = self.src[i];
+            if in_string {
+                if c == '\\' { // escape next char if any
+                    i += 1; if i < len { i += 1; } else { break; }
+                    continue;
+                } else if c == '"' { in_string = false; i += 1; continue; }
+                i += 1; continue;
+            }
+            // Comments: (* ... *)
+            if c == '(' && i + 1 < len && self.src[i+1] == '*' { i += 2; while i + 1 < len && !(self.src[i] == '*' && self.src[i+1] == ')') { i += 1; } if i + 1 < len { i += 2; } continue; }
+            // Association open/close tokens
+            if c == '<' && i + 1 < len && self.src[i+1] == '|' { depth_assoc += 1; i += 2; continue; }
+            if c == '|' && i + 1 < len && self.src[i+1] == '>' {
+                if depth_paren == 0 && depth_brack == 0 && depth_brace == 0 && depth_assoc == 0 {
+                    // reached end of current association value
+                    break;
+                } else {
+                    depth_assoc = (depth_assoc - 1).max(0);
+                    i += 2; continue;
+                }
+            }
+            match c {
+                '"' => { in_string = true; i += 1; }
+                '(' => { depth_paren += 1; i += 1; }
+                ')' => { depth_paren -= 1; i += 1; }
+                '[' => { depth_brack += 1; i += 1; }
+                ']' => { depth_brack -= 1; i += 1; }
+                '{' => { depth_brace += 1; i += 1; }
+                '}' => { depth_brace -= 1; i += 1; }
+                ',' => {
+                    if depth_paren == 0 && depth_brack == 0 && depth_brace == 0 && depth_assoc == 0 {
+                        // Stop at comma separating pairs
+                        break;
+                    } else { i += 1; }
+                }
+                _ => { i += 1; }
             }
         }
-        if !self.eat_str("|>") { return Err(LyraError::Parse("expected '|>'".into())); }
-        Ok(Value::assoc(pairs))
+        // Now slice out [start_pos, i) and parse as a standalone expression
+        let slice: String = self.src[start_pos..i].iter().collect();
+        let mut sub = Parser::from_source(&slice);
+        let vals = sub.parse_all()?;
+        if vals.is_empty() { return Err(LyraError::Parse("expected association value".into())); }
+        let val = vals.last().unwrap().clone();
+        // Advance main parser to delimiter
+        self.pos = i;
+        // Determine delimiter kind
+        // Skip whitespace
+        self.skip_ws();
+        if self.starts_with("|>") { self.pos += 2; return Ok((val, true)); }
+        if self.peekc() == Some(',') { self.nextc(); return Ok((val, false)); }
+        // If end-of-input or unexpected, surface a helpful error
+        if self.peekc().is_none() { return Err(LyraError::Parse("unexpected end while parsing association value".into())); }
+        Err(LyraError::Parse(format!("expected ',' or '|>' after association value, found {:?}", self.peekc())))
     }
 
     fn parse_string(&mut self) -> ParseResult<Value> {

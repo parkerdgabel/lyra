@@ -5,7 +5,10 @@ bitflags::bitflags! {
         const FLAT     = 0b0010;
         const ORDERLESS= 0b0100;
         const HOLD_ALL = 0b1000;
-        // Future: HOLD_FIRST, HOLD_REST, FLAT, ORDERLESS, ONE_IDENTITY, NUMERIC_FUNCTION
+        const HOLD_FIRST = 0b1_0000;
+        const HOLD_REST  = 0b10_0000;
+        const ONE_IDENTITY = 0b100_0000;
+        // Future: NUMERIC_FUNCTION, etc.
     }
 }
 

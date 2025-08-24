@@ -1,5 +1,0 @@
-Print[1+2];
-Mean[{1,2,3,4}];
-TTest[{1.1, 0.9, 1.3, 1.0}, <|mu -> 1.0, confidenceLevel -> 0.95|>];
-CorrelationMatrix[{{1.0,2.0},{2.0,3.9},{3.0,6.1}}, "pearson"];
-Regression[{{1.0,2.0},{2.0,3.9},{3.0,6.1}}, "y ~ x", "linear"]; 

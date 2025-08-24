@@ -105,6 +105,30 @@ cargo test --lib
 
 # Start the interactive REPL
 cargo run -- repl
+
+### Prototype REPL tips
+
+- `?help` — show quick help and examples
+- `?Plus` — short doc for a builtin (try `?Schema`, `?Explain`)
+- `Explain[expr]` — returns a minimal trace stub (for now)
+- `Schema[<|"a"->1|>]` — returns a minimal schema association
+
+Examples:
+
+```
+> ?help
+Lyra REPL help
+  - ?help: show this help
+  - ?Symbol: show a short description (e.g., ?Plus)
+  - Expressions use f[x, y], {a, b}, <|k->v|>
+  - Try: Explain[Plus[1, 2]] or Schema[<|"a"->1|>]
+
+> Explain[Plus[1,2]]
+<|"steps" -> {}, "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
+
+> Schema[<|"a"->1|>]
+<|"name" -> "Association/v1", "keys" -> {"a"}|>
+```
 ```
 
 ### First Steps

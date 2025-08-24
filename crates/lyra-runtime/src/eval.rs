@@ -1,17 +1,28 @@
 use lyra_core::value::Value;
 use std::collections::HashMap;
+use std::thread::{self, JoinHandle};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use crate::attrs::Attributes;
+use lyra_core::schema::schema_of;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
+
+struct TaskInfo {
+    handle: JoinHandle<Value>,
+    cancel: Arc<AtomicBool>,
+}
 
 pub struct Evaluator {
     builtins: HashMap<String, (NativeFn, Attributes)>,
     env: HashMap<String, Value>,
+    tasks: HashMap<i64, TaskInfo>, // minimal future registry
+    next_task_id: i64,
+    cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
 }
 
 impl Evaluator {
     pub fn new() -> Self {
-        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new() };
+        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None };
         ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
         ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
         ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
@@ -53,14 +64,27 @@ impl Evaluator {
         ev.register("ReplaceFirst", replace_first as NativeFn, Attributes::HOLD_ALL);
         ev.register("Set", set_fn as NativeFn, Attributes::HOLD_ALL);
         ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
+        // Concurrency primitives (minimal Phase 1)
+        ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
+        ev.register("Await", await_fn as NativeFn, Attributes::empty());
+        ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
+        ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
+        // Phase 0 additions
+        ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
+        ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
         ev
     }
+
+    pub fn with_env(env: HashMap<String, Value>) -> Self { let mut ev = Self::new(); ev.env = env; ev }
+
+    pub fn with_env_and_token(env: HashMap<String, Value>, token: Arc<AtomicBool>) -> Self { let mut ev = Self::new(); ev.env = env; ev.cancel_token = Some(token); ev }
 
     fn register(&mut self, name: &str, f: NativeFn, attrs: Attributes) {
         self.builtins.insert(name.to_string(), (f, attrs));
     }
 
     pub fn eval(&mut self, v: Value) -> Value {
+        if let Some(tok) = &self.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
         match v {
             Value::Expr { head, args } => {
                 let head_eval = self.eval(*head);
@@ -78,7 +102,26 @@ impl Evaluator {
                         return listable_thread(self, fun, args);
                     }
                 }
-                let mut eval_args: Vec<Value> = if attrs.contains(Attributes::HOLD_ALL) { args } else { args.into_iter().map(|a| self.eval(a)).collect() };
+                // Evaluate arguments respecting Hold* attributes
+                let mut eval_args: Vec<Value> = if attrs.contains(Attributes::HOLD_ALL) {
+                    args
+                } else if attrs.contains(Attributes::HOLD_FIRST) {
+                    let mut out = Vec::with_capacity(args.len());
+                    let mut it = args.into_iter();
+                    if let Some(first) = it.next() { out.push(first); }
+                    for a in it { out.push(self.eval(a)); }
+                    out
+                } else if attrs.contains(Attributes::HOLD_REST) {
+                    let mut out = Vec::with_capacity(args.len());
+                    let mut it = args.into_iter();
+                    if let Some(first) = it.next() { out.push(self.eval(first)); }
+                    for a in it { out.push(a); }
+                    out
+                } else {
+                    args.into_iter().map(|a| self.eval(a)).collect()
+                };
+                // Sequence splicing at top-level arguments
+                eval_args = splice_sequences(eval_args);
                 // Flat: flatten same-head nested calls in arguments
                 if attrs.contains(Attributes::FLAT) {
                     let mut flat: Vec<Value> = Vec::with_capacity(eval_args.len());
@@ -128,6 +171,20 @@ fn listable_thread(ev: &mut Evaluator, f: NativeFn, args: Vec<Value>) -> Value {
         out.push(f(ev, evald));
     }
     Value::List(out)
+}
+
+fn splice_sequences(args: Vec<Value>) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    for a in args.into_iter() {
+        if let Value::Expr { head, args } = &a {
+            if matches!(&**head, Value::Symbol(s) if s=="Sequence") {
+                out.extend(args.clone());
+                continue;
+            }
+        }
+        out.push(a);
+    }
+    out
 }
 
 fn plus(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -203,6 +260,115 @@ fn map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         other => Value::Expr { head: Box::new(Value::Symbol("Map".into())), args: vec![f, other.clone()] },
     }
+}
+
+fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args } }
+    let expr = args[0].clone();
+    let env_snapshot = ev.env.clone();
+    let id = ev.next_task_id;
+    ev.next_task_id += 1;
+    let token = Arc::new(AtomicBool::new(false));
+    let tok2 = token.clone();
+    let handle = thread::spawn(move || {
+        let mut ev2 = Evaluator::with_env_and_token(env_snapshot, tok2);
+        ev2.eval(expr)
+    });
+    ev.tasks.insert(id, TaskInfo { handle, cancel: token });
+    Value::Expr { head: Box::new(Value::Symbol("FutureId".into())), args: vec![Value::Integer(id)] }
+}
+
+fn await_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Await".into())), args } }
+    let id_opt = match &args[0] {
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
+            if let Some(Value::Integer(i)) = args.get(0) { Some(*i) } else { None }
+        }
+        Value::Integer(i) => Some(*i),
+        other => match ev.eval(other.clone()) {
+            Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="FutureId") => {
+                if let Some(Value::Integer(i)) = args.get(0) { Some(*i) } else { None }
+            }
+            Value::Integer(i) => Some(i),
+            _ => None,
+        }
+    };
+    if let Some(id) = id_opt {
+        if let Some(task) = ev.tasks.remove(&id) {
+            return task.handle.join().unwrap_or(Value::Symbol("Null".into()));
+        }
+    }
+    // Failure stub
+    Value::Assoc(vec![
+        ("message".to_string(), Value::String("Await: invalid or unknown future".into())),
+        ("tag".to_string(), Value::String("Await::invfuture".into())),
+    ].into_iter().collect())
+}
+
+fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Cancel".into())), args } }
+    // Accept FutureId[...] or integer id
+    let id_opt = match &args[0] {
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Integer(i) => Some(*i),
+        other => match ev.eval(other.clone()) { Value::Integer(i)=>Some(i), _=>None },
+    };
+    if let Some(id) = id_opt {
+        if let Some(task) = ev.tasks.get(&id) {
+            task.cancel.store(true, Ordering::Relaxed);
+            return Value::Boolean(true);
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn cancelled_failure() -> Value {
+    Value::Assoc(vec![
+        ("message".to_string(), Value::String("Computation cancelled".into())),
+        ("tag".to_string(), Value::String("Cancel::abort".into())),
+    ].into_iter().collect())
+}
+
+fn parallel_map(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args } }
+    let f = args[0].clone();
+    match &args[1] {
+        Value::List(items) => {
+            // naive parallelism: spawn per item
+            let mut handles: Vec<JoinHandle<Value>> = Vec::with_capacity(items.len());
+            for it in items.iter().cloned() {
+                let f_cl = f.clone();
+                // no shared env; spawn clean evaluator for each element
+                handles.push(thread::spawn(move || {
+                    let mut ev2 = Evaluator::new();
+                    let call = Value::Expr { head: Box::new(f_cl), args: vec![it] };
+                    ev2.eval(call)
+                }));
+            }
+            let mut out = Vec::with_capacity(handles.len());
+            for h in handles { out.push(h.join().unwrap_or(Value::Symbol("Null".into()))); }
+            Value::List(out)
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args: vec![f, other.clone()] },
+    }
+}
+
+fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args } }
+    let v = ev.eval(args[0].clone());
+    schema_of(&v)
+}
+
+fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args } }
+    let expr = args[0].clone();
+    let _result = ev.eval(expr);
+    Value::Assoc(vec![
+        ("steps".to_string(), Value::List(vec![])),
+        ("algorithm".to_string(), Value::String("stub".into())),
+        ("provider".to_string(), Value::String("cpu".into())),
+        ("estCost".to_string(), Value::Assoc(Default::default())),
+    ].into_iter().collect())
 }
 
 fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Value>) -> Value {
@@ -317,7 +483,7 @@ fn match_args(ev: &mut Evaluator, pats: &Vec<Value>, exprs: &Vec<Value>, binds: 
         // Sequence patterns
         if let Value::Expr { head, args } = p0 {
             if let Value::Symbol(hs) = &**head {
-                let (min_take, named, ty_opt, null_ok) = match hs.as_str() {
+                let (min_take, named, ty_opt, _null_ok) = match hs.as_str() {
                     "BlankSequence" => (1usize, None, args.get(0), false),
                     "BlankNullSequence" => (0usize, None, args.get(0), true),
                     "NamedBlankSequence" => {
