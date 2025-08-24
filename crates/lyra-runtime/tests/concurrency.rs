@@ -152,3 +152,25 @@ fn cancel_scope_group_cancels_futures() {
     let s = format_value(&out);
     assert!(s.contains("Cancel::abort"), "Got: {}", s);
 }
+
+#[test]
+fn parallel_map_with_options_overrides_scope() {
+    // Global scope has 2 threads; per-call opts restrict to 1
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[10], {1,2,3,4}, <|MaxThreads->1|>]]");
+    let vals = p.parse_all().expect("parse");
+    let expr = vals.into_iter().last().unwrap();
+    let start = Instant::now();
+    let _out = ev.eval(expr);
+    let elapsed = start.elapsed();
+    // With ~50ms per item (BusyWait[10]) and MaxThreads 1, total >= 150ms for 4 items (queueing effects)
+    assert!(elapsed.as_millis() >= 120, "Too fast: {:?}", elapsed);
+}
+
+#[test]
+fn parallel_evaluate_basic() {
+    let s = eval_one("ParallelEvaluate[{Plus[1,2], Times[2,3]}]");
+    assert_eq!(s, "{3, 6}");
+}

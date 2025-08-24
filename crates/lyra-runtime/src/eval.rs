@@ -2,6 +2,7 @@ use lyra_core::value::Value;
 use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering, AtomicI64}, Mutex, Condvar};
+use std::sync::mpsc::{self, Sender, Receiver};
 use std::time::{Instant, Duration};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
@@ -21,6 +22,39 @@ static NEXT_SCOPE_ID: OnceLock<AtomicI64> = OnceLock::new();
 
 fn scope_reg() -> &'static Mutex<HashMap<i64, ScopeCtx>> { SCOPE_REG.get_or_init(|| Mutex::new(HashMap::new())) }
 fn next_scope_id() -> i64 { let a = NEXT_SCOPE_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
+
+// Simple global thread pool for parallel primitives
+struct ThreadPool { tx: Sender<Box<dyn FnOnce() + Send + 'static>> }
+static POOL: OnceLock<ThreadPool> = OnceLock::new();
+
+fn thread_pool() -> &'static ThreadPool {
+    POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce() + Send + 'static>>();
+        let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+        let shared_rx = Arc::new(Mutex::new(rx));
+        for _ in 0..workers {
+            let rx_cl = shared_rx.clone();
+            thread::spawn(move || {
+                loop {
+                    let job_opt = {
+                        let lock = rx_cl.lock().unwrap();
+                        lock.recv()
+                    };
+                    match job_opt { Ok(job) => job(), Err(_) => break }
+                }
+            });
+        }
+        ThreadPool { tx }
+    })
+}
+
+fn spawn_task<F>(f: F) -> Receiver<Value>
+where F: FnOnce() -> Value + Send + 'static {
+    let (tx, rx) = mpsc::channel::<Value>();
+    let job = Box::new(move || { let _ = tx.send(f()); }) as Box<dyn FnOnce() + Send + 'static>;
+    let _ = thread_pool().tx.send(job);
+    rx
+}
 
 struct TaskInfo {
     handle: JoinHandle<Value>,
@@ -234,6 +268,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
+    ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
 }
 
 pub fn register_explain(ev: &mut Evaluator) {
@@ -363,21 +398,29 @@ fn time_budget_failure() -> Value {
 }
 
 fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args } }
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args } }
     let f = args[0].clone();
-    match &args[1] {
+    let target = args[1].clone();
+    let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
+    let mut opt_deadline: Option<Instant> = None;
+    if args.len() >= 3 {
+        if let Value::Assoc(m) = ev.eval(args[2].clone()) {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        }
+    }
+    match ev.eval(target) {
         Value::List(items) => {
-            // naive parallelism: spawn per item
-            let mut handles: Vec<JoinHandle<Value>> = Vec::with_capacity(items.len());
             let token = ev.cancel_token.clone();
-            let limiter = ev.thread_limiter.clone();
-            let deadline = ev.deadline;
-            for it in items.iter().cloned() {
+            let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
+            let deadline = opt_deadline.or(ev.deadline);
+            let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
+            for it in items.into_iter() {
                 let f_cl = f.clone();
                 let token_cl = token.clone();
                 let limiter_cl = limiter.clone();
                 let deadline_cl = deadline;
-                handles.push(thread::spawn(move || {
+                rxs.push(spawn_task(move || {
                     if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
                     let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(HashMap::new(), tok) } else { Evaluator::new() };
                     ev2.thread_limiter = limiter_cl;
@@ -388,19 +431,27 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     out
                 }));
             }
-            let mut out = Vec::with_capacity(handles.len());
-            for h in handles { out.push(h.join().unwrap_or(Value::Symbol("Null".into()))); }
+            let mut out = Vec::with_capacity(rxs.len());
+            for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
             Value::List(out)
         }
-        other => Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args: vec![f, other.clone()] },
+        other => Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args: vec![f, other] },
     }
 }
 
 // ParallelTable[expr, {i, imin, imax}] and ParallelTable[expr, {i, imin, imax, step}]
 fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } }
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } }
     let expr = args[0].clone();
     let spec = args[1].clone();
+    let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
+    let mut opt_deadline: Option<Instant> = None;
+    if args.len() >= 3 {
+        if let Value::Assoc(m) = ev.eval(args[2].clone()) {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        }
+    }
     // Expect spec to be a List: {Symbol(i), imin, imax[, step]}
     let (var_name, start, end, step) = match spec {
         Value::List(items) => {
@@ -429,10 +480,10 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
     // Spawn per iteration (naive); each thread gets its own evaluator with env snapshot and bound variable
     let env_snapshot = ev.env.clone();
-    let limiter = ev.thread_limiter.clone();
+    let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
     let token = ev.cancel_token.clone();
-    let deadline = ev.deadline;
-    let mut handles: Vec<JoinHandle<Value>> = Vec::with_capacity(values.len());
+    let deadline = opt_deadline.or(ev.deadline);
+    let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(values.len());
     for iv in values.into_iter() {
         let expr_cl = expr.clone();
         let var = var_name.clone();
@@ -440,7 +491,7 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let limiter_cl = limiter.clone();
         let token_cl = token.clone();
         let deadline_cl = deadline;
-        handles.push(thread::spawn(move || {
+        rxs.push(spawn_task(move || {
             if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
             let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(env_cl, tok) } else { Evaluator::with_env(env_cl) };
             ev2.thread_limiter = limiter_cl;
@@ -451,8 +502,8 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             out
         }));
     }
-    let mut out: Vec<Value> = Vec::new();
-    for h in handles { out.push(h.join().unwrap_or(Value::Symbol("Null".into()))); }
+    let mut out: Vec<Value> = Vec::with_capacity(rxs.len());
+    for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
     Value::List(out)
 }
 
@@ -489,6 +540,46 @@ fn fail_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ("message".to_string(), Value::String("Failure".into())),
         ("tag".to_string(), Value::String(tag)),
     ].into_iter().collect())
+}
+
+// ParallelEvaluate[{expr1, expr2, ...}, opts?]
+fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args } }
+    let target = args[0].clone();
+    let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
+    let mut opt_deadline: Option<Instant> = None;
+    if args.len() >= 2 {
+        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        }
+    }
+    match ev.eval(target) {
+        Value::List(items) => {
+            let token = ev.cancel_token.clone();
+            let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
+            let deadline = opt_deadline.or(ev.deadline);
+            let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
+            for it in items.into_iter() {
+                let token_cl = token.clone();
+                let limiter_cl = limiter.clone();
+                let deadline_cl = deadline;
+                rxs.push(spawn_task(move || {
+                    if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
+                    let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(HashMap::new(), tok) } else { Evaluator::new() };
+                    ev2.thread_limiter = limiter_cl;
+                    ev2.deadline = deadline_cl;
+                    let out = ev2.eval(it);
+                    if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+                    out
+                }));
+            }
+            let mut out = Vec::with_capacity(rxs.len());
+            for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
+            Value::List(out)
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args: vec![other] },
+    }
 }
 
 // legacy logic helpers removed (EvenQ/OddQ now in stdlib)
