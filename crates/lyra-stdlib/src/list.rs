@@ -16,6 +16,7 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Flatten", flatten as NativeFn, Attributes::empty());
     ev.register("Partition", partition as NativeFn, Attributes::empty());
     ev.register("Transpose", transpose as NativeFn, Attributes::empty());
+    ev.register("Map", map_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
     ev.register("PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
     ev.register("PackedShape", packed_shape as NativeFn, Attributes::empty());
@@ -142,6 +143,10 @@ fn total(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn sum_list(ev: &mut Evaluator, v: Value) -> Value {
     match v {
+        Value::PackedArray { data, .. } => {
+            let sum: f64 = data.iter().copied().sum();
+            Value::Real(sum)
+        }
         Value::List(items) => {
             let mut acc_i: Option<i64> = Some(0);
             let mut acc_f: Option<f64> = Some(0.0);
@@ -158,6 +163,10 @@ fn sum_list(ev: &mut Evaluator, v: Value) -> Value {
 
 fn sum_all(ev: &mut Evaluator, v: Value) -> Value {
     match v {
+        Value::PackedArray { data, .. } => {
+            let sum: f64 = data.iter().copied().sum();
+            Value::Real(sum)
+        }
         Value::List(items) => {
             let mut acc = Value::Integer(0);
             for it in items { let itv = ev.eval(it); let s = sum_all(ev, itv); acc = add_values(acc, s); }
@@ -242,6 +251,52 @@ fn transpose(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Value::List(out)
         }
         other => other,
+    }
+}
+
+fn apply_fn(ev: &mut Evaluator, f: &Value, arg: Value) -> Value {
+    match f {
+        Value::PureFunction { .. } | Value::Symbol(_) | Value::Expr { .. } => {
+            let call = Value::Expr { head: Box::new(f.clone()), args: vec![arg] };
+            ev.eval(call)
+        }
+        other => Value::Expr { head: Box::new(other.clone()), args: vec![arg] },
+    }
+}
+
+fn map_packed(ev: &mut Evaluator, f: &Value, shape: Vec<usize>, data: Vec<f64>) -> Value {
+    let mut out: Vec<f64> = Vec::with_capacity(data.len());
+    for x in data.into_iter() {
+        let y = apply_fn(ev, f, Value::Real(x));
+        match y {
+            Value::Integer(n) => out.push(n as f64),
+            Value::Real(r) => out.push(r),
+            Value::Rational { num, den } if den != 0 => out.push((num as f64)/(den as f64)),
+            Value::BigReal(s) => if let Ok(r)=s.parse::<f64>() { out.push(r) } else { return Value::Expr { head: Box::new(Value::Symbol("Map".into())), args: vec![f.clone(), Value::PackedArray { shape, data: out }] } },
+            other => {
+                // Fallback: map over unpacked list
+                let list = packed_to_list(ev, vec![Value::PackedArray { shape: shape.clone(), data: out }]);
+                return map_list(ev, f, list);
+            }
+        }
+    }
+    Value::PackedArray { shape, data: out }
+}
+
+fn map_list(ev: &mut Evaluator, f: &Value, v: Value) -> Value {
+    match v {
+        Value::List(items) => Value::List(items.into_iter().map(|it| apply_fn(ev, f, it)).collect()),
+        other => apply_fn(ev, f, other),
+    }
+}
+
+fn map_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Map".into())), args } }
+    let f = args[0].clone();
+    let subj = ev.eval(args[1].clone());
+    match subj {
+        Value::PackedArray { shape, data } => map_packed(ev, &f, shape, data),
+        other => map_list(ev, &f, other),
     }
 }
 

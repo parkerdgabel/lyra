@@ -98,6 +98,21 @@ fn format_float(v: f64) -> String {
     if s.is_empty() { "0".into() } else { s }
 }
 
+#[cfg(feature = "big-real-rug")]
+fn bigreal_binop(ax: &str, by: &str, op: fn(Float, Float) -> Float) -> Option<String> {
+    let a = Float::with_val(128, ax).ok()?;
+    let b = Float::with_val(128, by).ok()?;
+    let r = op(a, b);
+    Some(r.to_string_radix(10, None))
+}
+
+#[cfg(not(feature = "big-real-rug"))]
+fn bigreal_binop(ax: &str, by: &str, op: fn(f64, f64) -> f64) -> Option<String> {
+    let a = ax.parse::<f64>().ok()?;
+    let b = by.parse::<f64>().ok()?;
+    Some(format_float(op(a, b)))
+}
+
 fn add_numeric(a: Value, b: Value) -> Option<Value> {
     match (a, b) {
         (Value::Integer(x), Value::Integer(y)) => Some(Value::Integer(x + y)),
@@ -105,8 +120,8 @@ fn add_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) + y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x + (y as f64))),
         (Value::BigReal(ax), Value::BigReal(by)) => {
-            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
-            Some(Value::BigReal(format_float(xf + yf)))
+            let s = bigreal_binop(&ax, &by, |a,b| a+b)?;
+            Some(Value::BigReal(s))
         }
         (Value::BigReal(ax), other) | (other, Value::BigReal(ax)) => {
             let xf = ax.parse::<f64>().ok()?;
@@ -162,8 +177,8 @@ fn mul_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) * y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x * (y as f64))),
         (Value::BigReal(ax), Value::BigReal(by)) => {
-            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
-            Some(Value::BigReal(format_float(xf * yf)))
+            let s = bigreal_binop(&ax, &by, |a,b| a*b)?;
+            Some(Value::BigReal(s))
         }
         (Value::BigReal(ax), other) | (other, Value::BigReal(ax)) => {
             let xf = ax.parse::<f64>().ok()?;
@@ -227,8 +242,8 @@ fn sub_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) - y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x - (y as f64))),
         (Value::BigReal(ax), Value::BigReal(by)) => {
-            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
-            Some(Value::BigReal(format_float(xf - yf)))
+            let s = bigreal_binop(&ax, &by, |a,b| a-b)?;
+            Some(Value::BigReal(s))
         }
         (Value::BigReal(ax), other) => {
             let xf = ax.parse::<f64>().ok()?;
@@ -239,6 +254,24 @@ fn sub_numeric(a: Value, b: Value) -> Option<Value> {
             let xf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
             let yf = by.parse::<f64>().ok()?;
             Some(Value::BigReal(format_float(xf - yf)))
+        }
+        (Value::PackedArray { shape: s1, data: d1 }, Value::PackedArray { shape: s2, data: d2 }) => {
+            // broadcast-aware elementwise subtraction
+            broadcast_elementwise(&s1, &d1, &s2, &d2, |x,y| x - y)
+        }
+        (Value::PackedArray { shape, data }, other) => {
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x -= s; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
+        }
+        (other, Value::PackedArray { shape, data }) => {
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x = s - *x; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
         }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 - n2 * d1, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) => {
@@ -268,13 +301,30 @@ fn sub_numeric(a: Value, b: Value) -> Option<Value> {
 
 fn div_numeric(a: Value, b: Value) -> Option<Value> {
     match (a, b) {
+        (Value::PackedArray { shape: s1, data: d1 }, Value::PackedArray { shape: s2, data: d2 }) => {
+            broadcast_elementwise(&s1, &d1, &s2, &d2, |x,y| x / y)
+        }
+        (Value::PackedArray { shape, data }, other) => {
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x /= s; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
+        }
+        (other, Value::PackedArray { shape, data }) => {
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x = s / *x; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
+        }
         (Value::Integer(x), Value::Integer(y)) => { if y == 0 { None } else { Some(rat_value(x, y)) } }
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x / y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) / y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x / (y as f64))),
         (Value::BigReal(ax), Value::BigReal(by)) => {
-            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
-            Some(Value::BigReal(format_float(xf / yf)))
+            let s = bigreal_binop(&ax, &by, |a,b| a/b)?;
+            Some(Value::BigReal(s))
         }
         (Value::BigReal(ax), other) => {
             let xf = ax.parse::<f64>().ok()?;
@@ -329,6 +379,56 @@ fn div_numeric(a: Value, b: Value) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+fn to_f64_scalar(v: &Value) -> Option<f64> {
+    match v {
+        Value::Integer(n) => Some(*n as f64),
+        Value::Real(x) => Some(*x),
+        Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+        Value::BigReal(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn broadcast_elementwise(s1: &Vec<usize>, d1: &Vec<f64>, s2: &Vec<usize>, d2: &Vec<f64>, op: fn(f64,f64)->f64) -> Option<Value> {
+    let ndim = std::cmp::max(s1.len(), s2.len());
+    let mut sh1 = vec![1; ndim];
+    let mut sh2 = vec![1; ndim];
+    sh1[ndim - s1.len()..].clone_from_slice(&s1);
+    sh2[ndim - s2.len()..].clone_from_slice(&s2);
+    let mut out_shape: Vec<usize> = Vec::with_capacity(ndim);
+    for i in 0..ndim {
+        let a = sh1[i]; let b = sh2[i];
+        if a == b { out_shape.push(a); }
+        else if a == 1 { out_shape.push(b); }
+        else if b == 1 { out_shape.push(a); }
+        else { return None; }
+    }
+    let total: usize = out_shape.iter().product();
+    let strides = |shape: &Vec<usize>| -> Vec<usize> {
+        let mut st = vec![0; ndim];
+        let mut acc = 1usize;
+        for i in (0..ndim).rev() { st[i] = acc; acc *= shape[i]; }
+        st
+    };
+    let st1 = strides(&sh1); let st2 = strides(&sh2);
+    let mut out = Vec::with_capacity(total);
+    for idx in 0..total {
+        // convert idx to multi-index
+        let mut rem = idx;
+        let mut off1 = 0usize; let mut off2 = 0usize;
+        for i in 0..ndim {
+            let dim = out_shape[i];
+            let coord = rem / (out_shape[i+1..].iter().product::<usize>().max(1));
+            rem %= out_shape[i+1..].iter().product::<usize>().max(1);
+            let c1 = if sh1[i]==1 { 0 } else { coord };
+            let c2 = if sh2[i]==1 { 0 } else { coord };
+            off1 += c1 * st1[i]; off2 += c2 * st2[i];
+        }
+        out.push(op(d1[off1], d2[off2]));
+    }
+    Some(Value::PackedArray { shape: out_shape, data: out })
 }
 
 fn pow_numeric(base: Value, exp: Value) -> Option<Value> {

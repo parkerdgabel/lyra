@@ -22,3 +22,9 @@ schema = []
 explain = []
 tools = []
 testing = []
+simd_kernels = []
+big-real-rug = ["rug"]
+
+[dependencies.rug]
+optional = true
+version = "1"
