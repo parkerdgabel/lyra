@@ -146,11 +146,9 @@ impl Evaluator {
 
 // Temporary: compatibility registration (to be removed once stdlib migration completes)
 pub fn register_compat_prelude(ev: &mut Evaluator) {
+    // Minimal math kept for internal threads (Future/ParallelMap) until full migration
     ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
     ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
-    ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
-    ev.register("Divide", divide as NativeFn, Attributes::LISTABLE);
-    ev.register("Power", power as NativeFn, Attributes::empty());
     ev.register("Map", map as NativeFn, Attributes::empty());
     ev.register("If", iff as NativeFn, Attributes::HOLD_REST);
     ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
@@ -208,9 +206,7 @@ pub fn register_compat_prelude(ev: &mut Evaluator) {
     ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
     ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
     // String builtins moved to lyra-stdlib
-    ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
-    ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
-    ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+    // Math builtins moved to lyra-stdlib
     // String builtins moved to lyra-stdlib
     // Echo helpers for attribute tests
     ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);

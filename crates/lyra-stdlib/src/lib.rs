@@ -2,7 +2,7 @@
 
 use lyra_runtime::Evaluator;
 
-pub mod math {}
+pub mod math;
 pub mod logic {}
 pub mod list {}
 pub mod string;
@@ -14,12 +14,14 @@ pub mod testing {}
 
 pub fn register_all(ev: &mut Evaluator) {
     string::register_string(ev);
+    math::register_math(ev);
 }
 
 pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
     for g in groups {
         match *g {
             "string" => string::register_string(ev),
+            "math" => math::register_math(ev),
             _ => {}
         }
     }
