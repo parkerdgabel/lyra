@@ -165,6 +165,44 @@ fn match_args(ctx: &MatcherCtx, pats: &Vec<Value>, exprs: &Vec<Value>, binds: &m
                     }
                     return false;
                 }
+                // Repeated/RepeatedNull: pattern element repeated 1+ or 0+ times
+                if (hs == "Repeated" || hs == "RepeatedNull") && !args.is_empty() {
+                    let min_take = if hs == "Repeated" { 1 } else { 0 };
+                    let unit = &args[0];
+                    let rem_min = min_required(&pats[1..]);
+                    let max_take = if exprs.len()>=rem_min { exprs.len()-rem_min } else { 0 };
+                    let start = min_take.min(exprs.len());
+                    for k in start..=max_take {
+                        let slice = &exprs[..k];
+                        // every element must match unit
+                        let mut ok = true;
+                        let mut local = binds.clone();
+                        for e in slice.iter() {
+                            let mut inner = local.clone();
+                            if !match_pat(ctx, unit, e, &mut inner) { ok = false; break; }
+                            local = inner;
+                        }
+                        if !ok { continue; }
+                        if go(ctx, &pats[1..], &exprs[k..], &mut local) { *binds = local; return true; }
+                    }
+                    return false;
+                }
+                // Optional[pat]: either match one element with pat or skip consuming
+                if hs == "Optional" {
+                    if args.len() >= 1 {
+                        // Try consume one if available and matches
+                        if !exprs.is_empty() {
+                            let mut local = binds.clone();
+                            if match_pat(ctx, &args[0], &exprs[0], &mut local) {
+                                if go(ctx, &pats[1..], &exprs[1..], &mut local) { *binds = local; return true; }
+                            }
+                        }
+                        // Try consume zero
+                        let mut local = binds.clone();
+                        if go(ctx, &pats[1..], exprs, &mut local) { *binds = local; return true; }
+                        return false;
+                    }
+                }
             }
         }
         if exprs.is_empty() { return false; }

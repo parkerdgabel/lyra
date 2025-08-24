@@ -66,6 +66,9 @@ impl PatternNet {
             "NamedBlankSequence",
             "BlankNullSequence",
             "NamedBlankNullSequence",
+            "Repeated",
+            "RepeatedNull",
+            "Optional",
         ];
         for w in wildcards.iter() {
             if let Some(xs) = self.by_head_any.get(&w.to_string()) { v.extend(xs.iter().copied()); }
