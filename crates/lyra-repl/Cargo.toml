@@ -1,0 +1,16 @@
+[package]
+name = "lyra-repl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustyline = { workspace = true }
+colored = { workspace = true }
+anyhow = { workspace = true }
+lyra-core = { path = "../lyra-core" }
+lyra-parser = { path = "../lyra-parser" }
+lyra-runtime = { path = "../lyra-runtime" }
+
+[[bin]]
+name = "lyra"
+path = "src/main.rs"
