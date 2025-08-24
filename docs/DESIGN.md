@@ -41,11 +41,17 @@ Scope: Full language re-architecture, from parser to packages
 
 5. Concurrency Model
 - Structured concurrency with cancellation and resource budgets.
+- Scopes & Budgets (implemented):
+  - `Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]` (HoldAll)
+    - Applies a per-scope cooperative cancel token, a thread budget (limiter), and a wall-clock deadline (Instant-based) while evaluating `body`.
+    - Workers spawned by `Future`, `ParallelMap`, and `ParallelTable` inherit the scope token, limiter, and deadline.
+  - `StartScope[opts] -> ScopeId[id]`, `InScope[ScopeId[id], body]`, `CancelScope[ScopeId[id]]` for group cancellation and re-entrant scoping across statements.
+  - Current behavior: naive thread-per-task with a shared limiter; cooperative cancellation checked in evaluator and selected primitives (`BusyWait`). Future work: unify with a work-stealing scheduler, broader cooperative checks, and structured lifetimes/cleanup for scope IDs.
 - Primitives:
   - Futures/Tasks: `Future[expr]`, `Await`, `MapAsync`, `Gather`.
-  - Data-parallel: `ParallelMap`, `ParallelTable`, `ParallelEvaluate`.
-  - Actors/Channels: `Actor[handlers]`, `Channel[T]` (bounded/unbounded), backpressure.
-  - Streams: windowed aggregates, joins, CEP; pull-based with backpressure; composition via pipelines.
+  - Data-parallel: `ParallelMap`, `ParallelTable`, `ParallelEvaluate` (planned).
+  - Actors/Channels: `Actor[handlers]`, `Channel[T]` (bounded/unbounded), backpressure. (planned)
+  - Streams: windowed aggregates, joins, CEP; pull-based with backpressure; composition via pipelines. (planned)
 - Scheduler: work-stealing pools; cooperative interrupts; deterministic by default for pure compute.
 - Distributed: optional remoting provider (local cluster → remote workers) with serialization of Associations and symbols.
 
@@ -130,11 +136,11 @@ Phase 0 — Bootstrap (Weeks 1–2)
 Phase 1 — Evaluation + Concurrency Foundations (Weeks 3–5)
 - Deliverables:
   - `lyra-runtime`: attribute-aware evaluator (Hold*, Listable, Orderless), Sequence splicing, Condition.
-  - Concurrency primitives: Future/Await, ParallelMap; scheduler with cancellation.
+  - Concurrency primitives: Future/Await, ParallelMap; basic `Scope` with `MaxThreads` and `TimeBudgetMs`; cooperative cancellation points.
   - `lyra-stdlib` v0: lists/strings/numeric basics; schema builders; Explain minimal.
 - Acceptance:
   - Correct evaluation for attribute subset; Listable threading tests pass.
-  - ParallelMap speedup on CPU; cancellation/cooperative checks; basic Explain trace.
+  - ParallelMap speedup on CPU; `Scope` throttles concurrency; time budget failures are reported; cancellation/cooperative checks; basic Explain trace.
 
 Phase 2 — Rewrite Engine + Numeric Tower (Weeks 6–9)
 - Deliverables:

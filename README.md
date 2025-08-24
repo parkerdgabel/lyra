@@ -302,6 +302,24 @@ future = AsyncFunction[slowComputation][args];
 result = Await[future, Timeout -> 30];
 ```
 
+Note: In this branch today, the following primitives are available and scoped with simple budgets:
+```lyra
+# Futures and data-parallel
+Future[expr]
+Await[future]
+ParallelMap[(x)=>f[x], {1,2,3,4}]
+ParallelTable[Times[i,i], {i, 1, 10}]
+
+# Structured scopes with budgets (cooperative)
+Scope[<|MaxThreads->2, TimeBudgetMs->100|>, ParallelTable[BusyWait[20], {i,1,6}]]
+
+# Start a reusable scope, run work inside it, then cancel all
+sid = StartScope[<|MaxThreads->4|>];
+InScope[sid, f = Future[BusyWait[100]]; g = Future[BusyWait[100]]];
+CancelScope[sid];
+{Await[f], Await[g]}  (* returns failures with tag Cancel::abort *)
+```
+
 ## 🏢 Real-World Applications
 
 Lyra excels in diverse production environments:
