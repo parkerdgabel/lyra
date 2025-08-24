@@ -24,6 +24,31 @@ pub fn add_specs(specs: Vec<Value>) {
     }
 }
 
+// Macro to concisely build a tool spec Value::Assoc
+// Forms:
+//  tool_spec!("Name", summary: "...", params: [..], tags: [..], input_schema: VALUE, output_schema: VALUE, examples: [VALUE,...], effects: [..])
+//  tool_spec!("Name", impl: "ImplName", summary: "...", ...)
+#[macro_export]
+macro_rules! tool_spec {
+    ($name:expr, impl: $impln:expr, summary: $summary:expr $(, params: [$($param:expr),* $(,)?])? $(, tags: [$($tag:expr),* $(,)?])? $(, input_schema: $in_schema:expr)? $(, output_schema: $out_schema:expr)? $(, examples: [$($ex:expr),* $(,)?])? $(, effects: [$($eff:expr),* $(,)?])? ) => {{
+        let mut m: std::collections::HashMap<String, lyra_core::value::Value> = std::collections::HashMap::new();
+        m.insert("id".into(), lyra_core::value::Value::String($name.into()));
+        m.insert("name".into(), lyra_core::value::Value::String($name.into()));
+        m.insert("impl".into(), lyra_core::value::Value::String($impln.into()));
+        m.insert("summary".into(), lyra_core::value::Value::String($summary.into()));
+        $( m.insert("params".into(), lyra_core::value::Value::List(vec![ $( lyra_core::value::Value::String($param.into()) ),* ])); )?
+        $( m.insert("tags".into(), lyra_core::value::Value::List(vec![ $( lyra_core::value::Value::String($tag.into()) ),* ])); )?
+        $( m.insert("input_schema".into(), $in_schema ); )?
+        $( m.insert("output_schema".into(), $out_schema ); )?
+        $( m.insert("examples".into(), lyra_core::value::Value::List(vec![ $( $ex ),* ])); )?
+        $( m.insert("effects".into(), lyra_core::value::Value::List(vec![ $( lyra_core::value::Value::String($eff.into()) ),* ])); )?
+        lyra_core::value::Value::Assoc(m)
+    }};
+    ($name:expr, summary: $summary:expr $(, params: [$($param:expr),* $(,)?])? $(, tags: [$($tag:expr),* $(,)?])? $(, input_schema: $in_schema:expr)? $(, output_schema: $out_schema:expr)? $(, examples: [$($ex:expr),* $(,)?])? $(, effects: [$($eff:expr),* $(,)?])? ) => {{
+        tool_spec!($name, impl: $name, summary: $summary $(, params: [$($param),*])? $(, tags: [$($tag),*])? $(, input_schema: $in_schema)? $(, output_schema: $out_schema)? $(, examples: [$($ex),*])? $(, effects: [$($eff),*])? )
+    }};
+}
+
 pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());

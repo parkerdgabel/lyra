@@ -4,7 +4,7 @@ use lyra_runtime::Evaluator;
 
 #[cfg(feature = "math")] pub mod math;
 #[cfg(feature = "logic")] pub mod logic;
-#[cfg(feature = "tools")] pub mod tools;
+#[cfg(feature = "tools")] #[macro_use] pub mod tools;
 #[cfg(feature = "list")] pub mod list;
 #[cfg(feature = "string")] pub mod string;
 #[cfg(feature = "assoc")] pub mod assoc;

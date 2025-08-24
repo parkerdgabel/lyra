@@ -3,6 +3,7 @@ use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -21,40 +22,11 @@ pub fn register_assoc(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Keys".into())),
-            ("name".to_string(), Value::String("Keys".into())),
-            ("impl".to_string(), Value::String("Keys".into())),
-            ("summary".to_string(), Value::String("List keys of an association".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Values".into())),
-            ("name".to_string(), Value::String("Values".into())),
-            ("impl".to_string(), Value::String("Values".into())),
-            ("summary".to_string(), Value::String("List values of an association".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Lookup".into())),
-            ("name".to_string(), Value::String("Lookup".into())),
-            ("impl".to_string(), Value::String("Lookup".into())),
-            ("summary".to_string(), Value::String("Lookup value from association".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("assoc".into()), Value::String("key".into()), Value::String("default".into())])),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Merge".into())),
-            ("name".to_string(), Value::String("Merge".into())),
-            ("impl".to_string(), Value::String("Merge".into())),
-            ("summary".to_string(), Value::String("Merge associations with optional combiner".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
-            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+        tool_spec!("Keys", summary: "List keys of an association", params: ["assoc"], tags: ["assoc"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+        tool_spec!("Values", summary: "List values of an association", params: ["assoc"], tags: ["assoc"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
+        tool_spec!("Lookup", summary: "Lookup value from association", params: ["assoc","key","default"], tags: ["assoc"]),
+        tool_spec!("Merge", summary: "Merge associations with optional combiner", params: ["args"], tags: ["assoc"], examples: [
+            Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([(
                     "args".to_string(), Value::List(vec![
                         Value::Assoc(HashMap::from([(String::from("a"), Value::Integer(1))])),
@@ -62,8 +34,15 @@ pub fn register_assoc(ev: &mut Evaluator) {
                     ]))
                 ]))),
                 ("result".to_string(), Value::Assoc(HashMap::from([(String::from("a"), Value::Integer(2))]))),
-            ]))])),
-        ])),
+            ]))
+        ]),
+        tool_spec!("KeySort", summary: "Sort association by key", params: ["assoc"], tags: ["assoc"]),
+        tool_spec!("SortBy", summary: "Sort association by derived key", params: ["keyFn","assoc"], tags: ["assoc"]),
+        tool_spec!("GroupBy", summary: "Group list items by a key function", params: ["list","keyFn"], tags: ["list","assoc"]),
+        tool_spec!("AssociationMap", summary: "Map values in an association", params: ["fn","assoc"], tags: ["assoc"]),
+        tool_spec!("AssociationMapKeys", summary: "Map keys in an association", params: ["fn","assoc"], tags: ["assoc"]),
+        tool_spec!("AssociationMapKV", summary: "Map key/value pairs in an association", params: ["fn","assoc"], tags: ["assoc"]),
+        tool_spec!("AssociationMapPairs", summary: "Map to key/value pairs or assoc", params: ["fn","assoc"], tags: ["assoc"]),
     ]);
 }
 

@@ -2,6 +2,7 @@ use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
 #[cfg(feature = "tools")] use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -19,52 +20,27 @@ pub fn register_list(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Length".into())),
-            ("name".to_string(), Value::String("Length".into())),
-            ("impl".to_string(), Value::String("Length".into())),
-            ("summary".to_string(), Value::String("Length of list or string".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("string".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("x".into())])),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("integer".into()))]))),
-            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+        tool_spec!("Length", summary: "Length of list or string", params: ["x"], tags: ["list","string"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))])), examples: [
+            Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
                 ("result".to_string(), Value::Integer(2)),
-            ]))])),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Join".into())),
-            ("name".to_string(), Value::String("Join".into())),
-            ("impl".to_string(), Value::String("Join".into())),
-            ("summary".to_string(), Value::String("Concatenate two lists".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("list".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
-            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+            ]))
+        ]),
+        tool_spec!("Join", summary: "Concatenate two lists", params: ["a","b"], tags: ["list"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))])), examples: [
+            Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([
                     ("a".to_string(), Value::List(vec![Value::Integer(1)])),
                     ("b".to_string(), Value::List(vec![Value::Integer(2)])),
                 ]))),
                 ("result".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)])),
-            ]))])),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Total".into())),
-            ("name".to_string(), Value::String("Total".into())),
-            ("impl".to_string(), Value::String("Total".into())),
-            ("summary".to_string(), Value::String("Sum elements in a list".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("math".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("list".into())])),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
-        ])),
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Part".into())),
-            ("name".to_string(), Value::String("Part".into())),
-            ("impl".to_string(), Value::String("Part".into())),
-            ("summary".to_string(), Value::String("Index into list/assoc".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("assoc".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("subject".into()), Value::String("index".into())])),
-        ])),
+            ]))
+        ]),
+        tool_spec!("Total", summary: "Sum elements in a list", params: ["list"], tags: ["list","math"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
+        tool_spec!("Part", summary: "Index into list/assoc", params: ["subject","index"], tags: ["list","assoc"]),
+        tool_spec!("Range", summary: "Create a numeric range", params: ["a","b"], tags: ["list","math"]),
+        tool_spec!("Flatten", summary: "Flatten list by a level", params: ["list","levels"], tags: ["list"]),
+        tool_spec!("Partition", summary: "Partition list into fixed-size chunks", params: ["list","n","step"], tags: ["list"]),
+        tool_spec!("Transpose", summary: "Transpose a list of lists", params: ["rows"], tags: ["list"]),
     ]);
 }
 

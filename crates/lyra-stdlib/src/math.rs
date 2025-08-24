@@ -2,6 +2,7 @@ use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use lyra_core::value::Value;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
 #[cfg(feature = "tools")] use std::collections::HashMap;
 
 pub fn register_math(ev: &mut Evaluator) {
@@ -16,77 +17,46 @@ pub fn register_math(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        // Plus
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Plus".into())),
-            ("name".to_string(), Value::String("Plus".into())),
-            ("impl".to_string(), Value::String("Plus".into())),
-            ("summary".to_string(), Value::String("Sum numbers (variadic)".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("math".into()), Value::String("sum".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
-            ("input_schema".to_string(), Value::Assoc(HashMap::from([
-                ("type".to_string(), Value::String("object".into())),
-                ("properties".to_string(), Value::Assoc(HashMap::from([
-                    ("args".to_string(), Value::Assoc(HashMap::from([
-                        ("type".to_string(), Value::String("array".into())),
-                        ("items".to_string(), Value::Assoc(HashMap::from([
-                            ("type".to_string(), Value::String("number".into())),
-                        ]))),
-                    ]))),
+        tool_spec!("Plus", summary: "Sum numbers (variadic)", params: ["args"], tags: ["math","sum"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([
+                    ("type".to_string(), Value::String("array".into())),
+                    ("items".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
                 ]))),
             ]))),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
-            ("examples".to_string(), Value::List(vec![
-                Value::Assoc(HashMap::from([
-                    ("args".to_string(), Value::Assoc(HashMap::from([("args".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
-                    ("result".to_string(), Value::Integer(3)),
-                ])),
-            ])),
-        ])),
-
-        // Times
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Times".into())),
-            ("name".to_string(), Value::String("Times".into())),
-            ("impl".to_string(), Value::String("Times".into())),
-            ("summary".to_string(), Value::String("Multiply numbers (variadic)".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("math".into()), Value::String("product".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
-            ("input_schema".to_string(), Value::Assoc(HashMap::from([
-                ("type".to_string(), Value::String("object".into())),
-                ("properties".to_string(), Value::Assoc(HashMap::from([
-                    ("args".to_string(), Value::Assoc(HashMap::from([
-                        ("type".to_string(), Value::String("array".into())),
-                        ("items".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
-                    ]))),
+        ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))])), examples: [
+            Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([("args".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
+                ("result".to_string(), Value::Integer(3)),
+            ]))
+        ]),
+        tool_spec!("Times", summary: "Multiply numbers (variadic)", params: ["args"], tags: ["math","product"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([
+                    ("type".to_string(), Value::String("array".into())),
+                    ("items".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
                 ]))),
             ]))),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
-            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+        ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))])), examples: [
+            Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([("args".to_string(), Value::List(vec![Value::Integer(2), Value::Integer(3)]))]))),
                 ("result".to_string(), Value::Integer(6)),
-            ]))])),
-        ])),
-
-        // Abs
-        Value::Assoc(HashMap::from([
-            ("id".to_string(), Value::String("Abs".into())),
-            ("name".to_string(), Value::String("Abs".into())),
-            ("impl".to_string(), Value::String("Abs".into())),
-            ("summary".to_string(), Value::String("Absolute value".into())),
-            ("tags".to_string(), Value::List(vec![Value::String("math".into())])),
-            ("params".to_string(), Value::List(vec![Value::String("x".into())])),
-            ("input_schema".to_string(), Value::Assoc(HashMap::from([
-                ("type".to_string(), Value::String("object".into())),
-                ("properties".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))])))]))),
-                ("required".to_string(), Value::List(vec![Value::String("x".into())])),
-            ]))),
-            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
-            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+            ]))
+        ]),
+        tool_spec!("Abs", summary: "Absolute value", params: ["x"], tags: ["math"], input_schema: Value::Assoc(HashMap::from([
+            ("type".to_string(), Value::String("object".into())),
+            ("properties".to_string(), Value::Assoc(HashMap::from([(String::from("x"), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))])))]))),
+            ("required".to_string(), Value::List(vec![Value::String("x".into())])),
+        ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))])), examples: [
+            Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::Integer(-2))]))),
                 ("result".to_string(), Value::Integer(2)),
-            ]))])),
-        ])),
+            ]))
+        ]),
+        tool_spec!("Min", summary: "Minimum of values or list", params: ["args"], tags: ["math"]),
+        tool_spec!("Max", summary: "Maximum of values or list", params: ["args"], tags: ["math"]),
     ]);
 }
 
