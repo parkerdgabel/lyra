@@ -15,9 +15,14 @@ pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());
     ev.register("ToolsList", tools_list as NativeFn, Attributes::empty());
+    ev.register("ToolsCards", tools_cards as NativeFn, Attributes::empty());
     ev.register("ToolsDescribe", tools_describe as NativeFn, Attributes::empty());
     ev.register("ToolsSearch", tools_search as NativeFn, Attributes::empty());
+    ev.register("ToolsResolve", tools_resolve as NativeFn, Attributes::empty());
     ev.register("ToolsInvoke", tools_invoke as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ToolsDryRun", tools_dry_run as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ToolsExportOpenAI", tools_export_openai as NativeFn, Attributes::empty());
+    ev.register("ToolsExportBundle", tools_export_bundle as NativeFn, Attributes::empty());
 }
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -79,7 +84,9 @@ fn builtin_cards(ev: &mut Evaluator) -> Vec<Value> {
 
 // ToolsList[] -> list of cards (registered specs first, then fallback builtins not overridden)
 fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsList".into())), args } }
+    // Optional filter: <|"effects"->{..}, "tags"->{..}|>
+    if args.len()>1 { return Value::Expr { head: Box::new(Value::Symbol("ToolsList".into())), args } }
+    let filter = if args.len()==1 { ev.eval(args[0].clone()) } else { Value::Assoc(HashMap::new()) };
     let reg = tool_reg().lock().unwrap();
     let mut out: Vec<Value> = Vec::new();
     for (id, spec) in reg.iter() {
@@ -96,7 +103,46 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
         }
     }
-    Value::List(out)
+    // Apply filter if provided
+    let filtered = match filter {
+        Value::Assoc(f) if !f.is_empty() => {
+            let eff_filter: std::collections::HashSet<String> = match f.get("effects") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
+            let tag_filter: std::collections::HashSet<String> = match f.get("tags") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
+            out.into_iter().filter(|v| {
+                if let Value::Assoc(m) = v {
+                    let mut ok = true;
+                    if !eff_filter.is_empty() {
+                        let mut have: std::collections::HashSet<String> = Default::default();
+                        if let Some(Value::List(effs)) = m.get("effects") { for e in effs { if let Some(s)=value_to_string(e) { have.insert(s.to_lowercase()); } } }
+                        ok = eff_filter.is_subset(&have);
+                    }
+                    if ok && !tag_filter.is_empty() {
+                        let mut have: std::collections::HashSet<String> = Default::default();
+                        if let Some(Value::List(tags)) = m.get("tags") { for t in tags { if let Some(s)=value_to_string(t) { have.insert(s.to_lowercase()); } } }
+                        ok = !tag_filter.is_disjoint(&have);
+                    }
+                    ok
+                } else { false }
+            }).collect::<Vec<_>>()
+        }
+        _ => out,
+    };
+    Value::List(filtered)
+}
+
+// ToolsCards[cursor?, limit?] -> <|"items"->List, "next_cursor"->String|>
+fn tools_cards(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()>2 { return Value::Expr { head: Box::new(Value::Symbol("ToolsCards".into())), args } }
+    let cursor = if args.len()>=1 { match ev.eval(args[0].clone()) { Value::Integer(i)=>i as usize, Value::String(s)=>s.parse::<usize>().unwrap_or(0), _=>0 } } else { 0 };
+    let limit = if args.len()==2 { match ev.eval(args[1].clone()) { Value::Integer(i)=>i.max(1) as usize, _=>20 } } else { 20 };
+    let all = match tools_list(ev, vec![]) { Value::List(vs)=>vs, _=>vec![] };
+    let end = (cursor + limit).min(all.len());
+    let slice = all[cursor..end].to_vec();
+    let next = if end < all.len() { Value::String(end.to_string()) } else { Value::Symbol("Null".into()) };
+    Value::Assoc(vec![
+        ("items".to_string(), Value::List(slice)),
+        ("next_cursor".to_string(), next),
+    ].into_iter().collect())
 }
 
 // ToolsDescribe[id] -> spec or fallback card
@@ -137,6 +183,29 @@ fn tools_search(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::List(scored.into_iter().take(topk).map(|(_s, v)| v).collect())
 }
 
+// ToolsResolve[pattern, topK?] -> [{"id","score"}]
+fn tools_resolve(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsResolve".into())), args } }
+    let q = match &args[0] { Value::String(s)|Value::Symbol(s)=>s.to_lowercase(), _=>String::new() };
+    let topk = if args.len()>=2 { if let Value::Integer(k) = args[1].clone() { k.max(1) as usize } else { 5 } } else { 5 };
+    let mut pool: Vec<(String, i64)> = Vec::new();
+    if let Value::List(vs) = tools_list(ev, vec![]) {
+        for v in vs {
+            if let Value::Assoc(m) = v {
+                if let Some(id) = get_str(&m, "id").or_else(|| get_str(&m, "name")) {
+                    let hay = format!("{} {} {}", id, get_str(&m, "summary").unwrap_or_default(), get_str(&m, "name").unwrap_or_default()).to_lowercase();
+                    let mut score = 0i64;
+                    if id.to_lowercase()==q { score += 10; }
+                    if hay.contains(&q) { score += 5; }
+                    pool.push((id, score));
+                }
+            }
+        }
+    }
+    pool.sort_by(|a,b| b.1.cmp(&a.1));
+    Value::List(pool.into_iter().take(topk).map(|(id,score)| Value::Assoc(vec![("id".to_string(), Value::String(id)), ("score".to_string(), Value::Integer(score))].into_iter().collect())).collect())
+}
+
 // ToolsInvoke[idOrName, argsAssoc?] -> evaluate head with positional mapping if params provided in spec
 fn tools_invoke(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsInvoke".into())), args } }
@@ -171,4 +240,86 @@ fn tools_invoke(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     let expr = Value::Expr { head: Box::new(Value::Symbol(name)), args: call_args };
     ev.eval(expr)
+}
+
+// ToolsDryRun[id, argsAssoc] -> validation + normalized args + estimates
+fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("ToolsDryRun".into())), args } }
+    let key = match &args[0] { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> match ev.eval(other.clone()) { Value::String(s)|Value::Symbol(s)=>s, _=>String::new() } };
+    let provided = ev.eval(args[1].clone());
+    let reg = tool_reg().lock().unwrap();
+    let spec_opt = reg.get(&key).cloned();
+    let mut normalized: Vec<Value> = Vec::new();
+    let mut missing: Vec<Value> = Vec::new();
+    let mut ok = true;
+    let mut estimates = Value::Assoc(HashMap::new());
+    if let Some(Value::Assoc(m)) = spec_opt {
+        if let Some(Value::Assoc(cost)) = m.get("cost_estimate") { estimates = Value::Assoc(cost.clone()); }
+        let params: Vec<String> = match m.get("params") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).collect(), _=>vec![] };
+        let defaults: HashMap<String, Value> = match m.get("param_defaults") { Some(Value::Assoc(am))=>am.clone(), _=>HashMap::new() };
+        if let Value::Assoc(input) = provided {
+            for p in &params { if let Some(v) = input.get(p) { normalized.push(v.clone()); } else if let Some(v) = defaults.get(p) { normalized.push(v.clone()); } else { ok=false; missing.push(Value::String(p.clone())); normalized.push(Value::Symbol("Null".into())); } }
+        } else if let Value::List(vs) = provided { normalized = vs; }
+    } else {
+        // Unknown spec; pass through
+        normalized = match provided { Value::List(vs)=>vs, Value::Assoc(m)=>vec![Value::Assoc(m)], v=>vec![v] };
+    }
+    Value::Assoc(vec![
+        ("ok".to_string(), Value::Boolean(ok)),
+        ("normalized_args".to_string(), Value::List(normalized)),
+        ("missing".to_string(), Value::List(missing)),
+        ("estimates".to_string(), estimates),
+    ].into_iter().collect())
+}
+
+fn sanitize_name(mut s: String) -> String {
+    if s.is_empty() { return "tool".into(); }
+    s = s.chars().map(|c| if c.is_ascii_alphanumeric() || c=='_' || c=='-' { c } else { '_' }).collect();
+    if s.len()>64 { s.truncate(64); }
+    s
+}
+
+// ToolsExportOpenAI[] -> list of {type:"function", function:{ name, description, parameters }}
+fn tools_export_openai(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsExportOpenAI".into())), args } }
+    let list = match tools_list(ev, vec![]) { Value::List(vs)=>vs, _=>vec![] };
+    let mut out: Vec<Value> = Vec::new();
+    for v in list.into_iter() {
+        if let Value::Assoc(m) = v {
+            let id = get_str(&m, "id").or_else(|| get_str(&m, "name")).unwrap_or_else(|| "tool".into());
+            let name = sanitize_name(get_str(&m, "name").unwrap_or_else(|| id.clone()));
+            let description = get_str(&m, "summary").unwrap_or_default();
+            let params_schema = match m.get("input_schema") { Some(Value::Assoc(s))=>Value::Assoc(s.clone()), _=>{
+                // derive minimal schema from params
+                let mut props: HashMap<String, Value> = HashMap::new();
+                let mut req: Vec<Value> = Vec::new();
+                if let Some(Value::List(vs)) = m.get("params") {
+                    for p in vs.iter().filter_map(value_to_string) { props.insert(p.clone(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("string".into()))]))); req.push(Value::String(p)); }
+                }
+                Value::Assoc(HashMap::from([
+                    ("type".to_string(), Value::String("object".into())),
+                    ("properties".to_string(), Value::Assoc(props)),
+                    ("required".to_string(), Value::List(req)),
+                ]))
+            } };
+            let function = Value::Assoc(HashMap::from([
+                ("name".to_string(), Value::String(name)),
+                ("description".to_string(), Value::String(description)),
+                ("parameters".to_string(), params_schema),
+            ]));
+            out.push(Value::Assoc(HashMap::from([
+                ("type".to_string(), Value::String("function".into())),
+                ("function".to_string(), function),
+                ("id".to_string(), Value::String(id)),
+            ])));
+        }
+    }
+    Value::List(out)
+}
+
+// ToolsExportBundle[] -> all registered specs as a list (machine-cachable)
+fn tools_export_bundle(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsExportBundle".into())), args } }
+    let reg = tool_reg().lock().unwrap();
+    Value::List(reg.values().cloned().collect())
 }
