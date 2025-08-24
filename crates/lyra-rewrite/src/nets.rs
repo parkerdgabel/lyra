@@ -45,19 +45,33 @@ impl PatternNet {
     }
 
     pub fn candidates<'a>(&'a self, expr: &'a Value) -> impl Iterator<Item=usize> + 'a {
+        let mut v: Vec<usize> = Vec::new();
         match expr {
             Value::Expr { head, args } => {
                 if let Value::Symbol(h) = &**head {
-                    let mut v: Vec<usize> = Vec::new();
                     if let Some(xs) = self.by_head_arity.get(&(h.clone(), args.len())) { v.extend(xs.iter().copied()); }
                     if let Some(xs) = self.by_head_any.get(h) { v.extend(xs.iter().copied()); }
-                    v.extend(self.general.iter().copied());
-                    return v.into_iter();
                 }
-                self.general.clone().into_iter()
             }
-            _ => self.general.clone().into_iter(),
+            _ => {}
         }
+        // Wildcard pattern heads that can match any form/value
+        let wildcards = [
+            "Blank",
+            "NamedBlank",
+            "PatternTest",
+            "Condition",
+            "Alternative",
+            "BlankSequence",
+            "NamedBlankSequence",
+            "BlankNullSequence",
+            "NamedBlankNullSequence",
+        ];
+        for w in wildcards.iter() {
+            if let Some(xs) = self.by_head_any.get(&w.to_string()) { v.extend(xs.iter().copied()); }
+        }
+        v.extend(self.general.iter().copied());
+        v.into_iter()
     }
 }
 

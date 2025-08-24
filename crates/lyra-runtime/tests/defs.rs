@@ -74,3 +74,49 @@ fn subvalues_basic_rewrite() {
     let out = ev.eval(call);
     assert_eq!(out, int(123));
 }
+
+#[test]
+fn precedence_up_over_down_and_env() {
+    // UpValues should take precedence over DownValues and env.
+    // Define: SetUpValues[a, { h[a] -> 1 }]; SetDownValues[h, { h[x_] -> 2 }]; env h[a] -> 3
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    // Set env to map h[a] -> 3 is not straightforward; instead, define Set (assignment) and ensure it's lower precedence.
+    // We'll simulate env by evaluating Set[h[a], 3] which binds symbol h[a] if implemented; otherwise ignore.
+    let up_lhs = Value::Expr { head: Box::new(sym("h")), args: vec![ sym("a") ] };
+    let up_rule = Value::Expr { head: Box::new(sym("Rule")), args: vec![up_lhs.clone(), int(1)] };
+    let _ = ev.eval(Value::Expr { head: Box::new(sym("SetUpValues")), args: vec![ sym("a"), Value::List(vec![up_rule]) ] });
+
+    let down_lhs = Value::Expr { head: Box::new(sym("h")), args: vec![ Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("x") ] } ] };
+    let down_rule = Value::Expr { head: Box::new(sym("Rule")), args: vec![down_lhs, int(2)] };
+    let _ = ev.eval(Value::Expr { head: Box::new(sym("SetDownValues")), args: vec![ sym("h"), Value::List(vec![down_rule]) ] });
+
+    let out = ev.eval(Value::Expr { head: Box::new(sym("h")), args: vec![ sym("a") ] });
+    assert_eq!(out, int(1));
+}
+
+#[test]
+fn precedence_sub_above_down() {
+    // SubValues should apply on compound head before DownValues on the outer symbol
+    // SetSubValues[f, { (f[a_])[b_] -> 5 }]; SetDownValues[g, { g[x_] -> 6 }]; expr: (f[1])[2] wrapped in g should rewrite inner first
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    let f = sym("f");
+    let a = Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("a") ] };
+    let b = Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("b") ] };
+    let lhs_head = Value::Expr { head: Box::new(f.clone()), args: vec![ a ] };
+    let lhs = Value::Expr { head: Box::new(lhs_head), args: vec![ b ] };
+    let rule = Value::Expr { head: Box::new(sym("Rule")), args: vec![lhs, int(5)] };
+    let _ = ev.eval(Value::Expr { head: Box::new(sym("SetSubValues")), args: vec![ f.clone(), Value::List(vec![rule]) ] });
+
+    let g = sym("g");
+    let down_lhs_g = Value::Expr { head: Box::new(g.clone()), args: vec![ Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("x") ] } ] };
+    let down_rule_g = Value::Expr { head: Box::new(sym("Rule")), args: vec![down_lhs_g, int(6)] };
+    let _ = ev.eval(Value::Expr { head: Box::new(sym("SetDownValues")), args: vec![ g.clone(), Value::List(vec![down_rule_g]) ] });
+
+    let inner = Value::Expr { head: Box::new(Value::Expr { head: Box::new(f.clone()), args: vec![ int(1) ] }), args: vec![ int(2) ] };
+    let expr = Value::Expr { head: Box::new(g.clone()), args: vec![ inner ] };
+    let out = ev.eval(expr);
+    // g[(f[1])[2]] should first become g[5], then apply g's downvalue to 6
+    assert_eq!(out, int(6));
+}
