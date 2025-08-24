@@ -5,3 +5,5 @@ license.workspace = true
 version.workspace = true
 
 [dependencies]
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-core = { path = "../lyra-core" }
