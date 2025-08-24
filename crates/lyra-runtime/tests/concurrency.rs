@@ -4,6 +4,7 @@ use lyra_core::pretty::format_value;
 use lyra_core::value::Value;
 use lyra_stdlib as stdlib;
 use lyra_runtime::set_default_registrar;
+use std::time::Instant;
 
 fn eval_one(src: &str) -> String {
     let mut p = Parser::from_source(src);
@@ -87,4 +88,25 @@ fn await_unknown_future_failure() {
 fn parallel_table_basic() {
     let s = eval_one("ParallelTable[Times[i,i], {i, 1, 5}]" );
     assert_eq!(s, "{1, 4, 9, 16, 25}");
+}
+
+#[test]
+fn scope_time_budget_exceeded() {
+    let s = eval_one("Scope[<|TimeBudgetMs->10|>, BusyWait[50]]");
+    assert!(s.contains("TimeBudget::exceeded"), "Got: {}", s);
+}
+
+#[test]
+fn scope_max_threads_limits_parallel_table() {
+    // Using BusyWait[20] ~ 100ms per item; with MaxThreads->2 over 6 items => ~3 batches => >= 200ms
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelTable[BusyWait[20], {i,1,6}]]");
+    let vals = p.parse_all().expect("parse");
+    let expr = vals.into_iter().last().unwrap();
+    let start = Instant::now();
+    let _out = ev.eval(expr);
+    let elapsed = start.elapsed();
+    assert!(elapsed.as_millis() >= 150, "Too fast: {:?}", elapsed);
 }

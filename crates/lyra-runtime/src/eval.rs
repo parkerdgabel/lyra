@@ -1,7 +1,8 @@
 use lyra_core::value::Value;
 use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}, Mutex, Condvar};
+use std::time::{Instant, Duration};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
 use std::sync::OnceLock;
@@ -13,12 +14,35 @@ struct TaskInfo {
     cancel: Arc<AtomicBool>,
 }
 
+#[derive(Debug)]
+struct ThreadLimiter {
+    max: usize,
+    in_use: Mutex<usize>,
+    cv: Condvar,
+}
+
+impl ThreadLimiter {
+    fn new(max: usize) -> Self { Self { max, in_use: Mutex::new(0), cv: Condvar::new() } }
+    fn acquire(&self) {
+        let mut guard = self.in_use.lock().unwrap();
+        while *guard >= self.max { guard = self.cv.wait(guard).unwrap(); }
+        *guard += 1;
+    }
+    fn release(&self) {
+        let mut guard = self.in_use.lock().unwrap();
+        if *guard > 0 { *guard -= 1; }
+        self.cv.notify_one();
+    }
+}
+
 pub struct Evaluator {
     builtins: HashMap<String, (NativeFn, Attributes)>,
     env: HashMap<String, Value>,
     tasks: HashMap<i64, TaskInfo>, // minimal future registry
     next_task_id: i64,
     cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
+    thread_limiter: Option<Arc<ThreadLimiter>>, // scope-wide thread budget
+    deadline: Option<Instant>, // scope-wide deadline
     trace_enabled: bool,
     trace_steps: Vec<Value>,
 }
@@ -31,7 +55,7 @@ pub fn set_default_registrar(f: fn(&mut Evaluator)) {
 
 impl Evaluator {
     pub fn new() -> Self {
-        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, trace_enabled: false, trace_steps: Vec::new() };
+        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, thread_limiter: None, deadline: None, trace_enabled: false, trace_steps: Vec::new() };
         if let Some(f) = DEFAULT_REGISTRAR.get().copied() { f(&mut ev); }
         ev
     }
@@ -46,6 +70,7 @@ impl Evaluator {
 
     pub fn eval(&mut self, v: Value) -> Value {
         if let Some(tok) = &self.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
+        if let Some(dl) = self.deadline { if Instant::now() > dl { return time_budget_failure(); } }
         match v {
             Value::Expr { head, args } => {
                 let head_eval = self.eval(*head);
@@ -192,6 +217,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
     ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
     ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
+    ev.register("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
 }
 
 pub fn register_explain(ev: &mut Evaluator) {
@@ -245,11 +271,18 @@ fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let env_snapshot = ev.env.clone();
     let id = ev.next_task_id;
     ev.next_task_id += 1;
-    let token = Arc::new(AtomicBool::new(false));
+    let token = ev.cancel_token.clone().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     let tok2 = token.clone();
+    let limiter = ev.thread_limiter.clone();
+    let deadline = ev.deadline;
     let handle = thread::spawn(move || {
+        if let Some(l) = limiter.as_ref() { l.acquire(); }
         let mut ev2 = Evaluator::with_env_and_token(env_snapshot, tok2);
-        ev2.eval(expr)
+        ev2.thread_limiter = limiter;
+        ev2.deadline = deadline;
+        let out = ev2.eval(expr);
+        if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+        out
     });
     ev.tasks.insert(id, TaskInfo { handle, cancel: token });
     Value::Expr { head: Box::new(Value::Symbol("FutureId".into())), args: vec![Value::Integer(id)] }
@@ -303,6 +336,13 @@ fn cancelled_failure() -> Value {
     Value::Assoc(vec![
         ("message".to_string(), Value::String("Computation cancelled".into())),
         ("tag".to_string(), Value::String("Cancel::abort".into())),
+    ].into_iter().collect())
+}
+
+fn time_budget_failure() -> Value {
+    Value::Assoc(vec![
+        ("message".to_string(), Value::String("Time budget exceeded".into())),
+        ("tag".to_string(), Value::String("TimeBudget::exceeded".into())),
     ].into_iter().collect())
 }
 
@@ -363,15 +403,26 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
     // Spawn per iteration (naive); each thread gets its own evaluator with env snapshot and bound variable
     let env_snapshot = ev.env.clone();
+    let limiter = ev.thread_limiter.clone();
+    let token = ev.cancel_token.clone();
+    let deadline = ev.deadline;
     let mut handles: Vec<JoinHandle<Value>> = Vec::with_capacity(values.len());
     for iv in values.into_iter() {
         let expr_cl = expr.clone();
         let var = var_name.clone();
         let env_cl = env_snapshot.clone();
+        let limiter_cl = limiter.clone();
+        let token_cl = token.clone();
+        let deadline_cl = deadline;
         handles.push(thread::spawn(move || {
-            let mut ev2 = Evaluator::with_env(env_cl);
+            if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
+            let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(env_cl, tok) } else { Evaluator::with_env(env_cl) };
+            ev2.thread_limiter = limiter_cl;
+            ev2.deadline = deadline_cl;
             ev2.env.insert(var, Value::Integer(iv));
-            ev2.eval(expr_cl)
+            let out = ev2.eval(expr_cl);
+            if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+            out
         }));
     }
     let mut out: Vec<Value> = Vec::new();
@@ -400,6 +451,7 @@ fn busy_wait(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     for _ in 0..cycles {
         if let Some(tok) = &ev.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
+        if let Some(dl) = ev.deadline { if Instant::now() > dl { return time_budget_failure(); } }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     Value::Symbol("Done".into())
@@ -454,6 +506,21 @@ fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args } }
     let v = ev.eval(args[0].clone());
     schema_of(&v)
+}
+
+// Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]
+fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Scope".into())), args } }
+    let opts = ev.eval(args[0].clone());
+    let body = args[1].clone();
+    // New evaluator inheriting env; establish a scope token
+    let mut ev2 = Evaluator::with_env(ev.env.clone());
+    ev2.cancel_token = Some(Arc::new(AtomicBool::new(false)));
+    if let Value::Assoc(m) = opts {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+    }
+    ev2.eval(body)
 }
 
 fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
