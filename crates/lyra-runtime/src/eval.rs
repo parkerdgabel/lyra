@@ -91,6 +91,17 @@ impl Evaluator {
         ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
         ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
         ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
+        ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+        ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+        ev.register("StringTrim", string_trim as NativeFn, Attributes::LISTABLE);
+        ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
+        ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
+        ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
+        ev.register("EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
+        ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
+        ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
+        ev.register("StringPadLeft", string_pad_left as NativeFn, Attributes::LISTABLE);
+        ev.register("StringPadRight", string_pad_right as NativeFn, Attributes::LISTABLE);
         // Echo helpers for attribute tests
         ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
         ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
@@ -122,11 +133,36 @@ impl Evaluator {
                 let (fun, attrs) = match self.builtins.get(&fname) { Some(t) => (t.0, t.1), None => return Value::Expr { head: Box::new(Value::Symbol(fname)), args } };
                 if attrs.contains(Attributes::LISTABLE) {
                     if args.iter().any(|a| matches!(a, Value::List(_))) {
-                        if self.trace_enabled { self.trace_steps.push(step_assoc("ListableThread", &head_eval)); }
+                        if self.trace_enabled {
+                            let count = args.iter().filter_map(|a| if let Value::List(v)=a { Some(v.len() as i64) } else { None }).max().unwrap_or(0);
+                            let arg_lens: Vec<Value> = args.iter().map(|a| match a { Value::List(v)=>Value::Integer(v.len() as i64), _=>Value::Integer(0) }).collect();
+                            self.trace_steps.push(Value::Assoc(vec![
+                                ("action".to_string(), Value::String("ListableThread".into())),
+                                ("head".to_string(), head_eval.clone()),
+                                ("count".to_string(), Value::Integer(count)),
+                                ("argLens".to_string(), Value::List(arg_lens)),
+                            ].into_iter().collect()));
+                        }
                         return listable_thread(self, fun, args);
                     }
                 }
                 // Evaluate arguments respecting Hold* attributes
+                if self.trace_enabled {
+                    let held: Vec<i64> = if attrs.contains(Attributes::HOLD_ALL) {
+                        (1..=args.len()).map(|i| i as i64).collect()
+                    } else if attrs.contains(Attributes::HOLD_FIRST) {
+                        if args.is_empty() { vec![] } else { vec![1] }
+                    } else if attrs.contains(Attributes::HOLD_REST) {
+                        if args.len()<=1 { vec![] } else { (2..=args.len()).map(|i| i as i64).collect() }
+                    } else { vec![] };
+                    if !held.is_empty() {
+                        self.trace_steps.push(Value::Assoc(vec![
+                            ("action".to_string(), Value::String("Hold".into())),
+                            ("head".to_string(), head_eval.clone()),
+                            ("held".to_string(), Value::List(held.into_iter().map(Value::Integer).collect())),
+                        ].into_iter().collect()));
+                    }
+                }
                 let mut eval_args: Vec<Value> = if attrs.contains(Attributes::HOLD_ALL) {
                     args
                 } else if attrs.contains(Attributes::HOLD_FIRST) {
@@ -152,7 +188,13 @@ impl Evaluator {
                     for a in eval_args.into_iter() {
                         if let Value::Expr { head: h2, args: a2 } = &a {
                             if matches!(&**h2, Value::Symbol(s) if s == &fname) {
-                                if self.trace_enabled { self.trace_steps.push(step_assoc("FlatFlatten", &head_eval)); }
+                                if self.trace_enabled {
+                                    self.trace_steps.push(Value::Assoc(vec![
+                                        ("action".to_string(), Value::String("FlatFlatten".into())),
+                                        ("head".to_string(), head_eval.clone()),
+                                        ("added".to_string(), Value::Integer(a2.len() as i64)),
+                                    ].into_iter().collect()));
+                                }
                                 flat.extend(a2.clone());
                                 continue;
                             }
@@ -163,8 +205,14 @@ impl Evaluator {
                 }
                 // Orderless: canonical sort of args
                 if attrs.contains(Attributes::ORDERLESS) {
-                    if self.trace_enabled { self.trace_steps.push(step_assoc("OrderlessSort", &head_eval)); }
                     eval_args.sort_by(|x,y| value_order(x).cmp(&value_order(y)));
+                    if self.trace_enabled {
+                        self.trace_steps.push(Value::Assoc(vec![
+                            ("action".to_string(), Value::String("OrderlessSort".into())),
+                            ("head".to_string(), head_eval.clone()),
+                            ("finalOrder".to_string(), Value::List(eval_args.clone())),
+                        ].into_iter().collect()));
+                    }
                 }
                 fun(self, eval_args)
             }
@@ -464,12 +512,236 @@ fn string_join(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn string_split(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => {
+            let parts: Vec<Value> = s.split_whitespace().map(|p| Value::String(p.to_string())).collect();
+            Value::List(parts)
+        }
+        [Value::String(s), Value::String(d)] => {
+            if d.is_empty() {
+                Value::List(s.chars().map(|c| Value::String(c.to_string())).collect())
+            } else {
+                Value::List(s.split(d).map(|p| Value::String(p.to_string())).collect())
+            }
+        }
+        [a] => match ev.eval(a.clone()) { Value::String(s)=> Value::List(s.split_whitespace().map(|p| Value::String(p.to_string())).collect()), v=> Value::Expr { head: Box::new(Value::Symbol("StringSplit".into())), args: vec![v] } },
+        [a, b] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone());
+            match (aa, bb) {
+                (Value::String(s), Value::String(d)) => {
+                    if d.is_empty() { Value::List(s.chars().map(|c| Value::String(c.to_string())).collect()) }
+                    else { Value::List(s.split(&d).map(|p| Value::String(p.to_string())).collect()) }
+                }
+                (aa, bb) => Value::Expr { head: Box::new(Value::Symbol("StringSplit".into())), args: vec![aa, bb] }
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringSplit".into())), args },
+    }
+}
+
+fn starts_with(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::String(p)] => Value::Boolean(s.starts_with(p)),
+        [a, b] => { let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); match (aa, bb) { (Value::String(s), Value::String(p)) => Value::Boolean(s.starts_with(&p)), (aa, bb) => Value::Expr { head: Box::new(Value::Symbol("StartsWith".into())), args: vec![aa, bb] } } }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StartsWith".into())), args },
+    }
+}
+
+fn ends_with(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::String(p)] => Value::Boolean(s.ends_with(p)),
+        [a, b] => { let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); match (aa, bb) { (Value::String(s), Value::String(p)) => Value::Boolean(s.ends_with(&p)), (aa, bb) => Value::Expr { head: Box::new(Value::Symbol("EndsWith".into())), args: vec![aa, bb] } } }
+        _ => Value::Expr { head: Box::new(Value::Symbol("EndsWith".into())), args },
+    }
+}
+
+fn string_replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::String(from), Value::String(to)] => Value::String(s.replace(from, to)),
+        [a, b, c] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); let cc = ev.eval(c.clone());
+            match (aa, bb, cc) {
+                (Value::String(s), Value::String(from), Value::String(to)) => Value::String(s.replace(&from, &to)),
+                (aa, bb, cc) => Value::Expr { head: Box::new(Value::Symbol("StringReplace".into())), args: vec![aa, bb, cc] }
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringReplace".into())), args },
+    }
+}
+
+fn string_reverse(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::String(s.chars().rev().collect()),
+        [other] => match ev.eval(other.clone()) { Value::String(s)=> Value::String(s.chars().rev().collect()), v => Value::Expr { head: Box::new(Value::Symbol("StringReverse".into())), args: vec![v] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringReverse".into())), args },
+    }
+}
+
+fn get_first_char(s: &str) -> char { s.chars().next().unwrap_or(' ') }
+
+fn string_pad_left(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::Integer(n)] => {
+            let width = *n as usize;
+            let len = s.chars().count();
+            if len >= width { return Value::String(s.clone()); }
+            let padc = ' ';
+            let pads = std::iter::repeat(padc).take(width - len).collect::<String>();
+            Value::String(format!("{}{}", pads, s))
+        }
+        [Value::String(s), Value::Integer(n), Value::String(p)] => {
+            let width = *n as usize;
+            let len = s.chars().count();
+            if len >= width { return Value::String(s.clone()); }
+            let padc = get_first_char(p);
+            let pads = std::iter::repeat(padc).take(width - len).collect::<String>();
+            Value::String(format!("{}{}", pads, s))
+        }
+        [a, b] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone());
+            string_pad_left(ev, vec![aa, bb])
+        }
+        [a, b, c] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); let cc = ev.eval(c.clone());
+            string_pad_left(ev, vec![aa, bb, cc])
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringPadLeft".into())), args },
+    }
+}
+
+fn string_pad_right(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::Integer(n)] => {
+            let width = *n as usize;
+            let len = s.chars().count();
+            if len >= width { return Value::String(s.clone()); }
+            let padc = ' ';
+            let pads = std::iter::repeat(padc).take(width - len).collect::<String>();
+            Value::String(format!("{}{}", s, pads))
+        }
+        [Value::String(s), Value::Integer(n), Value::String(p)] => {
+            let width = *n as usize;
+            let len = s.chars().count();
+            if len >= width { return Value::String(s.clone()); }
+            let padc = get_first_char(p);
+            let pads = std::iter::repeat(padc).take(width - len).collect::<String>();
+            Value::String(format!("{}{}", s, pads))
+        }
+        [a, b] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone());
+            string_pad_right(ev, vec![aa, bb])
+        }
+        [a, b, c] => {
+            let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); let cc = ev.eval(c.clone());
+            string_pad_right(ev, vec![aa, bb, cc])
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringPadRight".into())), args },
+    }
+}
+
+fn string_trim(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::String(s.trim().to_string()),
+        [other] => match ev.eval(other.clone()) { Value::String(s)=>Value::String(s.trim().to_string()), v=> Value::Expr { head: Box::new(Value::Symbol("StringTrim".into())), args: vec![v] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringTrim".into())), args },
+    }
+}
+
+fn string_contains(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s), Value::String(sub)] => Value::Boolean(s.contains(sub)),
+        [a, b] => {
+            let aa = ev.eval(a.clone());
+            let bb = ev.eval(b.clone());
+            match (aa, bb) {
+                (Value::String(s), Value::String(sub)) => Value::Boolean(s.contains(&sub)),
+                (aa, bb) => Value::Expr { head: Box::new(Value::Symbol("StringContains".into())), args: vec![aa, bb] }
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringContains".into())), args },
+    }
+}
+
 fn abs_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [Value::Integer(n)] => Value::Integer(n.abs()),
         [Value::Real(x)] => Value::Real(x.abs()),
         _ => Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args },
     }
+}
+
+fn min_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Support Min[list] and Min[a,b,...]; numeric only for now
+    if args.len()==1 {
+        match ev.eval(args[0].clone()) {
+            Value::List(items) => return min_over_iter(items.into_iter()),
+            other => return Value::Expr { head: Box::new(Value::Symbol("Min".into())), args: vec![other] },
+        }
+    }
+    let evald: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
+    min_over_iter(evald.into_iter())
+}
+
+fn max_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()==1 {
+        match ev.eval(args[0].clone()) {
+            Value::List(items) => return max_over_iter(items.into_iter()),
+            other => return Value::Expr { head: Box::new(Value::Symbol("Max".into())), args: vec![other] },
+        }
+    }
+    let evald: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
+    max_over_iter(evald.into_iter())
+}
+
+fn min_over_iter<I: Iterator<Item=Value>>(iter: I) -> Value {
+    let mut have = false;
+    let mut use_real = false;
+    let mut cur_i: i64 = 0;
+    let mut cur_f: f64 = 0.0;
+    for v in iter {
+        match v {
+            Value::Integer(n) => {
+                if !have { have=true; cur_i=n; cur_f=n as f64; }
+                else {
+                    if use_real { if (n as f64) < cur_f { cur_f = n as f64; } }
+                    else if n < cur_i { cur_i = n; }
+                }
+            }
+            Value::Real(x) => {
+                if !have { have=true; cur_f=x; cur_i=x as i64; use_real=true; }
+                else { use_real=true; if x < cur_f { cur_f = x; } }
+            }
+            other => return Value::Expr { head: Box::new(Value::Symbol("Min".into())), args: vec![other] },
+        }
+    }
+    if !have { Value::Expr { head: Box::new(Value::Symbol("Min".into())), args: vec![] } }
+    else if use_real { Value::Real(cur_f) } else { Value::Integer(cur_i) }
+}
+
+fn max_over_iter<I: Iterator<Item=Value>>(iter: I) -> Value {
+    let mut have = false;
+    let mut use_real = false;
+    let mut cur_i: i64 = 0;
+    let mut cur_f: f64 = 0.0;
+    for v in iter {
+        match v {
+            Value::Integer(n) => {
+                if !have { have=true; cur_i=n; cur_f=n as f64; }
+                else {
+                    if use_real { if (n as f64) > cur_f { cur_f = n as f64; } }
+                    else if n > cur_i { cur_i = n; }
+                }
+            }
+            Value::Real(x) => {
+                if !have { have=true; cur_f=x; cur_i=x as i64; use_real=true; }
+                else { use_real=true; if x > cur_f { cur_f = x; } }
+            }
+            other => return Value::Expr { head: Box::new(Value::Symbol("Max".into())), args: vec![other] },
+        }
+    }
+    if !have { Value::Expr { head: Box::new(Value::Symbol("Max".into())), args: vec![] } }
+    else if use_real { Value::Real(cur_f) } else { Value::Integer(cur_i) }
 }
 
 fn length(ev: &mut Evaluator, args: Vec<Value>) -> Value {

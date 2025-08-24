@@ -197,3 +197,15 @@ Appendix B — Explain[expr] Minimal Contract
 - Returns <|steps: List[Assoc], algorithm?: String, provider?: String, estCost?: Assoc|>.
 - Steps include: rule matches, attribute actions (Hold/Listable), provider/lowering notes.
 
+Tiny example (current prototype):
+
+```
+Explain[Plus[{1,2,3}, 10]]
+=> <|"steps" -> {<|"action" -> "ListableThread", "head" -> Plus, "count" -> 3|>},
+      "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
+
+Explain[OrderlessEcho[c, a, b]]
+=> <|"steps" -> {<|"action" -> "OrderlessSort", "head" -> OrderlessEcho,
+                  "finalOrder" -> {a, b, c}|>},
+      "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
+```

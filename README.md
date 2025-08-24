@@ -110,7 +110,7 @@ cargo run -- repl
 
 - `?help` — show quick help and examples
 - `?Plus` — short doc for a builtin (try `?Schema`, `?Explain`)
-- `Explain[expr]` — returns a minimal trace stub (for now)
+- `Explain[expr]` — returns a trace with steps (action, head, extras)
 - `Schema[<|"a"->1|>]` — returns a minimal schema association
 
 Examples:
@@ -123,8 +123,14 @@ Lyra REPL help
   - Expressions use f[x, y], {a, b}, <|k->v|>
   - Try: Explain[Plus[1, 2]] or Schema[<|"a"->1|>]
 
-> Explain[Plus[1,2]]
-<|"steps" -> {}, "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
+> Explain[Plus[{1,2,3}, 10]]
+<|"steps" -> {<|"action" -> "ListableThread", "head" -> Plus, "count" -> 3|>},
+  "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
+
+> Explain[OrderlessEcho[c, a, b]]
+<|"steps" -> {<|"action" -> "OrderlessSort", "head" -> OrderlessEcho,
+                "finalOrder" -> {a, b, c}|>},
+  "algorithm" -> "stub", "provider" -> "cpu", "estCost" -> <||>|>
 
 > Schema[<|"a"->1|>]
 <|"name" -> "Association/v1", "keys" -> {"a"}|>

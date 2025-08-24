@@ -3,7 +3,7 @@ members = [
   "crates/lyra-core",
   "crates/lyra-parser",
   "crates/lyra-repl",
-  "crates/lyra-runtime",
+  "crates/lyra-runtime", "crates/lyra-stdlib",
 ]
 resolver = "2"
 
