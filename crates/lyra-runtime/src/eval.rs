@@ -8,6 +8,8 @@ use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
 use std::sync::OnceLock;
 use std::collections::VecDeque;
+use std::cell::RefCell;
+use std::ops::Deref;
 use lyra_rewrite::defs::{DefinitionStore, DefKind};
 use lyra_rewrite::rule::{Rule, RuleSet};
 
@@ -58,6 +60,14 @@ where F: FnOnce() -> Value + Send + 'static {
     let _ = thread_pool().tx.send(job);
     rx
 }
+
+// Thread-local Explain capture for matcher predicate/condition evaluation
+thread_local! {
+    static TRACE_BUF: RefCell<Vec<Value>> = RefCell::new(Vec::new());
+}
+
+fn trace_push_step(step: Value) { TRACE_BUF.with(|b| b.borrow_mut().push(step)); }
+fn trace_drain_steps() -> Vec<Value> { TRACE_BUF.with(|b| std::mem::take(&mut *b.borrow_mut())) }
 
 // Bounded channels
 struct ChannelQueue {
@@ -178,11 +188,46 @@ impl Evaluator {
                                 if !rs.is_empty() {
                                     let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
                                     let expr0 = Value::Expr { head: Box::new(head_eval.clone()), args: args.clone() };
-                                    let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&lyra_rewrite::matcher::MatcherCtx::default(), expr0.clone(), &rules);
+                                    // Build closures for conditions/pattern tests
+                                    let env_snapshot = self.env.clone();
+                                    let pred = |pred: &Value, arg: &Value| {
+                                        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                                        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                                        let res = matches!(ev2.eval(call), Value::Boolean(true));
+                                        let data = Value::Assoc(vec![
+                                            ("pred".to_string(), pred.clone()),
+                                            ("arg".to_string(), arg.clone()),
+                                            ("result".to_string(), Value::Boolean(res)),
+                                        ].into_iter().collect());
+                                        trace_push_step(Value::Assoc(vec![
+                                            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                            ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                            ("data".to_string(), data),
+                                        ].into_iter().collect()));
+                                        res
+                                    };
+                                    let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                                        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                                        let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+                                        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                                        let data = Value::Assoc(vec![
+                                            ("expr".to_string(), cond_sub),
+                                            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                            ("result".to_string(), Value::Boolean(res)),
+                                        ].into_iter().collect());
+                                        trace_push_step(Value::Assoc(vec![
+                                            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                            ("head".to_string(), Value::Symbol("Condition".into())),
+                                            ("data".to_string(), data),
+                                        ].into_iter().collect()));
+                                        res
+                                    };
+                                    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+                                    let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
                                     if out != expr0 {
                                         if self.trace_enabled {
                                             for (lhs, rhs) in &rules {
-                                                if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
+                                                if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
                                                     let data = Value::Assoc(vec![
                                                         ("lhs".to_string(), lhs.clone()),
                                                         ("rhs".to_string(), rhs.clone()),
@@ -195,6 +240,7 @@ impl Evaluator {
                                                     break;
                                                 }
                                             }
+                                            self.trace_steps.extend(trace_drain_steps());
                                         }
                                         return self.eval(out);
                                     }
@@ -223,8 +269,43 @@ impl Evaluator {
                     }
                     if !up_rules.is_empty() {
                         // Deterministic precedence: linear scan in collected order
+                        // Build closures for Condition/PatternTest
+                        let env_snapshot = self.env.clone();
+                        let pred = |pred: &Value, arg: &Value| {
+                            let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                            let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                            let res = matches!(ev2.eval(call), Value::Boolean(true));
+                            let data = Value::Assoc(vec![
+                                ("pred".to_string(), pred.clone()),
+                                ("arg".to_string(), arg.clone()),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ].into_iter().collect());
+                            trace_push_step(Value::Assoc(vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                ("data".to_string(), data),
+                            ].into_iter().collect()));
+                            res
+                        };
+                        let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                            let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                            let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+                            let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                            let data = Value::Assoc(vec![
+                                ("expr".to_string(), cond_sub),
+                                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ].into_iter().collect());
+                            trace_push_step(Value::Assoc(vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("Condition".into())),
+                                ("data".to_string(), data),
+                            ].into_iter().collect()));
+                            res
+                        };
+                        let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
                         for (lhs, rhs) in &up_rules {
-                            if let Some(_b) = lyra_rewrite::matcher::match_rule(lhs, &expr0) {
+                            if let Some(b) = lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0) {
                                 if self.trace_enabled {
                                     let data = Value::Assoc(vec![
                                         ("lhs".to_string(), lhs.clone()),
@@ -236,7 +317,8 @@ impl Evaluator {
                                         ("data".to_string(), data),
                                     ].into_iter().collect()));
                                 }
-                                let out = lyra_rewrite::matcher::substitute_named(rhs, &lyra_rewrite::matcher::match_rule(lhs, &expr0).unwrap());
+                                let out = lyra_rewrite::matcher::substitute_named(rhs, &b);
+                                if self.trace_enabled { self.trace_steps.extend(trace_drain_steps()); }
                                 return self.eval(out);
                             }
                         }
@@ -247,12 +329,47 @@ impl Evaluator {
                     if !rs.is_empty() {
                         let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
                         let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.clone())), args: args.clone() };
-                        let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&lyra_rewrite::matcher::MatcherCtx::default(), expr0.clone(), &rules);
+                        // Build closures to evaluate conditions/pattern tests and record Explain
+                        let env_snapshot = self.env.clone();
+                        let pred = |pred: &Value, arg: &Value| {
+                            let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                            let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                            let res = matches!(ev2.eval(call), Value::Boolean(true));
+                            let data = Value::Assoc(vec![
+                                ("pred".to_string(), pred.clone()),
+                                ("arg".to_string(), arg.clone()),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ].into_iter().collect());
+                            trace_push_step(Value::Assoc(vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                ("data".to_string(), data),
+                            ].into_iter().collect()));
+                            res
+                        };
+                        let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                            let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                            let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+                            let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                            let data = Value::Assoc(vec![
+                                ("expr".to_string(), cond_sub),
+                                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ].into_iter().collect());
+                            trace_push_step(Value::Assoc(vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("Condition".into())),
+                                ("data".to_string(), data),
+                            ].into_iter().collect()));
+                            res
+                        };
+                        let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+                        let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
                         if out != expr0 {
                             if self.trace_enabled {
                                 // Note: For simplicity, we re-scan rules to find the first matching lhs for trace
                                 for (lhs, rhs) in &rules {
-                                    if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
+                                    if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
                                         let data = Value::Assoc(vec![
                                             ("lhs".to_string(), lhs.clone()),
                                             ("rhs".to_string(), rhs.clone()),
@@ -265,6 +382,7 @@ impl Evaluator {
                                         break;
                                     }
                                 }
+                                self.trace_steps.extend(trace_drain_steps());
                             }
                             return self.eval(out);
                         }
@@ -1378,20 +1496,43 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     }
                 }
             }
-            // Build matcher context with closures that evaluate predicates/conditions
+            // Build matcher context with closures that evaluate predicates/conditions and push Explain steps
             let env_snapshot = ev.env.clone();
             let pred = |pred: &Value, arg: &Value| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
-                matches!(ev2.eval(call), Value::Boolean(true))
+                let res = matches!(ev2.eval(call), Value::Boolean(true));
+                let data = Value::Assoc(vec![
+                    ("pred".to_string(), pred.clone()),
+                    ("arg".to_string(), arg.clone()),
+                    ("result".to_string(), Value::Boolean(res)),
+                ].into_iter().collect());
+                trace_push_step(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                    ("head".to_string(), Value::Symbol("PatternTest".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+                res
             };
             let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
-                matches!(ev2.eval(cond_sub), Value::Boolean(true))
+                let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                let data = Value::Assoc(vec![
+                    ("expr".to_string(), cond_sub),
+                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                    ("result".to_string(), Value::Boolean(res)),
+                ].into_iter().collect());
+                trace_push_step(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                    ("head".to_string(), Value::Symbol("Condition".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+                res
             };
             let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
             let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, target, &rules);
+            if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
             return ev.eval(out);
         }
         [expr, rules_v, Value::Integer(n)] => {
@@ -1402,15 +1543,38 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let pred = |pred: &Value, arg: &Value| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
-                matches!(ev2.eval(call), Value::Boolean(true))
+                let res = matches!(ev2.eval(call), Value::Boolean(true));
+                let data = Value::Assoc(vec![
+                    ("pred".to_string(), pred.clone()),
+                    ("arg".to_string(), arg.clone()),
+                    ("result".to_string(), Value::Boolean(res)),
+                ].into_iter().collect());
+                trace_push_step(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                    ("head".to_string(), Value::Symbol("PatternTest".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+                res
             };
             let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
-                matches!(ev2.eval(cond_sub), Value::Boolean(true))
+                let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                let data = Value::Assoc(vec![
+                    ("expr".to_string(), cond_sub),
+                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                    ("result".to_string(), Value::Boolean(res)),
+                ].into_iter().collect());
+                trace_push_step(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                    ("head".to_string(), Value::Symbol("Condition".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+                res
             };
             let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
             let out = lyra_rewrite::engine::rewrite_with_limit_with_ctx(&ctx, target, &rules, limit);
+            if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
             return ev.eval(out);
         }
         _ => Value::Expr { head: Box::new(Value::Symbol("Replace".into())), args },
@@ -1425,15 +1589,38 @@ fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let pred = |pred: &Value, arg: &Value| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
-        matches!(ev2.eval(call), Value::Boolean(true))
+        let res = matches!(ev2.eval(call), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("pred".to_string(), pred.clone()),
+            ("arg".to_string(), arg.clone()),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("PatternTest".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
     };
     let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
-        matches!(ev2.eval(cond_sub), Value::Boolean(true))
+        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("expr".to_string(), cond_sub),
+            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("Condition".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
     let out = lyra_rewrite::engine::rewrite_all_with_ctx(&ctx, target, &rules);
+    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
     return ev.eval(out);
 }
 
@@ -1446,15 +1633,38 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let pred = |pred: &Value, arg: &Value| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
-        matches!(ev2.eval(call), Value::Boolean(true))
+        let res = matches!(ev2.eval(call), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("pred".to_string(), pred.clone()),
+            ("arg".to_string(), arg.clone()),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("PatternTest".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
     };
     let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
-        matches!(ev2.eval(cond_sub), Value::Boolean(true))
+        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("expr".to_string(), cond_sub),
+            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("Condition".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
     let out = lyra_rewrite::engine::rewrite_with_limit_with_ctx(&ctx, target, &rules, limit);
+    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
     return ev.eval(out);
 }
 
