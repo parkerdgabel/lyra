@@ -25,87 +25,7 @@ pub struct Evaluator {
 impl Evaluator {
     pub fn new() -> Self {
         let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, trace_enabled: false, trace_steps: Vec::new() };
-        ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
-        ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
-        ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
-        ev.register("Divide", divide as NativeFn, Attributes::LISTABLE);
-        ev.register("Power", power as NativeFn, Attributes::empty());
-        ev.register("Map", map as NativeFn, Attributes::empty());
-        ev.register("If", iff as NativeFn, Attributes::HOLD_REST);
-        ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
-        ev.register("Less", less as NativeFn, Attributes::LISTABLE);
-        ev.register("LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
-        ev.register("Greater", greater as NativeFn, Attributes::LISTABLE);
-        ev.register("GreaterEqual", greater_equal as NativeFn, Attributes::LISTABLE);
-        ev.register("And", and_fn as NativeFn, Attributes::empty());
-        ev.register("Or", or_fn as NativeFn, Attributes::empty());
-        ev.register("Not", not_fn as NativeFn, Attributes::empty());
-        // List/Assoc utilities
-        ev.register("Apply", apply as NativeFn, Attributes::empty());
-        ev.register("Total", total as NativeFn, Attributes::empty());
-        ev.register("Fold", fold as NativeFn, Attributes::empty());
-        ev.register("Select", select as NativeFn, Attributes::empty());
-        ev.register("Filter", select as NativeFn, Attributes::empty());
-        ev.register("Keys", keys as NativeFn, Attributes::empty());
-        ev.register("Values", values as NativeFn, Attributes::empty());
-        ev.register("Lookup", lookup as NativeFn, Attributes::empty());
-        ev.register("AssociationMap", association_map as NativeFn, Attributes::empty());
-        ev.register("AssociationMapKeys", association_map_keys as NativeFn, Attributes::empty());
-        ev.register("AssociationMapKV", association_map_kv as NativeFn, Attributes::empty());
-        ev.register("AssociationMapPairs", association_map_pairs as NativeFn, Attributes::empty());
-        ev.register("Merge", merge as NativeFn, Attributes::empty());
-        ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
-        ev.register("SortBy", sort_by as NativeFn, Attributes::empty());
-        ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
-        ev.register("Flatten", flatten as NativeFn, Attributes::empty());
-        ev.register("Thread", thread as NativeFn, Attributes::HOLD_ALL);
-        ev.register("Partition", partition as NativeFn, Attributes::empty());
-        ev.register("Transpose", transpose as NativeFn, Attributes::empty());
-        ev.register("Replace", replace as NativeFn, Attributes::HOLD_ALL);
-        ev.register("ReplaceAll", replace_all_fn as NativeFn, Attributes::HOLD_ALL);
-        ev.register("ReplaceFirst", replace_first as NativeFn, Attributes::HOLD_ALL);
-        ev.register("Set", set_fn as NativeFn, Attributes::HOLD_ALL);
-        ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
-        // Concurrency primitives (minimal Phase 1)
-        ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
-        ev.register("Await", await_fn as NativeFn, Attributes::empty());
-        ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
-        ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
-        ev.register("Gather", gather as NativeFn, Attributes::empty());
-        ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
-        ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
-        ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
-        // Phase 0 additions
-        ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
-        ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
-        // Stdlib v0 extras
-        ev.register("Length", length as NativeFn, Attributes::empty());
-        ev.register("Range", range as NativeFn, Attributes::empty());
-        ev.register("Join", join as NativeFn, Attributes::empty());
-        ev.register("Reverse", reverse as NativeFn, Attributes::empty());
-        // Small stdlib v0 helpers
-        ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
-        ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
-        ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
-        ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
-        ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
-        ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
-        ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
-        ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
-        ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
-        ev.register("StringTrim", string_trim as NativeFn, Attributes::LISTABLE);
-        ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
-        ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
-        ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
-        ev.register("EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
-        ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
-        ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
-        ev.register("StringPadLeft", string_pad_left as NativeFn, Attributes::LISTABLE);
-        ev.register("StringPadRight", string_pad_right as NativeFn, Attributes::LISTABLE);
-        // Echo helpers for attribute tests
-        ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
-        ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
-        ev.register("FlatOrderlessEcho", flat_orderless_echo as NativeFn, Attributes::FLAT | Attributes::ORDERLESS | Attributes::HOLD_ALL);
+        register_compat_prelude(&mut ev);
         ev
     }
 
@@ -222,6 +142,91 @@ impl Evaluator {
             other => other,
         }
     }
+}
+
+// Temporary: compatibility registration (to be removed once stdlib migration completes)
+pub fn register_compat_prelude(ev: &mut Evaluator) {
+    ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
+    ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
+    ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
+    ev.register("Divide", divide as NativeFn, Attributes::LISTABLE);
+    ev.register("Power", power as NativeFn, Attributes::empty());
+    ev.register("Map", map as NativeFn, Attributes::empty());
+    ev.register("If", iff as NativeFn, Attributes::HOLD_REST);
+    ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
+    ev.register("Less", less as NativeFn, Attributes::LISTABLE);
+    ev.register("LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
+    ev.register("Greater", greater as NativeFn, Attributes::LISTABLE);
+    ev.register("GreaterEqual", greater_equal as NativeFn, Attributes::LISTABLE);
+    ev.register("And", and_fn as NativeFn, Attributes::empty());
+    ev.register("Or", or_fn as NativeFn, Attributes::empty());
+    ev.register("Not", not_fn as NativeFn, Attributes::empty());
+    // List/Assoc utilities
+    ev.register("Apply", apply as NativeFn, Attributes::empty());
+    ev.register("Total", total as NativeFn, Attributes::empty());
+    ev.register("Fold", fold as NativeFn, Attributes::empty());
+    ev.register("Select", select as NativeFn, Attributes::empty());
+    ev.register("Filter", select as NativeFn, Attributes::empty());
+    ev.register("Keys", keys as NativeFn, Attributes::empty());
+    ev.register("Values", values as NativeFn, Attributes::empty());
+    ev.register("Lookup", lookup as NativeFn, Attributes::empty());
+    ev.register("AssociationMap", association_map as NativeFn, Attributes::empty());
+    ev.register("AssociationMapKeys", association_map_keys as NativeFn, Attributes::empty());
+    ev.register("AssociationMapKV", association_map_kv as NativeFn, Attributes::empty());
+    ev.register("AssociationMapPairs", association_map_pairs as NativeFn, Attributes::empty());
+    ev.register("Merge", merge as NativeFn, Attributes::empty());
+    ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
+    ev.register("SortBy", sort_by as NativeFn, Attributes::empty());
+    ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
+    ev.register("Flatten", flatten as NativeFn, Attributes::empty());
+    ev.register("Thread", thread as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Partition", partition as NativeFn, Attributes::empty());
+    ev.register("Transpose", transpose as NativeFn, Attributes::empty());
+    ev.register("Replace", replace as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ReplaceAll", replace_all_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ReplaceFirst", replace_first as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Set", set_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
+    // Concurrency primitives (minimal Phase 1)
+    ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Await", await_fn as NativeFn, Attributes::empty());
+    ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
+    ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
+    ev.register("Gather", gather as NativeFn, Attributes::empty());
+    ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
+    ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
+    ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
+    // Phase 0 additions
+    ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
+    ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
+    // Stdlib v0 extras
+    ev.register("Length", length as NativeFn, Attributes::empty());
+    ev.register("Range", range as NativeFn, Attributes::empty());
+    ev.register("Join", join as NativeFn, Attributes::empty());
+    ev.register("Reverse", reverse as NativeFn, Attributes::empty());
+    // Small stdlib v0 helpers
+    ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
+    ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
+    ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
+    ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
+    ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
+    ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
+    ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+    ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+    ev.register("StringTrim", string_trim as NativeFn, Attributes::LISTABLE);
+    ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
+    ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
+    ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
+    ev.register("EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
+    ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
+    ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
+    ev.register("StringPadLeft", string_pad_left as NativeFn, Attributes::LISTABLE);
+    ev.register("StringPadRight", string_pad_right as NativeFn, Attributes::LISTABLE);
+    // Echo helpers for attribute tests
+    ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
+    ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
+    ev.register("FlatOrderlessEcho", flat_orderless_echo as NativeFn, Attributes::FLAT | Attributes::ORDERLESS | Attributes::HOLD_ALL);
 }
 
 pub fn evaluate(v: Value) -> Value { Evaluator::new().eval(v) }
