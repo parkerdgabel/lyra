@@ -66,3 +66,20 @@ fn complex_minus_and_scalar_division() {
     let out2 = ev.eval(expr2);
     assert_eq!(out2, Value::Complex { re: Box::new(Value::Rational { num: 1, den: 2 }), im: Box::new(Value::Integer(1)) });
 }
+
+#[test]
+fn complex_division_and_abs() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    // (1+2i)/(3-1i) = (1/10) + (7/10)i
+    let z1 = Value::Complex { re: Box::new(Value::Integer(1)), im: Box::new(Value::Integer(2)) };
+    let z2 = Value::Complex { re: Box::new(Value::Integer(3)), im: Box::new(Value::Integer(-1)) };
+    let expr = Value::Expr { head: Box::new(sym("Divide")), args: vec![ z1, z2 ] };
+    let out = ev.eval(expr);
+    assert_eq!(out, Value::Complex { re: Box::new(Value::Rational { num: 1, den: 10 }), im: Box::new(Value::Rational { num: 7, den: 10 }) });
+    // Abs[3+4i] = 5
+    let z3 = Value::Complex { re: Box::new(Value::Integer(3)), im: Box::new(Value::Integer(4)) };
+    let aexpr = Value::Expr { head: Box::new(sym("Abs")), args: vec![ z3 ] };
+    let aout = ev.eval(aexpr);
+    assert_eq!(aout, Value::Integer(5));
+}

@@ -213,6 +213,23 @@ fn div_numeric(a: Value, b: Value) -> Option<Value> {
             let ri = div_numeric((*ai).clone(), denom)?;
             Some(Value::Complex { re: Box::new(rr), im: Box::new(ri) })
         }
+        (Value::Complex { re: ar, im: ai }, Value::Complex { re: br, im: bi }) => {
+            // (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c^2 + d^2)
+            let c2 = mul_numeric((*br).clone(), (*br).clone())?;
+            let d2 = mul_numeric((*bi).clone(), (*bi).clone())?;
+            let denom = add_numeric(c2, d2)?;
+            // real numerator: ac + bd
+            let ac = mul_numeric((*ar).clone(), (*br).clone())?;
+            let bd = mul_numeric((*ai).clone(), (*bi).clone())?;
+            let num_r = add_numeric(ac, bd)?;
+            // imag numerator: bc - ad
+            let bc = mul_numeric((*ai).clone(), (*br).clone())?;
+            let ad = mul_numeric((*ar).clone(), (*bi).clone())?;
+            let num_i = sub_numeric(bc, ad)?;
+            let rr = div_numeric(num_r, denom.clone())?;
+            let ri = div_numeric(num_i, denom)?;
+            Some(Value::Complex { re: Box::new(rr), im: Box::new(ri) })
+        }
         _ => None,
     }
 }
@@ -297,9 +314,33 @@ fn abs_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let (n, d) = reduce_rat(num.abs(), den.abs());
             Value::Rational { num: n, den: d }
         }
-        [Value::Complex { .. }] => {
-            // magnitude if parts are Real/Integer
-            Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args: args.to_vec() }
+        [Value::Complex { re, im }] => {
+            // If parts are integers, try perfect square; else compute f64 sqrt(a^2+b^2)
+            match (&**re, &**im) {
+                (Value::Integer(a), Value::Integer(b)) => {
+                    let aa = (*a).saturating_mul(*a);
+                    let bb = (*b).saturating_mul(*b);
+                    let sum = aa.saturating_add(bb);
+                    let rt = (sum as f64).sqrt().round() as i64;
+                    if rt.saturating_mul(rt) == sum { Value::Integer(rt) }
+                    else { Value::Real((sum as f64).sqrt()) }
+                }
+                _ => {
+                    fn to_f64(v: &Value) -> Option<f64> {
+                        match v {
+                            Value::Integer(n) => Some(*n as f64),
+                            Value::Real(x) => Some(*x),
+                            Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+                            _ => None,
+                        }
+                    }
+                    if let (Some(ar), Some(ai)) = (to_f64(&re), to_f64(&im)) {
+                        Value::Real(((ar*ar)+(ai*ai)).sqrt())
+                    } else {
+                        Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args: args.to_vec() }
+                    }
+                }
+            }
         }
         other => Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args: other.to_vec() },
     }
