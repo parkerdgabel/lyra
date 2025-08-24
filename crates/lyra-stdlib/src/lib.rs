@@ -1,14 +1,21 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! Lyra Standard Library registration helpers.
+
+use lyra_runtime::Evaluator;
+
+pub mod math {}
+pub mod logic {}
+pub mod list {}
+pub mod string {}
+pub mod assoc {}
+pub mod concurrency {}
+pub mod explain {}
+pub mod schema {}
+pub mod testing {}
+
+pub fn register_all(_ev: &mut Evaluator) {
+    // Will register all stdlib domains.
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub fn register_with(_ev: &mut Evaluator, _groups: &[&str]) {
+    // Will register selected domains.
 }
