@@ -11,3 +11,4 @@ bitflags = "2"
 
 [dev-dependencies]
 lyra-parser = { path = "../lyra-parser" }
+lyra-stdlib = { path = "../lyra-stdlib" }

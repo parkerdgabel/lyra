@@ -2,11 +2,13 @@ use lyra_parser::Parser;
 use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
 use lyra_core::value::Value;
+use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
     let mut p = Parser::from_source(src);
     let vals = p.parse_all().expect("parse");
     let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
     format_value(&ev.eval(vals.into_iter().last().unwrap()))
 }
 
@@ -25,6 +27,7 @@ fn parallel_map_squares() {
 #[test]
 fn explain_and_schema_exist() {
     let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
     let plus = Value::expr(Value::Symbol("Plus".into()), vec![Value::Integer(1), Value::Integer(2)]);
     let explain = Value::expr(Value::Symbol("Explain".into()), vec![plus]);
     let out1 = ev.eval(explain);
@@ -61,6 +64,7 @@ fn cancel_future_and_await_failure() {
     use lyra_core::pretty::format_value;
     // Build one evaluator for multiple statements
     let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
     let mut p = Parser::from_source("f = Future[BusyWait[50]]; Cancel[f]; Await[f]");
     let vals = p.parse_all().expect("parse");
     let mut last = lyra_core::value::Value::Symbol("Null".into());
