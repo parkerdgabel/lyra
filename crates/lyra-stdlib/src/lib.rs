@@ -2,32 +2,32 @@
 
 use lyra_runtime::Evaluator;
 
-pub mod math;
-pub mod logic;
-pub mod list;
-pub mod string;
-pub mod assoc;
+#[cfg(feature = "math")] pub mod math;
+#[cfg(feature = "logic")] pub mod logic;
+#[cfg(feature = "list")] pub mod list;
+#[cfg(feature = "string")] pub mod string;
+#[cfg(feature = "assoc")] pub mod assoc;
 pub mod concurrency {}
 pub mod explain {}
 pub mod schema {}
 pub mod testing {}
 
 pub fn register_all(ev: &mut Evaluator) {
-    string::register_string(ev);
-    math::register_math(ev);
-    list::register_list(ev);
-    assoc::register_assoc(ev);
-    logic::register_logic(ev);
+    #[cfg(feature = "string")] string::register_string(ev);
+    #[cfg(feature = "math")] math::register_math(ev);
+    #[cfg(feature = "list")] list::register_list(ev);
+    #[cfg(feature = "assoc")] assoc::register_assoc(ev);
+    #[cfg(feature = "logic")] logic::register_logic(ev);
 }
 
 pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
     for g in groups {
         match *g {
-            "string" => string::register_string(ev),
-            "math" => math::register_math(ev),
-            "list" => list::register_list(ev),
-            "assoc" => assoc::register_assoc(ev),
-            "logic" => logic::register_logic(ev),
+            "string" => { #[cfg(feature = "string")] string::register_string(ev) }
+            "math" => { #[cfg(feature = "math")] math::register_math(ev) }
+            "list" => { #[cfg(feature = "list")] list::register_list(ev) }
+            "assoc" => { #[cfg(feature = "assoc")] assoc::register_assoc(ev) }
+            "logic" => { #[cfg(feature = "logic")] logic::register_logic(ev) }
             _ => {}
         }
     }
