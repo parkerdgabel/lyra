@@ -10,9 +10,11 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "concurrency")] pub mod concurrency;
 #[cfg(feature = "schema")] pub mod schema;
 #[cfg(feature = "explain")] pub mod explain;
-pub mod testing {}
+#[cfg(feature = "testing")] pub mod testing;
 
 pub fn register_all(ev: &mut Evaluator) {
+    // Core forms from the runtime (assignment, replacement, threading)
+    #[cfg(feature = "core")] lyra_runtime::eval::register_core(ev);
     #[cfg(feature = "string")] string::register_string(ev);
     #[cfg(feature = "math")] math::register_math(ev);
     #[cfg(feature = "list")] list::register_list(ev);
@@ -21,6 +23,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "concurrency")] concurrency::register_concurrency(ev);
     #[cfg(feature = "schema")] schema::register_schema(ev);
     #[cfg(feature = "explain")] explain::register_explain(ev);
+    #[cfg(feature = "testing")] testing::register_testing(ev);
 }
 
 pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {

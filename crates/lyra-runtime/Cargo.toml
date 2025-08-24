@@ -3,12 +3,17 @@ name = "lyra-runtime"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["core"]
+core = []
+
 [dependencies]
 lyra-core = { path = "../lyra-core" }
 thiserror = { workspace = true }
 serde = { workspace = true }
 bitflags = "2"
+lyra-rewrite = { path = "../lyra-rewrite" }
 
 [dev-dependencies]
 lyra-parser = { path = "../lyra-parser" }
-lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-stdlib = { path = "../lyra-stdlib", features = ["testing"] }

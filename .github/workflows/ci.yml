@@ -19,3 +19,14 @@ jobs:
         run: cargo run -- lint
       - name: Test
         run: cargo test --all-features --all-targets
+
+  minimal-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build runtime (no default features)
+        run: cargo min-rt
+      - name: Build stdlib (logic+list only)
+        run: cargo min-stdlib

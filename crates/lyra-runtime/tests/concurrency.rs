@@ -64,6 +64,8 @@ fn cancel_future_and_await_failure() {
     use lyra_parser::Parser;
     use lyra_runtime::Evaluator;
     use lyra_core::pretty::format_value;
+    // Ensure spawned evaluators inherit stdlib registrations
+    set_default_registrar(stdlib::register_all);
     // Build one evaluator for multiple statements
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
@@ -72,11 +74,17 @@ fn cancel_future_and_await_failure() {
     let mut last = lyra_core::value::Value::Symbol("Null".into());
     for v in vals { last = ev.eval(v); }
     let s = format_value(&last);
-    assert!(s.contains("Cancel::abort"));
+    assert!(s.contains("Cancel::abort"), "Got: {}", s);
 }
 
 #[test]
 fn await_unknown_future_failure() {
     let s = eval_one("Await[999999]");
     assert!(s.contains("Await::invfuture"));
+}
+
+#[test]
+fn parallel_table_basic() {
+    let s = eval_one("ParallelTable[Times[i,i], {i, 1, 5}]" );
+    assert_eq!(s, "{1, 4, 9, 16, 25}");
 }

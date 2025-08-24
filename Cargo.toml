@@ -3,7 +3,7 @@ members = [
   "crates/lyra-core",
   "crates/lyra-parser",
   "crates/lyra-repl",
-  "crates/lyra-runtime", "crates/lyra-stdlib",
+  "crates/lyra-runtime", "crates/lyra-stdlib", "crates/lyra-rewrite",
 ]
 resolver = "2"
 
@@ -22,3 +22,8 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 colored = "2"
+
+[alias]
+# Minimal feature builds for gating/tree-shaking checks
+min-rt = "build -p lyra-runtime --no-default-features"
+min-stdlib = "build -p lyra-stdlib --no-default-features -F logic -F list"

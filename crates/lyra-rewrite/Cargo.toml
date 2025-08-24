@@ -1,0 +1,11 @@
+[package]
+name = "lyra-rewrite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lyra-core = { path = "../lyra-core" }
+thiserror = { workspace = true }
+serde = { workspace = true }
+

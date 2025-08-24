@@ -185,7 +185,29 @@ impl Parser {
     }
 
     fn parse_postfix(&mut self) -> ParseResult<Value> {
-        self.parse_call_or_atom()
+        let mut base = self.parse_call_or_atom()?;
+        loop {
+            self.skip_ws();
+            // Double-bracket part selection: expr[[index]]
+            if self.starts_with("[[") {
+                self.pos += 2; // consume [[
+                self.skip_ws();
+                let idx = self.expr()?;
+                self.skip_ws();
+                if !self.starts_with("]] ") && self.peekc()!=Some(']') {
+                    // continue
+                }
+                if !(self.peekc()==Some(']') && self.pos + 1 < self.src.len() && self.src[self.pos+1]==']') {
+                    return Err(LyraError::Parse("expected ']]'".into()));
+                }
+                // consume ']]'
+                self.pos += 2;
+                base = Value::expr(Value::Symbol("Part".into()), vec![base, idx]);
+                continue;
+            }
+            break;
+        }
+        Ok(base)
     }
 
     fn parse_call_or_atom(&mut self) -> ParseResult<Value> {
@@ -460,18 +482,54 @@ impl Parser {
     }
 
     fn parse_string(&mut self) -> ParseResult<Value> {
-        let mut s = String::new();
         if self.nextc()!=Some('"') { return Err(LyraError::Parse("expected '\"'".into())); }
+        let mut literal = String::new();
+        let mut parts: Vec<Value> = Vec::new();
         while let Some(c) = self.nextc() {
             match c {
                 '"' => break,
                 '\\' => {
-                    if let Some(n) = self.nextc() { s.push(n); } else { break; }
+                    if let Some(n) = self.nextc() { literal.push(n); } else { break; }
                 }
-                _ => s.push(c),
+                '{' => {
+                    // flush literal so far
+                    if !literal.is_empty() { parts.push(Value::String(std::mem::take(&mut literal))); }
+                    // capture until matching '}' without nesting
+                    let start = self.pos;
+                    let mut i = self.pos;
+                    let len = self.src.len();
+                    let mut depth = 1i32;
+                    while i < len {
+                        let ch = self.src[i];
+                        if ch == '"' { // skip strings inside interpolation by naive scan
+                            i += 1;
+                            while i < len {
+                                if self.src[i] == '\\' { i += 2; continue; }
+                                if self.src[i] == '"' { i += 1; break; }
+                                i += 1;
+                            }
+                            continue;
+                        }
+                        if ch == '{' { depth += 1; i += 1; continue; }
+                        if ch == '}' { depth -= 1; i += 1; if depth == 0 { break; } else { continue; } }
+                        i += 1;
+                    }
+                    if depth != 0 { return Err(LyraError::Parse("unterminated interpolation".into())); }
+                    // parse inner
+                    let slice: String = self.src[start..i-1].iter().collect();
+                    self.pos = i; // we've consumed up to and including '}'
+                    let mut sub = Parser::from_source(&slice);
+                    let vals = sub.parse_all()?;
+                    if vals.is_empty() { return Err(LyraError::Parse("empty interpolation".into())); }
+                    parts.push(vals.last().unwrap().clone());
+                }
+                _ => literal.push(c),
             }
         }
-        Ok(Value::String(s))
+        if !literal.is_empty() { parts.push(Value::String(literal)); }
+        if parts.is_empty() { return Ok(Value::String(String::new())); }
+        if parts.len()==1 { return Ok(parts.remove(0)); }
+        Ok(Value::expr(Value::Symbol("StringJoin".into()), vec![Value::List(parts)]))
     }
 
     fn parse_number(&mut self) -> ParseResult<Value> {

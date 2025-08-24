@@ -3,8 +3,8 @@ use lyra_runtime::attrs::Attributes;
 use lyra_core::value::Value;
 
 pub fn register_math(ev: &mut Evaluator) {
-    ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
-    ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
+    ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
+    ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
     ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
     ev.register("Divide", divide as NativeFn, Attributes::LISTABLE);
     ev.register("Power", power as NativeFn, Attributes::empty());
@@ -152,4 +152,3 @@ fn max_over_iter<I: Iterator<Item=Value>>(iter: I) -> Value {
     if !have { Value::Expr { head: Box::new(Value::Symbol("Max".into())), args: vec![] } }
     else if use_real { Value::Real(cur_f) } else { Value::Integer(cur_i) }
 }
-
