@@ -1,6 +1,6 @@
 use lyra_core::value::Value;
 use std::collections::HashMap;
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering, AtomicI64}, Mutex, Condvar};
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::time::{Instant, Duration};
@@ -56,10 +56,7 @@ where F: FnOnce() -> Value + Send + 'static {
     rx
 }
 
-struct TaskInfo {
-    handle: JoinHandle<Value>,
-    cancel: Arc<AtomicBool>,
-}
+struct TaskInfo { rx: Receiver<Value>, cancel: Arc<AtomicBool> }
 
 #[derive(Debug)]
 struct ThreadLimiter {
@@ -268,6 +265,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
+    ev.register("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
 }
 
@@ -317,25 +315,33 @@ fn splice_sequences(args: Vec<Value>) -> Vec<Value> {
 // removed unused compat helpers: plus, map
 
 fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args } }
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args } }
     let expr = args[0].clone();
+    let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
+    let mut opt_deadline: Option<Instant> = None;
+    if args.len() >= 2 {
+        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        }
+    }
     let env_snapshot = ev.env.clone();
     let id = ev.next_task_id;
     ev.next_task_id += 1;
     let token = ev.cancel_token.clone().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-    let tok2 = token.clone();
-    let limiter = ev.thread_limiter.clone();
-    let deadline = ev.deadline;
-    let handle = thread::spawn(move || {
+    let token_for_task = token.clone();
+    let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
+    let deadline = opt_deadline.or(ev.deadline);
+    let rx = spawn_task(move || {
         if let Some(l) = limiter.as_ref() { l.acquire(); }
-        let mut ev2 = Evaluator::with_env_and_token(env_snapshot, tok2);
+        let mut ev2 = Evaluator::with_env_and_token(env_snapshot, token_for_task);
         ev2.thread_limiter = limiter;
         ev2.deadline = deadline;
         let out = ev2.eval(expr);
         if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
         out
     });
-    ev.tasks.insert(id, TaskInfo { handle, cancel: token });
+    ev.tasks.insert(id, TaskInfo { rx, cancel: token });
     Value::Expr { head: Box::new(Value::Symbol("FutureId".into())), args: vec![Value::Integer(id)] }
 }
 
@@ -354,11 +360,7 @@ fn await_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             _ => None,
         }
     };
-    if let Some(id) = id_opt {
-        if let Some(task) = ev.tasks.remove(&id) {
-            return task.handle.join().unwrap_or(Value::Symbol("Null".into()));
-        }
-    }
+    if let Some(id) = id_opt { if let Some(task) = ev.tasks.remove(&id) { return task.rx.recv().unwrap_or(Value::Symbol("Null".into())); } }
     // Failure stub
     Value::Assoc(vec![
         ("message".to_string(), Value::String("Await: invalid or unknown future".into())),
@@ -694,6 +696,18 @@ fn cancel_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         _ => None,
     };
     if let Some(id) = sid { if let Some(ctx) = scope_reg().lock().unwrap().get(&id) { ctx.cancel.store(true, Ordering::Relaxed); return Value::Boolean(true); } }
+    Value::Boolean(false)
+}
+
+// EndScope[ScopeId[id]] -> True/False (removes from registry)
+fn end_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("EndScope".into())), args } }
+    let sid_val = ev.eval(args[0].clone());
+    let sid = match &sid_val {
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = sid { return Value::Boolean(scope_reg().lock().unwrap().remove(&id).is_some()); }
     Value::Boolean(false)
 }
 
