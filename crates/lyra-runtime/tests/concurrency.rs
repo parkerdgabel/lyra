@@ -237,3 +237,17 @@ fn actor_tell_and_stop() {
     let s = format_value(&last);
     assert_eq!(s, "True");
 }
+
+#[test]
+fn actor_ask_reply_pattern() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    // Handler replies with 2*msg: Send[Part[m, "replyTo"], Times[2, Part[m, "msg"]]]
+    let mut p = Parser::from_source("a = Actor[(m)=>Send[Part[m, \"replyTo\"], Times[2, Part[m, \"msg\"]]]]; f = Ask[a, 21]; Await[f]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "42");
+}

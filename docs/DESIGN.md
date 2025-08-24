@@ -50,7 +50,8 @@ Scope: Full language re-architecture, from parser to packages
 - Primitives:
   - Futures/Tasks: `Future[expr, opts?]`, `Await`, `MapAsync[f, list, opts?]`, `Gather`.
   - Data-parallel: `ParallelMap[f, list, opts?]`, `ParallelTable[expr, spec, opts?]`, `ParallelEvaluate[exprs, opts?]`.
-  - Actors/Channels: `Actor[handlers]`, `Channel[T]` (bounded/unbounded), backpressure. (planned)
+  - Channels: `BoundedChannel[n]`, `Send[ch, v]`, `Receive[ch]`, `CloseChannel[ch]` (bounded, blocking with backpressure).
+  - Actors: `Actor[(m)=>body]`, `Tell[actor, msg]`, `Ask[actor, msg]` (reply pattern via internal channel), `StopActor[actor]`.
   - Streams: windowed aggregates, joins, CEP; pull-based with backpressure; composition via pipelines. (planned)
 - Scheduler: work-stealing pools; cooperative interrupts; deterministic by default for pure compute.
 - Distributed: optional remoting provider (local cluster → remote workers) with serialization of Associations and symbols.
@@ -60,6 +61,7 @@ Scope: Full language re-architecture, from parser to packages
 - Inspectors: Symbols (attributes, values), Definitions (Up/Down/Sub), Environments.
 - Rich output: inline tables/plots, schema-aware Association pretty-printer.
 - Explain: step-by-step evaluation trace, chosen algorithm/provider, heuristics/complexity estimates.
+  - Implemented steps include: `ListableThread`, `Hold`, `FlatFlatten`, `OrderlessSort`, `RuleMatch`, `ParallelDispatch`, `ScopeApply`, `ChannelSend`, `ChannelReceive`.
 - Session snapshots/time-travel; `%Out[n]`-style references; variable watch.
 
 7. Compiler and Tree Shaking

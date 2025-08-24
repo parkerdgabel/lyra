@@ -294,7 +294,7 @@ aggregated = ParallelReduce[Plus, results];
 
 # Channels and messaging
 channel = BoundedChannel[100];
-Send[channel, data];
+Send[channel, data];  # value is evaluated before enqueue
 received = Receive[channel];
 CloseChannel[channel];
 
@@ -305,6 +305,12 @@ result = Await[future, Timeout -> 30];
 # Available today in this branch:
 # - BoundedChannel/Send/Receive/CloseChannel
 # - Minimal Actor/Tell/StopActor (single handler: Actor[(m)=>...])
+# - Ask[actor, msg]: reply pattern via an internal channel
+
+# Example Ask usage:
+a = Actor[(m)=>Send[Part[m, "replyTo"], Times[2, Part[m, "msg"]]]];
+f = Ask[a, 21];
+Await[f]  # -> 42
 ```
 
 Note: In this branch today, the following primitives are available and scoped with simple budgets:

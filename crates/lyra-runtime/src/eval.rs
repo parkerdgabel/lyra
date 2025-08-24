@@ -316,6 +316,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("CloseChannel", close_channel_fn as NativeFn, Attributes::empty());
     ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
@@ -692,12 +693,25 @@ fn bounded_channel_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Send".into())), args } }
     let chv = ev.eval(args[0].clone());
-    let val = args[1].clone();
+    let val = ev.eval(args[1].clone());
     let cid = match chv {
         Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() { let ok = ch.send(val, ev.cancel_token.clone(), ev.deadline); return Value::Boolean(ok); } }
+    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+        if ev.trace_enabled {
+            let data = Value::Assoc(vec![
+                ("channelId".to_string(), Value::Integer(id)),
+            ].into_iter().collect());
+            ev.trace_steps.push(Value::Assoc(vec![
+                ("action".to_string(), Value::String("ChannelSend".into())),
+                ("head".to_string(), Value::Symbol("Send".into())),
+                ("data".to_string(), data),
+            ].into_iter().collect()));
+        }
+        let ok = ch.send(val, ev.cancel_token.clone(), ev.deadline);
+        return Value::Boolean(ok);
+    } }
     Value::Boolean(false)
 }
 
@@ -708,7 +722,19 @@ fn receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() { return ch.recv(ev.cancel_token.clone(), ev.deadline).unwrap_or(Value::Symbol("Null".into())); } }
+    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+        if ev.trace_enabled {
+            let data = Value::Assoc(vec![
+                ("channelId".to_string(), Value::Integer(id)),
+            ].into_iter().collect());
+            ev.trace_steps.push(Value::Assoc(vec![
+                ("action".to_string(), Value::String("ChannelReceive".into())),
+                ("head".to_string(), Value::Symbol("Receive".into())),
+                ("data".to_string(), data),
+            ].into_iter().collect()));
+        }
+        return ch.recv(ev.cancel_token.clone(), ev.deadline).unwrap_or(Value::Symbol("Null".into()));
+    } }
     Value::Symbol("Null".into())
 }
 
@@ -788,6 +814,34 @@ fn stop_actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(false)
 }
 
+fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args } }
+    // Extract actor id
+    let actv = ev.eval(args[0].clone());
+    let msg = args[1].clone();
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = aid {
+        // Create a reply channel (cap=1)
+        let ch_id = next_ch_id();
+        ch_reg().lock().unwrap().insert(ch_id, Arc::new(ChannelQueue::new(1)));
+        // Build message: <|"msg"->msg, "replyTo"->ChannelId[ch_id]|>
+        let reply = Value::Expr { head: Box::new(Value::Symbol("ChannelId".into())), args: vec![Value::Integer(ch_id)] };
+        let m = Value::Assoc(vec![
+            ("msg".to_string(), msg),
+            ("replyTo".to_string(), reply.clone()),
+        ].into_iter().collect());
+        // Send to actor
+        let _ = tell_fn(ev, vec![Value::Expr { head: Box::new(Value::Symbol("ActorId".into())), args: vec![Value::Integer(id)] }, m]);
+        // Return a Future awaiting Receive[reply]
+        let recv_expr = Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply] };
+        return future_fn(ev, vec![recv_expr]);
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args }
+}
+
 // legacy logic helpers removed (EvenQ/OddQ now in stdlib)
 
 // legacy string helpers removed (StringTrim/StringContains now in stdlib)
@@ -842,6 +896,17 @@ fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Value::Assoc(m) = opts {
         if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
         if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+    }
+    if ev.trace_enabled {
+        let data = Value::Assoc(vec![
+            ("maxThreads".to_string(), Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
+            ("hasDeadline".to_string(), Value::Boolean(ev2.deadline.is_some())),
+        ].into_iter().collect());
+        ev.trace_steps.push(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ScopeApply".into())),
+            ("head".to_string(), Value::Symbol("Scope".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
     }
     ev2.eval(body)
 }
