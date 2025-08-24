@@ -1,13 +1,26 @@
 use lyra_core::value::Value;
 use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}, Mutex, Condvar};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering, AtomicI64}, Mutex, Condvar};
 use std::time::{Instant, Duration};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
 use std::sync::OnceLock;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
+
+#[derive(Clone)]
+struct ScopeCtx {
+    cancel: Arc<AtomicBool>,
+    limiter: Option<Arc<ThreadLimiter>>,
+    deadline: Option<Instant>,
+}
+
+static SCOPE_REG: OnceLock<Mutex<HashMap<i64, ScopeCtx>>> = OnceLock::new();
+static NEXT_SCOPE_ID: OnceLock<AtomicI64> = OnceLock::new();
+
+fn scope_reg() -> &'static Mutex<HashMap<i64, ScopeCtx>> { SCOPE_REG.get_or_init(|| Mutex::new(HashMap::new())) }
+fn next_scope_id() -> i64 { let a = NEXT_SCOPE_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
 
 struct TaskInfo {
     handle: JoinHandle<Value>,
@@ -218,6 +231,9 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
     ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
     ev.register("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
 }
 
 pub fn register_explain(ev: &mut Evaluator) {
@@ -346,20 +362,30 @@ fn time_budget_failure() -> Value {
     ].into_iter().collect())
 }
 
-fn parallel_map(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args } }
     let f = args[0].clone();
     match &args[1] {
         Value::List(items) => {
             // naive parallelism: spawn per item
             let mut handles: Vec<JoinHandle<Value>> = Vec::with_capacity(items.len());
+            let token = ev.cancel_token.clone();
+            let limiter = ev.thread_limiter.clone();
+            let deadline = ev.deadline;
             for it in items.iter().cloned() {
                 let f_cl = f.clone();
-                // no shared env; spawn clean evaluator for each element
+                let token_cl = token.clone();
+                let limiter_cl = limiter.clone();
+                let deadline_cl = deadline;
                 handles.push(thread::spawn(move || {
-                    let mut ev2 = Evaluator::new();
+                    if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
+                    let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(HashMap::new(), tok) } else { Evaluator::new() };
+                    ev2.thread_limiter = limiter_cl;
+                    ev2.deadline = deadline_cl;
                     let call = Value::Expr { head: Box::new(f_cl), args: vec![it] };
-                    ev2.eval(call)
+                    let out = ev2.eval(call);
+                    if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+                    out
                 }));
             }
             let mut out = Vec::with_capacity(handles.len());
@@ -521,6 +547,63 @@ fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
     }
     ev2.eval(body)
+}
+
+// StartScope[opts] -> ScopeId[id]
+fn start_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args } }
+    let opts = ev.eval(args[0].clone());
+    let id = next_scope_id();
+    let mut ctx = ScopeCtx { cancel: Arc::new(AtomicBool::new(false)), limiter: None, deadline: None };
+    if let Value::Assoc(m) = opts {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ctx.limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ctx.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+    }
+    scope_reg().lock().unwrap().insert(id, ctx);
+    Value::Expr { head: Box::new(Value::Symbol("ScopeId".into())), args: vec![Value::Integer(id)] }
+}
+
+// InScope[ScopeId[id], body] -- runs body in current evaluator under the scope budgets
+fn in_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("InScope".into())), args } }
+    let sid_val = ev.eval(args[0].clone());
+    let sid = match &sid_val {
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = sid {
+        if let Some(ctx) = scope_reg().lock().unwrap().get(&id).cloned() {
+            // Save and apply
+            let old_tok = ev.cancel_token.clone();
+            let old_lim = ev.thread_limiter.clone();
+            let old_dead = ev.deadline;
+            ev.cancel_token = Some(ctx.cancel.clone());
+            ev.thread_limiter = ctx.limiter.clone();
+            ev.deadline = ctx.deadline;
+            let out = ev.eval(args[1].clone());
+            // Restore
+            ev.cancel_token = old_tok;
+            ev.thread_limiter = old_lim;
+            ev.deadline = old_dead;
+            return out;
+        }
+    }
+    Value::Assoc(vec![
+        ("message".to_string(), Value::String("InScope: invalid scope id".into())),
+        ("tag".to_string(), Value::String("InScope::invscope".into())),
+    ].into_iter().collect())
+}
+
+// CancelScope[ScopeId[id]] -> True/False
+fn cancel_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("CancelScope".into())), args } }
+    let sid_val = ev.eval(args[0].clone());
+    let sid = match &sid_val {
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = sid { if let Some(ctx) = scope_reg().lock().unwrap().get(&id) { ctx.cancel.store(true, Ordering::Relaxed); return Value::Boolean(true); } }
+    Value::Boolean(false)
 }
 
 fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {

@@ -110,3 +110,45 @@ fn scope_max_threads_limits_parallel_table() {
     let elapsed = start.elapsed();
     assert!(elapsed.as_millis() >= 150, "Too fast: {:?}", elapsed);
 }
+
+#[test]
+fn scope_max_threads_limits_parallel_map() {
+    // With MaxThreads->2 over 6 items, BusyWait[20] should throttle
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[20], {1,2,3,4,5,6}]]");
+    let vals = p.parse_all().expect("parse");
+    let expr = vals.into_iter().last().unwrap();
+    let start = Instant::now();
+    let _out = ev.eval(expr);
+    let elapsed = start.elapsed();
+    assert!(elapsed.as_millis() >= 150, "Too fast: {:?}", elapsed);
+}
+
+#[test]
+fn cancel_scope_group_cancels_futures() {
+    // Start a scope, launch two futures under it, cancel scope, both should cancel
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    // 1) sid = StartScope[<||>]
+    let mut p = Parser::from_source("sid = StartScope[<||>]");
+    let vals = p.parse_all().expect("parse1");
+    for v in vals { let _ = ev.eval(v); }
+    // 2) InScope[sid, {Set[f, Future[BusyWait[50]]], Set[g, Future[BusyWait[50]]]}]
+    let mut p2 = Parser::from_source("InScope[sid, {Set[f, Future[BusyWait[50]]], Set[g, Future[BusyWait[50]]]}]");
+    let vals2 = p2.parse_all().expect("parse2");
+    for v in vals2 { let _ = ev.eval(v); }
+    // 3) CancelScope[sid]
+    let mut p3 = Parser::from_source("CancelScope[sid]");
+    let vals3 = p3.parse_all().expect("parse3");
+    for v in vals3 { let _ = ev.eval(v); }
+    // 4) {Await[f], Await[g]}
+    let mut p4 = Parser::from_source("{Await[f], Await[g]}");
+    let vals4 = p4.parse_all().expect("parse4");
+    let last = vals4.into_iter().last().unwrap();
+    let out = ev.eval(last);
+    let s = format_value(&out);
+    assert!(s.contains("Cancel::abort"), "Got: {}", s);
+}
