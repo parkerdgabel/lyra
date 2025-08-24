@@ -49,6 +49,43 @@ macro_rules! tool_spec {
     }};
 }
 
+// -------- Schema helpers (functions + macros)
+#[allow(dead_code)]
+pub fn schema_type_value(t: &str) -> Value {
+    Value::Assoc(HashMap::from([(String::from("type"), Value::String(t.to_string()))]))
+}
+
+#[allow(dead_code)]
+pub fn schema_array_value(items: Value) -> Value {
+    Value::Assoc(HashMap::from([
+        (String::from("type"), Value::String(String::from("array"))),
+        (String::from("items"), items),
+    ]))
+}
+
+#[allow(dead_code)]
+pub fn schema_object_value(props: Vec<(String, Value)>, required: Vec<String>) -> Value {
+    let mut props_map: HashMap<String, Value> = HashMap::new();
+    for (k, v) in props { props_map.insert(k, v); }
+    let required_vals: Vec<Value> = required.into_iter().map(Value::String).collect();
+    Value::Assoc(HashMap::from([
+        (String::from("type"), Value::String(String::from("object"))),
+        (String::from("properties"), Value::Assoc(props_map)),
+        (String::from("required"), Value::List(required_vals)),
+    ]))
+}
+
+#[macro_export]
+macro_rules! schema_str { () => { $crate::tools::schema_type_value("string") } }
+#[macro_export]
+macro_rules! schema_int { () => { $crate::tools::schema_type_value("integer") } }
+#[macro_export]
+macro_rules! schema_num { () => { $crate::tools::schema_type_value("number") } }
+#[macro_export]
+macro_rules! schema_bool { () => { $crate::tools::schema_type_value("boolean") } }
+#[macro_export]
+macro_rules! schema_arr { ($items:expr) => { $crate::tools::schema_array_value($items) } }
+
 pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());
