@@ -333,47 +333,45 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     // Apply filter if provided
-    // Optional global capability gate
-    let granted_caps: std::collections::HashSet<String> = CAPABILITIES
-        .get_or_init(|| Mutex::new(None))
-        .lock().unwrap()
-        .as_ref()
-        .cloned()
-        .unwrap_or_default();
-    let filtered = match filter {
-        Value::Assoc(f) if !f.is_empty() => {
-            let eff_filter: std::collections::HashSet<String> = match f.get("effects") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
-            let caps_filter: std::collections::HashSet<String> = match f.get("capabilities") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
-            let tag_filter: std::collections::HashSet<String> = match f.get("tags") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() };
-            out.into_iter().filter(|v| {
-                if let Value::Assoc(m) = v {
-                    let mut ok = true;
-                    if !eff_filter.is_empty() {
-                        let mut have: std::collections::HashSet<String> = Default::default();
-                        if let Some(Value::List(effs)) = m.get("effects") { for e in effs { if let Some(s)=value_to_string(e) { have.insert(s.to_lowercase()); } } }
-                        ok = eff_filter.is_subset(&have);
-                    }
-                    if ok && (!caps_filter.is_empty() || !granted_caps.is_empty()) {
-                        // Effective capability set
-                        let want = if !caps_filter.is_empty() { &caps_filter } else { &granted_caps };
-                        if !want.is_empty() {
-                            let mut effs: std::collections::HashSet<String> = Default::default();
-                            if let Some(Value::List(effs_v)) = m.get("effects") { for e in effs_v { if let Some(s)=value_to_string(e) { effs.insert(s.to_lowercase()); } } }
-                            // Require all effects ⊆ want
-                            ok = effs.is_subset(want);
-                        }
-                    }
-                    if ok && !tag_filter.is_empty() {
-                        let mut have: std::collections::HashSet<String> = Default::default();
-                        if let Some(Value::List(tags)) = m.get("tags") { for t in tags { if let Some(s)=value_to_string(t) { have.insert(s.to_lowercase()); } } }
-                        ok = !tag_filter.is_disjoint(&have);
-                    }
-                    ok
-                } else { false }
-            }).collect::<Vec<_>>()
-        }
-        _ => out,
+    // Optional global capability gate; always apply if set, and allow explicit override via filter.capabilities
+    let granted_caps: std::collections::HashSet<String> = CAPABILITIES.get_or_init(|| Mutex::new(None)).lock().unwrap().as_ref().cloned().unwrap_or_default();
+    // If filter provided, parse user filters
+    let (eff_filter, caps_filter, tag_filter): (
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+    ) = match &filter {
+        Value::Assoc(f) if !f.is_empty() => (
+            match f.get("effects") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() },
+            match f.get("capabilities") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() },
+            match f.get("tags") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).map(|s| s.to_lowercase()).collect(), _=>Default::default() },
+        ),
+        _ => (Default::default(), Default::default(), Default::default()),
     };
+    let want_caps = if !caps_filter.is_empty() { &caps_filter } else { &granted_caps };
+    let filtered: Vec<Value> = out.into_iter().filter(|v| {
+        if let Value::Assoc(m) = v {
+            // capability/effects gate
+            if !want_caps.is_empty() {
+                let mut effs: std::collections::HashSet<String> = Default::default();
+                if let Some(Value::List(effs_v)) = m.get("effects") { for e in effs_v { if let Some(s)=value_to_string(e) { effs.insert(s.to_lowercase()); } } }
+                if !effs.is_subset(want_caps) { return false; }
+            }
+            // explicit effects filter
+            if !eff_filter.is_empty() {
+                let mut have: std::collections::HashSet<String> = Default::default();
+                if let Some(Value::List(effs)) = m.get("effects") { for e in effs { if let Some(s)=value_to_string(e) { have.insert(s.to_lowercase()); } } }
+                if !eff_filter.is_subset(&have) { return false; }
+            }
+            // tags filter
+            if !tag_filter.is_empty() {
+                let mut have: std::collections::HashSet<String> = Default::default();
+                if let Some(Value::List(tags)) = m.get("tags") { for t in tags { if let Some(s)=value_to_string(t) { have.insert(s.to_lowercase()); } } }
+                if tag_filter.is_disjoint(&have) { return false; }
+            }
+            true
+        } else { false }
+    }).collect();
     Value::List(filtered)
 }
 

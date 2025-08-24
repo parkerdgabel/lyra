@@ -192,3 +192,36 @@ fn tools_dry_run_and_export_openai() {
     let export = eval_one("ToolsExportOpenAI[]");
     assert!(export.contains("\"name\" -> \"http_get\""));
 }
+
+#[test]
+fn tools_capabilities_and_filters() {
+    // Register a net tool with effect "net"
+    let _ = eval_one("ToolsRegister[<|\"id\"->\"net.http.get@1\", \"name\"->\"http.get\", \"impl\"->\"HttpGet\", \"params\"->{\"url\"}, \"effects\"->{\"net\"}|>]");
+    // Without granting capabilities, it is discoverable
+    let all = eval_one("ToolsList[<|\"effects\"->{\"net\"}|>]");
+    assert!(all.contains("http.get"));
+    // Explicit capabilities filter should allow viewing matching tools
+    let filtered = eval_one("ToolsList[<|\"capabilities\"->{\"net\"}|>]");
+    assert!(filtered.contains("http.get"));
+    let filtered_fs = eval_one("ToolsList[<|\"capabilities\"->{\"fs\"}|>]");
+    assert!(!filtered_fs.contains("http.get"));
+}
+
+#[test]
+fn tools_schema_validation_for_stdlib_specs() {
+    // Not expects boolean
+    let not_bad = eval_one("ToolsDryRun[\"Not\", <|\"x\"->1|>]");
+    assert!(not_bad.contains("\"ok\" -> False") || not_bad.contains("\"ok\"->False"));
+    // EvenQ expects integer
+    let even_bad = eval_one("ToolsDryRun[\"EvenQ\", <|\"n\"->\"2\"|>]");
+    assert!(even_bad.contains("\"ok\" -> False") || even_bad.contains("\"ok\"->False"));
+    // Join expects arrays a and b
+    let join_bad = eval_one("ToolsDryRun[\"Join\", <|\"a\"->1, \"b\"->2|>]");
+    assert!(join_bad.contains("\"ok\" -> False") || join_bad.contains("\"ok\"->False"));
+    // Join with proper arrays should succeed
+    let join_ok = eval_one("ToolsDryRun[\"Join\", <|\"a\"->{1}, \"b\"->{2}|>]");
+    assert!(join_ok.contains("\"ok\" -> True") || join_ok.contains("\"ok\"->True"));
+    // Range expects integers a and b
+    let range_bad = eval_one("ToolsDryRun[\"Range\", <|\"a\"->1, \"b\"->\"9\"|>]");
+    assert!(range_bad.contains("\"ok\" -> False") || range_bad.contains("\"ok\"->False"));
+}
