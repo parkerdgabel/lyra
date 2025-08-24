@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use lyra_core::value::Value;
+use crate::nets::PatternNet;
 
 pub type Bindings = HashMap<String, Value>;
 
@@ -21,6 +22,19 @@ pub fn match_rules_with<'a>(ctx: &MatcherCtx, rules: impl IntoIterator<Item=&'a 
 
 pub fn match_rules<'a>(rules: impl IntoIterator<Item=&'a Value>, expr: &Value) -> Option<(&'a Value, Bindings)> {
     match_rules_with(&MatcherCtx::default(), rules, expr)
+}
+
+pub fn match_rules_indexed_with<'a>(ctx: &MatcherCtx, rules: &'a [Value], net: &PatternNet, expr: &Value) -> Option<(&'a Value, Bindings)> {
+    for idx in net.candidates(expr) {
+        if let Some(lhs) = rules.get(idx) {
+            if let Some(b) = match_rule_with(ctx, lhs, expr) { return Some((lhs, b)); }
+        }
+    }
+    None
+}
+
+pub fn match_rules_indexed<'a>(rules: &'a [Value], net: &PatternNet, expr: &Value) -> Option<(&'a Value, Bindings)> {
+    match_rules_indexed_with(&MatcherCtx::default(), rules, net, expr)
 }
 
 pub fn match_rule_with(ctx: &MatcherCtx, pat: &Value, expr: &Value) -> Option<Bindings> {
