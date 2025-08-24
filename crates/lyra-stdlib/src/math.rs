@@ -86,17 +86,20 @@ fn reduce_rat(num: i64, den: i64) -> (i64, i64) {
     (n / g, d / g)
 }
 
+fn rat_value(num: i64, den: i64) -> Value {
+    let (n, d) = reduce_rat(num, den);
+    if d == 1 { Value::Integer(n) } else { Value::Rational { num: n, den: d } }
+}
+
 fn add_numeric(a: Value, b: Value) -> Option<Value> {
     match (a, b) {
         (Value::Integer(x), Value::Integer(y)) => Some(Value::Integer(x + y)),
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x + y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) + y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x + (y as f64))),
-        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => {
-            let n = n1 * d2 + n2 * d1; let d = d1 * d2; let (rn, rd) = reduce_rat(n, d); Some(Value::Rational { num: rn, den: rd })
-        }
+        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 + n2 * d1, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
-            let n = num + x * den; let (rn, rd) = reduce_rat(n, den); Some(Value::Rational { num: rn, den: rd })
+            Some(rat_value(num + x * den, den))
         }
         (Value::Real(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Real(x)) => {
             Some(Value::Real(x + (num as f64)/(den as f64)))
@@ -120,11 +123,9 @@ fn mul_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x * y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) * y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x * (y as f64))),
-        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => {
-            let n = n1 * n2; let d = d1 * d2; let (rn, rd) = reduce_rat(n, d); Some(Value::Rational { num: rn, den: rd })
-        }
+        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * n2, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
-            let n = num * x; let (rn, rd) = reduce_rat(n, den); Some(Value::Rational { num: rn, den: rd })
+            Some(rat_value(num * x, den))
         }
         (Value::Real(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Real(x)) => {
             Some(Value::Real(x * (num as f64)/(den as f64)))
@@ -145,6 +146,100 @@ fn mul_numeric(a: Value, b: Value) -> Option<Value> {
             let real = add_numeric(mul_numeric(ar.clone(), br.clone())?, Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: vec![mul_numeric(ai.clone(), bi.clone())?] })?;
             let imag = add_numeric(mul_numeric(ar, bi)?, mul_numeric(ai, br)?)?;
             Some(Value::Complex { re: Box::new(real), im: Box::new(imag) })
+        }
+        _ => None,
+    }
+}
+
+fn sub_numeric(a: Value, b: Value) -> Option<Value> {
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Some(Value::Integer(x - y)),
+        (Value::Real(x), Value::Real(y)) => Some(Value::Real(x - y)),
+        (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) - y)),
+        (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x - (y as f64))),
+        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 - n2 * d1, d1 * d2)),
+        (Value::Integer(x), Value::Rational { num, den }) => {
+            Some(rat_value(x * den - num, den))
+        }
+        (Value::Rational { num, den }, Value::Integer(x)) => {
+            Some(rat_value(num - x * den, den))
+        }
+        (Value::Real(x), Value::Rational { num, den }) => Some(Value::Real(x - (num as f64)/(den as f64))),
+        (Value::Rational { num, den }, Value::Real(x)) => Some(Value::Real((num as f64)/(den as f64) - x)),
+        (Value::Complex { re: ar, im: ai }, Value::Complex { re: br, im: bi }) => {
+            let rr = sub_numeric((*ar).clone(), (*br).clone())?;
+            let ri = sub_numeric((*ai).clone(), (*bi).clone())?;
+            Some(Value::Complex { re: Box::new(rr), im: Box::new(ri) })
+        }
+        (Value::Complex { re, im }, other) => {
+            let rr = sub_numeric((*re).clone(), other)?;
+            Some(Value::Complex { re: Box::new(rr), im })
+        }
+        (other, Value::Complex { re, im }) => {
+            let rr = sub_numeric(other, (*re).clone())?;
+            Some(Value::Complex { re: Box::new(Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: vec![rr] }), im: Box::new(Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: vec![*im] }) })
+        }
+        _ => None,
+    }
+}
+
+fn div_numeric(a: Value, b: Value) -> Option<Value> {
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => { if y == 0 { None } else { Some(rat_value(x, y)) } }
+        (Value::Real(x), Value::Real(y)) => Some(Value::Real(x / y)),
+        (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) / y)),
+        (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x / (y as f64))),
+        (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => { if n2 == 0 { None } else { Some(rat_value(n1 * d2, d1 * n2)) } }
+        (Value::Integer(x), Value::Rational { num, den }) => {
+            if num == 0 { return None; }
+            Some(rat_value(x * den, num))
+        }
+        (Value::Rational { num, den }, Value::Integer(x)) => {
+            if x == 0 { return None; }
+            Some(rat_value(num, den * x))
+        }
+        (Value::Real(x), Value::Rational { num, den }) => { if num == 0 { None } else { Some(Value::Real(x / ((num as f64)/(den as f64)))) } }
+        (Value::Rational { num, den }, Value::Real(x)) => Some(Value::Real(((num as f64)/(den as f64)) / x)),
+        (Value::Complex { re: ar, im: ai }, Value::Integer(y)) => {
+            if y == 0 { return None; }
+            let denom = Value::Integer(y);
+            let rr = div_numeric((*ar).clone(), denom.clone())?;
+            let ri = div_numeric((*ai).clone(), denom)?;
+            Some(Value::Complex { re: Box::new(rr), im: Box::new(ri) })
+        }
+        (Value::Complex { re: ar, im: ai }, Value::Real(y)) => {
+            let denom = Value::Real(y);
+            let rr = div_numeric((*ar).clone(), denom.clone())?;
+            let ri = div_numeric((*ai).clone(), denom)?;
+            Some(Value::Complex { re: Box::new(rr), im: Box::new(ri) })
+        }
+        _ => None,
+    }
+}
+
+fn pow_numeric(base: Value, exp: Value) -> Option<Value> {
+    match (base.clone(), exp) {
+        (Value::Integer(a), Value::Integer(e)) => {
+            if e >= 0 { Some(Value::Integer(a.pow(e as u32))) } else { let (rn, rd) = reduce_rat(1, a.pow((-e) as u32)); Some(Value::Rational { num: rn, den: rd }) }
+        }
+        (Value::Real(a), Value::Integer(e)) => Some(Value::Real(a.powi(e as i32))),
+        (Value::Rational { num, den }, Value::Integer(e)) => {
+            if e >= 0 { Some(rat_value(num.pow(e as u32), den.pow(e as u32))) }
+            else { let p = (-e) as u32; Some(rat_value(den.pow(p), num.pow(p))) }
+        }
+        (Value::Complex { .. }, Value::Integer(e)) => {
+            let mut k = e.abs();
+            if k == 0 { return Some(Value::Integer(1)); }
+            // repeated multiplication (simple)
+            let mut acc: Option<Value> = None;
+            let mut base_opt: Option<Value> = None;
+            if let (Value::Complex{..}, _) = (base.clone(), e) { base_opt = Some(base.clone()); }
+            while k > 0 {
+                if acc.is_none() { acc = base_opt.clone(); k -= 1; continue; }
+                acc = Some(mul_numeric(acc.unwrap(), base_opt.clone().unwrap())?);
+                k -= 1;
+            }
+            if e < 0 { div_numeric(Value::Integer(1), acc.unwrap()) } else { acc }
         }
         _ => None,
     }
@@ -174,32 +269,22 @@ fn times(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn minus(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
-        [Value::Integer(a), Value::Integer(b)] => Value::Integer(a - b),
-        [Value::Real(a), Value::Real(b)] => Value::Real(a - b),
-        [Value::Integer(a), Value::Real(b)] => Value::Real((*a as f64) - b),
-        [Value::Real(a), Value::Integer(b)] => Value::Real(a - (*b as f64)),
-        [Value::Integer(a)] => Value::Integer(-a),
-        [Value::Real(a)] => Value::Real(-a),
+        [a, b] => sub_numeric(a.clone(), b.clone()).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: vec![a.clone(), b.clone()] }),
+        [a] => sub_numeric(Value::Integer(0), a.clone()).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: vec![a.clone()] }),
         other => Value::Expr { head: Box::new(Value::Symbol("Minus".into())), args: other.to_vec() },
     }
 }
 
 fn divide(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
-        [Value::Integer(a), Value::Integer(b)] => Value::Real((*a as f64) / (*b as f64)),
-        [Value::Real(a), Value::Real(b)] => Value::Real(a / b),
-        [Value::Integer(a), Value::Real(b)] => Value::Real((*a as f64) / b),
-        [Value::Real(a), Value::Integer(b)] => Value::Real(a / (*b as f64)),
+        [a, b] => div_numeric(a.clone(), b.clone()).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("Divide".into())), args: vec![a.clone(), b.clone()] }),
         other => Value::Expr { head: Box::new(Value::Symbol("Divide".into())), args: other.to_vec() },
     }
 }
 
 fn power(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
-        [Value::Integer(a), Value::Integer(b)] => Value::Real((*a as f64).powf(*b as f64)),
-        [Value::Real(a), Value::Real(b)] => Value::Real(a.powf(*b)),
-        [Value::Real(a), Value::Integer(b)] => Value::Real(a.powf(*b as f64)),
-        [Value::Integer(a), Value::Real(b)] => Value::Real((*a as f64).powf(*b)),
+        [a, b] => pow_numeric(a.clone(), b.clone()).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("Power".into())), args: vec![a.clone(), b.clone()] }),
         other => Value::Expr { head: Box::new(Value::Symbol("Power".into())), args: other.to_vec() },
     }
 }

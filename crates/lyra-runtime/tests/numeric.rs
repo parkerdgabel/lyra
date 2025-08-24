@@ -32,3 +32,37 @@ fn complex_addition() {
     assert_eq!(out, Value::Complex { re: Box::new(Value::Integer(4)), im: Box::new(Value::Integer(1)) });
 }
 
+#[test]
+fn rational_minus_divide_power() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    // Minus[1/2, 1/3] = 1/6
+    let expr = Value::Expr { head: Box::new(sym("Minus")), args: vec![ Value::Rational { num: 1, den: 2 }, Value::Rational { num: 1, den: 3 } ] };
+    let out = ev.eval(expr);
+    assert_eq!(out, Value::Rational { num: 1, den: 6 });
+    // Divide[1/2, 1/3] = 3/2
+    let expr2 = Value::Expr { head: Box::new(sym("Divide")), args: vec![ Value::Rational { num: 1, den: 2 }, Value::Rational { num: 1, den: 3 } ] };
+    let out2 = ev.eval(expr2);
+    assert_eq!(out2, Value::Rational { num: 3, den: 2 });
+    // Power[1/2, 2] = 1/4
+    let expr3 = Value::Expr { head: Box::new(sym("Power")), args: vec![ Value::Rational { num: 1, den: 2 }, Value::Integer(2) ] };
+    let out3 = ev.eval(expr3);
+    assert_eq!(out3, Value::Rational { num: 1, den: 4 });
+}
+
+#[test]
+fn complex_minus_and_scalar_division() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    // (1+2i) - (3-1i) = -2+3i
+    let z1 = Value::Complex { re: Box::new(Value::Integer(1)), im: Box::new(Value::Integer(2)) };
+    let z2 = Value::Complex { re: Box::new(Value::Integer(3)), im: Box::new(Value::Integer(-1)) };
+    let expr = Value::Expr { head: Box::new(sym("Minus")), args: vec![z1, z2] };
+    let out = ev.eval(expr);
+    assert_eq!(out, Value::Complex { re: Box::new(Value::Integer(-2)), im: Box::new(Value::Integer(3)) });
+    // (1+2i)/2 = 1/2 + 1i
+    let z3 = Value::Complex { re: Box::new(Value::Integer(1)), im: Box::new(Value::Integer(2)) };
+    let expr2 = Value::Expr { head: Box::new(sym("Divide")), args: vec![ z3, Value::Integer(2) ] };
+    let out2 = ev.eval(expr2);
+    assert_eq!(out2, Value::Complex { re: Box::new(Value::Rational { num: 1, den: 2 }), im: Box::new(Value::Integer(1)) });
+}
