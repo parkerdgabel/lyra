@@ -33,7 +33,7 @@ impl Evaluator {
 
     pub fn with_env_and_token(env: HashMap<String, Value>, token: Arc<AtomicBool>) -> Self { let mut ev = Self::new(); ev.env = env; ev.cancel_token = Some(token); ev }
 
-    fn register(&mut self, name: &str, f: NativeFn, attrs: Attributes) {
+    pub fn register(&mut self, name: &str, f: NativeFn, attrs: Attributes) {
         self.builtins.insert(name.to_string(), (f, attrs));
     }
 
@@ -207,22 +207,11 @@ pub fn register_compat_prelude(ev: &mut Evaluator) {
     // Small stdlib v0 helpers
     ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
     ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
-    ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
-    ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
-    ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
-    ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
+    // String builtins moved to lyra-stdlib
     ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
     ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
-    ev.register("StringTrim", string_trim as NativeFn, Attributes::LISTABLE);
-    ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
-    ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
-    ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
-    ev.register("EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
-    ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
-    ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
-    ev.register("StringPadLeft", string_pad_left as NativeFn, Attributes::LISTABLE);
-    ev.register("StringPadRight", string_pad_right as NativeFn, Attributes::LISTABLE);
+    // String builtins moved to lyra-stdlib
     // Echo helpers for attribute tests
     ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
     ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
