@@ -15,6 +15,8 @@ pub fn schema_of(v: &Value) -> Value {
         }
         Value::Integer(_) => Value::String("Integer/v1".into()),
         Value::Real(_) => Value::String("Real/v1".into()),
+        Value::Rational { .. } => Value::String("Rational/v1".into()),
+        Value::Complex { .. } => Value::String("Complex/v1".into()),
         Value::String(_) => Value::String("String/v1".into()),
         Value::Symbol(_) => Value::String("Symbol/v1".into()),
         Value::Boolean(_) => Value::String("Boolean/v1".into()),
