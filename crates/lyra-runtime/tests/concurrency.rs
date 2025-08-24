@@ -210,3 +210,30 @@ fn end_scope_cleans_registry() {
     let s2 = format_value(&out2);
     assert_eq!(s2, "False");
 }
+
+#[test]
+fn channel_roundtrip_and_close() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("ch = BoundedChannel[2]; Send[ch, 1]; Send[ch, 2]; {Receive[ch], Receive[ch], CloseChannel[ch], Receive[ch]}");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "{1, 2, True, Null}");
+}
+
+#[test]
+fn actor_tell_and_stop() {
+    // Spin up a no-op actor and send messages, then stop
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("a = Actor[(m)=>Null]; Tell[a, 123]; StopActor[a]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "True");
+}

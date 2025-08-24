@@ -296,10 +296,15 @@ aggregated = ParallelReduce[Plus, results];
 channel = BoundedChannel[100];
 Send[channel, data];
 received = Receive[channel];
+CloseChannel[channel];
 
 # Futures and async operations
 future = AsyncFunction[slowComputation][args];
 result = Await[future, Timeout -> 30];
+
+# Available today in this branch:
+# - BoundedChannel/Send/Receive/CloseChannel
+# - Minimal Actor/Tell/StopActor (single handler: Actor[(m)=>...])
 ```
 
 Note: In this branch today, the following primitives are available and scoped with simple budgets:

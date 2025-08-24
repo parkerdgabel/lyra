@@ -7,6 +7,7 @@ use std::time::{Instant, Duration};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
 use std::sync::OnceLock;
+use std::collections::VecDeque;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -55,6 +56,48 @@ where F: FnOnce() -> Value + Send + 'static {
     let _ = thread_pool().tx.send(job);
     rx
 }
+
+// Bounded channels
+struct ChannelQueue {
+    cap: usize,
+    inner: Mutex<ChannelInner>,
+    not_full: Condvar,
+    not_empty: Condvar,
+}
+
+struct ChannelInner { q: VecDeque<Value>, closed: bool }
+
+impl ChannelQueue {
+    fn new(cap: usize) -> Self { Self { cap, inner: Mutex::new(ChannelInner { q: VecDeque::new(), closed: false }), not_full: Condvar::new(), not_empty: Condvar::new() } }
+    fn send(&self, v: Value, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> bool {
+        let mut guard = self.inner.lock().unwrap();
+        loop {
+            if guard.closed { return false; }
+            if guard.q.len() < self.cap { guard.q.push_back(v); self.not_empty.notify_one(); return true; }
+            if let Some(tok) = &cancel { if tok.load(Ordering::Relaxed) { return false; } }
+            if let Some(dl) = deadline { if Instant::now() > dl { return false; } }
+            let (g, _timeout) = if let Some(dl) = deadline { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() } else { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() };
+            guard = g;
+        }
+    }
+    fn recv(&self, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> Option<Value> {
+        let mut guard = self.inner.lock().unwrap();
+        loop {
+            if let Some(v) = guard.q.pop_front() { self.not_full.notify_one(); return Some(v); }
+            if guard.closed { return None; }
+            if let Some(tok) = &cancel { if tok.load(Ordering::Relaxed) { return None; } }
+            if let Some(dl) = deadline { if Instant::now() > dl { return None; } }
+            let (g, _timeout) = self.not_empty.wait_timeout(guard, Duration::from_millis(5)).unwrap();
+            guard = g;
+        }
+    }
+    fn close(&self) { let mut guard = self.inner.lock().unwrap(); guard.closed = true; self.not_full.notify_all(); self.not_empty.notify_all(); }
+}
+
+static CH_REG: OnceLock<Mutex<HashMap<i64, Arc<ChannelQueue>>>> = OnceLock::new();
+static NEXT_CH_ID: OnceLock<AtomicI64> = OnceLock::new();
+fn ch_reg() -> &'static Mutex<HashMap<i64, Arc<ChannelQueue>>> { CH_REG.get_or_init(|| Mutex::new(HashMap::new())) }
+fn next_ch_id() -> i64 { let a = NEXT_CH_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
 
 struct TaskInfo { rx: Receiver<Value>, cancel: Arc<AtomicBool> }
 
@@ -267,6 +310,13 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
     ev.register("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
+    ev.register("BoundedChannel", bounded_channel_fn as NativeFn, Attributes::empty());
+    ev.register("Send", send_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Receive", receive_fn as NativeFn, Attributes::empty());
+    ev.register("CloseChannel", close_channel_fn as NativeFn, Attributes::empty());
+    ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
 pub fn register_explain(ev: &mut Evaluator) {
@@ -416,6 +466,18 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let token = ev.cancel_token.clone();
             let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
+            if ev.trace_enabled {
+                let data = Value::Assoc(vec![
+                    ("items".to_string(), Value::Integer(items.len() as i64)),
+                    ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
+                    ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+                ].into_iter().collect());
+                ev.trace_steps.push(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ParallelDispatch".into())),
+                    ("head".to_string(), Value::Symbol("ParallelMap".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+            }
             let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
                 let f_cl = f.clone();
@@ -485,6 +547,18 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
     let token = ev.cancel_token.clone();
     let deadline = opt_deadline.or(ev.deadline);
+    if ev.trace_enabled {
+        let data = Value::Assoc(vec![
+            ("items".to_string(), Value::Integer(values.len() as i64)),
+            ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
+            ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+        ].into_iter().collect());
+        ev.trace_steps.push(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ParallelDispatch".into())),
+            ("head".to_string(), Value::Symbol("ParallelTable".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+    }
     let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(values.len());
     for iv in values.into_iter() {
         let expr_cl = expr.clone();
@@ -572,6 +646,18 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let token = ev.cancel_token.clone();
             let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
+            if ev.trace_enabled {
+                let data = Value::Assoc(vec![
+                    ("items".to_string(), Value::Integer(items.len() as i64)),
+                    ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
+                    ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+                ].into_iter().collect());
+                ev.trace_steps.push(Value::Assoc(vec![
+                    ("action".to_string(), Value::String("ParallelDispatch".into())),
+                    ("head".to_string(), Value::Symbol("ParallelEvaluate".into())),
+                    ("data".to_string(), data),
+                ].into_iter().collect()));
+            }
             let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
                 let token_cl = token.clone();
@@ -593,6 +679,113 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         other => Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args: vec![other] },
     }
+}
+
+// Channels
+fn bounded_channel_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let cap = match args.get(0) { Some(Value::Integer(n)) if *n > 0 => *n as usize, _ => 16 };
+    let id = next_ch_id();
+    ch_reg().lock().unwrap().insert(id, Arc::new(ChannelQueue::new(cap)));
+    Value::Expr { head: Box::new(Value::Symbol("ChannelId".into())), args: vec![Value::Integer(id)] }
+}
+
+fn send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Send".into())), args } }
+    let chv = ev.eval(args[0].clone());
+    let val = args[1].clone();
+    let cid = match chv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() { let ok = ch.send(val, ev.cancel_token.clone(), ev.deadline); return Value::Boolean(ok); } }
+    Value::Boolean(false)
+}
+
+fn receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args } }
+    let chv = ev.eval(args[0].clone());
+    let cid = match chv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() { return ch.recv(ev.cancel_token.clone(), ev.deadline).unwrap_or(Value::Symbol("Null".into())); } }
+    Value::Symbol("Null".into())
+}
+
+fn close_channel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("CloseChannel".into())), args } }
+    let chv = ev.eval(args[0].clone());
+    let cid = match chv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id) { ch.close(); return Value::Boolean(true); } }
+    Value::Boolean(false)
+}
+
+// Minimal actor
+#[derive(Clone)]
+struct ActorInfo { chan_id: i64 }
+static ACT_REG: OnceLock<Mutex<HashMap<i64, ActorInfo>>> = OnceLock::new();
+static NEXT_ACT_ID: OnceLock<AtomicI64> = OnceLock::new();
+fn act_reg() -> &'static Mutex<HashMap<i64, ActorInfo>> { ACT_REG.get_or_init(|| Mutex::new(HashMap::new())) }
+fn next_act_id() -> i64 { let a = NEXT_ACT_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
+
+fn actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Actor".into())), args } }
+    let handler = args[0].clone();
+    // Create a channel and spawn worker reading messages and applying handler
+    let cap = 64usize;
+    let chan_id = next_ch_id();
+    let chan = Arc::new(ChannelQueue::new(cap));
+    ch_reg().lock().unwrap().insert(chan_id, chan.clone());
+    let token = ev.cancel_token.clone();
+    let limiter = ev.thread_limiter.clone();
+    let deadline = ev.deadline;
+    // Spawn a worker loop in pool
+    let _ = spawn_task(move || {
+        loop {
+            let msg_opt = chan.recv(token.clone(), deadline);
+            match msg_opt { Some(msg) => {
+                if let Some(l) = limiter.as_ref() { l.acquire(); }
+                // Evaluate handler[msg] in a fresh evaluator
+                let mut ev2 = if let Some(tok) = token.clone() { Evaluator::with_env_and_token(HashMap::new(), tok) } else { Evaluator::new() };
+                ev2.thread_limiter = limiter.clone();
+                ev2.deadline = deadline;
+                let call = Value::Expr { head: Box::new(handler.clone()), args: vec![msg] };
+                let _ = ev2.eval(call);
+                if let Some(l) = limiter.as_ref() { l.release(); }
+            }
+            None => break }
+        }
+        Value::Symbol("Done".into())
+    });
+    let aid = next_act_id();
+    act_reg().lock().unwrap().insert(aid, ActorInfo { chan_id: chan_id });
+    Value::Expr { head: Box::new(Value::Symbol("ActorId".into())), args: vec![Value::Integer(aid)] }
+}
+
+fn tell_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Tell".into())), args } }
+    let actv = ev.eval(args[0].clone());
+    let msg = args[1].clone();
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = aid { if let Some(info) = act_reg().lock().unwrap().get(&id).cloned() { if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id).cloned() { let ok = ch.send(msg, ev.cancel_token.clone(), ev.deadline); return Value::Boolean(ok); } } }
+    Value::Boolean(false)
+}
+
+fn stop_actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("StopActor".into())), args } }
+    let actv = ev.eval(args[0].clone());
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        _ => None,
+    };
+    if let Some(id) = aid { if let Some(info) = act_reg().lock().unwrap().remove(&id) { if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id) { ch.close(); } return Value::Boolean(true); } }
+    Value::Boolean(false)
 }
 
 // legacy logic helpers removed (EvenQ/OddQ now in stdlib)
