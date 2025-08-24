@@ -54,6 +54,79 @@ fn stdlib_min_basics() {
 }
 
 #[test]
+fn stdlib_string_filters() {
+    // HTML
+    assert_eq!(eval_one("HtmlEscape[\"<a&b>\"]"), "\"&lt;a&amp;b&gt;\"");
+    assert_eq!(eval_one("HtmlUnescape[\"&lt;a&amp;b&gt;\"]"), "\"<a&b>\"");
+    // URL
+    assert_eq!(eval_one("UrlEncode[\"a b/©\"]"), "\"a%20b%2F%C2%A9\"");
+    assert_eq!(eval_one("UrlDecode[\"a%20b%2F%C2%A9\"]"), "\"a b/©\"");
+    // Form encoding and more helpers
+    assert_eq!(eval_one("UrlFormEncode[\"a b+c\"]"), "\"a+b%2Bc\"");
+    assert_eq!(eval_one("UrlFormDecode[\"a+b%2Bc\"]"), "\"a b+c\"");
+    assert_eq!(eval_one("Slugify[\"Hello, World!\"]"), "\"hello-world\"");
+    assert_eq!(eval_one("StringTruncate[\"abcdef\", 4]"), "\"abc…\"");
+    assert_eq!(eval_one("StringTruncate[\"abcdef\", 4, \"...\"]"), "\"a...\"");
+    assert_eq!(eval_one("CamelCase[\"hello world_test\"]"), "\"helloWorldTest\"");
+    assert_eq!(eval_one("SnakeCase[\"HelloWorld Test\"]"), "\"hello_world_test\"");
+    assert_eq!(eval_one("KebabCase[\"HelloWorld Test\"]"), "\"hello-world-test\"");
+}
+
+#[test]
+fn stdlib_string_extras() {
+    assert_eq!(eval_one("StringJoinWith[\",\", {\"a\", \"b\"}]"), "\"a,b\"");
+    assert_eq!(eval_one("StringSlice[\"abcdef\", 2, 3]"), "\"cde\"");
+    assert_eq!(eval_one("StringSlice[\"abcdef\", -2, 2]"), "\"ef\"");
+    assert_eq!(eval_one("IndexOf[\"hello\", \"l\"]"), "2");
+    assert_eq!(eval_one("IndexOf[\"hello\", \"l\", 3]"), "3");
+    assert_eq!(eval_one("LastIndexOf[\"hello\", \"l\"]"), "3");
+    assert_eq!(eval_one("LastIndexOf[\"hello\", \"l\", 2]"), "2");
+    assert_eq!(eval_one("StringTrimLeft[\"  hi  \"]"), "\"hi  \"");
+    assert_eq!(eval_one("StringTrimRight[\"  hi  \"]"), "\"  hi\"");
+    assert_eq!(eval_one("StringReplaceFirst[\"foo foo\", \"foo\", \"bar\"]"), "\"bar foo\"");
+    assert_eq!(eval_one("StringRepeat[\"ab\", 3]"), "\"ababab\"");
+    assert_eq!(eval_one("IsBlank[\"   \"]"), "True");
+    assert_eq!(eval_one("IsBlank[\" a \"]"), "False");
+    assert_eq!(eval_one("Capitalize[\"hELLo\"]"), "\"Hello\"");
+    assert_eq!(eval_one("TitleCase[\"hELLo   woRLD\"]"), "\"Hello   World\"");
+    assert_eq!(eval_one("StringTrimPrefix[\"foobar\", \"foo\"]"), "\"bar\"");
+    assert_eq!(eval_one("StringTrimPrefix[\"foobar\", \"bar\"]"), "\"foobar\"");
+    assert_eq!(eval_one("StringTrimSuffix[\"foobar\", \"bar\"]"), "\"foo\"");
+    assert_eq!(eval_one("StringTrimSuffix[\"foobar\", \"foo\"]"), "\"foobar\"");
+    assert_eq!(eval_one("StringTrimChars[\"--ab--\", \"-a\"]"), "\"b\"");
+    assert_eq!(eval_one("EqualsIgnoreCase[\"Hello\", \"hELLo\"]"), "True");
+    assert_eq!(
+        eval_one("SplitLines[JoinLines[{\"a\", \"b\", \"c\", \"d\"}]]"),
+        "{\"a\", \"b\", \"c\", \"d\"}"
+    );
+    assert_eq!(eval_one("StringChars[\"ab\"]"), "{\"a\", \"b\"}");
+    assert_eq!(eval_one("StringFromChars[{\"a\", \"b\", \"c\"}]"), "\"abc\"");
+}
+
+#[test]
+fn stdlib_string_templating() {
+    // Interpolate evaluates inner expressions
+    assert_eq!(eval_one("StringInterpolate[\"sum={Total[{1,2,3}]}\"]"), "\"sum=6\"");
+    // Interpolate with bindings
+    // Use backslash to avoid parser-time interpolation of braces
+    assert_eq!(
+        eval_one("StringInterpolateWith[\"Hello \\{name\\}!\", <|name->\"Lyra\"|>]"),
+        "\"Hello Lyra!\""
+    );
+    // Format with positional args
+    assert_eq!(eval_one("StringFormat[\"\\{0\\}-\\{1\\}\", {\"a\", 123}]"), "\"a-123\"");
+    // Format with map
+    assert_eq!(eval_one("StringFormatMap[\"\\{a\\}:\\{b\\}\", <|\"a\"->1, \"b\"->\"x\"|>]"), "\"1:x\"");
+}
+
+#[test]
+fn with_basic_binding() {
+    assert_eq!(eval_one("With[<|\"x\"->1|>, x]"), "1");
+}
+
+// TemplateRender has separate examples in README; parser string escaping makes inline tests noisy.
+
+#[test]
 fn echo_attribute_tests() {
     assert_eq!(eval_one("OrderlessEcho[b, a]"), "{a, b}");
     assert_eq!(eval_one("FlatEcho[FlatEcho[1,2], 3]"), "{1, 2, 3}");

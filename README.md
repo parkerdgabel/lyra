@@ -411,6 +411,84 @@ Comprehensive documentation is available:
 - **[Examples](examples/)** - 50+ working examples and tutorials
 - **[API Documentation](https://docs.rs/lyra)** - Generated API docs
 
+### String Stdlib: New Helpers
+
+Quick examples of newly added string helpers:
+
+```lyra
+// Templating and formatting
+StringInterpolate["sum={Total[{1,2,3}]}\"]       // => "sum=6"
+// When passing templates at runtime, escape braces in the source with '\\{', '\\}'
+StringInterpolateWith["Hello \{name\}!", <|name->"Lyra"|>] // => "Hello Lyra!"
+StringFormat["\{0\}-\{1\}", {"a", 123}]     // => "a-123"
+StringFormatMap["\{a\}:\{b\}", <|"a"->1, "b"->"x"|>] // => "1:x"
+
+// Filters
+HtmlEscape["<a&b>"]         // => "&lt;a&amp;b&gt;"
+HtmlUnescape["&lt;a&amp;b&gt;"] // => "<a&b>"
+UrlEncode["a b/©"]          // => "a%20b%2F%C2%A9"
+UrlDecode["a%20b%2F%C2%A9"] // => "a b/©"
+UrlFormEncode["a b+c"]     // => "a+b%2Bc"
+UrlFormDecode["a+b%2Bc"]   // => "a b+c"
+Slugify["Hello, World!"]    // => "hello-world"
+StringTruncate["abcdef", 4] // => "abc…"
+StringTruncate["abcdef", 4, "..."] // => "a..."
+CamelCase["hello world_test"] // => "helloWorldTest"
+SnakeCase["HelloWorld Test"]  // => "hello_world_test"
+KebabCase["HelloWorld Test"]  // => "hello-world-test"
+JsonEscape["\n\t\"x\""]     // => "\\n\\t\\\"x\\\""
+JsonUnescape["\\n\\t\\\"x\\\""] // => "\n\t\"x\""
+
+// Mustache-like rendering with TemplateRender
+// Variables: {{name}} (escaped), {{{name}}} (unescaped)
+// Sections: {{#items}}...{{/items}}; Inverted: {{^empty}}...{{/empty}}
+// Partials: {{>p}} via opts <|"Partials"-><|"p"->"..."|>|
+// Filters: {{name|ToUpper}} applies stdlib function
+// Note: Escape braces in Lyra source strings with '\\{' and '\\}' to avoid parser-time interpolation.
+TemplateRender["Hello, \{\{name\}\}!", <|"name"->"<Lyra>"|>] // => "Hello, &lt;Lyra&gt;!"
+TemplateRender["Hello, \{\{\{name\}\}\}!", <|"name"->"<Lyra>"|>] // => "Hello, <Lyra>!"
+TemplateRender["\{\{#items\}\}\{\{.\}\}|\{\{/items\}\}", <|"items"->{"a","b"}|>] // => "a|b|"
+TemplateRender["\{\{user.name\}\}", <|"user"-><|"name"->"Ann"|>|>] // => "Ann"
+TemplateRender["X\{\{>p\}\}Y", <|"n"->"Z"|>, <|"Partials"-><|"p"->"\{\{n\}\}"|>|>] // => "XZY"
+TemplateRender["\{\{name|ToUpper\}\}", <|"name"->"Lyra"|>] // => "LYRA"
+
+// Join with separator
+StringJoinWith[",", {"a", "b"}]             // => "a,b"
+
+// UTF-8 safe slicing by character index (negative start from end)
+StringSlice["abcdef", 2, 3]                  // => "cde"
+StringSlice["naïve", -2, 2]                   // => "ve"
+
+// Index search (character indices)
+IndexOf["hello", "l"]                        // => 2
+LastIndexOf["hello", "l"]                   // => 3
+
+// Trim variants
+StringTrimLeft["  hi  "]                     // => "hi  "
+StringTrimRight["  hi  "]                    // => "  hi"
+StringTrimPrefix["foobar", "foo"]            // => "bar"
+StringTrimSuffix["foobar", "bar"]            // => "foo"
+StringTrimChars["--ab--", "-a"]             // => "b"
+
+// Replace only first match
+StringReplaceFirst["foo foo", "foo", "bar"]  // => "bar foo"
+
+// Repetition and blank check
+StringRepeat["ab", 3]                        // => "ababab"
+IsBlank["   "]                               // => True
+
+// Case helpers
+Capitalize["hELLo"]                          // => "Hello"
+TitleCase["hELLo   woRLD"]                   // => "Hello   World"
+EqualsIgnoreCase["Hello", "hELLo"]           // => True
+
+// Lines and chars
+SplitLines["a\r\nb\nc\rd"]                 // => {"a", "b", "c", "d"}
+JoinLines[{"a", "b", "c"}]                   // => "a\nb\nc"
+StringChars["ab"]                             // => {"a", "b"}
+StringFromChars[{"a", "b", "c"}]             // => "abc"
+```
+
 ## 🚀 Performance Optimization
 
 Lyra includes several performance optimization strategies:

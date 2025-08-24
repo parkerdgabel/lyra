@@ -1,3 +1,4 @@
+#![cfg(feature = "concurrency_tests")]
 use lyra_parser::Parser;
 use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
@@ -243,11 +244,68 @@ fn actor_ask_reply_pattern() {
     set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
-    // Handler replies with 2*msg: Send[Part[m, "replyTo"], Times[2, Part[m, "msg"]]]
+    // Handler replies with 2*msg: Send[Part[m, \"replyTo\"], Times[2, Part[m, "msg"]]]
     let mut p = Parser::from_source("a = Actor[(m)=>Send[Part[m, \"replyTo\"], Times[2, Part[m, \"msg\"]]]]; f = Ask[a, 21]; Await[f]");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
     for v in vals { last = ev.eval(v); }
     let s = format_value(&last);
     assert_eq!(s, "42");
+}
+
+
+#[test]
+fn parallel_map_inherits_env() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("k = 10; ParallelMap[(x)=>Plus[x,k], {1,2,3}]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "{11, 12, 13}");
+}
+
+#[test]
+fn parallel_evaluate_inherits_env() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    let mut p = Parser::from_source("k = 5; ParallelEvaluate[{Plus[1,k], Times[2,k]}]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "{6, 10}");
+}
+
+
+
+#[test]
+fn channel_try_ops_and_timeout() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    // cap=1: TryReceive empty -> Null; TrySend twice -> {True, False}
+    let mut p = Parser::from_source("ch = BoundedChannel[1]; {TryReceive[ch], TrySend[ch, 1], TrySend[ch, 2], Receive[ch, <|TimeoutMs->10|>]}");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "{Null, True, False, 1}");
+}
+
+#[test]
+fn ask_with_timeout_returns_null_on_expiry() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    stdlib::register_all(&mut ev);
+    // Actor that delays reply beyond timeout
+    let mut p = Parser::from_source("a = Actor[(m)=>BusyWait[20];]; f = Ask[a, 1, <|TimeoutMs->5|>]; Await[f]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert_eq!(s, "Null");
 }

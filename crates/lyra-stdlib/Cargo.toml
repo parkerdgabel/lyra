@@ -7,9 +7,10 @@ version.workspace = true
 [dependencies]
 lyra-runtime = { path = "../lyra-runtime" }
 lyra-core = { path = "../lyra-core" }
+lyra-parser = { path = "../lyra-parser" }
 
 [features]
-default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain"]
+default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools"]
 core = []
 string = []
 math = []
@@ -19,4 +20,5 @@ logic = []
 concurrency = []
 schema = []
 explain = []
+tools = []
 testing = []
