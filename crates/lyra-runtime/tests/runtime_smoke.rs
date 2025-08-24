@@ -177,3 +177,18 @@ fn explain_traces_hold_and_flat() {
     assert!(s2.contains("\"FlatFlatten\""));
     assert!(s2.contains("\"added\" -> 2"));
 }
+
+#[test]
+fn tools_dry_run_and_export_openai() {
+    // Register a simple http.get spec with schema
+    let _ = eval_one("ToolsRegister[<|\"id\"->\"net.http.get@1\", \"name\"->\"http.get\", \"impl\"->\"HttpGet\", \"params\"->{\"url\", \"retries\"}, \"summary\"->\"Fetch a URL\", \"tags\"->{\"http\", \"json\"}, \"effects\"->{\"net\"}, \"input_schema\"-><|\"type\"->\"object\", \"properties\"-><|\"url\"-><|\"type\"->\"string\"|>, \"retries\"-><|\"type\"->\"integer\"|>|>, \"required\"->{\"url\"}|> |>]");
+
+    // Missing required "retries" should be ok (since only url required), but wrong type should fail
+    let res = eval_one("ToolsDryRun[\"net.http.get@1\", <|\"url\"->\"https://a\", \"retries\"->\"x\"|>]");
+    assert!(res.contains("\"ok\" -> False") || res.contains("\"ok\"->False"));
+    assert!(res.contains("\"errors\""));
+
+    // Export OpenAI and check function name present (parameters structure may vary)
+    let export = eval_one("ToolsExportOpenAI[]");
+    assert!(export.contains("\"name\" -> \"http_get\""));
+}

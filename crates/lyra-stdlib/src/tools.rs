@@ -35,6 +35,99 @@ fn value_to_string(v: &Value) -> Option<String> {
     match v { Value::String(s)=>Some(s.clone()), Value::Symbol(s)=>Some(s.clone()), _=>None }
 }
 
+fn type_name_of(v: &Value) -> &'static str {
+    match v {
+        Value::Integer(_) => "integer",
+        Value::Real(_) => "number",
+        Value::String(_) => "string",
+        Value::Symbol(_) => "string",
+        Value::Boolean(_) => "boolean",
+        Value::List(_) => "array",
+        Value::Assoc(_) => "object",
+        _ => "unknown",
+    }
+}
+
+// Minimal JSON Schema validator: supports object properties/required and primitive types; arrays with items.type
+fn validate_against_schema(schema: &Value, provided: &Value) -> (bool, Vec<Value>) {
+    let mut ok = true;
+    let mut errors: Vec<Value> = Vec::new();
+    let mut check_type = |expected: &str, v: &Value, path: &str, errors: &mut Vec<Value>| -> bool {
+        let actual = type_name_of(v);
+        if expected != actual {
+            errors.push(Value::Assoc(HashMap::from([
+                ("path".to_string(), Value::String(path.to_string())),
+                ("expected".to_string(), Value::String(expected.to_string())),
+                ("actual".to_string(), Value::String(actual.to_string())),
+            ])));
+            false
+        } else { true }
+    };
+    fn get_field<'a>(m: &'a HashMap<String, Value>, k: &str) -> Option<&'a Value> { m.get(k) }
+    match (schema, provided) {
+        (Value::Assoc(s), Value::Assoc(p)) => {
+            // type: object
+            if let Some(Value::String(t)) = get_field(s, "type") { if t != "object" { /* ignore other root types */ } }
+            // required
+            if let Some(Value::List(reqs)) = get_field(s, "required") {
+                for r in reqs.iter().filter_map(value_to_string) {
+                    if !p.contains_key(&r) {
+                        ok = false;
+                        errors.push(Value::Assoc(HashMap::from([
+                            ("path".to_string(), Value::String(format!(".{}", r))),
+                            ("missing".to_string(), Value::Boolean(true)),
+                        ])));
+                    }
+                }
+            }
+            // properties
+            if let Some(Value::Assoc(props)) = get_field(s, "properties") {
+                for (k, prop_schema) in props.iter() {
+                    if let Some(v) = p.get(k) {
+                        match prop_schema {
+                            Value::Assoc(pm) => {
+                                if let Some(Value::String(t)) = pm.get("type") {
+                                    match t.as_str() {
+                                        "array" => {
+                                            if !check_type("array", v, &format!(".{}", k), &mut errors) { ok = false; }
+                                            if let Value::List(items) = v {
+                                                if let Some(Value::Assoc(item_schema)) = pm.get("items") {
+                                                    if let Some(Value::String(it_t)) = item_schema.get("type") {
+                                                        for (idx, it) in items.iter().enumerate() {
+                                                            let actual = type_name_of(it);
+                                                            if &actual != it_t {
+                                                                ok = false;
+                                                                errors.push(Value::Assoc(HashMap::from([
+                                                                    ("path".to_string(), Value::String(format!(".{}[{}]", k, idx))),
+                                                                    ("expected".to_string(), Value::String(it_t.clone())),
+                                                                    ("actual".to_string(), Value::String(actual.to_string())),
+                                                                ])));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        other => {
+                                            if !check_type(other, v, &format!(".{}", k), &mut errors) { ok = false; }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        (Value::Assoc(s), other) => {
+            if let Some(Value::String(t)) = s.get("type") { if !check_type(t, other, "$", &mut errors) { ok = false; } }
+        }
+        _ => {}
+    }
+    (ok, errors)
+}
+
 // ToolsRegister[spec] or ToolsRegister[{spec1, spec2, ...}]
 fn tools_register(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsRegister".into())), args } }
@@ -251,14 +344,21 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let spec_opt = reg.get(&key).cloned();
     let mut normalized: Vec<Value> = Vec::new();
     let mut missing: Vec<Value> = Vec::new();
+    let mut errors: Vec<Value> = Vec::new();
     let mut ok = true;
     let mut estimates = Value::Assoc(HashMap::new());
     if let Some(Value::Assoc(m)) = spec_opt {
         if let Some(Value::Assoc(cost)) = m.get("cost_estimate") { estimates = Value::Assoc(cost.clone()); }
         let params: Vec<String> = match m.get("params") { Some(Value::List(vs))=>vs.iter().filter_map(value_to_string).collect(), _=>vec![] };
         let defaults: HashMap<String, Value> = match m.get("param_defaults") { Some(Value::Assoc(am))=>am.clone(), _=>HashMap::new() };
-        if let Value::Assoc(input) = provided {
+        if let Value::Assoc(input) = provided.clone() {
             for p in &params { if let Some(v) = input.get(p) { normalized.push(v.clone()); } else if let Some(v) = defaults.get(p) { normalized.push(v.clone()); } else { ok=false; missing.push(Value::String(p.clone())); normalized.push(Value::Symbol("Null".into())); } }
+            // Schema validation if provided
+            if let Some(Value::Assoc(schema)) = m.get("input_schema") {
+                let (_ok, mut errs) = validate_against_schema(&Value::Assoc(schema.clone()), &Value::Assoc(input.clone()));
+                if !_ok { ok = false; }
+                errors.append(&mut errs);
+            }
         } else if let Value::List(vs) = provided { normalized = vs; }
     } else {
         // Unknown spec; pass through
@@ -268,6 +368,7 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ("ok".to_string(), Value::Boolean(ok)),
         ("normalized_args".to_string(), Value::List(normalized)),
         ("missing".to_string(), Value::List(missing)),
+        ("errors".to_string(), Value::List(errors)),
         ("estimates".to_string(), estimates),
     ].into_iter().collect())
 }
