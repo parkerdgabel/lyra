@@ -170,7 +170,40 @@ impl Evaluator {
                     let applied = apply_pure_function(*body, params.as_ref(), &eval_args);
                     return self.eval(applied);
                 }
-                let fname = match &head_eval { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(head_eval), args } };
+                let fname = match &head_eval { Value::Symbol(s) => s.clone(), _ => {
+                    // SubValues rewrite for compound head: (g[...])[args]
+                    if let Value::Expr { head: inner_head, .. } = &head_eval {
+                        if let Value::Symbol(sub_sym) = &**inner_head {
+                            if let Some(rs) = self.defs.rules(DefKind::Sub, sub_sym) {
+                                if !rs.is_empty() {
+                                    let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+                                    let expr0 = Value::Expr { head: Box::new(head_eval.clone()), args: args.clone() };
+                                    let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&lyra_rewrite::matcher::MatcherCtx::default(), expr0.clone(), &rules);
+                                    if out != expr0 {
+                                        if self.trace_enabled {
+                                            for (lhs, rhs) in &rules {
+                                                if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
+                                                    let data = Value::Assoc(vec![
+                                                        ("lhs".to_string(), lhs.clone()),
+                                                        ("rhs".to_string(), rhs.clone()),
+                                                    ].into_iter().collect());
+                                                    self.trace_steps.push(Value::Assoc(vec![
+                                                        ("action".to_string(), Value::String("RuleMatch".into())),
+                                                        ("head".to_string(), Value::Symbol("SubValues".into())),
+                                                        ("data".to_string(), data),
+                                                    ].into_iter().collect()));
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        return self.eval(out);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return Value::Expr { head: Box::new(head_eval), args };
+                } };
                 // UpValues rewrite (single step) prior to DownValues and builtin dispatch
                 {
                     let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.clone())), args: args.clone() };
@@ -342,7 +375,34 @@ impl Evaluator {
             }
             Value::List(items) => Value::List(items.into_iter().map(|x| self.eval(x)).collect()),
             Value::Assoc(m) => Value::Assoc(m.into_iter().map(|(k,v)|(k,self.eval(v))).collect()),
-            Value::Symbol(s) => self.env.get(&s).cloned().unwrap_or(Value::Symbol(s)),
+            Value::Symbol(s) => {
+                // OwnValues rewrite for symbol
+                if let Some(rs) = self.defs.rules(DefKind::Own, &s) {
+                    if !rs.is_empty() {
+                        let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+                        let expr0 = Value::Symbol(s.clone());
+                        // Linear top-level match for simplicity
+                        for (lhs, rhs) in &rules {
+                            if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
+                                if self.trace_enabled {
+                                    let data = Value::Assoc(vec![
+                                        ("lhs".to_string(), lhs.clone()),
+                                        ("rhs".to_string(), rhs.clone()),
+                                    ].into_iter().collect());
+                                    self.trace_steps.push(Value::Assoc(vec![
+                                        ("action".to_string(), Value::String("RuleMatch".into())),
+                                        ("head".to_string(), Value::Symbol("OwnValues".into())),
+                                        ("data".to_string(), data),
+                                    ].into_iter().collect()));
+                                }
+                                let out = lyra_rewrite::matcher::substitute_named(rhs, &lyra_rewrite::matcher::Bindings::new());
+                                return self.eval(out);
+                            }
+                        }
+                    }
+                }
+                self.env.get(&s).cloned().unwrap_or(Value::Symbol(s))
+            }
             other => other,
         }
     }
@@ -365,6 +425,10 @@ pub fn register_core(ev: &mut Evaluator) {
     ev.register("GetDownValues", get_downvalues_fn as NativeFn, Attributes::empty());
     ev.register("SetUpValues", set_upvalues_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("GetUpValues", get_upvalues_fn as NativeFn, Attributes::empty());
+    ev.register("SetOwnValues", set_ownvalues_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("GetOwnValues", get_ownvalues_fn as NativeFn, Attributes::empty());
+    ev.register("SetSubValues", set_subvalues_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("GetSubValues", get_subvalues_fn as NativeFn, Attributes::empty());
 }
 
 pub fn register_concurrency(ev: &mut Evaluator) {
@@ -1446,6 +1510,48 @@ fn get_upvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     } else {
         Value::List(vec![])
     }
+}
+
+fn set_ownvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // SetOwnValues[symbol, {lhs->rhs, ...}]
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args } }
+    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args } };
+    let rules_pairs = collect_rules(ev, args[1].clone());
+    let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Own, &sym);
+    rs.0.clear();
+    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    Value::Symbol("Null".into())
+}
+
+fn get_ownvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // GetOwnValues[symbol]
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args } }
+    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args } };
+    if let Some(rs) = ev.defs.rules(DefKind::Own, &sym) {
+        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        Value::List(items)
+    } else { Value::List(vec![]) }
+}
+
+fn set_subvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // SetSubValues[symbol, {lhs->rhs, ...}]
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args } }
+    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args } };
+    let rules_pairs = collect_rules(ev, args[1].clone());
+    let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Sub, &sym);
+    rs.0.clear();
+    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    Value::Symbol("Null".into())
+}
+
+fn get_subvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // GetSubValues[symbol]
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args } }
+    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args } };
+    if let Some(rs) = ev.defs.rules(DefKind::Sub, &sym) {
+        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        Value::List(items)
+    } else { Value::List(vec![]) }
 }
 
 fn with_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {

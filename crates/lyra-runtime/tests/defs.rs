@@ -40,3 +40,37 @@ fn upvalues_basic_rewrite() {
     let out = ev.eval(call);
     assert_eq!(out, int(99));
 }
+
+#[test]
+fn ownvalues_basic_rewrite() {
+    // SetOwnValues[x, { x -> 10 }]; x => 10
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    let lhs = sym("x");
+    let rhs = int(10);
+    let rule = Value::Expr { head: Box::new(sym("Rule")), args: vec![lhs, rhs] };
+    let set = Value::Expr { head: Box::new(sym("SetOwnValues")), args: vec![sym("x"), Value::List(vec![rule])] };
+    let _ = ev.eval(set);
+    let out = ev.eval(sym("x"));
+    assert_eq!(out, int(10));
+}
+
+#[test]
+fn subvalues_basic_rewrite() {
+    // SetSubValues[f, { (f[a_])[b_] -> 123 }]; f[1][2] => 123
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    let f = sym("f");
+    let a = Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("a") ] };
+    let b = Value::Expr { head: Box::new(sym("NamedBlank")), args: vec![ sym("b") ] };
+    let lhs_head = Value::Expr { head: Box::new(f.clone()), args: vec![ a ] };
+    let lhs = Value::Expr { head: Box::new(lhs_head), args: vec![ b ] };
+    let rhs = int(123);
+    let rule = Value::Expr { head: Box::new(sym("Rule")), args: vec![lhs, rhs] };
+    let set = Value::Expr { head: Box::new(sym("SetSubValues")), args: vec![f.clone(), Value::List(vec![rule])] };
+    let _ = ev.eval(set);
+    let call1 = Value::Expr { head: Box::new(f.clone()), args: vec![ int(1) ] };
+    let call = Value::Expr { head: Box::new(call1), args: vec![ int(2) ] };
+    let out = ev.eval(call);
+    assert_eq!(out, int(123));
+}
