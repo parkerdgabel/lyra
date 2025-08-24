@@ -24,12 +24,20 @@ fn stdlib_min_basics() {
     assert_eq!(eval_one("EvenQ[{1,2,3}]"), "{False, True, False}");
     assert_eq!(eval_one("StringLength[\"abc\"]"), "3");
     assert_eq!(eval_one("ToUpper[\"abC\"]"), "\"ABC\"");
+    assert_eq!(eval_one("ToLower[\"AbC\"]"), "\"abc\"");
+    assert_eq!(eval_one("StringJoin[{\"a\", \"b\"}]"), "\"ab\"");
+    assert_eq!(eval_one("Abs[{-2, 0, 3}]"), "{2, 0, 3}");
+    assert_eq!(eval_one("Length[{1,2,3}]"), "3");
+    assert_eq!(eval_one("Range[1,5]"), "{1, 2, 3, 4, 5}");
+    assert_eq!(eval_one("Join[{1,2}, {3}]"), "{1, 2, 3}");
+    assert_eq!(eval_one("Reverse[{1,2}]"), "{2, 1}");
 }
 
 #[test]
 fn echo_attribute_tests() {
     assert_eq!(eval_one("OrderlessEcho[b, a]"), "{a, b}");
     assert_eq!(eval_one("FlatEcho[FlatEcho[1,2], 3]"), "{1, 2, 3}");
+    assert_eq!(eval_one("FlatOrderlessEcho[FlatOrderlessEcho[b,a], c]"), "{a, b, c}");
 }
 
 #[test]

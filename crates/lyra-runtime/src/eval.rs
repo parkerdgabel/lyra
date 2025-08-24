@@ -18,11 +18,13 @@ pub struct Evaluator {
     tasks: HashMap<i64, TaskInfo>, // minimal future registry
     next_task_id: i64,
     cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
+    trace_enabled: bool,
+    trace_steps: Vec<Value>,
 }
 
 impl Evaluator {
     pub fn new() -> Self {
-        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None };
+        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, trace_enabled: false, trace_steps: Vec::new() };
         ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
         ev.register("Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS);
         ev.register("Minus", minus as NativeFn, Attributes::LISTABLE);
@@ -72,17 +74,27 @@ impl Evaluator {
         ev.register("Gather", gather as NativeFn, Attributes::empty());
         ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
         ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
+        ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
         // Phase 0 additions
         ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
         ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
+        // Stdlib v0 extras
+        ev.register("Length", length as NativeFn, Attributes::empty());
+        ev.register("Range", range as NativeFn, Attributes::empty());
+        ev.register("Join", join as NativeFn, Attributes::empty());
+        ev.register("Reverse", reverse as NativeFn, Attributes::empty());
         // Small stdlib v0 helpers
         ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
         ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
         ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
         ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
+        ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
+        ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
+        ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
         // Echo helpers for attribute tests
         ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
         ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
+        ev.register("FlatOrderlessEcho", flat_orderless_echo as NativeFn, Attributes::FLAT | Attributes::ORDERLESS | Attributes::HOLD_ALL);
         ev
     }
 
@@ -110,6 +122,7 @@ impl Evaluator {
                 let (fun, attrs) = match self.builtins.get(&fname) { Some(t) => (t.0, t.1), None => return Value::Expr { head: Box::new(Value::Symbol(fname)), args } };
                 if attrs.contains(Attributes::LISTABLE) {
                     if args.iter().any(|a| matches!(a, Value::List(_))) {
+                        if self.trace_enabled { self.trace_steps.push(step_assoc("ListableThread", &head_eval)); }
                         return listable_thread(self, fun, args);
                     }
                 }
@@ -139,6 +152,7 @@ impl Evaluator {
                     for a in eval_args.into_iter() {
                         if let Value::Expr { head: h2, args: a2 } = &a {
                             if matches!(&**h2, Value::Symbol(s) if s == &fname) {
+                                if self.trace_enabled { self.trace_steps.push(step_assoc("FlatFlatten", &head_eval)); }
                                 flat.extend(a2.clone());
                                 continue;
                             }
@@ -149,6 +163,7 @@ impl Evaluator {
                 }
                 // Orderless: canonical sort of args
                 if attrs.contains(Attributes::ORDERLESS) {
+                    if self.trace_enabled { self.trace_steps.push(step_assoc("OrderlessSort", &head_eval)); }
                     eval_args.sort_by(|x,y| value_order(x).cmp(&value_order(y)));
                 }
                 fun(self, eval_args)
@@ -367,33 +382,14 @@ fn parallel_map(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args } }
     let f = args[0].clone();
-    match ev.eval(args[1].clone()) {
-        Value::List(items) => {
-            let mut futures = Vec::with_capacity(items.len());
-            for it in items.into_iter() {
-                let call = Value::Expr { head: Box::new(f.clone()), args: vec![it] };
-                let fut = future_fn(ev, vec![call]);
-                futures.push(fut);
-            }
-            Value::List(futures)
-        }
-        other => Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args: vec![f, other] },
-    }
+    let v = ev.eval(args[1].clone());
+    Value::List(map_async_rec(ev, f, v))
 }
 
 fn gather(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Gather".into())), args } }
-    match ev.eval(args[0].clone()) {
-        Value::List(items) => {
-            let mut out = Vec::with_capacity(items.len());
-            for it in items.into_iter() {
-                let res = await_fn(ev, vec![it]);
-                out.push(res);
-            }
-            Value::List(out)
-        }
-        other => await_fn(ev, vec![other]),
-    }
+    let v = ev.eval(args[0].clone());
+    Value::List(gather_rec(ev, v))
 }
 
 fn busy_wait(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -407,6 +403,14 @@ fn busy_wait(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     Value::Symbol("Done".into())
+}
+
+fn fail_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let tag = match args.get(0) { Some(Value::String(s)) => s.clone(), Some(Value::Symbol(s)) => s.clone(), _ => "Fail".into() };
+    Value::Assoc(vec![
+        ("message".to_string(), Value::String("Failure".into())),
+        ("tag".to_string(), Value::String(tag)),
+    ].into_iter().collect())
 }
 
 fn even_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -441,6 +445,109 @@ fn to_upper(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn to_lower(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::String(s.to_lowercase()),
+        [other] => match ev.eval(other.clone()) { Value::String(s)=>Value::String(s.to_lowercase()), v=> Value::Expr { head: Box::new(Value::Symbol("ToLower".into())), args: vec![v] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("ToLower".into())), args },
+    }
+}
+
+fn string_join(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::List(parts)] => {
+            let mut out = String::new();
+            for p in parts { match ev.eval(p.clone()) { Value::String(s)=> out.push_str(&s), v => out.push_str(&lyra_core::pretty::format_value(&v)) } }
+            Value::String(out)
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringJoin".into())), args },
+    }
+}
+
+fn abs_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Integer(n.abs()),
+        [Value::Real(x)] => Value::Real(x.abs()),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args },
+    }
+}
+
+fn length(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Length".into())), args } }
+    match ev.eval(args[0].clone()) {
+        Value::List(v) => Value::Integer(v.len() as i64),
+        Value::String(s) => Value::Integer(s.chars().count() as i64),
+        _ => Value::Integer(0),
+    }
+}
+
+fn range(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::List((1..=*n).map(Value::Integer).collect()),
+        [Value::Integer(a), Value::Integer(b)] => {
+            let (start, end) = (*a, *b);
+            let mut out = Vec::new();
+            if start <= end { for i in start..=end { out.push(Value::Integer(i)); } }
+            else { for i in (end..=start).rev() { out.push(Value::Integer(i)); } }
+            Value::List(out)
+        }
+        [a, b] => { let a1 = ev.eval(a.clone()); let b1 = ev.eval(b.clone()); range(ev, vec![a1, b1]) },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Range".into())), args },
+    }
+}
+
+fn join(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::List(a), Value::List(b)] => {
+            let mut out = a.clone();
+            out.extend(b.clone());
+            Value::List(out)
+        }
+        [a, b] => { let a1 = ev.eval(a.clone()); let b1 = ev.eval(b.clone()); join(ev, vec![a1, b1]) },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Join".into())), args },
+    }
+}
+
+fn reverse(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Reverse".into())), args } }
+    match ev.eval(args[0].clone()) {
+        Value::List(mut v) => { v.reverse(); Value::List(v) }
+        other => other,
+    }
+}
+
+fn flat_orderless_echo(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::List(args) }
+
+fn step_assoc(action: &str, head: &Value) -> Value {
+    Value::Assoc(vec![
+        ("action".to_string(), Value::String(action.to_string())),
+        ("head".to_string(), head.clone()),
+    ].into_iter().collect())
+}
+
+fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value) -> Vec<Value> {
+    match v {
+        Value::List(items) => items.into_iter().map(|it| {
+            let mapped = map_async_rec(ev, f.clone(), it);
+            if mapped.len()==1 { mapped.into_iter().next().unwrap() } else { Value::List(mapped) }
+        }).collect(),
+        other => {
+            let call = Value::Expr { head: Box::new(f), args: vec![other] };
+            vec![future_fn(ev, vec![call])]
+        }
+    }
+}
+
+fn gather_rec(ev: &mut Evaluator, v: Value) -> Vec<Value> {
+    match v {
+        Value::List(items) => items.into_iter().map(|it| {
+            let g = gather_rec(ev, it);
+            if g.len()==1 { g.into_iter().next().unwrap() } else { Value::List(g) }
+        }).collect(),
+        other => vec![await_fn(ev, vec![other])],
+    }
+}
+
 fn orderless_echo(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::List(args) }
 fn flat_echo(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::List(args) }
 
@@ -453,28 +560,18 @@ fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args } }
     let expr = args[0].clone();
-    let _result = ev.eval(expr.clone());
-    let mut heads: Vec<Value> = Vec::new();
-    collect_heads(&expr, &mut heads);
-    let steps = heads.into_iter().map(|h| Value::Assoc(vec![
-        ("head".to_string(), h),
-    ].into_iter().collect())).collect();
+    // Evaluate under tracing using same env
+    let env_snapshot = ev.env.clone();
+    let mut ev2 = Evaluator::with_env(env_snapshot);
+    ev2.trace_enabled = true;
+    let _ = ev2.eval(expr);
+    let steps = Value::List(ev2.trace_steps);
     Value::Assoc(vec![
-        ("steps".to_string(), Value::List(steps)),
+        ("steps".to_string(), steps),
         ("algorithm".to_string(), Value::String("stub".into())),
         ("provider".to_string(), Value::String("cpu".into())),
         ("estCost".to_string(), Value::Assoc(Default::default())),
     ].into_iter().collect())
-}
-
-fn collect_heads(v: &Value, out: &mut Vec<Value>) {
-    match v {
-        Value::Expr { head, args } => {
-            out.push((**head).clone());
-            for a in args { collect_heads(a, out); }
-        }
-        _ => {}
-    }
 }
 
 fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Value>) -> Value {

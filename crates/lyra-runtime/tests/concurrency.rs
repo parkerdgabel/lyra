@@ -45,6 +45,16 @@ fn map_async_and_gather() {
 }
 
 #[test]
+fn map_async_nested_and_partial_failures() {
+    // nested structure
+    let s1 = eval_one("Gather[MapAsync[EvenQ, {{1,2}, {3,4}}]]");
+    assert_eq!(s1, "{{False, True}, {False, True}}" );
+    // partial failures using Fail builtin
+    let s2 = eval_one("Gather[MapAsync[(x)=>If[EvenQ[x], Fail[\"oops\"], Times[x,x]], {1,2,3}]]");
+    assert!(s2.contains("\"oops\""));
+}
+
+#[test]
 fn cancel_future_and_await_failure() {
     use lyra_parser::Parser;
     use lyra_runtime::Evaluator;
