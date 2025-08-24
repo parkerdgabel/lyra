@@ -113,6 +113,28 @@ fn add_numeric(a: Value, b: Value) -> Option<Value> {
             let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
             Some(Value::BigReal(format_float(xf + yf)))
         }
+        (Value::PackedArray { shape: s1, data: d1 }, Value::PackedArray { shape: s2, data: d2 }) => {
+            if s1 == s2 && d1.len() == d2.len() {
+                let data: Vec<f64> = d1.iter().zip(d2.iter()).map(|(x,y)| x + y).collect();
+                Some(Value::PackedArray { shape: s1, data })
+            } else { None }
+        }
+        (Value::PackedArray { shape, data }, other) | (other, Value::PackedArray { shape, data }) => {
+            fn to_f64_scalar(v: &Value) -> Option<f64> {
+                match v {
+                    Value::Integer(n) => Some(*n as f64),
+                    Value::Real(x) => Some(*x),
+                    Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+                    Value::BigReal(s) => s.parse::<f64>().ok(),
+                    _ => None,
+                }
+            }
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x += s; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
+        }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 + n2 * d1, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
             Some(rat_value(num + x * den, den))
@@ -147,6 +169,28 @@ fn mul_numeric(a: Value, b: Value) -> Option<Value> {
             let xf = ax.parse::<f64>().ok()?;
             let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
             Some(Value::BigReal(format_float(xf * yf)))
+        }
+        (Value::PackedArray { shape: s1, data: d1 }, Value::PackedArray { shape: s2, data: d2 }) => {
+            if s1 == s2 && d1.len() == d2.len() {
+                let data: Vec<f64> = d1.iter().zip(d2.iter()).map(|(x,y)| x * y).collect();
+                Some(Value::PackedArray { shape: s1, data })
+            } else { None }
+        }
+        (Value::PackedArray { shape, data }, other) | (other, Value::PackedArray { shape, data }) => {
+            fn to_f64_scalar(v: &Value) -> Option<f64> {
+                match v {
+                    Value::Integer(n) => Some(*n as f64),
+                    Value::Real(x) => Some(*x),
+                    Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+                    Value::BigReal(s) => s.parse::<f64>().ok(),
+                    _ => None,
+                }
+            }
+            if let Some(s) = to_f64_scalar(&other) {
+                let mut out = data.clone();
+                for x in &mut out { *x *= s; }
+                Some(Value::PackedArray { shape, data: out })
+            } else { None }
         }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * n2, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
