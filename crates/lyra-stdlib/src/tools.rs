@@ -11,6 +11,19 @@ fn tool_reg() -> &'static Mutex<HashMap<String, Value>> {
     TOOL_REG.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// Inline registration helper for stdlib/native code to attach specs at definition time
+#[allow(dead_code)]
+pub fn add_specs(specs: Vec<Value>) {
+    let mut reg = tool_reg().lock().unwrap();
+    for s in specs.into_iter() {
+        if let Value::Assoc(m) = &s {
+            if let Some(id) = get_str(m, "id").or_else(|| get_str(m, "name")) {
+                reg.insert(id, s);
+            }
+        }
+    }
+}
+
 pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());
@@ -175,6 +188,55 @@ fn builtin_cards(ev: &mut Evaluator) -> Vec<Value> {
     }
 }
 
+fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
+    // Provide richer specs for common stdlib functions when present.
+    // Only include if function exists in current instance (post tree-shake) by checking DescribeBuiltins names.
+    let names: std::collections::HashSet<String> = builtin_cards(ev).into_iter().filter_map(|v| if let Value::Assoc(m)=v { get_str(&m, "name") } else { None }).collect();
+    let mut specs: Vec<Value> = Vec::new();
+    let mut add = |name: &str, summary: &str, params: Vec<&str>, tags: Vec<&str>| {
+        if names.contains(name) {
+            let pvals: Vec<Value> = params.iter().map(|s| Value::String((*s).into())).collect();
+            let tvals: Vec<Value> = tags.iter().map(|s| Value::String((*s).into())).collect();
+            let mut props: HashMap<String, Value> = HashMap::new();
+            for p in &params { props.insert((*p).into(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("string".into()))]))); }
+            let schema = Value::Assoc(HashMap::from([
+                ("type".to_string(), Value::String("object".into())),
+                ("properties".to_string(), Value::Assoc(props)),
+            ]));
+            let m = Value::Assoc(HashMap::from([
+                ("id".to_string(), Value::String(name.to_string())),
+                ("name".to_string(), Value::String(name.to_string())),
+                ("impl".to_string(), Value::String(name.to_string())),
+                ("summary".to_string(), Value::String(summary.into())),
+                ("tags".to_string(), Value::List(tvals)),
+                ("effects".to_string(), Value::List(vec![])),
+                ("params".to_string(), Value::List(pvals)),
+                ("input_schema".to_string(), schema),
+            ]));
+            specs.push(m);
+        }
+    };
+    add("HtmlEscape", "Escape HTML special characters.", vec!["s"], vec!["string","html","escape"]);
+    add("HtmlUnescape", "Unescape HTML entities.", vec!["s"], vec!["string","html","unescape"]);
+    add("UrlEncode", "Percent-encode string for URLs.", vec!["s"], vec!["string","url","encode"]);
+    add("UrlDecode", "Decode percent-encoded URL string.", vec!["s"], vec!["string","url","decode"]);
+    add("UrlFormEncode", "Form-url-encode string.", vec!["s"], vec!["string","form","encode"]);
+    add("UrlFormDecode", "Form-url-decode string.", vec!["s"], vec!["string","form","decode"]);
+    add("JsonEscape", "Escape string for JSON.", vec!["s"], vec!["string","json","escape"]);
+    add("JsonUnescape", "Unescape JSON string.", vec!["s"], vec!["string","json","unescape"]);
+    add("Slugify", "Convert text to lowercase URL slug.", vec!["s"], vec!["string","slug"]);
+    add("StringTruncate", "Truncate to max length with suffix.", vec!["s","max","suffix"], vec!["string","truncate"]);
+    add("CamelCase", "Convert to lower camelCase.", vec!["s"], vec!["string","case"]);
+    add("SnakeCase", "Convert to snake_case.", vec!["s"], vec!["string","case"]);
+    add("KebabCase", "Convert to kebab-case.", vec!["s"], vec!["string","case"]);
+    add("StringFormat", "Positional format using {0},{1}.", vec!["template","args"], vec!["string","format"]);
+    add("StringFormatMap", "Named format using {key}.", vec!["template","map"], vec!["string","format"]);
+    add("StringInterpolate", "Interpolate expressions inside braces.", vec!["s"], vec!["string","template"]);
+    add("StringInterpolateWith", "Interpolate using provided variables.", vec!["s","vars"], vec!["string","template"]);
+    add("TemplateRender", "Render Mustache-like template.", vec!["template","data","opts"], vec!["string","template"]);
+    specs
+}
+
 // ToolsList[] -> list of cards (registered specs first, then fallback builtins not overridden)
 fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Optional filter: <|"effects"->{..}, "tags"->{..}|>
@@ -186,6 +248,15 @@ fn tools_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let mut m = match spec { Value::Assoc(m)=>m.clone(), _=>HashMap::new() };
         m.entry("id".to_string()).or_insert(Value::String(id.clone()));
         out.push(Value::Assoc(m));
+    }
+    // Add stdlib default specs for present functions (richer than generic cards)
+    let mut seen: std::collections::HashSet<String> = out.iter().filter_map(|v| if let Value::Assoc(m)=v { get_str(m, "id") } else { None }).collect();
+    for spec in stdlib_default_specs(ev) {
+        if let Value::Assoc(m) = &spec {
+            if let Some(id) = get_str(m, "id").or_else(|| get_str(m, "name")) {
+                if !seen.contains(&id) { out.push(spec); seen.insert(id); }
+            }
+        }
     }
     // Add fallback builtin cards if available and not already present
     let mut seen: std::collections::HashSet<String> = out.iter().filter_map(|v| if let Value::Assoc(m)=v { get_str(m, "id") } else { None }).collect();

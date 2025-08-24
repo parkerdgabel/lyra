@@ -1,6 +1,8 @@
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use lyra_core::value::Value;
+#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use std::collections::HashMap;
 
 pub fn register_math(ev: &mut Evaluator) {
     ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
@@ -11,6 +13,81 @@ pub fn register_math(ev: &mut Evaluator) {
     ev.register("Abs", abs_fn as NativeFn, Attributes::LISTABLE);
     ev.register("Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     ev.register("Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        // Plus
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Plus".into())),
+            ("name".to_string(), Value::String("Plus".into())),
+            ("impl".to_string(), Value::String("Plus".into())),
+            ("summary".to_string(), Value::String("Sum numbers (variadic)".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("math".into()), Value::String("sum".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
+            ("input_schema".to_string(), Value::Assoc(HashMap::from([
+                ("type".to_string(), Value::String("object".into())),
+                ("properties".to_string(), Value::Assoc(HashMap::from([
+                    ("args".to_string(), Value::Assoc(HashMap::from([
+                        ("type".to_string(), Value::String("array".into())),
+                        ("items".to_string(), Value::Assoc(HashMap::from([
+                            ("type".to_string(), Value::String("number".into())),
+                        ]))),
+                    ]))),
+                ]))),
+            ]))),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
+            ("examples".to_string(), Value::List(vec![
+                Value::Assoc(HashMap::from([
+                    ("args".to_string(), Value::Assoc(HashMap::from([("args".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
+                    ("result".to_string(), Value::Integer(3)),
+                ])),
+            ])),
+        ])),
+
+        // Times
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Times".into())),
+            ("name".to_string(), Value::String("Times".into())),
+            ("impl".to_string(), Value::String("Times".into())),
+            ("summary".to_string(), Value::String("Multiply numbers (variadic)".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("math".into()), Value::String("product".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
+            ("input_schema".to_string(), Value::Assoc(HashMap::from([
+                ("type".to_string(), Value::String("object".into())),
+                ("properties".to_string(), Value::Assoc(HashMap::from([
+                    ("args".to_string(), Value::Assoc(HashMap::from([
+                        ("type".to_string(), Value::String("array".into())),
+                        ("items".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
+                    ]))),
+                ]))),
+            ]))),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
+            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([("args".to_string(), Value::List(vec![Value::Integer(2), Value::Integer(3)]))]))),
+                ("result".to_string(), Value::Integer(6)),
+            ]))])),
+        ])),
+
+        // Abs
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Abs".into())),
+            ("name".to_string(), Value::String("Abs".into())),
+            ("impl".to_string(), Value::String("Abs".into())),
+            ("summary".to_string(), Value::String("Absolute value".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("math".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("x".into())])),
+            ("input_schema".to_string(), Value::Assoc(HashMap::from([
+                ("type".to_string(), Value::String("object".into())),
+                ("properties".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))])))]))),
+                ("required".to_string(), Value::List(vec![Value::String("x".into())])),
+            ]))),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
+            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::Integer(-2))]))),
+                ("result".to_string(), Value::Integer(2)),
+            ]))])),
+        ])),
+    ]);
 }
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;

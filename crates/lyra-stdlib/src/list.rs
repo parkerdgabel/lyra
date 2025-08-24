@@ -1,6 +1,8 @@
 use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
+#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -14,6 +16,56 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Partition", partition as NativeFn, Attributes::empty());
     ev.register("Transpose", transpose as NativeFn, Attributes::empty());
     ev.register("Part", part as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Length".into())),
+            ("name".to_string(), Value::String("Length".into())),
+            ("impl".to_string(), Value::String("Length".into())),
+            ("summary".to_string(), Value::String("Length of list or string".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("string".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("x".into())])),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("integer".into()))]))),
+            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
+                ("result".to_string(), Value::Integer(2)),
+            ]))])),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Join".into())),
+            ("name".to_string(), Value::String("Join".into())),
+            ("impl".to_string(), Value::String("Join".into())),
+            ("summary".to_string(), Value::String("Concatenate two lists".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("list".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
+            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([
+                    ("a".to_string(), Value::List(vec![Value::Integer(1)])),
+                    ("b".to_string(), Value::List(vec![Value::Integer(2)])),
+                ]))),
+                ("result".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)])),
+            ]))])),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Total".into())),
+            ("name".to_string(), Value::String("Total".into())),
+            ("impl".to_string(), Value::String("Total".into())),
+            ("summary".to_string(), Value::String("Sum elements in a list".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("math".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("list".into())])),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("number".into()))]))),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Part".into())),
+            ("name".to_string(), Value::String("Part".into())),
+            ("impl".to_string(), Value::String("Part".into())),
+            ("summary".to_string(), Value::String("Index into list/assoc".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("list".into()), Value::String("assoc".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("subject".into()), Value::String("index".into())])),
+        ])),
+    ]);
 }
 
 fn length(ev: &mut Evaluator, args: Vec<Value>) -> Value {

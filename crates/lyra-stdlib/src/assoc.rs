@@ -2,6 +2,7 @@ use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
+#[cfg(feature = "tools")] use crate::tools::add_specs;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -17,6 +18,53 @@ pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
     ev.register("SortBy", sort_by as NativeFn, Attributes::empty());
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Keys".into())),
+            ("name".to_string(), Value::String("Keys".into())),
+            ("impl".to_string(), Value::String("Keys".into())),
+            ("summary".to_string(), Value::String("List keys of an association".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Values".into())),
+            ("name".to_string(), Value::String("Values".into())),
+            ("impl".to_string(), Value::String("Values".into())),
+            ("summary".to_string(), Value::String("List values of an association".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("output_schema".to_string(), Value::Assoc(HashMap::from([("type".to_string(), Value::String("array".into()))]))),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Lookup".into())),
+            ("name".to_string(), Value::String("Lookup".into())),
+            ("impl".to_string(), Value::String("Lookup".into())),
+            ("summary".to_string(), Value::String("Lookup value from association".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("assoc".into()), Value::String("key".into()), Value::String("default".into())])),
+        ])),
+        Value::Assoc(HashMap::from([
+            ("id".to_string(), Value::String("Merge".into())),
+            ("name".to_string(), Value::String("Merge".into())),
+            ("impl".to_string(), Value::String("Merge".into())),
+            ("summary".to_string(), Value::String("Merge associations with optional combiner".into())),
+            ("tags".to_string(), Value::List(vec![Value::String("assoc".into())])),
+            ("params".to_string(), Value::List(vec![Value::String("args".into())])),
+            ("examples".to_string(), Value::List(vec![Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([(
+                    "args".to_string(), Value::List(vec![
+                        Value::Assoc(HashMap::from([(String::from("a"), Value::Integer(1))])),
+                        Value::Assoc(HashMap::from([(String::from("a"), Value::Integer(2))])),
+                    ]))
+                ]))),
+                ("result".to_string(), Value::Assoc(HashMap::from([(String::from("a"), Value::Integer(2))]))),
+            ]))])),
+        ])),
+    ]);
 }
 
 fn keys(ev: &mut Evaluator, args: Vec<Value>) -> Value {
