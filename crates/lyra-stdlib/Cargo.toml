@@ -9,7 +9,7 @@ lyra-runtime = { path = "../lyra-runtime" }
 lyra-core = { path = "../lyra-core" }
 
 [features]
-default = ["string", "math", "list", "assoc", "logic"]
+default = ["string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain"]
 string = []
 math = []
 list = []

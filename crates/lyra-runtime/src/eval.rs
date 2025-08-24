@@ -223,6 +223,26 @@ pub fn register_compat_prelude(ev: &mut Evaluator) {
 
 pub fn evaluate(v: Value) -> Value { Evaluator::new().eval(v) }
 
+// Public registration helpers for stdlib wrappers
+pub fn register_concurrency(ev: &mut Evaluator) {
+    ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Await", await_fn as NativeFn, Attributes::empty());
+    ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
+    ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
+    ev.register("Gather", gather as NativeFn, Attributes::empty());
+    ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
+    ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
+    ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
+}
+
+pub fn register_explain(ev: &mut Evaluator) {
+    ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
+}
+
+pub fn register_schema(ev: &mut Evaluator) {
+    ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
+}
+
 fn listable_thread(ev: &mut Evaluator, f: NativeFn, args: Vec<Value>) -> Value {
     // Determine length: max length of list args (scalars broadcast)
     let len = args.iter().filter_map(|a| if let Value::List(v)=a { Some(v.len()) } else { None }).max().unwrap_or(0);
