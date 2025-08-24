@@ -4,277 +4,37 @@
 //! hypothesis testing, correlation analysis, and advanced statistical methods.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
-use std::any::Any;
 
 // Import required statistical libraries
 use statrs::distribution::{Normal, StudentsT, ChiSquared, ContinuousCDF};
+// New common typed parsing and result helpers
+use crate::stdlib::common::{arg, trailing_options, assoc, confidence_interval as ci_assoc};
 
-/// Statistical Model Results - Foreign Object
-#[derive(Debug, Clone)]
-pub struct StatisticalModel {
-    model_type: String,
-    coefficients: Vec<f64>,
-    residuals: Vec<f64>,
-    r_squared: f64,
-    p_values: Vec<f64>,
-    standard_errors: Vec<f64>,
-    fitted_values: Vec<f64>,
-    metadata: HashMap<String, Value>,
-}
-
-impl Foreign for StatisticalModel {
-    fn type_name(&self) -> &'static str {
-        "StatisticalModel"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "coefficients" => Ok(Value::List(
-                self.coefficients.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "rSquared" => Ok(Value::Real(self.r_squared)),
-            "residuals" => Ok(Value::List(
-                self.residuals.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "pValues" => Ok(Value::List(
-                self.p_values.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "fittedValues" => Ok(Value::List(
-                self.fitted_values.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "summary" => {
-                Ok(Value::List(vec![
-                    Value::List(vec![Value::String("modelType".to_string()), Value::String(self.model_type.clone())]),
-                    Value::List(vec![Value::String("rSquared".to_string()), Value::Real(self.r_squared)]),
-                    Value::List(vec![Value::String("coefficients".to_string()), Value::List(
-                        self.coefficients.iter().map(|&x| Value::Real(x)).collect()
-                    )])
-                ]))
-            },
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "StatisticalModel".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
-
-/// Hypothesis Test Results - Foreign Object
-#[derive(Debug, Clone)]
-pub struct HypothesisTestResult {
-    test_statistic: f64,
-    p_value: f64,
-    degrees_of_freedom: Option<f64>,
-    critical_value: Option<f64>,
-    confidence_level: f64,
-    test_type: String,
-    effect_size: Option<f64>,
-}
-
-impl Foreign for HypothesisTestResult {
-    fn type_name(&self) -> &'static str {
-        "HypothesisTestResult"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "testStatistic" => Ok(Value::Real(self.test_statistic)),
-            "pValue" => Ok(Value::Real(self.p_value)),
-            "isSignificant" => {
-                let alpha = args.get(0).and_then(|v| match v {
-                    Value::Real(r) => Some(*r),
-                    Value::Integer(i) => Some(*i as f64),
-                    _ => None,
-                }).unwrap_or(0.05);
-                Ok(Value::Boolean(self.p_value < alpha))
-            },
-            "confidenceLevel" => Ok(Value::Real(self.confidence_level)),
-            "effectSize" => match self.effect_size {
-                Some(es) => Ok(Value::Real(es)),
-                None => Ok(Value::Missing),
-            },
-            "summary" => {
-                Ok(Value::List(vec![
-                    Value::List(vec![Value::String("testType".to_string()), Value::String(self.test_type.clone())]),
-                    Value::List(vec![Value::String("testStatistic".to_string()), Value::Real(self.test_statistic)]),
-                    Value::List(vec![Value::String("pValue".to_string()), Value::Real(self.p_value)]),
-                    Value::List(vec![Value::String("confidenceLevel".to_string()), Value::Real(self.confidence_level)])
-                ]))
-            },
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "HypothesisTestResult".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
-
-/// Correlation Matrix - Foreign Object
-#[derive(Debug, Clone)]
-pub struct CorrelationMatrix {
-    matrix: Vec<Vec<f64>>,
-    column_names: Vec<String>,
-    method: String,
-}
-
-impl Foreign for CorrelationMatrix {
-    fn type_name(&self) -> &'static str {
-        "CorrelationMatrix"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "matrix" => {
-                let rows: Vec<Value> = self.matrix.iter()
-                    .map(|row| Value::List(row.iter().map(|&x| Value::Real(x)).collect()))
-                    .collect();
-                Ok(Value::List(rows))
-            },
-            "columnNames" => Ok(Value::List(
-                self.column_names.iter().map(|s| Value::String(s.clone())).collect()
-            )),
-            "method" => Ok(Value::String(self.method.clone())),
-            "getCorrelation" => {
-                if args.len() != 2 {
-                    return Err(ForeignError::InvalidArity {
-                        method: "getCorrelation".to_string(),
-                        expected: 2,
-                        actual: args.len(),
-                    });
-                }
-                
-                let var1 = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => return Err(ForeignError::InvalidArgumentType {
-                        method: "getCorrelation".to_string(),
-                        expected: "String".to_string(),
-                        actual: format!("{:?}", args[0]),
-                    }),
-                };
-                let var2 = match &args[1] {
-                    Value::String(s) => s.clone(),
-                    _ => return Err(ForeignError::InvalidArgumentType {
-                        method: "getCorrelation".to_string(),
-                        expected: "String".to_string(),
-                        actual: format!("{:?}", args[1]),
-                    }),
-                };
-                
-                let idx1 = self.column_names.iter().position(|x| x == &var1)
-                    .ok_or_else(|| ForeignError::RuntimeError {
-                        message: format!("Variable '{}' not found", var1),
-                    })?;
-                let idx2 = self.column_names.iter().position(|x| x == &var2)
-                    .ok_or_else(|| ForeignError::RuntimeError {
-                        message: format!("Variable '{}' not found", var2),
-                    })?;
-                
-                Ok(Value::Real(self.matrix[idx1][idx2]))
-            },
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "CorrelationMatrix".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
-
-/// Bootstrap Sample Result - Foreign Object
-#[derive(Debug, Clone)]
-pub struct BootstrapResult {
-    original_statistic: f64,
-    bootstrap_statistics: Vec<f64>,
-    confidence_interval: (f64, f64),
-    bias: f64,
-    standard_error: f64,
-}
-
-impl Foreign for BootstrapResult {
-    fn type_name(&self) -> &'static str {
-        "BootstrapResult"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "originalStatistic" => Ok(Value::Real(self.original_statistic)),
-            "bootstrapStatistics" => Ok(Value::List(
-                self.bootstrap_statistics.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "confidenceInterval" => Ok(Value::List(vec![
-                Value::Real(self.confidence_interval.0),
-                Value::Real(self.confidence_interval.1),
-            ])),
-            "bias" => Ok(Value::Real(self.bias)),
-            "standardError" => Ok(Value::Real(self.standard_error)),
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "BootstrapResult".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
+// Removed legacy Foreign wrappers (StatisticalModel, HypothesisTestResult, CorrelationMatrix, BootstrapResult)
 
 /// Linear/Polynomial/Logistic Regression
 pub fn regression(args: &[Value]) -> VmResult<Value> {
-    if args.len() < 3 {
-        return Err(VmError::Runtime(
-            "Regression requires at least 3 arguments: data, formula, type".to_string()
-        ));
-    }
+    // New typed parsing with trailing options. Accepts either:
+    // Regression[data, formula, method?, opts?]
+    // Where method may also be provided as opts.method.
+    let data: Vec<Vec<f64>> = arg(args, 0, "Regression")?;
+    let formula: String = arg(args, 1, "Regression")?;
+    let opts = trailing_options(args).cloned().unwrap_or_default();
 
-    // Extract data matrix
-    let data = extract_data_matrix(&args[0])?;
-    let formula = args[1].as_string().ok_or_else(|| VmError::Runtime(
-        "Formula must be a string".to_string()
-    ))?;
-    let regression_type = args[2].as_string().ok_or_else(|| VmError::Runtime(
-        "Regression type must be a string".to_string()
-    ))?;
+    // Method from arg 2 if present and string, else from opts.method, default "linear"
+    let method = if let Some(Value::String(s)) = args.get(2) { s.clone() } else {
+        opts.get("method").and_then(|v| v.as_string()).unwrap_or_else(|| "linear".to_string())
+    };
+    let degree = opts.get("degree").and_then(|v| v.as_real()).map(|x| x as usize)
+        .or_else(|| args.get(3).and_then(|v| v.as_real()).map(|x| x as usize))
+        .unwrap_or(2usize);
 
-    match regression_type.as_str() {
+    match method.as_str() {
         "linear" => perform_linear_regression(data, &formula),
-        "polynomial" => {
-            let degree = args.get(3).and_then(|v| v.as_real()).unwrap_or(2.0) as usize;
-            perform_polynomial_regression(data, &formula, degree)
-        },
+        "polynomial" => perform_polynomial_regression(data, &formula, degree),
         "logistic" => perform_logistic_regression(data, &formula),
-        _ => Err(VmError::Runtime(
-            format!("Unsupported regression type: {}", regression_type)
-        )),
+        _ => Err(VmError::Runtime(format!("Unsupported regression method: {}", method))),
     }
 }
 
@@ -297,28 +57,21 @@ pub fn anova(args: &[Value]) -> VmResult<Value> {
 
 /// Student's t-test (one/two sample)
 pub fn t_test(args: &[Value]) -> VmResult<Value> {
-    if args.len() < 2 {
-        return Err(VmError::Runtime(
-            "TTest requires at least 2 arguments".to_string()
-        ));
-    }
-
+    // New flexible parsing: TTest[sample1, sample2?, opts?]
+    // If arg1 is a list -> two-sample; if it's an association -> one-sample with opts.
+    if args.is_empty() { return Err(VmError::Runtime("TTest requires at least 1 argument".to_string())); }
     let sample1 = extract_numeric_vector(&args[0])?;
-    let sample2_opt = if args.len() > 1 {
-        Some(extract_numeric_vector(&args[1])?)
-    } else {
-        None
-    };
+    let opts = trailing_options(args).cloned().unwrap_or_default();
 
-    let options = if args.len() > 2 {
-        extract_test_options(&args[2])?
-    } else {
-        HashMap::new()
-    };
+    // Confidence level option (default 0.95)
+    let _conf_level = opts.get("confidenceLevel").and_then(|v| v.as_real()).unwrap_or(0.95);
 
-    match sample2_opt {
-        Some(sample2) => perform_two_sample_t_test(sample1, sample2, options),
-        None => perform_one_sample_t_test(sample1, options),
+    let two_sample = match args.get(1) { Some(Value::List(_)) => true, _ => false };
+    if two_sample {
+        let sample2 = extract_numeric_vector(&args[1])?;
+        perform_two_sample_t_test(sample1, sample2, opts)
+    } else {
+        perform_one_sample_t_test(sample1, opts)
     }
 }
 
@@ -359,46 +112,36 @@ pub fn chi_square_test(args: &[Value]) -> VmResult<Value> {
     
     let p_value = 1.0 - chi_dist.cdf(chi_stat);
 
-    let result = HypothesisTestResult {
-        test_statistic: chi_stat,
-        p_value,
-        degrees_of_freedom: Some(df),
-        critical_value: None,
-        confidence_level: 0.95,
-        test_type: "Chi-Square Goodness of Fit".to_string(),
-        effect_size: None,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("ChiSquare".to_string())),
+        ("statistic", Value::Real(chi_stat)),
+        ("pValue", Value::Real(p_value)),
+        ("df", Value::Real(df)),
+    ]))
 }
 
 /// Correlation matrix calculation (Pearson/Spearman/Kendall)
 pub fn correlation_matrix(args: &[Value]) -> VmResult<Value> {
-    if args.len() < 1 {
-        return Err(VmError::Runtime(
-            "CorrelationMatrix requires at least 1 argument: data".to_string()
-        ));
-    }
-
-    let data = extract_data_matrix(&args[0])?;
-    let method = args.get(1).and_then(|v| v.as_string()).unwrap_or("pearson".to_string());
+    // Accept CorrelationMatrix[data, methodOrOpts?]
+    let data: Vec<Vec<f64>> = arg(args, 0, "CorrelationMatrix")?;
+    let opts = trailing_options(args).cloned().unwrap_or_default();
+    let method = match args.get(1) {
+        Some(Value::String(s)) => s.clone(),
+        _ => opts.get("method").and_then(|v| v.as_string()).unwrap_or_else(|| "pearson".to_string()),
+    };
 
     let (matrix, column_names) = match method.as_str() {
         "pearson" => calculate_pearson_correlation(data)?,
         "spearman" => calculate_spearman_correlation(data)?,
         "kendall" => calculate_kendall_correlation(data)?,
-        _ => return Err(VmError::Runtime(
-            format!("Unsupported correlation method: {}", method)
-        )),
+        _ => return Err(VmError::Runtime(format!("Unsupported correlation method: {}", method))),
     };
 
-    let correlation_matrix = CorrelationMatrix {
-        matrix,
-        column_names,
-        method,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(correlation_matrix))))
+    Ok(assoc(vec![
+        ("matrix", Value::List(matrix.into_iter().map(|row| Value::List(row.into_iter().map(Value::Real).collect())).collect())),
+        ("columns", Value::List(column_names.into_iter().map(Value::String).collect())),
+        ("method", Value::String(method)),
+    ]))
 }
 
 /// Principal Component Analysis
@@ -449,17 +192,40 @@ pub fn hypothesis_test(args: &[Value]) -> VmResult<Value> {
 
 /// Confidence interval calculation
 pub fn confidence_interval(args: &[Value]) -> VmResult<Value> {
-    if args.len() < 2 {
+    // New parsing: ConfidenceInterval[data, opts?]
+    // Back-compat: ConfidenceInterval[data, confidence_level, method?]
+    if args.is_empty() {
         return Err(VmError::Runtime(
-            "ConfidenceInterval requires 2 arguments: data, confidence_level".to_string()
+            "ConfidenceInterval requires at least 1 argument: data".to_string()
         ));
     }
 
     let data = extract_numeric_vector(&args[0])?;
-    let confidence_level = args[1].as_real().ok_or_else(|| VmError::Runtime(
-        "Confidence level must be a number".to_string()
-    ))?;
-    let method = args.get(2).and_then(|v| v.as_string()).unwrap_or("t".to_string());
+    let opts = trailing_options(args).cloned().unwrap_or_default();
+
+    // Defaults
+    let mut confidence_level = opts
+        .get("confidenceLevel")
+        .and_then(|v| v.as_real())
+        .unwrap_or(0.95);
+    let mut method = opts
+        .get("method")
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "t".to_string());
+
+    // Positional overrides for back-compat
+    if args.len() >= 2 {
+        if let Some(cl) = args[1].as_real() {
+            confidence_level = cl;
+        } else if let Some(s) = args[1].as_string() {
+            method = s;
+        }
+    }
+    if args.len() >= 3 {
+        if let Some(s) = args[2].as_string() {
+            method = s;
+        }
+    }
 
     calculate_confidence_interval(data, confidence_level, &method)
 }
@@ -562,19 +328,33 @@ pub fn power_analysis(args: &[Value]) -> VmResult<Value> {
 
 /// Effect size calculation (Cohen's d, eta-squared, etc.)
 pub fn effect_size(args: &[Value]) -> VmResult<Value> {
-    if args.len() < 3 {
+    // New parsing: EffectSize[group1, group2, methodOrOpts?]
+    if args.len() < 2 {
         return Err(VmError::Runtime(
-            "EffectSize requires 3 arguments: group1, group2, method".to_string()
+            "EffectSize requires at least 2 arguments: group1, group2".to_string()
         ));
     }
 
     let group1 = extract_numeric_vector(&args[0])?;
     let group2 = extract_numeric_vector(&args[1])?;
-    let method = args[2].as_string().ok_or_else(|| VmError::Runtime(
-        "Method must be a string".to_string()
-    ))?;
+    let opts = trailing_options(args).cloned().unwrap_or_default();
+    let method = match args.get(2) {
+        Some(Value::String(s)) => s.clone(),
+        _ => opts
+            .get("method")
+            .and_then(|v| v.as_string())
+            .unwrap_or_else(|| "cohens_d".to_string()),
+    };
 
-    calculate_effect_size(group1, group2, &method)
+    let val = calculate_effect_size(group1, group2, &method)?;
+    let effect_val = match val {
+        Value::Real(x) => x,
+        other => return Err(VmError::Runtime(format!("Expected numeric effect size, got {:?}", other))),
+    };
+    Ok(assoc(vec![
+        ("method", Value::String(method)),
+        ("effectSize", Value::Real(effect_val)),
+    ]))
 }
 
 /// Multiple comparison post-hoc testing (Tukey, Bonferroni)
@@ -626,7 +406,7 @@ fn extract_numeric_vector(value: &Value) -> VmResult<Vec<f64>> {
     }
 }
 
-fn extract_grouped_data(value: &Value) -> VmResult<HashMap<String, Vec<f64>>> {
+fn extract_grouped_data(_value: &Value) -> VmResult<HashMap<String, Vec<f64>>> {
     // Implementation for grouped data extraction
     // This would parse group data structure
     Ok(HashMap::new()) // Placeholder
@@ -669,75 +449,94 @@ fn extract_multiple_groups(value: &Value) -> VmResult<Vec<Vec<f64>>> {
 }
 
 // Statistical computation implementations
-fn perform_linear_regression(data: Vec<Vec<f64>>, formula: &str) -> VmResult<Value> {
+fn perform_linear_regression(_data: Vec<Vec<f64>>, formula: &str) -> VmResult<Value> {
     // Implementation of linear regression using nalgebra/ndarray
     // This is a placeholder - full implementation would parse formula and perform regression
-    let model = StatisticalModel {
-        model_type: "Linear Regression".to_string(),
-        coefficients: vec![1.0, 0.5], // Placeholder
-        residuals: vec![],
-        r_squared: 0.85,
-        p_values: vec![0.01, 0.03],
-        standard_errors: vec![0.1, 0.2],
-        fitted_values: vec![],
-        metadata: HashMap::new(),
-    };
+    let coefficients = vec![1.0, 0.5];
+    let r_squared = 0.85;
+    let p_values = vec![0.01, 0.03];
+    let standard_errors = vec![0.1, 0.2];
+    let fitted_values: Vec<f64> = vec![];
+    let residuals: Vec<f64> = vec![];
 
-    Ok(Value::LyObj(LyObj::new(Box::new(model))))
+    Ok(assoc(vec![
+        ("model", Value::String("Linear".to_string())),
+        ("formula", Value::String(formula.to_string())),
+        ("coefficients", Value::List(coefficients.into_iter().map(Value::Real).collect())),
+        ("rSquared", Value::Real(r_squared)),
+        ("pValues", Value::List(p_values.into_iter().map(Value::Real).collect())),
+        ("standardErrors", Value::List(standard_errors.into_iter().map(Value::Real).collect())),
+        ("fitted", Value::List(fitted_values.into_iter().map(Value::Real).collect())),
+        ("residuals", Value::List(residuals.into_iter().map(Value::Real).collect())),
+    ]))
 }
 
-fn perform_polynomial_regression(data: Vec<Vec<f64>>, formula: &str, degree: usize) -> VmResult<Value> {
+fn perform_polynomial_regression(_data: Vec<Vec<f64>>, formula: &str, degree: usize) -> VmResult<Value> {
     // Implementation of polynomial regression
     // Placeholder implementation
-    let model = StatisticalModel {
-        model_type: format!("Polynomial Regression (degree {})", degree),
-        coefficients: vec![1.0; degree + 1],
-        residuals: vec![],
-        r_squared: 0.90,
-        p_values: vec![0.01; degree + 1],
-        standard_errors: vec![0.1; degree + 1],
-        fitted_values: vec![],
-        metadata: HashMap::new(),
-    };
+    let coefficients = vec![1.0; degree + 1];
+    let r_squared = 0.90;
+    let p_values = vec![0.01; degree + 1];
+    let standard_errors = vec![0.1; degree + 1];
+    let fitted_values: Vec<f64> = vec![];
+    let residuals: Vec<f64> = vec![];
 
-    Ok(Value::LyObj(LyObj::new(Box::new(model))))
+    Ok(assoc(vec![
+        ("model", Value::String("Polynomial".to_string())),
+        ("degree", Value::Integer(degree as i64)),
+        ("formula", Value::String(formula.to_string())),
+        ("coefficients", Value::List(coefficients.into_iter().map(Value::Real).collect())),
+        ("rSquared", Value::Real(r_squared)),
+        ("pValues", Value::List(p_values.into_iter().map(Value::Real).collect())),
+        ("standardErrors", Value::List(standard_errors.into_iter().map(Value::Real).collect())),
+        ("fitted", Value::List(fitted_values.into_iter().map(Value::Real).collect())),
+        ("residuals", Value::List(residuals.into_iter().map(Value::Real).collect())),
+    ]))
 }
 
-fn perform_logistic_regression(data: Vec<Vec<f64>>, formula: &str) -> VmResult<Value> {
+fn perform_logistic_regression(_data: Vec<Vec<f64>>, formula: &str) -> VmResult<Value> {
     // Implementation of logistic regression
     // Placeholder implementation
-    let model = StatisticalModel {
-        model_type: "Logistic Regression".to_string(),
-        coefficients: vec![0.5, 1.2],
-        residuals: vec![],
-        r_squared: 0.75, // Pseudo R-squared for logistic
-        p_values: vec![0.02, 0.001],
-        standard_errors: vec![0.15, 0.3],
-        fitted_values: vec![],
-        metadata: HashMap::new(),
-    };
+    let coefficients = vec![0.5, 1.2];
+    let r_squared = 0.75; // pseudo R^2
+    let p_values = vec![0.02, 0.001];
+    let standard_errors = vec![0.15, 0.3];
+    let fitted_values: Vec<f64> = vec![];
+    let residuals: Vec<f64> = vec![];
 
-    Ok(Value::LyObj(LyObj::new(Box::new(model))))
+    Ok(assoc(vec![
+        ("model", Value::String("Logistic".to_string())),
+        ("formula", Value::String(formula.to_string())),
+        ("coefficients", Value::List(coefficients.into_iter().map(Value::Real).collect())),
+        ("pseudoRSquared", Value::Real(r_squared)),
+        ("pValues", Value::List(p_values.into_iter().map(Value::Real).collect())),
+        ("standardErrors", Value::List(standard_errors.into_iter().map(Value::Real).collect())),
+        ("fitted", Value::List(fitted_values.into_iter().map(Value::Real).collect())),
+        ("residuals", Value::List(residuals.into_iter().map(Value::Real).collect())),
+    ]))
 }
 
-fn perform_anova_analysis(groups: HashMap<String, Vec<f64>>, dependent_var: &str, factors: Vec<String>) -> VmResult<Value> {
-    // Implementation of ANOVA
-    // Placeholder implementation
-    let result = HypothesisTestResult {
-        test_statistic: 15.67,
-        p_value: 0.001,
-        degrees_of_freedom: Some(2.0),
-        critical_value: Some(3.84),
-        confidence_level: 0.95,
-        test_type: "One-Way ANOVA".to_string(),
-        effect_size: Some(0.45), // Eta-squared
-    };
+fn perform_anova_analysis(_groups: HashMap<String, Vec<f64>>, _dependent_var: &str, _factors: Vec<String>) -> VmResult<Value> {
+    // Placeholder implementation returning standardized Association
+    let f_stat = 15.67;
+    let p_value = 0.001;
+    let df1 = 2.0;
+    let df2 = 42.0;
+    let eta_sq = 0.45; // effect size placeholder
 
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("ANOVA".to_string())),
+        ("fStatistic", Value::Real(f_stat)),
+        ("pValue", Value::Real(p_value)),
+        ("df1", Value::Real(df1)),
+        ("df2", Value::Real(df2)),
+        ("effectSize", Value::Real(eta_sq)),
+    ]))
 }
 
 fn perform_one_sample_t_test(data: Vec<f64>, options: HashMap<String, Value>) -> VmResult<Value> {
     let mu = options.get("mu").and_then(|v| v.as_real()).unwrap_or(0.0);
+    let conf = options.get("confidenceLevel").and_then(|v| v.as_real()).unwrap_or(0.95);
     
     let n = data.len() as f64;
     let mean = data.iter().sum::<f64>() / n;
@@ -752,21 +551,23 @@ fn perform_one_sample_t_test(data: Vec<f64>, options: HashMap<String, Value>) ->
     ))?;
     
     let p_value = 2.0 * (1.0 - t_dist.cdf(t_stat.abs()));
+    // Two-sided CI for mean difference
+    let alpha = 1.0 - conf;
+    let t_crit = t_dist.inverse_cdf(1.0 - alpha / 2.0);
+    let margin = t_crit * std_error;
     
-    let result = HypothesisTestResult {
-        test_statistic: t_stat,
-        p_value,
-        degrees_of_freedom: Some(df),
-        critical_value: None,
-        confidence_level: 0.95,
-        test_type: "One-Sample t-test".to_string(),
-        effect_size: Some((mean - mu) / variance.sqrt()), // Cohen's d
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("OneSampleT".to_string())),
+        ("statistic", Value::Real(t_stat)),
+        ("pValue", Value::Real(p_value)),
+        ("df", Value::Real(df)),
+        ("effectSize", Value::Real((mean - mu) / variance.sqrt())),
+        ("confidenceInterval", ci_assoc((mean - mu) - margin, (mean - mu) + margin)),
+    ]))
 }
 
 fn perform_two_sample_t_test(sample1: Vec<f64>, sample2: Vec<f64>, options: HashMap<String, Value>) -> VmResult<Value> {
+    let conf = options.get("confidenceLevel").and_then(|v| v.as_real()).unwrap_or(0.95);
     let n1 = sample1.len() as f64;
     let n2 = sample2.len() as f64;
     
@@ -789,22 +590,23 @@ fn perform_two_sample_t_test(sample1: Vec<f64>, sample2: Vec<f64>, options: Hash
     ))?;
     
     let p_value = 2.0 * (1.0 - t_dist.cdf(t_stat.abs()));
+    let alpha = 1.0 - conf;
+    let t_crit = t_dist.inverse_cdf(1.0 - alpha / 2.0);
+    let margin = t_crit * pooled_se;
     
     // Cohen's d
     let pooled_std = ((var1 * (n1 - 1.0) + var2 * (n2 - 1.0)) / (n1 + n2 - 2.0)).sqrt();
     let cohens_d = (mean1 - mean2) / pooled_std;
     
-    let result = HypothesisTestResult {
-        test_statistic: t_stat,
-        p_value,
-        degrees_of_freedom: Some(df),
-        critical_value: None,
-        confidence_level: 0.95,
-        test_type: "Two-Sample t-test".to_string(),
-        effect_size: Some(cohens_d),
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("TwoSampleT".to_string())),
+        ("statistic", Value::Real(t_stat)),
+        ("pValue", Value::Real(p_value)),
+        ("df", Value::Real(df)),
+        ("effectSize", Value::Real(cohens_d)),
+        ("meanDifference", Value::Real(mean1 - mean2)),
+        ("confidenceInterval", ci_assoc((mean1 - mean2) - margin, (mean1 - mean2) + margin)),
+    ]))
 }
 
 fn calculate_pearson_correlation(data: Vec<Vec<f64>>) -> VmResult<(Vec<Vec<f64>>, Vec<String>)> {
@@ -920,7 +722,7 @@ fn calculate_kendall_tau(x: &[f64], y: &[f64]) -> VmResult<f64> {
     Ok((concordant as f64 - discordant as f64) / total_pairs as f64)
 }
 
-fn perform_pca_analysis(data: Vec<Vec<f64>>, n_components: Option<usize>, normalize: bool) -> VmResult<Value> {
+fn perform_pca_analysis(_data: Vec<Vec<f64>>, n_components: Option<usize>, normalize: bool) -> VmResult<Value> {
     // This would be a full PCA implementation using SVD
     // Placeholder implementation
     let components = n_components.unwrap_or(2);
@@ -936,34 +738,22 @@ fn perform_pca_analysis(data: Vec<Vec<f64>>, n_components: Option<usize>, normal
     Ok(Value::Object(metadata))
 }
 
-fn perform_shapiro_wilk_test(data: Vec<f64>) -> VmResult<Value> {
+fn perform_shapiro_wilk_test(_data: Vec<f64>) -> VmResult<Value> {
     // Placeholder implementation - would use actual Shapiro-Wilk algorithm
-    let result = HypothesisTestResult {
-        test_statistic: 0.95,
-        p_value: 0.12,
-        degrees_of_freedom: None,
-        critical_value: None,
-        confidence_level: 0.95,
-        test_type: "Shapiro-Wilk Normality Test".to_string(),
-        effect_size: None,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("ShapiroWilk".to_string())),
+        ("statistic", Value::Real(0.95)),
+        ("pValue", Value::Real(0.12)),
+    ]))
 }
 
-fn perform_kolmogorov_smirnov_test(data: Vec<f64>) -> VmResult<Value> {
+fn perform_kolmogorov_smirnov_test(_data: Vec<f64>) -> VmResult<Value> {
     // Placeholder implementation - would use actual KS test algorithm
-    let result = HypothesisTestResult {
-        test_statistic: 0.08,
-        p_value: 0.45,
-        degrees_of_freedom: None,
-        critical_value: None,
-        confidence_level: 0.95,
-        test_type: "Kolmogorov-Smirnov Normality Test".to_string(),
-        effect_size: None,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("test", Value::String("KolmogorovSmirnov".to_string())),
+        ("statistic", Value::Real(0.08)),
+        ("pValue", Value::Real(0.45)),
+    ]))
 }
 
 fn calculate_confidence_interval(data: Vec<f64>, confidence_level: f64, method: &str) -> VmResult<Value> {
@@ -971,9 +761,9 @@ fn calculate_confidence_interval(data: Vec<f64>, confidence_level: f64, method: 
     let mean = data.iter().sum::<f64>() / n;
     let variance = data.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
     let std_error = (variance / n).sqrt();
-    
+
     let alpha = 1.0 - confidence_level;
-    
+
     let (lower, upper) = match method {
         "t" => {
             let df = n - 1.0;
@@ -983,7 +773,7 @@ fn calculate_confidence_interval(data: Vec<f64>, confidence_level: f64, method: 
             let t_critical = t_dist.inverse_cdf(1.0 - alpha / 2.0);
             let margin = t_critical * std_error;
             (mean - margin, mean + margin)
-        },
+        }
         "z" => {
             let normal = Normal::new(0.0, 1.0).map_err(|e| VmError::Runtime(
                 format!("Failed to create normal distribution: {}", e)
@@ -991,13 +781,18 @@ fn calculate_confidence_interval(data: Vec<f64>, confidence_level: f64, method: 
             let z_critical = normal.inverse_cdf(1.0 - alpha / 2.0);
             let margin = z_critical * std_error;
             (mean - margin, mean + margin)
-        },
-        _ => return Err(VmError::Runtime(
-            format!("Unsupported CI method: {}", method)
-        )),
+        }
+        _ => return Err(VmError::Runtime(format!("Unsupported CI method: {}", method))),
     };
-    
-    Ok(Value::List(vec![Value::Real(lower), Value::Real(upper)]))
+
+    Ok(assoc(vec![
+        ("estimate", Value::Real(mean)),
+        ("standardError", Value::Real(std_error)),
+        ("confidenceLevel", Value::Real(confidence_level)),
+        ("method", Value::String(method.to_string())),
+        ("n", Value::Integer(n as i64)),
+        ("confidenceInterval", ci_assoc(lower, upper)),
+    ]))
 }
 
 fn perform_bootstrap_sampling(data: Vec<f64>, sample_size: usize, iterations: usize) -> VmResult<Value> {
@@ -1026,15 +821,14 @@ fn perform_bootstrap_sampling(data: Vec<f64>, sample_size: usize, iterations: us
         .sum::<f64>() / (bootstrap_means.len() - 1) as f64;
     let standard_error = variance.sqrt();
     
-    let result = BootstrapResult {
-        original_statistic: original_mean,
-        bootstrap_statistics: bootstrap_means,
-        confidence_interval: (ci_lower, ci_upper),
-        bias,
-        standard_error,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("statistic", Value::String("Mean".to_string())),
+        ("originalStatistic", Value::Real(original_mean)),
+        ("bootstrapStatistics", Value::List(bootstrap_means.into_iter().map(Value::Real).collect())),
+        ("bias", Value::Real(bias)),
+        ("standardError", Value::Real(standard_error)),
+        ("confidenceInterval", ci_assoc(ci_lower, ci_upper)),
+    ]))
 }
 
 fn calculate_statistical_summary(data: Vec<f64>, quantiles: Vec<f64>) -> VmResult<Value> {

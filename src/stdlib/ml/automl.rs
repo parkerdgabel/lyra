@@ -7,7 +7,8 @@ use crate::stdlib::ml::{MLResult, MLError};
 use crate::stdlib::ml::layers::Tensor;
 use crate::stdlib::ml::{NetChain, NetTrain, DatasetTargetExtraction};
 use crate::stdlib::ml::training::{TrainingConfig, TrainingResult};
-use crate::stdlib::ml::preprocessing::{MLPreprocessor, AutoPreprocessor, AdvancedPreprocessingPipeline, PipelineBuilder};
+use crate::stdlib::common::assoc;
+use crate::stdlib::ml::preprocessing::{MLPreprocessor, AutoPreprocessor, AdvancedPreprocessingPipeline};
 use crate::stdlib::ml::dataloader::{DataLoader, DataLoaderConfig};
 use crate::stdlib::ml::performance::{MLPerformanceOptimizer, AdaptiveDataLoader};
 use crate::stdlib::data::{ForeignDataset, ForeignTable};
@@ -117,7 +118,7 @@ impl AutoMLSystem {
         )?;
         
         // Step 5: Create optimized DataLoader
-        let dataloader = self.create_optimized_dataloader(
+        let _dataloader = self.create_optimized_dataloader(
             dataset, 
             target_extraction, 
             &training_config,
@@ -167,7 +168,7 @@ impl AutoMLSystem {
         )?;
         
         // Step 5: Create optimized DataLoader
-        let dataloader = self.create_table_dataloader(
+        let _dataloader = self.create_table_dataloader(
             table,
             feature_columns,
             target_column,
@@ -281,7 +282,7 @@ impl AutoMLSystem {
     }
     
     /// Create optimized preprocessing for tabular data
-    fn create_table_preprocessing(&self, analysis: &DataAnalysis) -> MLResult<AdvancedPreprocessingPipeline> {
+    fn create_table_preprocessing(&self, _analysis: &DataAnalysis) -> MLResult<AdvancedPreprocessingPipeline> {
         // Create tabular-specific preprocessing pipeline
         let auto_preprocessor = AutoPreprocessor::new();
         let mut pipeline = AdvancedPreprocessingPipeline::new("Tabular".to_string());
@@ -315,7 +316,7 @@ impl AutoMLSystem {
         let base_loader = DataLoader::from_dataset(dataset.clone(), target_extraction, optimized_config)?;
         
         // Add preprocessing if provided
-        let final_loader = if let Some(pipeline) = preprocessing {
+        let final_loader = if let Some(_pipeline) = preprocessing {
             // Convert pipeline to MLPreprocessor
             let preprocessor: Box<dyn MLPreprocessor> = Box::new(AutoPreprocessor::new());
             base_loader.with_preprocessing(preprocessor)
@@ -403,7 +404,7 @@ impl AutoMLSystem {
     }
     
     /// Infer problem type from data patterns
-    fn infer_problem_type(&self, elements: &[Value], feature_count: usize) -> MLResult<ProblemType> {
+    fn infer_problem_type(&self, elements: &[Value], _feature_count: usize) -> MLResult<ProblemType> {
         if elements.len() < 10 {
             return Ok(ProblemType::Unknown);
         }
@@ -437,7 +438,7 @@ impl AutoMLSystem {
     }
     
     /// Calculate missing value ratio
-    fn calculate_missing_values(&self, elements: &[Value]) -> f64 {
+    fn calculate_missing_values(&self, _elements: &[Value]) -> f64 {
         // Simplified implementation - in practice would detect various missing value indicators
         0.0
     }
@@ -489,6 +490,43 @@ pub struct AutoMLResult {
 }
 
 impl AutoMLResult {
+    /// Convert AutoMLResult to standardized Association
+    pub fn to_value(&self) -> Value {
+        let mut perf = std::collections::HashMap::new();
+        for (k, v) in &self.performance_stats { perf.insert(k.clone(), v.clone()); }
+
+        let data = assoc(vec![
+            ("sampleCount", Value::Integer(self.data_analysis.sample_count as i64)),
+            ("featureCount", Value::Integer(self.data_analysis.feature_count as i64)),
+            ("problemType", Value::String(format!("{:?}", self.data_analysis.problem_type))),
+            ("dataComplexity", Value::String(format!("{:?}", self.data_analysis.data_complexity))),
+            ("validationStrategy", Value::String(format!("{:?}", self.data_analysis.recommended_validation_strategy))),
+        ]);
+
+        let model = assoc(vec![
+            ("architectureType", Value::String(format!("{:?}", self.model_recommendation.architecture_type))),
+            ("layerCount", Value::Integer(self.model_recommendation.layer_count as i64)),
+            ("parameterCount", Value::Integer(self.model_recommendation.parameter_count as i64)),
+            ("confidence", Value::Real(self.model_recommendation.confidence_score)),
+            ("rationale", Value::String(self.model_recommendation.rationale.clone())),
+        ]);
+
+        let config = assoc(vec![
+            ("epochs", Value::Integer(self.training_config.epochs as i64)),
+            ("batchSize", Value::Integer(self.training_config.batch_size as i64)),
+            ("learningRate", Value::Real(self.training_config.learning_rate)),
+            ("printProgress", Value::Boolean(self.training_config.print_progress)),
+        ]);
+
+        assoc(vec![
+            ("training", self.training_result.to_value()),
+            ("performanceStats", Value::Object(perf)),
+            ("data", data),
+            ("model", model),
+            ("trainingConfig", config),
+            ("method", Value::String("AutoML".to_string())),
+        ])
+    }
     /// Generate comprehensive AutoML report
     pub fn generate_report(&self) -> String {
         let mut report = String::new();
@@ -734,7 +772,7 @@ impl ModelRecommender {
     fn select_best_template<'a>(
         &self,
         templates: &'a [&'a ArchitectureTemplate],
-        analysis: &DataAnalysis,
+        _analysis: &DataAnalysis,
     ) -> MLResult<&'a ArchitectureTemplate> {
         // Simple heuristic: prefer medium complexity for most cases
         let preferred = templates.iter()
@@ -940,7 +978,7 @@ impl HyperparameterTuner {
     /// Generate optimized training configuration
     fn generate_optimized_config(
         &self,
-        strategy: &TuningStrategy,
+        _strategy: &TuningStrategy,
         analysis: &DataAnalysis,
         _model_recommendation: &ModelRecommendation,
         automl_config: &AutoMLConfig,
@@ -1096,7 +1134,7 @@ impl MLPipelineBuilder {
     }
     
     /// Use automatic preprocessing
-    pub fn with_auto_preprocessing(mut self) -> Self {
+    pub fn with_auto_preprocessing(self) -> Self {
         // Will be inferred when pipeline is built
         self
     }
@@ -1108,7 +1146,7 @@ impl MLPipelineBuilder {
     }
     
     /// Use automatic model selection
-    pub fn with_auto_model(mut self, complexity: ModelComplexity) -> Self {
+    pub fn with_auto_model(self, _complexity: ModelComplexity) -> Self {
         // Will be inferred when pipeline is built  
         self
     }
@@ -1167,7 +1205,7 @@ impl MLPipelineBuilder {
                     pipeline_config,
                 })
             },
-            PipelineDataSource::TensorPairs { data } => {
+            PipelineDataSource::TensorPairs { data: _ } => {
                 // Manual training for tensor data
                 let network = NetChain::new(vec![]); // Empty network for now
                 let training_config = self.training_config.unwrap_or_default();
@@ -1215,6 +1253,47 @@ pub struct MLPipelineResult {
     pub data_analysis: Option<DataAnalysis>,
     pub validation_results: Option<ValidationResults>,
     pub pipeline_config: MLPipelineConfig,
+}
+
+impl MLPipelineResult {
+    pub fn to_value(&self) -> Value {
+        let data = self.data_analysis.as_ref().map(|d| {
+            assoc(vec![
+                ("sampleCount", Value::Integer(d.sample_count as i64)),
+                ("featureCount", Value::Integer(d.feature_count as i64)),
+                ("problemType", Value::String(format!("{:?}", d.problem_type))),
+                ("dataComplexity", Value::String(format!("{:?}", d.data_complexity))),
+                ("validationStrategy", Value::String(format!("{:?}", d.recommended_validation_strategy))),
+            ])
+        }).unwrap_or_else(|| Value::Object(std::collections::HashMap::new()));
+
+        let validation = self.validation_results.as_ref().map(|v| {
+            let scores: Vec<Value> = v.cross_validation_scores.iter().map(|&x| Value::Real(x)).collect();
+            assoc(vec![
+                ("validationLoss", Value::Real(v.validation_loss)),
+                ("validationAccuracy", match v.validation_accuracy { Some(a)=> Value::Real(a), None => Value::String("None".to_string()) }),
+                ("crossValidationScores", Value::List(scores)),
+                ("bestFoldIndex", Value::Integer(v.best_fold_index as i64)),
+            ])
+        }).unwrap_or_else(|| Value::Object(std::collections::HashMap::new()));
+
+        let cfg = &self.pipeline_config;
+        let config = assoc(vec![
+            ("hasCustomPreprocessing", Value::Boolean(cfg.has_custom_preprocessing)),
+            ("hasCustomModel", Value::Boolean(cfg.has_custom_model)),
+            ("hasCustomTraining", Value::Boolean(cfg.has_custom_training)),
+            ("validation", Value::String(format!("{:?}", cfg.validation_config))),
+            ("performance", Value::String(format!("{:?}", cfg.performance_config))),
+        ]);
+
+        assoc(vec![
+            ("training", self.training_result.to_value()),
+            ("data", data),
+            ("validation", validation),
+            ("pipelineConfig", config),
+            ("method", Value::String("MLPipeline".to_string())),
+        ])
+    }
 }
 
 /// Validation results from pipeline execution
@@ -1294,7 +1373,7 @@ impl MLWorkflow {
     pub fn classify(
         training_data: Value,
         method: Option<String>,
-        performance_goal: Option<String>,
+        _performance_goal: Option<String>,
     ) -> MLResult<AutoMLResult> {
         // Convert training data to appropriate format
         match training_data {
@@ -1357,7 +1436,7 @@ impl MLWorkflow {
     pub fn predict(
         training_data: Value,
         method: Option<String>,
-        performance_goal: Option<String>,
+        _performance_goal: Option<String>,
     ) -> MLResult<AutoMLResult> {
         // Similar to classify but for regression
         match training_data {
@@ -1421,27 +1500,27 @@ pub struct MLPatterns;
 impl MLPatterns {
     /// Quick neural network creation with automatic architecture selection
     pub fn auto_neural_network(
-        input_size: usize,
-        output_size: usize,
+        _input_size: usize,
+        _output_size: usize,
         problem_type: ProblemType,
         complexity: ModelComplexity,
     ) -> MLResult<NetChain> {
         match (complexity, problem_type) {
             (ModelComplexity::Simple, _) => {
                 // Simple 2-layer network
-                let mut network = NetChain::new(vec![]);
+                let network = NetChain::new(vec![]);
                 // TODO: Add layers based on problem type
                 Ok(network)
             },
             (ModelComplexity::Medium, _) => {
                 // 3-4 layer network with ReLU
-                let mut network = NetChain::new(vec![]);
+                let network = NetChain::new(vec![]);
                 // TODO: Add medium complexity layers
                 Ok(network)
             },
             (ModelComplexity::Complex, _) => {
                 // Deep network with regularization
-                let mut network = NetChain::new(vec![]);
+                let network = NetChain::new(vec![]);
                 // TODO: Add complex architecture
                 Ok(network)
             },

@@ -1,3 +1,4 @@
+#![allow(unused_variables, unused_mut)]
 use crate::{
     ast::{Expr, Number, Pattern},
     bytecode::{Instruction, OpCode},

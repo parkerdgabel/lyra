@@ -804,7 +804,14 @@ pub fn page_rank_function(args: &[Value]) -> VmResult<Value> {
     };
 
     let result = page_rank(graph, damping, tolerance, max_iterations);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut m = std::collections::HashMap::new();
+    let mut scores = std::collections::HashMap::new();
+    for (v, s) in result.scores.iter() { scores.insert(v.to_string(), Value::Real(*s)); }
+    m.insert("scores".to_string(), Value::Object(scores));
+    m.insert("iterations".to_string(), Value::Integer(result.iterations as i64));
+    m.insert("error".to_string(), Value::Real(result.error));
+    m.insert("method".to_string(), Value::String("PageRank".to_string()));
+    Ok(Value::Object(m))
 }
 
 /// CommunityDetection[graph]
@@ -831,7 +838,14 @@ pub fn community_detection_function(args: &[Value]) -> VmResult<Value> {
     };
 
     let result = louvain_communities(graph);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut m = std::collections::HashMap::new();
+    let mut comms = std::collections::HashMap::new();
+    for (v, cid) in result.communities.iter() { comms.insert(v.to_string(), Value::Integer(*cid as i64)); }
+    m.insert("communities".to_string(), Value::Object(comms));
+    m.insert("modularity".to_string(), Value::Real(result.modularity));
+    m.insert("numCommunities".to_string(), Value::Integer(result.num_communities as i64));
+    m.insert("method".to_string(), Value::String("Louvain".to_string()));
+    Ok(Value::Object(m))
 }
 
 /// BetweennessCentrality[graph]
@@ -858,7 +872,12 @@ pub fn betweenness_centrality_function(args: &[Value]) -> VmResult<Value> {
     };
 
     let result = betweenness_centrality(graph);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut m = std::collections::HashMap::new();
+    let mut scores = std::collections::HashMap::new();
+    for (v, s) in result.scores.iter() { scores.insert(v.to_string(), Value::Real(*s)); }
+    m.insert("scores".to_string(), Value::Object(scores));
+    m.insert("measureType".to_string(), Value::String(result.measure_type));
+    Ok(Value::Object(m))
 }
 
 /// ClosenessCentrality[graph]
@@ -885,7 +904,12 @@ pub fn closeness_centrality_function(args: &[Value]) -> VmResult<Value> {
     };
 
     let result = closeness_centrality(graph);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut m = std::collections::HashMap::new();
+    let mut scores = std::collections::HashMap::new();
+    for (v, s) in result.scores.iter() { scores.insert(v.to_string(), Value::Real(*s)); }
+    m.insert("scores".to_string(), Value::Object(scores));
+    m.insert("measureType".to_string(), Value::String(result.measure_type));
+    Ok(Value::Object(m))
 }
 
 #[cfg(test)]

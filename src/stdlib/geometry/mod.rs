@@ -19,6 +19,26 @@ pub use convex_hull::*;
 pub use triangulation::*;
 pub use queries::*;
 pub use operations::*;
+use std::collections::HashMap;
+
+/// Registration helper to consolidate geometry-related stdlib functions
+pub fn register_geometry_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+    // Core Geometric Primitives
+    f.insert("ConvexHull".to_string(), convex_hull::convex_hull_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("VoronoiDiagram".to_string(), triangulation::voronoi_diagram_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DelaunayTriangulation".to_string(), triangulation::delaunay_triangulation_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MinkowskiSum".to_string(), operations::minkowski_sum_fn as fn(&[Value]) -> VmResult<Value>);
+    // Geometric Queries & Analysis
+    f.insert("PointInPolygon".to_string(), queries::point_in_polygon_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PolygonIntersection".to_string(), queries::polygon_intersection_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ClosestPair".to_string(), queries::closest_pair_fn as fn(&[Value]) -> VmResult<Value>);
+    // Advanced Geometric Operations
+    f.insert("GeometricMedian".to_string(), operations::geometric_median_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ShapeMatching".to_string(), operations::shape_matching_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PolygonDecomposition".to_string(), operations::polygon_decomposition_fn as fn(&[Value]) -> VmResult<Value>);
+    f
+}
 
 /// Point in 2D space
 #[derive(Debug, Clone, PartialEq)]
@@ -196,7 +216,7 @@ impl Foreign for GeometricShape {
         }
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "getPoints" => {
                 let points = self.get_points();

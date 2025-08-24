@@ -1739,16 +1739,25 @@ pub fn git_pull(args: &[Value]) -> VmResult<Value> {
 
     // Simulate git pull operation
     let pull_result = GitPullResult {
-        remote,
-        branch,
-        strategy,
+        remote: remote.clone(),
+        branch: branch.clone(),
+        strategy: strategy.clone(),
         conflicts: vec![], // No conflicts for successful pull
         commits_pulled: 3,
         files_changed: 7,
         success: true,
     };
 
-    Ok(Value::LyObj(LyObj::new(Box::new(pull_result))))
+    // Return standardized association
+    let mut m = std::collections::HashMap::new();
+    m.insert("remote".to_string(), Value::String(pull_result.remote));
+    m.insert("branch".to_string(), Value::String(pull_result.branch));
+    m.insert("strategy".to_string(), Value::String(pull_result.strategy));
+    m.insert("conflicts".to_string(), Value::List(Vec::<Value>::new()));
+    m.insert("commitsPulled".to_string(), Value::Integer(pull_result.commits_pulled));
+    m.insert("filesChanged".to_string(), Value::Integer(pull_result.files_changed));
+    m.insert("success".to_string(), Value::Boolean(pull_result.success));
+    Ok(Value::Object(m))
 }
 
 /// GitPush[repo, remote, branch, force] - Push operations with safety checks
@@ -1795,8 +1804,8 @@ pub fn git_push(args: &[Value]) -> VmResult<Value> {
 
     // Simulate git push operation
     let push_result = GitPushResult {
-        remote,
-        branch,
+        remote: remote.clone(),
+        branch: branch.clone(),
         force,
         commits_pushed: 2,
         rejected: false,
@@ -1804,7 +1813,16 @@ pub fn git_push(args: &[Value]) -> VmResult<Value> {
         push_url: "https://github.com/user/repo.git".to_string(),
     };
 
-    Ok(Value::LyObj(LyObj::new(Box::new(push_result))))
+    // Return standardized association
+    let mut m = std::collections::HashMap::new();
+    m.insert("remote".to_string(), Value::String(push_result.remote));
+    m.insert("branch".to_string(), Value::String(push_result.branch));
+    m.insert("force".to_string(), Value::Boolean(push_result.force));
+    m.insert("commitsPushed".to_string(), Value::Integer(push_result.commits_pushed));
+    m.insert("rejected".to_string(), Value::Boolean(push_result.rejected));
+    m.insert("success".to_string(), Value::Boolean(push_result.success));
+    m.insert("pushUrl".to_string(), Value::String(push_result.push_url));
+    Ok(Value::Object(m))
 }
 
 /// CodeReview[repo, pull_request, reviewers, criteria] - Code review automation

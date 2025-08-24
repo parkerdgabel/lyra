@@ -4,11 +4,10 @@
 //! model versioning, artifact management, and deployment preparation.
 
 use crate::stdlib::ml::{MLResult, MLError};
-use crate::stdlib::ml::layers::Tensor;
 use crate::stdlib::ml::NetChain;
 use crate::stdlib::ml::training::{TrainingConfig, TrainingResult};
-use crate::stdlib::ml::automl::{AutoMLResult, ProblemType, ModelComplexity};
-use crate::stdlib::ml::evaluation::{EvaluationResult, CrossValidationResult};
+use crate::stdlib::ml::automl::{AutoMLResult, ProblemType};
+use crate::stdlib::ml::evaluation::EvaluationResult;
 use crate::vm::Value;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -586,7 +585,7 @@ impl ModelRegistry {
         &mut self,
         model_name: &str,
         version: Option<&str>,
-        deployment_metadata: DeploymentMetadata,
+        _deployment_metadata: DeploymentMetadata,
     ) -> MLResult<String> {
         let model_artifact = self.get_model(model_name, version)
             .ok_or_else(|| MLError::DataError {
@@ -734,7 +733,7 @@ impl MLOpsManager {
                 
                 // Register model
                 let model_metadata = self.create_model_metadata(&result);
-                let model_version = self.experiment_tracker.register_model(
+                let _model_version = self.experiment_tracker.register_model(
                     &result.network,
                     format!("{}_model", experiment_name),
                     model_metadata,
@@ -996,7 +995,7 @@ impl ExternalMLOpsIntegration {
     }
     
     /// Export model to ONNX format
-    pub fn export_model_to_onnx(model: &NetChain) -> MLResult<String> {
+pub fn export_model_to_onnx(_model: &NetChain) -> MLResult<String> {
         // Placeholder for ONNX export
         Ok("ONNX model export (placeholder)".to_string())
     }
@@ -1004,7 +1003,7 @@ impl ExternalMLOpsIntegration {
     /// Create Docker deployment configuration
     pub fn create_docker_config(
         model_artifact: &ModelArtifact,
-        deployment_config: &DeploymentMetadata,
+        _deployment_config: &DeploymentMetadata,
     ) -> MLResult<String> {
         // Generate Dockerfile content
         let dockerfile = format!(

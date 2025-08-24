@@ -969,7 +969,7 @@ pub fn bdf(args: &[Value]) -> VmResult<Value> {
     t_values.push(t);
     y_values.push(vec![initial_condition]);
     
-    for i in 1..=steps {
+    for _ in 1..=steps {
         t += h;
         
         let y_new = if order == 1 {

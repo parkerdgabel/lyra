@@ -12,9 +12,8 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crossbeam_channel::{Receiver, Sender};
 use tokio::runtime::Runtime;
-use crate::vm::{Value, VmResult, VmError};
+use crate::vm::{Value, VmResult};
 use crate::error::Result;
 
 pub mod actor;
@@ -279,7 +278,7 @@ impl ConcurrencySystem {
     /// Execute pattern matching in parallel
     pub fn match_patterns_parallel(
         &self,
-        expression: &Value,
+        _expression: &Value,
         patterns: &[crate::ast::Pattern],
     ) -> VmResult<Vec<crate::pattern_matcher::MatchResult>> {
         // TODO: Fix thread safety issues with ParallelPatternMatcher

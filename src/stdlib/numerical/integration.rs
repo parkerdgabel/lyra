@@ -6,6 +6,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::result::integration_result;
 use std::any::Any;
 
 /// Results from numerical integration
@@ -350,7 +351,7 @@ pub fn trapezoidal(args: &[Value]) -> VmResult<Value> {
     };
     
     match trapezoidal_rule(f, a, b, n) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(integration_result(res.value, res.error_estimate, res.function_evaluations, &res.method, res.converged)),
         Err(e) => Err(VmError::Runtime(format!("Trapezoidal integration failed: {}", e))),
     }
 }
@@ -394,7 +395,7 @@ pub fn simpson(args: &[Value]) -> VmResult<Value> {
     };
     
     match simpson_rule(f, a, b, n) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(integration_result(res.value, res.error_estimate, res.function_evaluations, &res.method, res.converged)),
         Err(e) => Err(VmError::Runtime(format!("Simpson integration failed: {}", e))),
     }
 }
@@ -455,7 +456,7 @@ pub fn romberg(args: &[Value]) -> VmResult<Value> {
     };
     
     match romberg_integration(f, a, b, tolerance, max_levels) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(integration_result(res.value, res.error_estimate, res.function_evaluations, &res.method, res.converged)),
         Err(e) => Err(VmError::Runtime(format!("Romberg integration failed: {}", e))),
     }
 }
@@ -499,7 +500,7 @@ pub fn gauss_quadrature_fn(args: &[Value]) -> VmResult<Value> {
     };
     
     match gauss_quadrature(f, a, b, n) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(integration_result(res.value, res.error_estimate, res.function_evaluations, &res.method, res.converged)),
         Err(e) => Err(VmError::Runtime(format!("Gauss quadrature failed: {}", e))),
     }
 }
@@ -555,7 +556,7 @@ pub fn monte_carlo(args: &[Value]) -> VmResult<Value> {
     };
     
     match monte_carlo_integration(f, a, b, n, seed) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(integration_result(res.value, res.error_estimate, res.function_evaluations, &res.method, res.converged)),
         Err(e) => Err(VmError::Runtime(format!("Monte Carlo integration failed: {}", e))),
     }
 }

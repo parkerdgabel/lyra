@@ -4,153 +4,8 @@
 //! decomposition, forecasting, and anomaly detection.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{Foreign, ForeignError, LyObj};
 use std::collections::HashMap;
-use std::any::Any;
-
-/// Time Series Decomposition Result - Foreign Object
-#[derive(Debug, Clone)]
-pub struct TimeSeriesDecomposition {
-    trend: Vec<f64>,
-    seasonal: Vec<f64>,
-    residual: Vec<f64>,
-    model: String, // additive or multiplicative
-    period: usize,
-}
-
-impl Foreign for TimeSeriesDecomposition {
-    fn type_name(&self) -> &'static str {
-        "TimeSeriesDecomposition"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "trend" => Ok(Value::List(
-                self.trend.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "seasonal" => Ok(Value::List(
-                self.seasonal.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "residual" => Ok(Value::List(
-                self.residual.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "model" => Ok(Value::String(self.model.clone())),
-            "period" => Ok(Value::Integer(self.period as i64)),
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "TimeSeriesDecomposition".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
-
-/// ARIMA Model - Foreign Object
-#[derive(Debug, Clone)]
-pub struct ARIMAModel {
-    order: (usize, usize, usize), // (p, d, q)
-    seasonal_order: Option<(usize, usize, usize, usize)>, // (P, D, Q, s)
-    coefficients: Vec<f64>,
-    fitted_values: Vec<f64>,
-    residuals: Vec<f64>,
-    aic: f64,
-    bic: f64,
-}
-
-impl Foreign for ARIMAModel {
-    fn type_name(&self) -> &'static str {
-        "ARIMAModel"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "order" => Ok(Value::List(vec![
-                Value::Integer(self.order.0 as i64),
-                Value::Integer(self.order.1 as i64),
-                Value::Integer(self.order.2 as i64),
-            ])),
-            "coefficients" => Ok(Value::List(
-                self.coefficients.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "fittedValues" => Ok(Value::List(
-                self.fitted_values.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "residuals" => Ok(Value::List(
-                self.residuals.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "aic" => Ok(Value::Real(self.aic)),
-            "bic" => Ok(Value::Real(self.bic)),
-            "forecast" => {
-                let steps = args.get(0).and_then(|v| v.as_real()).unwrap_or(1.0) as usize;
-                let _confidence_level = args.get(1).and_then(|v| v.as_real()).unwrap_or(0.95);
-                // Simple forecast implementation
-                let forecast_values: Vec<Value> = (0..steps).map(|_| Value::Real(0.0)).collect();
-                Ok(Value::List(forecast_values))
-            },
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "ARIMAModel".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
-
-/// Forecast Result - Foreign Object
-#[derive(Debug, Clone)]
-pub struct ForecastResult {
-    forecasts: Vec<f64>,
-    lower_bound: Vec<f64>,
-    upper_bound: Vec<f64>,
-    confidence_level: f64,
-}
-
-impl Foreign for ForecastResult {
-    fn type_name(&self) -> &'static str {
-        "ForecastResult"
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "forecasts" => Ok(Value::List(
-                self.forecasts.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "lowerBound" => Ok(Value::List(
-                self.lower_bound.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "upperBound" => Ok(Value::List(
-                self.upper_bound.iter().map(|&x| Value::Real(x)).collect()
-            )),
-            "confidenceLevel" => Ok(Value::Real(self.confidence_level)),
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: "ForecastResult".to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-}
+use crate::stdlib::common::result::spectral_result;
 
 /// Time series decomposition (trend/seasonal/residual)
 pub fn timeseries_decompose(args: &[Value]) -> VmResult<Value> {
@@ -169,7 +24,7 @@ pub fn timeseries_decompose(args: &[Value]) -> VmResult<Value> {
     ))? as usize;
 
     let decomposition = perform_decomposition(series, &model, period)?;
-    Ok(Value::LyObj(LyObj::new(Box::new(decomposition))))
+    Ok(Value::Object(decomposition))
 }
 
 /// Autocorrelation function
@@ -223,7 +78,7 @@ pub fn arima_advanced(args: &[Value]) -> VmResult<Value> {
     };
 
     let model = fit_arima_model(series, order, seasonal_order)?;
-    Ok(Value::LyObj(LyObj::new(Box::new(model))))
+    Ok(Value::Object(model))
 }
 
 /// Generate advanced forecasts from a model
@@ -234,11 +89,15 @@ pub fn forecast_advanced(args: &[Value]) -> VmResult<Value> {
         ));
     }
 
-    let model_obj = match &args[0] {
-        Value::LyObj(obj) => obj,
-        _ => return Err(VmError::Runtime(
-            "First argument must be a model object".to_string()
-        )),
+    // Accept any model representation (Association-based). If it contains
+    // fittedValues, use its last value as a naive baseline.
+    let baseline = match &args[0] {
+        Value::Object(m) => {
+            if let Some(Value::List(fvs)) = m.get("fittedValues") {
+                fvs.last().and_then(|v| v.as_real()).unwrap_or(0.0)
+            } else { 0.0 }
+        }
+        _ => 0.0,
     };
 
     let periods = args[1].as_real().ok_or_else(|| VmError::Runtime(
@@ -246,20 +105,18 @@ pub fn forecast_advanced(args: &[Value]) -> VmResult<Value> {
     ))? as usize;
     let confidence_level = args.get(2).and_then(|v| v.as_real()).unwrap_or(0.95);
 
-    // For now, generate a simple forecast
-    let forecasts = vec![0.0; periods]; // Placeholder
+    // Simple baseline forecast
+    let forecasts = vec![baseline; periods];
     let margin = 1.96; // Approximate 95% CI
-    let lower_bound = forecasts.iter().map(|&x| x - margin).collect();
-    let upper_bound = forecasts.iter().map(|&x| x + margin).collect();
+    let lower_bound: Vec<f64> = forecasts.iter().map(|&x| x - margin).collect();
+    let upper_bound: Vec<f64> = forecasts.iter().map(|&x| x + margin).collect();
 
-    let forecast_result = ForecastResult {
-        forecasts,
-        lower_bound,
-        upper_bound,
-        confidence_level,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(forecast_result))))
+    let mut result = HashMap::new();
+    result.insert("forecasts".to_string(), Value::List(forecasts.into_iter().map(Value::Real).collect()));
+    result.insert("lowerBound".to_string(), Value::List(lower_bound.into_iter().map(Value::Real).collect()));
+    result.insert("upperBound".to_string(), Value::List(upper_bound.into_iter().map(Value::Real).collect()));
+    result.insert("confidenceLevel".to_string(), Value::Real(confidence_level));
+    Ok(Value::Object(result))
 }
 
 /// Seasonal decomposition
@@ -277,7 +134,7 @@ pub fn seasonal_decompose(args: &[Value]) -> VmResult<Value> {
     let method = args.get(2).and_then(|v| v.as_string()).unwrap_or("additive".to_string());
 
     let decomposition = perform_decomposition(series, &method, period)?;
-    Ok(Value::LyObj(LyObj::new(Box::new(decomposition))))
+    Ok(Value::Object(decomposition))
 }
 
 /// Trend analysis
@@ -383,17 +240,8 @@ pub fn spectral_density(args: &[Value]) -> VmResult<Value> {
     let method = args.get(1).and_then(|v| v.as_string()).unwrap_or("periodogram".to_string());
 
     let (frequencies, power) = calculate_spectral_density(&series, &method)?;
-    
-    let mut result = HashMap::new();
-    result.insert("frequencies".to_string(), Value::List(
-        frequencies.iter().map(|&x| Value::Real(x)).collect()
-    ));
-    result.insert("power".to_string(), Value::List(
-        power.iter().map(|&x| Value::Real(x)).collect()
-    ));
-    result.insert("method".to_string(), Value::String(method));
-
-    Ok(Value::Object(result))
+    // Use spectral_result; map power → magnitudes and phases -> zeros for consistency
+    Ok(spectral_result(frequencies, power, vec![], 1.0, &method))
 }
 
 // Helper functions for time series analysis
@@ -470,8 +318,8 @@ fn extract_seasonal_order(value: &Value) -> VmResult<(usize, usize, usize, usize
 }
 
 // Implementation functions
-fn perform_decomposition(series: Vec<f64>, model: &str, period: usize) -> VmResult<TimeSeriesDecomposition> {
-    let n = series.len();
+fn perform_decomposition(series: Vec<f64>, model: &str, period: usize) -> VmResult<HashMap<String, Value>> {
+    let _n = series.len();
     
     // Simple moving average for trend extraction
     let trend = extract_trend_moving_average(&series, period)?;
@@ -486,7 +334,7 @@ fn perform_decomposition(series: Vec<f64>, model: &str, period: usize) -> VmResu
     };
     
     // Calculate residual
-    let residual = match model {
+    let residual: Vec<f64> = match model {
         "additive" => series.iter().zip(trend.iter().zip(seasonal.iter()))
             .map(|(x, (t, s))| x - t - s)
             .collect(),
@@ -496,13 +344,13 @@ fn perform_decomposition(series: Vec<f64>, model: &str, period: usize) -> VmResu
         _ => unreachable!(),
     };
     
-    Ok(TimeSeriesDecomposition {
-        trend,
-        seasonal,
-        residual,
-        model: model.to_string(),
-        period,
-    })
+    let mut m = HashMap::new();
+    m.insert("trend".to_string(), Value::List(trend.into_iter().map(Value::Real).collect()));
+    m.insert("seasonal".to_string(), Value::List(seasonal.into_iter().map(Value::Real).collect()));
+    m.insert("residual".to_string(), Value::List(residual.into_iter().map(Value::Real).collect()));
+    m.insert("model".to_string(), Value::String(model.to_string()));
+    m.insert("period".to_string(), Value::Integer(period as i64));
+    Ok(m)
 }
 
 fn extract_trend_moving_average(series: &[f64], period: usize) -> VmResult<Vec<f64>> {
@@ -633,41 +481,30 @@ fn calculate_partial_autocorrelation(series: &[f64], max_lags: usize) -> VmResul
     Ok(pacf)
 }
 
-fn fit_arima_model(series: Vec<f64>, order: (usize, usize, usize), seasonal_order: Option<(usize, usize, usize, usize)>) -> VmResult<ARIMAModel> {
+fn fit_arima_model(series: Vec<f64>, order: (usize, usize, usize), seasonal_order: Option<(usize, usize, usize, usize)>) -> VmResult<HashMap<String, Value>> {
     // Placeholder ARIMA implementation
     // In a full implementation, this would use proper ARIMA estimation
     
-    let model = ARIMAModel {
-        order,
-        seasonal_order,
-        coefficients: vec![0.5, 0.3], // Placeholder coefficients
-        fitted_values: series.clone(),
-        residuals: vec![0.0; series.len()],
-        aic: 100.0, // Placeholder AIC
-        bic: 105.0, // Placeholder BIC
-    };
-    
-    Ok(model)
+    let coefficients = vec![0.5, 0.3];
+    let fitted_values = series.clone();
+    let residuals = vec![0.0; series.len()];
+    let aic = 100.0;
+    let bic = 105.0;
+    let mut m = HashMap::new();
+    m.insert("algorithm".to_string(), Value::String("ARIMA".to_string()));
+    m.insert("order".to_string(), Value::List(vec![Value::Integer(order.0 as i64), Value::Integer(order.1 as i64), Value::Integer(order.2 as i64)]));
+    if let Some((P, D, Q, s)) = seasonal_order {
+        m.insert("seasonalOrder".to_string(), Value::List(vec![Value::Integer(P as i64), Value::Integer(D as i64), Value::Integer(Q as i64), Value::Integer(s as i64)]));
+    }
+    m.insert("coefficients".to_string(), Value::List(coefficients.into_iter().map(Value::Real).collect()));
+    m.insert("fittedValues".to_string(), Value::List(fitted_values.into_iter().map(Value::Real).collect()));
+    m.insert("residuals".to_string(), Value::List(residuals.into_iter().map(Value::Real).collect()));
+    m.insert("aic".to_string(), Value::Real(aic));
+    m.insert("bic".to_string(), Value::Real(bic));
+    Ok(m)
 }
 
-fn generate_forecast(model: &ARIMAModel, steps: usize, confidence_level: f64) -> VmResult<Value> {
-    // Simple forecast generation (placeholder)
-    let last_value = model.fitted_values.last().unwrap_or(&0.0);
-    let forecasts = vec![*last_value; steps];
-    
-    let margin = 1.96; // Approximate 95% CI
-    let lower_bound = forecasts.iter().map(|&x| x - margin).collect();
-    let upper_bound = forecasts.iter().map(|&x| x + margin).collect();
-    
-    let forecast_result = ForecastResult {
-        forecasts,
-        lower_bound,
-        upper_bound,
-        confidence_level,
-    };
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(forecast_result))))
-}
+// generate_forecast removed; forecasting returns Associations via forecast_advanced
 
 fn extract_trend(series: &[f64], method: &str) -> VmResult<Vec<f64>> {
     match method {
@@ -1009,4 +846,87 @@ fn calculate_periodogram(series: &[f64]) -> VmResult<(Vec<f64>, Vec<f64>)> {
 fn calculate_welch_psd(series: &[f64]) -> VmResult<(Vec<f64>, Vec<f64>)> {
     // Simplified Welch's method - would implement overlapping windowed periodograms
     calculate_periodogram(series) // Fallback for now
+}
+
+/// Consolidated registration for time series functions, bridging legacy stdlib::timeseries
+/// with analytics::timeseries to prepare path unification.
+pub fn register_timeseries_functions() -> std::collections::HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = std::collections::HashMap::new();
+    // Legacy/core time series constructors and models
+    f.insert(
+        "TimeSeries".to_string(),
+        crate::stdlib::timeseries::core::timeseries as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "TimeSeriesWithIndex".to_string(),
+        crate::stdlib::timeseries::core::timeseries_with_index as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "ARIMA".to_string(),
+        crate::stdlib::timeseries::arima::arima as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "SARIMA".to_string(),
+        crate::stdlib::timeseries::arima::sarima as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "ExponentialSmoothing".to_string(),
+        crate::stdlib::timeseries::forecasting::exponential_smoothing as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "MovingAverage".to_string(),
+        crate::stdlib::timeseries::forecasting::moving_average as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "ExponentialMovingAverage".to_string(),
+        crate::stdlib::timeseries::forecasting::exponential_moving_average as fn(&[Value]) -> VmResult<Value>,
+    );
+
+    // Analytics time series utilities
+    f.insert(
+        "TimeSeriesDecompose".to_string(),
+        timeseries_decompose as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "AutoCorrelation".to_string(),
+        auto_correlation as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "PartialAutoCorrelation".to_string(),
+        partial_auto_correlation as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "Forecast".to_string(),
+        forecast_advanced as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "SeasonalDecompose".to_string(),
+        seasonal_decompose as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "TrendAnalysis".to_string(),
+        trend_analysis as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "ChangePointDetection".to_string(),
+        change_point_detection as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "AnomalyDetection".to_string(),
+        anomaly_detection as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "StationarityTest".to_string(),
+        stationarity_test as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "CrossCorrelation".to_string(),
+        cross_correlation as fn(&[Value]) -> VmResult<Value>,
+    );
+    f.insert(
+        "SpectralDensity".to_string(),
+        spectral_density as fn(&[Value]) -> VmResult<Value>,
+    );
+
+    f
 }

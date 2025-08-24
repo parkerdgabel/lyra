@@ -108,3 +108,28 @@ pub mod sequences;
 pub use basic::*;
 pub use advanced::*;
 pub use sequences::*;
+
+use crate::vm::{Value, VmResult};
+use std::collections::HashMap;
+
+/// Registration helper to consolidate combinatorics stdlib functions
+pub fn register_combinatorics_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+    // Basic combinatorial functions
+    f.insert("Binomial".to_string(), basic::binomial_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Multinomial".to_string(), basic::multinomial_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Permutations".to_string(), basic::permutations_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Combinations".to_string(), basic::combinations_fn as fn(&[Value]) -> VmResult<Value>);
+    // Advanced combinatorial functions
+    f.insert("StirlingNumber".to_string(), advanced::stirling_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("BellNumber".to_string(), advanced::bell_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CatalanNumber".to_string(), advanced::catalan_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Partitions".to_string(), advanced::partitions_fn as fn(&[Value]) -> VmResult<Value>);
+    // Combinatorial sequences
+    f.insert("FibonacciNumber".to_string(), sequences::fibonacci_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("LucasNumber".to_string(), sequences::lucas_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("TribonacciNumber".to_string(), sequences::tribonacci_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PellNumber".to_string(), sequences::pell_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JacobsthalNumber".to_string(), sequences::jacobsthal_number_fn as fn(&[Value]) -> VmResult<Value>);
+    f
+}

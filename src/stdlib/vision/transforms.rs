@@ -779,7 +779,7 @@ pub fn affine_transform(args: &[Value]) -> VmResult<Value> {
             let result = apply_affine_transform(image, transform, None)?;
             Ok(Value::LyObj(LyObj::new(Box::new(result))))
         }
-        [img, trans, opts] => {
+        [img, trans, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -853,7 +853,7 @@ pub fn perspective_transform(args: &[Value]) -> VmResult<Value> {
             let result = apply_perspective_transform(image, transform, None)?;
             Ok(Value::LyObj(LyObj::new(Box::new(result))))
         }
-        [img, trans, opts] => {
+        [img, trans, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -939,7 +939,7 @@ pub fn estimate_homography(args: &[Value]) -> VmResult<Value> {
                 Ok(Value::LyObj(LyObj::new(Box::new(transform))))
             }
         }
-        [src_pts, dst_pts, opts] => {
+        [src_pts, dst_pts, _opts] => {
             let src_points = extract_point_list(src_pts)?;
             let dst_points = extract_point_list(dst_pts)?;
             

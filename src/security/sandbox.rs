@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Sandboxing implementation for untrusted code execution
 
 use super::{SecurityError, SecurityResult, SecurityConfig};

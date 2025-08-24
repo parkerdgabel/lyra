@@ -446,7 +446,7 @@ impl Foreign for ModelWrapper {
                 let mut result = HashMap::new();
                 result.insert("name".to_string(), Value::String(metadata.name));
                 result.insert("version".to_string(), Value::String(metadata.version));
-                Ok(Value::Dict(result))
+                Ok(Value::Object(result))
             }
             "save" => {
                 Ok(Value::String("Model saved".to_string()))
@@ -537,7 +537,7 @@ pub fn model_fine_tune(args: &[Value]) -> VmResult<Value> {
     };
 
     let _parameters = match &args[2] {
-        Value::Dict(dict) => dict,
+        Value::Object(dict) => dict,
         _ => return Err(LyraError::Custom("parameters must be dictionary".to_string())),
     };
 
@@ -548,7 +548,7 @@ pub fn model_fine_tune(args: &[Value]) -> VmResult<Value> {
     result.insert("loss".to_string(), Value::Float(0.05));
     result.insert("epochs".to_string(), Value::Integer(10));
 
-    Ok(Value::Dict(result))
+    Ok(Value::Object(result))
 }
 
 /// Validate model performance
@@ -587,7 +587,7 @@ pub fn model_validate(args: &[Value]) -> VmResult<Value> {
         Value::List(vec![Value::Integer(10), Value::Integer(90)]),
     ]));
 
-    Ok(Value::Dict(result))
+    Ok(Value::Object(result))
 }
 
 /// Save model to file
@@ -749,7 +749,7 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert("input".to_string(), Value::List(vec![Value::Float(1.0)]));
                 map.insert("output".to_string(), Value::List(vec![Value::Float(0.5)]));
-                Value::Dict(map)
+                Value::Object(map)
             }
         ];
 
@@ -760,7 +760,7 @@ mod tests {
         let args = vec![
             Value::Integer(42), // Wrong type for model
             Value::List(training_data),
-            Value::Dict(params),
+            Value::Object(params),
         ];
 
         let result = model_fine_tune(&args);
@@ -774,7 +774,7 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert("input".to_string(), Value::List(vec![Value::Float(1.0)]));
                 map.insert("expected".to_string(), Value::List(vec![Value::Float(0.5)]));
-                Value::Dict(map)
+                Value::Object(map)
             }
         ];
 

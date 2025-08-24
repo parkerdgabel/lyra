@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables)]
 //! # Parallel Expression Evaluator
 //! 
 //! Concurrent expression evaluation system that parallelizes symbolic computation
@@ -125,8 +126,8 @@ impl ConcurrentExecutable for EvaluationTask {
     type Error = VmError;
     
     fn execute(&self) -> Result<Self::Output, Self::Error> {
-        // Create a sequential evaluator for this task
-        let mut vm = VirtualMachine::new();
+        // Create a sequential evaluator for this task (reserved for future use)
+        let _vm = VirtualMachine::new();
         
         // For now, return a placeholder result based on the expression
         // Full implementation would integrate with the compiler and VM

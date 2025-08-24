@@ -108,7 +108,7 @@ pub fn markowitz_mean_variance_optimization(
 /// Solve optimization for two-asset portfolio analytically
 fn solve_two_asset_optimization(
     expected_returns: &[f64],
-    covariance_matrix: &[Vec<f64>],
+    _covariance_matrix: &[Vec<f64>],
     target_return: f64,
 ) -> Result<Vec<f64>, VmError> {
     let mu1 = expected_returns[0];

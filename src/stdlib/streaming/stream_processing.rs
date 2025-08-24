@@ -647,11 +647,18 @@ impl Foreign for WindowAggregate {
                 };
                 
                 let results = self.process(timestamped_value)?;
-                let result_values: Vec<Value> = results.into_iter()
-                    .map(|r| serde_json::to_value(&r).unwrap_or(serde_json::Value::Null))
-                    .map(|v| serde_json::from_value(v).unwrap_or(Value::Null))
+                // Return list of Associations for aggregation results
+                let result_values: Vec<Value> = results
+                    .into_iter()
+                    .map(|r| {
+                        let mut m = HashMap::new();
+                        m.insert("windowStart".to_string(), Value::Real(r.window_start as f64));
+                        m.insert("windowEnd".to_string(), Value::Real(r.window_end as f64));
+                        m.insert("result".to_string(), r.result);
+                        m.insert("count".to_string(), Value::Integer(r.count as i64));
+                        Value::Object(m)
+                    })
                     .collect();
-                
                 Ok(Value::List(result_values))
             },
             "updateWatermark" => {
@@ -701,11 +708,17 @@ impl Foreign for StreamJoin {
                 };
                 
                 let results = self.process_left(join_value)?;
-                let result_values: Vec<Value> = results.into_iter()
-                    .map(|r| serde_json::to_value(&r).unwrap_or(serde_json::Value::Null))
-                    .map(|v| serde_json::from_value(v).unwrap_or(Value::Null))
+                let result_values: Vec<Value> = results
+                    .into_iter()
+                    .map(|r| {
+                        let mut m = HashMap::new();
+                        m.insert("left".to_string(), r.left_value);
+                        m.insert("right".to_string(), r.right_value);
+                        m.insert("joinKey".to_string(), Value::String(r.join_key));
+                        m.insert("timestamp".to_string(), Value::Real(r.timestamp as f64));
+                        Value::Object(m)
+                    })
                     .collect();
-                
                 Ok(Value::List(result_values))
             },
             "processRight" => {
@@ -730,11 +743,17 @@ impl Foreign for StreamJoin {
                 };
                 
                 let results = self.process_right(join_value)?;
-                let result_values: Vec<Value> = results.into_iter()
-                    .map(|r| serde_json::to_value(&r).unwrap_or(serde_json::Value::Null))
-                    .map(|v| serde_json::from_value(v).unwrap_or(Value::Null))
+                let result_values: Vec<Value> = results
+                    .into_iter()
+                    .map(|r| {
+                        let mut m = HashMap::new();
+                        m.insert("left".to_string(), r.left_value);
+                        m.insert("right".to_string(), r.right_value);
+                        m.insert("joinKey".to_string(), Value::String(r.join_key));
+                        m.insert("timestamp".to_string(), Value::Real(r.timestamp as f64));
+                        Value::Object(m)
+                    })
                     .collect();
-                
                 Ok(Value::List(result_values))
             },
             _ => Err(LyraError::Runtime { message: format!("Unknown method: {}", method))),
@@ -812,14 +831,13 @@ impl Foreign for BackpressureController {
             },
             "getMetrics" => {
                 let metrics = self.get_metrics()?;
-                let metrics_map = vec![
-                    ("buffer_utilization".to_string(), Value::Real(metrics.buffer_utilization)),
-                    ("throughput_rate".to_string(), Value::Real(metrics.throughput_rate)),
-                    ("latency_p95".to_string(), Value::Real(metrics.latency_p95)),
-                    ("dropped_messages".to_string(), Value::Real(metrics.dropped_messages as f64)),
-                ];
-                Ok(Value::List(metrics_map.into_iter().map(|(k, v)| 
-                    Value::List(vec![Value::String(k), v])).collect()))
+                let mut m = HashMap::new();
+                m.insert("bufferUtilization".to_string(), Value::Real(metrics.buffer_utilization));
+                m.insert("throughputRate".to_string(), Value::Real(metrics.throughput_rate));
+                m.insert("latencyP95".to_string(), Value::Real(metrics.latency_p95));
+                m.insert("droppedMessages".to_string(), Value::Integer(metrics.dropped_messages as i64));
+                m.insert("blockedDurationMs".to_string(), Value::Integer(metrics.blocked_duration_ms as i64));
+                Ok(Value::Object(m))
             },
             _ => Err(LyraError::Runtime { message: format!("Unknown method: {}", method))),
         }

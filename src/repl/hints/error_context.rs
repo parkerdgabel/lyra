@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Enhanced error context hints with intelligent recovery suggestions
 //!
 //! This module analyzes errors and provides context-aware hints to help users
@@ -316,7 +317,7 @@ impl ErrorContextAnalyzer {
     }
     
     /// Suggest pattern fixes
-    fn suggest_pattern_fixes(&self, input: &str) -> Vec<ErrorSuggestion> {
+    fn suggest_pattern_fixes(&self, _input: &str) -> Vec<ErrorSuggestion> {
         vec![
             ErrorSuggestion {
                 description: "Check pattern syntax".to_string(),
@@ -375,7 +376,7 @@ impl ErrorContextAnalyzer {
     }
     
     /// Extract context information
-    fn extract_context_info(&self, error_type: &ErrorType, input: &str, cursor_pos: Option<usize>) -> Vec<String> {
+    fn extract_context_info(&self, error_type: &ErrorType, _input: &str, cursor_pos: Option<usize>) -> Vec<String> {
         let mut info = Vec::new();
         
         match error_type {

@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! REPL (Read-Eval-Print Loop) Module
 //! 
 //! Interactive symbolic computation engine showcasing Lyra's capabilities
@@ -42,6 +43,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use chrono;
+use colored::Colorize;
 
 #[derive(Error, Debug)]
 pub enum ReplError {
@@ -331,6 +333,21 @@ impl ReplEngine {
     
     /// Evaluate an expression using the VM
     fn evaluate_expression(&mut self, expr: &Expr) -> ReplResult<Value> {
+        // Intercept Describe["Function"] for programmatic docs
+        if let Expr::Function { head, args } = expr {
+            if let Expr::Symbol(sym) = head.as_ref() {
+                if sym.name == "Describe" && args.len() == 1 {
+                    let fname = match &args[0] {
+                        Expr::String(s) => s.clone(),
+                        Expr::Symbol(s) => s.name.clone(),
+                        _ => {
+                            return Err(ReplError::Other { message: "Describe expects a String or Symbol".to_string() });
+                        }
+                    };
+                    return self.enhanced_help.describe_association(&fname);
+                }
+            }
+        }
         // Check if this is a variable assignment
         if let Expr::Assignment { lhs, rhs, delayed: _ } = expr {
             if let Expr::Symbol(var_name) = lhs.as_ref() {
@@ -1253,24 +1270,57 @@ The REPL showcases Lyra's symbolic computation optimizations:
     /// Format a value for display
     fn format_value(&self, value: &Value) -> String {
         match value {
-            Value::Integer(n) => n.to_string(),
+            Value::Integer(n) => n.to_string().bright_cyan().to_string(),
             Value::Real(f) => {
                 if f.fract() == 0.0 {
-                    format!("{:.1}", f)
+                    format!("{:.1}", f).bright_blue().to_string()
                 } else {
-                    f.to_string()
+                    f.to_string().bright_blue().to_string()
                 }
             }
-            Value::String(s) => format!("\"{}\"", s),
-            Value::Symbol(s) => s.clone(),
+            Value::String(s) => format!("\"{}\"", s.bright_green()),
+            Value::Symbol(s) => s.bright_yellow().to_string(),
             Value::List(items) => {
                 let formatted_items: Vec<String> = items.iter().map(|v| self.format_value(v)).collect();
                 format!("{{{}}}", formatted_items.join(", "))
             }
             Value::Function(name) => format!("Function[{}]", name),
-            Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
-            Value::Missing => "Missing[]".to_string(),
-            Value::Object(_) => "Object[...]".to_string(),
+            Value::Boolean(b) => if *b { "True".bright_magenta().to_string() } else { "False".bright_magenta().to_string() },
+            Value::Missing => "Missing[]".bright_red().to_string(),
+            Value::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                let mut multiline = keys.len() > 3;
+                if !multiline {
+                    // If any value is a complex type, prefer multiline
+                    multiline = keys.iter().any(|k| matches!(map[*k], Value::Object(_) | Value::List(_)));
+                }
+                let fmt_key = |k: &str| k.bright_yellow().to_string();
+                let indent_block = |s: &str, spaces: usize| -> String {
+                    let pad = " ".repeat(spaces);
+                    s.lines().enumerate().map(|(i, line)| {
+                        if i == 0 { line.to_string() } else { format!("{}{}", pad, line) }
+                    }).collect::<Vec<_>>().join("\n")
+                };
+                if multiline {
+                    let mut out = String::from("<|\n");
+                    for (i, k) in keys.iter().enumerate() {
+                        let v = self.format_value(map.get(k.as_str()).unwrap());
+                        let v_ind = indent_block(&v, 2 + fmt_key(k).len() + 4); // rough align after '  key -> '
+                        out.push_str(&format!("  {} -> {}", fmt_key(k), v_ind));
+                        if i < keys.len() - 1 { out.push(','); }
+                        out.push('\n');
+                    }
+                    out.push_str("|>");
+                    out
+                } else {
+                    let pairs: Vec<String> = keys
+                        .into_iter()
+                        .map(|k| format!("{} -> {}", fmt_key(k), self.format_value(map.get(k.as_str()).unwrap())))
+                        .collect();
+                    format!("<|{}|>", pairs.join(", "))
+                }
+            }
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),

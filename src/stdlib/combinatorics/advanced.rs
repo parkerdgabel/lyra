@@ -411,7 +411,14 @@ pub fn stirling_number_fn(args: &[Value]) -> VmResult<Value> {
     }
     
     let result = StirlingResult::new(n, k, stirling_type);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    // Return standardized Association instead of Foreign object
+    let mut m = std::collections::HashMap::new();
+    m.insert("n".to_string(), Value::Integer(result.n));
+    m.insert("k".to_string(), Value::Integer(result.k));
+    m.insert("type".to_string(), Value::Integer(result.stirling_type));
+    m.insert("value".to_string(), Value::Integer(result.value));
+    m.insert("success".to_string(), Value::Boolean(result.success));
+    Ok(Value::Object(m))
 }
 
 /// Bell number function
@@ -485,7 +492,21 @@ pub fn partitions_fn(args: &[Value]) -> VmResult<Value> {
     }
     
     let result = IntegerPartitions::new(n);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    // Return standardized Association instead of Foreign object
+    let mut m = std::collections::HashMap::new();
+    m.insert("n".to_string(), Value::Integer(result.n));
+    m.insert(
+        "partitions".to_string(),
+        Value::List(
+            result
+                .partitions
+                .iter()
+                .map(|p| Value::List(p.iter().cloned().map(Value::Integer).collect()))
+                .collect(),
+        ),
+    );
+    m.insert("count".to_string(), Value::Integer(result.count));
+    Ok(Value::Object(m))
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Context-aware symbol suggestion engine
 //!
 //! This module provides intelligent symbol suggestions by analyzing the current
@@ -491,7 +492,7 @@ impl SymbolSuggestionEngine {
         ContextType::Expression
     }
     
-    fn infer_expected_type(&self, input: &str, cursor_pos: usize, context_type: &ContextType) -> Option<String> {
+    fn infer_expected_type(&self, _input: &str, _cursor_pos: usize, context_type: &ContextType) -> Option<String> {
         match context_type {
             ContextType::FunctionParameter => {
                 // Would need function signature lookup

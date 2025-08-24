@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! HTML Export Engine
 //! 
 //! Converts Lyra REPL sessions to interactive HTML documents with mathematical
@@ -1012,6 +1013,9 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
         match value {
             Value::Integer(n) => n.to_string(),
             Value::Real(f) => f.to_string(),
+            Value::Rational(n, d) => format!("Rational[{}, {}]", n, d),
+            Value::BigReal { value, precision } => format!("BigReal[{value}, p:{precision}]"),
+            Value::Complex { re, im } => format!("{} + I {}", self.value_to_string(re), self.value_to_string(im)),
             Value::String(s) => s.clone(),
             Value::Symbol(sym) => sym.clone(),
             Value::Boolean(b) => b.to_string(),
@@ -1023,6 +1027,11 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
             Value::Missing => "Missing".to_string(),
             Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(_) => "Foreign[Object]".to_string(),
+            Value::Expr { head, args } => {
+                let h = self.value_to_string(head);
+                let a: Vec<String> = args.iter().map(|v| self.value_to_string(v)).collect();
+                format!("{}[{}]", h, a.join(", "))
+            }
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("Pattern[{:?}]", pattern),
             Value::Rule { lhs, rhs } => format!("{} -> {}", self.value_to_string(lhs), self.value_to_string(rhs)),
@@ -1039,6 +1048,9 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
         match value {
             Value::Integer(_) => "Integer",
             Value::Real(_) => "Real",
+            Value::Rational(_, _) => "Rational",
+            Value::BigReal { .. } => "BigReal",
+            Value::Complex { .. } => "Complex",
             Value::String(_) => "String",
             Value::Symbol(_) => "Symbol",
             Value::Boolean(_) => "Boolean",
@@ -1047,6 +1059,7 @@ document.querySelectorAll('a[href^="\\#"]').forEach(anchor => {
             Value::Missing => "Missing",
             Value::Object(_) => "Object",
             Value::LyObj(_) => "Foreign",
+            Value::Expr { .. } => "Expr",
             Value::Quote(_) => "Quote",
             Value::Pattern(_) => "Pattern",
             Value::Rule { .. } => "Rule",

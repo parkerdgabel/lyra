@@ -18,6 +18,7 @@ use thiserror::Error;
 
 pub mod formats;
 pub mod streaming;
+pub mod object_store;
 
 /// I/O operation errors
 #[derive(Error, Debug)]
@@ -50,10 +51,7 @@ pub enum IoError {
 /// Convert IoError to VmError for seamless integration with VM error handling
 impl From<IoError> for VmError {
     fn from(io_error: IoError) -> Self {
-        VmError::TypeError {
-            expected: "successful I/O operation".to_string(),
-            actual: format!("I/O error: {}", io_error),
-        }
+        VmError::Runtime(format!("I/O error: {}", io_error))
     }
 }
 

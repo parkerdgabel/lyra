@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Context analysis for intelligent hint generation
 //!
 //! This module analyzes the input context around the cursor position to determine

@@ -5,6 +5,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::assoc;
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -387,7 +388,14 @@ pub fn discrete_log_fn(args: &[Value]) -> VmResult<Value> {
     }
     
     let result = discrete_log_baby_giant(base, target, modulus);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    Ok(assoc(vec![
+        ("log", match result.log { Some(x) => Value::Integer(x), None => Value::String("None".to_string()) }),
+        ("base", Value::Integer(base)),
+        ("target", Value::Integer(target)),
+        ("modulus", Value::Integer(modulus)),
+        ("found", Value::Boolean(result.found)),
+        ("method", Value::String("BabyStepGiantStep".to_string())),
+    ]))
 }
 
 /// Quadratic residue test

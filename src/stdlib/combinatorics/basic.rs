@@ -283,7 +283,16 @@ pub fn multinomial_fn(args: &[Value]) -> VmResult<Value> {
     };
     
     let result = MultinomialResult::new(n, groups);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    // Return standardized Association instead of Foreign object
+    let mut m = std::collections::HashMap::new();
+    m.insert("n".to_string(), Value::Integer(result.n));
+    m.insert(
+        "groups".to_string(),
+        Value::List(result.groups.iter().cloned().map(Value::Integer).collect()),
+    );
+    m.insert("coefficient".to_string(), Value::Integer(result.coefficient));
+    m.insert("success".to_string(), Value::Boolean(result.success));
+    Ok(Value::Object(m))
 }
 
 /// Permutations function

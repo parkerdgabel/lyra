@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables)]
 //! # Actor-Based Concurrent Computation
 //! 
 //! Implements an actor model for concurrent symbolic computation with message passing,
@@ -314,7 +315,7 @@ impl ActorSystem {
     }
     
     /// Spawn a new actor
-    pub async fn spawn<A>(&self, actor: A) -> Result<ActorHandle, ConcurrencyError>
+    pub async fn spawn<A>(&self, _actor: A) -> Result<ActorHandle, ConcurrencyError>
     where
         A: Actor + 'static,
     {

@@ -220,6 +220,54 @@ impl Tensor {
     }
 }
 
+/// Sigmoid Activation Layer
+#[derive(Debug, Clone)]
+pub struct SigmoidLayer {
+    pub layer_name: String,
+}
+
+impl SigmoidLayer {
+    pub fn new() -> Self {
+        Self { layer_name: "SigmoidLayer".to_string() }
+    }
+}
+
+impl Layer for SigmoidLayer {
+    fn forward(&self, input: &Tensor) -> MLResult<Tensor> {
+        Ok(input.sigmoid())
+    }
+    fn parameters(&self) -> Vec<&Tensor> { Vec::new() }
+    fn parameters_mut(&mut self) -> Vec<&mut Tensor> { Vec::new() }
+    fn initialize(&mut self) -> MLResult<()> { Ok(()) }
+    fn name(&self) -> &str { &self.layer_name }
+    fn output_shape(&self, input_shape: &[usize]) -> MLResult<Vec<usize>> { Ok(input_shape.to_vec()) }
+    fn clone_boxed(&self) -> Box<dyn Layer> { Box::new(self.clone()) }
+}
+
+/// Tanh Activation Layer
+#[derive(Debug, Clone)]
+pub struct TanhLayer {
+    pub layer_name: String,
+}
+
+impl TanhLayer {
+    pub fn new() -> Self {
+        Self { layer_name: "TanhLayer".to_string() }
+    }
+}
+
+impl Layer for TanhLayer {
+    fn forward(&self, input: &Tensor) -> MLResult<Tensor> {
+        Ok(input.tanh())
+    }
+    fn parameters(&self) -> Vec<&Tensor> { Vec::new() }
+    fn parameters_mut(&mut self) -> Vec<&mut Tensor> { Vec::new() }
+    fn initialize(&mut self) -> MLResult<()> { Ok(()) }
+    fn name(&self) -> &str { &self.layer_name }
+    fn output_shape(&self, input_shape: &[usize]) -> MLResult<Vec<usize>> { Ok(input_shape.to_vec()) }
+    fn clone_boxed(&self) -> Box<dyn Layer> { Box::new(self.clone()) }
+}
+
 /// LinearLayer: Trainable affine transformation (Dense/Fully-connected layer)
 /// LinearLayer[n] creates a linear layer with n output units
 #[derive(Debug, Clone)]
@@ -418,49 +466,7 @@ impl Layer for ReLULayer {
     }
 }
 
-/// Sigmoid Activation Layer
-#[derive(Debug, Clone)]
-pub struct SigmoidLayer {
-    pub layer_name: String,
-}
-
-impl SigmoidLayer {
-    pub fn new() -> Self {
-        Self {
-            layer_name: "SigmoidLayer".to_string(),
-        }
-    }
-}
-
-impl Layer for SigmoidLayer {
-    fn forward(&self, input: &Tensor) -> MLResult<Tensor> {
-        Ok(input.sigmoid())
-    }
-    
-    fn parameters(&self) -> Vec<&Tensor> {
-        Vec::new()
-    }
-    
-    fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
-        Vec::new()
-    }
-    
-    fn initialize(&mut self) -> MLResult<()> {
-        Ok(())
-    }
-    
-    fn name(&self) -> &str {
-        &self.layer_name
-    }
-    
-    fn output_shape(&self, input_shape: &[usize]) -> MLResult<Vec<usize>> {
-        Ok(input_shape.to_vec())
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Layer> {
-        Box::new(self.clone())
-    }
-}
+// (duplicate SigmoidLayer removed)
 
 /// Softmax Layer for probability distributions
 #[derive(Debug, Clone)]
@@ -758,16 +764,9 @@ impl Layer for ConvolutionLayer {
         
         // Compute output dimensions
         let (out_h, out_w) = self.compute_output_size(input_h, input_w);
-        
-        // For simplicity, implement basic convolution without padding for now
-        if ph != 0 || pw != 0 {
-            return Err(MLError::InvalidLayer {
-                reason: "Padding not yet implemented for ConvolutionLayer".to_string(),
-            });
-        }
-        
-        // Validate kernel fits in input
-        if kh > input_h || kw > input_w {
+
+        // Validate kernel fits within input when considering padding
+        if kh > input_h + 2 * ph || kw > input_w + 2 * pw {
             return Err(MLError::InvalidLayer {
                 reason: format!("Kernel size {:?} too large for input {}x{}", 
                                self.kernel_size, input_h, input_w),
@@ -787,20 +786,24 @@ impl Layer for ConvolutionLayer {
                         for in_c in 0..input_channels {
                             for ky in 0..kh {
                                 for kx in 0..kw {
-                                    let input_y = out_y * sh + ky;
-                                    let input_x = out_x * sw + kx;
-                                    
-                                    if input_y < input_h && input_x < input_w {
+                                    // Top-left input coordinate accounting for padding
+                                    let in_y0 = out_y as isize * sh as isize - ph as isize;
+                                    let in_x0 = out_x as isize * sw as isize - pw as isize;
+                                    let input_y = in_y0 + ky as isize;
+                                    let input_x = in_x0 + kx as isize;
+
+                                    // Skip contributions falling into padded area
+                                    if input_y >= 0 && input_y < input_h as isize && input_x >= 0 && input_x < input_w as isize {
+                                        let iy = input_y as usize;
+                                        let ix = input_x as usize;
                                         let input_idx = b * (input_channels * input_h * input_w) +
                                                        in_c * (input_h * input_w) +
-                                                       input_y * input_w + input_x;
-                                        
+                                                       iy * input_w + ix;
                                         let weight_idx = out_c * (input_channels * kh * kw) +
                                                         in_c * (kh * kw) +
                                                         ky * kw + kx;
-                                        
                                         conv_sum = conv_sum + input.data[input_idx] * weights.data[weight_idx];
-                                    }
+                                    } // else: outside bounds -> implicit zero contribution
                                 }
                             }
                         }

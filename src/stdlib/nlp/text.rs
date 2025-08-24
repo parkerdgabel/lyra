@@ -4,97 +4,13 @@
 //! n-gram generation, TF-IDF vectorization, and text similarity metrics.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{LyObj, Foreign, ForeignError};
+// No Foreign objects; all results use Associations
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::any::Any;
 use regex::Regex;
 
-/// Text document Foreign object for holding processed text data
-#[derive(Debug, Clone)]
-pub struct TextDocument {
-    pub original_text: String,
-    pub tokens: Vec<String>,
-    pub normalized_text: String,
-    pub language: Option<String>,
-}
+// Removed legacy Foreign wrappers for text objects; functions now return Associations
 
-impl Foreign for TextDocument {
-    fn type_name(&self) -> &'static str {
-        "TextDocument"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "tokens" => Ok(Value::List(self.tokens.iter().map(|t| Value::String(t.clone())).collect())),
-            "originalText" => Ok(Value::String(self.original_text.clone())),
-            "normalizedText" => Ok(Value::String(self.normalized_text.clone())),
-            "language" => Ok(Value::String(self.language.clone().unwrap_or_else(|| "unknown".to_string()))),
-            _ => Err(ForeignError::UnknownMethod { 
-                type_name: self.type_name().to_string(), 
-                method: method.to_string() 
-            })
-        }
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for TextDocument {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TextDocument[tokens: {}, language: {:?}]", 
-               self.tokens.len(), self.language)
-    }
-}
-
-/// Tokenized text Foreign object
-#[derive(Debug, Clone)]
-pub struct TokenizedText {
-    pub tokens: Vec<String>,
-    pub token_positions: Vec<(usize, usize)>, // Start and end positions in original text
-    pub tokenization_method: String,
-}
-
-impl Foreign for TokenizedText {
-    fn type_name(&self) -> &'static str {
-        "TokenizedText"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "tokens" => Ok(Value::List(self.tokens.iter().map(|t| Value::String(t.clone())).collect())),
-            "method" => Ok(Value::String(self.tokenization_method.clone())),
-            "length" => Ok(Value::Integer(self.tokens.len() as i64)),
-            _ => Err(ForeignError::UnknownMethod { 
-                type_name: self.type_name().to_string(), 
-                method: method.to_string() 
-            })
-        }
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for TokenizedText {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TokenizedText[tokens: {}, method: {}]", 
-               self.tokens.len(), self.tokenization_method)
-    }
-}
-
-/// TF-IDF model Foreign object
 #[derive(Debug, Clone)]
 pub struct TFIDFModel {
     pub vocabulary: HashMap<String, usize>,
@@ -103,63 +19,7 @@ pub struct TFIDFModel {
     pub feature_vectors: Vec<HashMap<String, f64>>,
 }
 
-impl Foreign for TFIDFModel {
-    fn type_name(&self) -> &'static str {
-        "TFIDFModel"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "vocabularySize" => Ok(Value::Integer(self.vocabulary.len() as i64)),
-            "documentCount" => Ok(Value::Integer(self.document_count as i64)),
-            "transform" => {
-                if args.len() != 1 {
-                    return Err(ForeignError::InvalidArity { 
-                        method: method.to_string(), 
-                        expected: 1, 
-                        actual: args.len() 
-                    });
-                }
-                match &args[0] {
-                    Value::String(text) => {
-                        let vector = self.transform(text);
-                        let vector_pairs: Vec<Value> = vector.into_iter()
-                            .map(|(term, score)| Value::List(vec![
-                                Value::String(term), 
-                                Value::Real(score)
-                            ]))
-                            .collect();
-                        Ok(Value::List(vector_pairs))
-                    }
-                    _ => Err(ForeignError::InvalidArgumentType {
-                        method: method.to_string(),
-                        expected: "string".to_string(),
-                        actual: format!("{:?}", args[0])
-                    })
-                }
-            }
-            _ => Err(ForeignError::UnknownMethod { 
-                type_name: self.type_name().to_string(), 
-                method: method.to_string() 
-            })
-        }
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for TFIDFModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TFIDFModel[vocabulary: {}, documents: {}]", 
-               self.vocabulary.len(), self.document_count)
-    }
-}
+// TFIDFModel is an internal helper now; outputs are Associations
 
 impl TFIDFModel {
     pub fn new() -> Self {
@@ -237,76 +97,7 @@ impl TFIDFModel {
     }
 }
 
-/// Word frequency map Foreign object
-#[derive(Debug, Clone)]
-pub struct WordFrequencyMap {
-    pub frequencies: HashMap<String, usize>,
-    pub total_words: usize,
-}
-
-impl Foreign for WordFrequencyMap {
-    fn type_name(&self) -> &'static str {
-        "WordFrequencyMap"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "size" => Ok(Value::Integer(self.frequencies.len() as i64)),
-            "totalWords" => Ok(Value::Integer(self.total_words as i64)),
-            "get" => {
-                if args.len() != 1 {
-                    return Err(ForeignError::InvalidArity { 
-                        method: method.to_string(), 
-                        expected: 1, 
-                        actual: args.len() 
-                    });
-                }
-                match &args[0] {
-                    Value::String(word) => {
-                        let frequency = self.frequencies.get(word).unwrap_or(&0);
-                        Ok(Value::Integer(*frequency as i64))
-                    }
-                    _ => Err(ForeignError::InvalidArgumentType {
-                        method: method.to_string(),
-                        expected: "string".to_string(),
-                        actual: format!("{:?}", args[0])
-                    })
-                }
-            }
-            "mostCommon" => {
-                let mut word_freq: Vec<(&String, &usize)> = self.frequencies.iter().collect();
-                word_freq.sort_by(|a, b| b.1.cmp(a.1));
-                let top_words: Vec<Value> = word_freq.into_iter()
-                    .take(10) // Top 10 most common words
-                    .map(|(word, freq)| Value::List(vec![
-                        Value::String(word.clone()), 
-                        Value::Integer(*freq as i64)
-                    ]))
-                    .collect();
-                Ok(Value::List(top_words))
-            }
-            _ => Err(ForeignError::UnknownMethod { 
-                type_name: self.type_name().to_string(), 
-                method: method.to_string() 
-            })
-        }
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for WordFrequencyMap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "WordFrequencyMap[unique_words: {}, total: {}]", 
-               self.frequencies.len(), self.total_words)
-    }
-}
+// WordFrequencyMap removed; function returns an Association
 
 // Helper functions for text processing
 
@@ -543,11 +334,17 @@ pub fn tfidf_vectorize(args: &[Value]) -> VmResult<Value> {
     
     let doc_strings = doc_strings?;
     let mut tfidf_model = TFIDFModel::new();
-    
     tfidf_model.fit(&doc_strings)
         .map_err(|e| VmError::Runtime(e ))?;
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(tfidf_model))))
+    // Build association summary (avoid returning heavy vectors by default)
+    let mut idf_obj: HashMap<String, Value> = HashMap::new();
+    for (k,v) in &tfidf_model.idf_scores { idf_obj.insert(k.clone(), Value::Real(*v)); }
+    Ok(crate::stdlib::common::assoc(vec![
+        ("model", Value::String("TFIDF".to_string())),
+        ("vocabularySize", Value::Integer(tfidf_model.vocabulary.len() as i64)),
+        ("documentCount", Value::Integer(tfidf_model.document_count as i64)),
+        ("idf", Value::Object(idf_obj)),
+    ]))
 }
 
 /// Calculate word frequencies from a list of tokens
@@ -576,12 +373,15 @@ pub fn word_frequency(args: &[Value]) -> VmResult<Value> {
         }
     }
     
-    let freq_map = WordFrequencyMap {
-        frequencies,
-        total_words,
-    };
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(freq_map))))
+    // Convert frequencies to Association
+    let mut freq_obj: HashMap<String, Value> = HashMap::new();
+    for (k,v) in frequencies.into_iter() { freq_obj.insert(k, Value::Integer(v as i64)); }
+    let unique = freq_obj.len() as i64;
+    Ok(crate::stdlib::common::assoc(vec![
+        ("frequencies", Value::Object(freq_obj)),
+        ("totalWords", Value::Integer(total_words as i64)),
+        ("uniqueWords", Value::Integer(unique)),
+    ]))
 }
 
 /// Calculate text similarity using various metrics

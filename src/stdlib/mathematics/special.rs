@@ -1183,7 +1183,7 @@ fn compute_fresnel_c(x: f64) -> f64 {
     
     let x_abs = x.abs();
     let mut result = 0.0;
-    let term = x_abs;
+    let _term = x_abs;
     
     // Series: C(x) = ∫₀ˣ cos(πt²/2) dt = ∑_{n=0}^∞ (-1)^n (πx/2)^(4n+1) / ((4n+1)(2n)!)
     for n in 0..50 {

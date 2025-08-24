@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Parallel execution implementations
 //!
 //! Provides high-level parallel operations using the work-stealing scheduler.

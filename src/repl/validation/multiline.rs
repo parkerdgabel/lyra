@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Multiline expression detection for Lyra REPL
 //!
 //! This module detects when expressions are incomplete and require multiline continuation,

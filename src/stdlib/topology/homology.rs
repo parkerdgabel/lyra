@@ -58,7 +58,7 @@ fn build_boundary_matrix(filtration: &Filtration) -> Vec<Vec<bool>> {
 }
 
 /// Matrix reduction algorithm for computing persistence pairs
-fn matrix_reduction(boundary_matrix: &[Vec<bool>], filtration: &Filtration) -> Vec<(usize, Option<usize>)> {
+fn matrix_reduction(boundary_matrix: &[Vec<bool>], _filtration: &Filtration) -> Vec<(usize, Option<usize>)> {
     let n = boundary_matrix.len();
     let mut reduced_matrix: Vec<Vec<bool>> = boundary_matrix.to_vec();
     let mut pairs = Vec::new();

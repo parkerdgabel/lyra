@@ -307,7 +307,6 @@ impl Default for TypeRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expr, Number};
 
     #[test]
     fn test_symbol_manager_basic_operations() {

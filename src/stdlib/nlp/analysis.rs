@@ -3,136 +3,20 @@
 //! Implements advanced NLP analysis functionality using statistical models and rule-based approaches
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{LyObj, Foreign, ForeignError};
+use crate::stdlib::common::assoc;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::any::Any;
 use regex::Regex;
 
-/// Sentiment analysis result Foreign object
-#[derive(Debug, Clone)]
-pub struct SentimentResult {
-    pub polarity: f64,      // -1.0 to 1.0 (negative to positive)
-    pub confidence: f64,    // 0.0 to 1.0
-    pub label: String,      // "positive", "negative", "neutral"
-    pub scores: HashMap<String, f64>,  // Detailed sentiment scores
-}
+// Removed legacy Foreign result wrappers; returning Associations instead
 
-impl Foreign for SentimentResult {
-    fn type_name(&self) -> &'static str {
-        "SentimentResult"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "polarity" => Ok(Value::Real(self.polarity)),
-            "confidence" => Ok(Value::Real(self.confidence)),
-            "label" => Ok(Value::String(self.label.clone())),
-            "scores" => {
-                let scores: Vec<Value> = self.scores.iter()
-                    .map(|(k, v)| Value::List(vec![
-                        Value::String(k.clone()),
-                        Value::Real(*v)
-                    ]))
-                    .collect();
-                Ok(Value::List(scores))
-            }
-            _ => Err(ForeignError::UnknownMethod { 
-                type_name: self.type_name().to_string(), 
-                method: method.to_string() 
-            })
-        }
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for SentimentResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SentimentResult[label: {}, polarity: {:.3}, confidence: {:.3}]", 
-               self.label, self.polarity, self.confidence)
-    }
-}
+//
 
 /// Named entity Foreign object
-#[derive(Debug, Clone)]
-pub struct NamedEntity {
-    pub text: String,
-    pub entity_type: String,  // PERSON, ORGANIZATION, LOCATION, etc.
-    pub start_pos: usize,
-    pub end_pos: usize,
-    pub confidence: f64,
-}
-
-impl Foreign for NamedEntity {
-    fn type_name(&self) -> &'static str {
-        "NamedEntity"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for NamedEntity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "NamedEntity[text: \"{}\", type: {}, confidence: {:.3}]", 
-               self.text, self.entity_type, self.confidence)
-    }
-}
+//
 
 /// POS tag result Foreign object
-#[derive(Debug, Clone)]
-pub struct POSTag {
-    pub word: String,
-    pub tag: String,
-    pub position: usize,
-}
-
-impl Foreign for POSTag {
-    fn type_name(&self) -> &'static str {
-        "POSTag"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for POSTag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "POSTag[word: \"{}\", tag: {}, pos: {}]", 
-               self.word, self.tag, self.position)
-    }
-}
+//
 
 /// Language model Foreign object
 #[derive(Debug, Clone)]
@@ -143,26 +27,7 @@ pub struct LanguageModel {
     pub total_ngrams: usize,
 }
 
-impl Foreign for LanguageModel {
-    fn type_name(&self) -> &'static str {
-        "LanguageModel"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
+// No Foreign impl; internal helper only
 
 impl fmt::Display for LanguageModel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -218,40 +83,7 @@ impl LanguageModel {
 }
 
 /// Text classification result Foreign object
-#[derive(Debug, Clone)]
-pub struct ClassificationResult {
-    pub predicted_class: String,
-    pub confidence: f64,
-    pub class_probabilities: HashMap<String, f64>,
-}
-
-impl Foreign for ClassificationResult {
-    fn type_name(&self) -> &'static str {
-        "ClassificationResult"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for ClassificationResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ClassificationResult[class: {}, confidence: {:.3}]", 
-               self.predicted_class, self.confidence)
-    }
-}
+//
 
 /// Spell check result Foreign object
 #[derive(Debug, Clone)]
@@ -262,26 +94,7 @@ pub struct SpellCheckResult {
     pub position: usize,
 }
 
-impl Foreign for SpellCheckResult {
-    fn type_name(&self) -> &'static str {
-        "SpellCheckResult"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
+//
 
 impl fmt::Display for SpellCheckResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -358,31 +171,19 @@ fn rule_based_sentiment_score(text: &str) -> (f64, f64) {
 }
 
 // Simple pattern-based named entity recognition
-fn extract_named_entities(text: &str) -> Vec<NamedEntity> {
-    let mut entities = Vec::new();
+fn extract_named_entities(text: &str) -> Vec<(String, String, usize, usize, f64)> {
+    let mut entities: Vec<(String, String, usize, usize, f64)> = Vec::new();
     
     // Person names (simple pattern: capitalized words)
     let person_regex = Regex::new(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b").unwrap();
     for mat in person_regex.find_iter(text) {
-        entities.push(NamedEntity {
-            text: mat.as_str().to_string(),
-            entity_type: "PERSON".to_string(),
-            start_pos: mat.start(),
-            end_pos: mat.end(),
-            confidence: 0.7,
-        });
+        entities.push((mat.as_str().to_string(), "PERSON".to_string(), mat.start(), mat.end(), 0.7));
     }
     
     // Organizations (simple pattern: words containing Corp, Inc, Ltd, etc.)
     let org_regex = Regex::new(r"\b[A-Z][a-zA-Z\s]*(Corp|Inc|Ltd|LLC|Company|Corporation)\b").unwrap();
     for mat in org_regex.find_iter(text) {
-        entities.push(NamedEntity {
-            text: mat.as_str().to_string(),
-            entity_type: "ORGANIZATION".to_string(),
-            start_pos: mat.start(),
-            end_pos: mat.end(),
-            confidence: 0.8,
-        });
+        entities.push((mat.as_str().to_string(), "ORGANIZATION".to_string(), mat.start(), mat.end(), 0.8));
     }
     
     // Locations (simple pattern: common location indicators)
@@ -391,13 +192,7 @@ fn extract_named_entities(text: &str) -> Vec<NamedEntity> {
         let pattern = format!(r"\b[A-Z][a-zA-Z\s]*{}\b", keyword);
         if let Ok(regex) = Regex::new(&pattern) {
             for mat in regex.find_iter(text) {
-                entities.push(NamedEntity {
-                    text: mat.as_str().to_string(),
-                    entity_type: "LOCATION".to_string(),
-                    start_pos: mat.start(),
-                    end_pos: mat.end(),
-                    confidence: 0.6,
-                });
+                entities.push((mat.as_str().to_string(), "LOCATION".to_string(), mat.start(), mat.end(), 0.6));
             }
         }
     }
@@ -406,8 +201,8 @@ fn extract_named_entities(text: &str) -> Vec<NamedEntity> {
 }
 
 // Simple POS tagging using pattern matching
-fn simple_pos_tag(tokens: &[String]) -> Vec<POSTag> {
-    let mut tags = Vec::new();
+fn simple_pos_tag(tokens: &[String]) -> Vec<(String, String, usize)> {
+    let mut tags: Vec<(String, String, usize)> = Vec::new();
     
     let articles = ["the", "a", "an"];
     let prepositions = ["in", "on", "at", "by", "for", "with", "from", "to", "of"];
@@ -436,11 +231,7 @@ fn simple_pos_tag(tokens: &[String]) -> Vec<POSTag> {
             "NOUN" // Default to noun
         };
         
-        tags.push(POSTag {
-            word: token.clone(),
-            tag: tag.to_string(),
-            position: i,
-        });
+        tags.push((token.clone(), tag.to_string(), i));
     }
     
     tags
@@ -636,17 +427,14 @@ pub fn sentiment_analysis(args: &[Value]) -> VmResult<Value> {
     };
     
     let mut scores = HashMap::new();
-    scores.insert("polarity".to_string(), polarity);
-    scores.insert("confidence".to_string(), confidence);
-    
-    let result = SentimentResult {
-        polarity,
-        confidence,
-        label: label.to_string(),
-        scores,
-    };
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    scores.insert("polarity".to_string(), Value::Real(polarity));
+    scores.insert("confidence".to_string(), Value::Real(confidence));
+    Ok(assoc(vec![
+        ("label", Value::String(label.to_string())),
+        ("polarity", Value::Real(polarity)),
+        ("confidence", Value::Real(confidence)),
+        ("scores", Value::Object(scores)),
+    ]))
 }
 
 /// Extract named entities from text
@@ -662,11 +450,15 @@ pub fn named_entity_recognition(args: &[Value]) -> VmResult<Value> {
     };
     
     let entities = extract_named_entities(&text);
-    
     let entity_values: Vec<Value> = entities.into_iter()
-        .map(|entity| Value::LyObj(LyObj::new(Box::new(entity))))
+        .map(|(text, etype, start, end, conf)| assoc(vec![
+            ("text", Value::String(text)),
+            ("type", Value::String(etype)),
+            ("start", Value::Integer(start as i64)),
+            ("end", Value::Integer(end as i64)),
+            ("confidence", Value::Real(conf)),
+        ]))
         .collect();
-    
     Ok(Value::List(entity_values))
 }
 
@@ -686,12 +478,12 @@ pub fn pos_tagging(args: &[Value]) -> VmResult<Value> {
     let pos_tags = simple_pos_tag(&tokens);
     
     let tag_values: Vec<Value> = pos_tags.into_iter()
-        .map(|tag| Value::List(vec![
-            Value::String(tag.word),
-            Value::String(tag.tag),
+        .map(|(word, tag, pos)| assoc(vec![
+            ("word", Value::String(word)),
+            ("tag", Value::String(tag)),
+            ("position", Value::Integer(pos as i64)),
         ]))
         .collect();
-    
     Ok(Value::List(tag_values))
 }
 
@@ -745,18 +537,16 @@ pub fn text_classification(args: &[Value]) -> VmResult<Value> {
         _ => ("unknown".to_string(), 0.0),
     };
     
-    let mut class_probabilities = HashMap::new();
-    class_probabilities.insert("positive".to_string(), if polarity > 0.0 { polarity } else { 0.0 });
-    class_probabilities.insert("negative".to_string(), if polarity < 0.0 { -polarity } else { 0.0 });
-    class_probabilities.insert("neutral".to_string(), 1.0 - polarity.abs());
-    
-    let result = ClassificationResult {
-        predicted_class,
-        confidence: class_confidence,
-        class_probabilities,
-    };
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut probs = HashMap::new();
+    probs.insert("positive".to_string(), Value::Real(if polarity > 0.0 { polarity } else { 0.0 }));
+    probs.insert("negative".to_string(), Value::Real(if polarity < 0.0 { -polarity } else { 0.0 }));
+    probs.insert("neutral".to_string(), Value::Real(1.0 - polarity.abs()));
+    Ok(assoc(vec![
+        ("class", Value::String(predicted_class)),
+        ("confidence", Value::Real(class_confidence)),
+        ("probabilities", Value::Object(probs)),
+        ("model", Value::String(model_type)),
+    ]))
 }
 
 /// Extract keywords from text
@@ -823,11 +613,13 @@ pub fn language_model(args: &[Value]) -> VmResult<Value> {
     
     let doc_strings = doc_strings?;
     let mut model = LanguageModel::new(n);
-    
     model.train(&doc_strings)
         .map_err(|e| VmError::Runtime(e ))?;
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(model))))
+    Ok(assoc(vec![
+        ("n", Value::Integer(n as i64)),
+        ("vocabSize", Value::Integer(model.vocabulary.len() as i64)),
+        ("totalNGrams", Value::Integer(model.total_ngrams as i64)),
+    ]))
 }
 
 /// Summarize text using extractive summarization
@@ -869,13 +661,17 @@ pub fn spell_check(args: &[Value]) -> VmResult<Value> {
     
     let mut errors = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
-        let mut result = spell_check_word(token, &dictionary);
-        result.position = i;
-        if !result.is_correct {
-            errors.push(Value::LyObj(LyObj::new(Box::new(result))));
+        let mut r = spell_check_word(token, &dictionary);
+        r.position = i;
+        if !r.is_correct {
+            errors.push(assoc(vec![
+                ("word", Value::String(r.word)),
+                ("isCorrect", Value::Boolean(r.is_correct)),
+                ("position", Value::Integer(r.position as i64)),
+                ("suggestions", Value::List(r.suggestions.into_iter().map(Value::String).collect())),
+            ]));
         }
     }
-    
     Ok(Value::List(errors))
 }
 

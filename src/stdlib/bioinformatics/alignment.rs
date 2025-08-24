@@ -850,7 +850,17 @@ pub fn global_alignment(args: &[Value]) -> VmResult<Value> {
             
             let scoring = ScoringMatrix::default();
             let result = needleman_wunsch(&seq1, &seq2, &scoring);
-            Ok(Value::LyObj(LyObj::new(Box::new(result))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("alignedSeq1".to_string(), Value::String(result.aligned_seq1));
+            m.insert("alignedSeq2".to_string(), Value::String(result.aligned_seq2));
+            m.insert("score".to_string(), Value::Real(result.score));
+            m.insert("start1".to_string(), Value::Integer(result.start1.unwrap_or(0) as i64));
+            m.insert("end1".to_string(), Value::Integer(result.end1.unwrap_or(seq1.len()) as i64));
+            m.insert("start2".to_string(), Value::Integer(result.start2.unwrap_or(0) as i64));
+            m.insert("end2".to_string(), Value::Integer(result.end2.unwrap_or(seq2.len()) as i64));
+            let atype = match result.alignment_type { AlignmentType::Global => "Global", AlignmentType::Local => "Local" };
+            m.insert("alignmentType".to_string(), Value::String(atype.to_string()));
+            Ok(Value::Object(m))
         }
         5 => {
             let seq1 = crate::stdlib::bioinformatics::validate_sequence_string(&args[0])?;
@@ -869,7 +879,17 @@ pub fn global_alignment(args: &[Value]) -> VmResult<Value> {
                 gap_penalty,
             };
             let result = needleman_wunsch(&seq1, &seq2, &scoring);
-            Ok(Value::LyObj(LyObj::new(Box::new(result))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("alignedSeq1".to_string(), Value::String(result.aligned_seq1));
+            m.insert("alignedSeq2".to_string(), Value::String(result.aligned_seq2));
+            m.insert("score".to_string(), Value::Real(result.score));
+            m.insert("start1".to_string(), Value::Integer(result.start1.unwrap_or(0) as i64));
+            m.insert("end1".to_string(), Value::Integer(result.end1.unwrap_or(seq1.len()) as i64));
+            m.insert("start2".to_string(), Value::Integer(result.start2.unwrap_or(0) as i64));
+            m.insert("end2".to_string(), Value::Integer(result.end2.unwrap_or(seq2.len()) as i64));
+            let atype = match result.alignment_type { AlignmentType::Global => "Global", AlignmentType::Local => "Local" };
+            m.insert("alignmentType".to_string(), Value::String(atype.to_string()));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime(format!("Invalid number of arguments: expected 2, got {}", args.len()))),
     }
@@ -888,7 +908,17 @@ pub fn local_alignment(args: &[Value]) -> VmResult<Value> {
             
             let scoring = ScoringMatrix::default();
             let result = smith_waterman(&seq1, &seq2, &scoring);
-            Ok(Value::LyObj(LyObj::new(Box::new(result))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("alignedSeq1".to_string(), Value::String(result.aligned_seq1));
+            m.insert("alignedSeq2".to_string(), Value::String(result.aligned_seq2));
+            m.insert("score".to_string(), Value::Real(result.score));
+            m.insert("start1".to_string(), Value::Integer(result.start1.unwrap_or(0) as i64));
+            m.insert("end1".to_string(), Value::Integer(result.end1.unwrap_or(seq1.len()) as i64));
+            m.insert("start2".to_string(), Value::Integer(result.start2.unwrap_or(0) as i64));
+            m.insert("end2".to_string(), Value::Integer(result.end2.unwrap_or(seq2.len()) as i64));
+            let atype = match result.alignment_type { AlignmentType::Global => "Global", AlignmentType::Local => "Local" };
+            m.insert("alignmentType".to_string(), Value::String(atype.to_string()));
+            Ok(Value::Object(m))
         }
         5 => {
             let seq1 = crate::stdlib::bioinformatics::validate_sequence_string(&args[0])?;
@@ -907,7 +937,17 @@ pub fn local_alignment(args: &[Value]) -> VmResult<Value> {
                 gap_penalty,
             };
             let result = smith_waterman(&seq1, &seq2, &scoring);
-            Ok(Value::LyObj(LyObj::new(Box::new(result))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("alignedSeq1".to_string(), Value::String(result.aligned_seq1));
+            m.insert("alignedSeq2".to_string(), Value::String(result.aligned_seq2));
+            m.insert("score".to_string(), Value::Real(result.score));
+            m.insert("start1".to_string(), Value::Integer(result.start1.unwrap_or(0) as i64));
+            m.insert("end1".to_string(), Value::Integer(result.end1.unwrap_or(seq1.len()) as i64));
+            m.insert("start2".to_string(), Value::Integer(result.start2.unwrap_or(0) as i64));
+            m.insert("end2".to_string(), Value::Integer(result.end2.unwrap_or(seq2.len()) as i64));
+            let atype = match result.alignment_type { AlignmentType::Global => "Global", AlignmentType::Local => "Local" };
+            m.insert("alignmentType".to_string(), Value::String(atype.to_string()));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime(format!("Invalid number of arguments: expected 2, got {}", args.len()))),
     }
@@ -933,7 +973,15 @@ pub fn multiple_alignment(args: &[Value]) -> VmResult<Value> {
     
     let scoring = ScoringMatrix::default();
     let result = progressive_multiple_alignment(&sequences, &scoring);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut m = std::collections::HashMap::new();
+    m.insert(
+        "alignedSequences".to_string(),
+        Value::List(result.aligned_sequences.iter().cloned().map(Value::String).collect()),
+    );
+    m.insert("totalScore".to_string(), Value::Real(result.total_score));
+    m.insert("consensus".to_string(), Value::String(result.consensus));
+    m.insert("numSequences".to_string(), Value::Integer(sequences.len() as i64));
+    Ok(Value::Object(m))
 }
 
 /// BlastSearch[query, database] or BlastSearch[query, database, word_size]
@@ -968,9 +1016,21 @@ pub fn blast_search(args: &[Value]) -> VmResult<Value> {
     }
     
     let hits = blast_search_impl(&query, &database, word_size);
-    let hit_values: Vec<Value> = hits.into_iter()
-        .map(|hit| Value::LyObj(LyObj::new(Box::new(hit))))
+    let hit_values: Vec<Value> = hits
+        .into_iter()
+        .map(|hit| {
+            let mut m = std::collections::HashMap::new();
+            m.insert("queryStart".to_string(), Value::Integer(hit.query_start as i64));
+            m.insert("queryEnd".to_string(), Value::Integer(hit.query_end as i64));
+            m.insert("subjectStart".to_string(), Value::Integer(hit.subject_start as i64));
+            m.insert("subjectEnd".to_string(), Value::Integer(hit.subject_end as i64));
+            m.insert("subjectIndex".to_string(), Value::Integer(hit.subject_index as i64));
+            m.insert("score".to_string(), Value::Real(hit.score));
+            m.insert("eValue".to_string(), Value::Real(hit.e_value));
+            m.insert("identity".to_string(), Value::Real(hit.identity));
+            Value::Object(m)
+        })
         .collect();
-    
+
     Ok(Value::List(hit_values))
 }

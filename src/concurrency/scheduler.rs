@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables, unused_assignments)]
 //! # Work-Stealing Task Scheduler
 //! 
 //! High-performance work-stealing scheduler optimized for symbolic computation workloads.
@@ -376,7 +377,7 @@ impl WorkStealingScheduler {
                 None
             };
             
-            let mut worker = Worker::new(
+            let worker = Worker::new(
                 i,
                 Arc::clone(&self.global_queue),
                 self.config.clone(),

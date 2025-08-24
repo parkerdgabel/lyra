@@ -124,3 +124,46 @@ pub use modular::{
 pub use crypto::{
     rsa_generate, ec_point, hash_function, random_prime
 };
+
+use crate::vm::{Value, VmResult};
+use std::collections::HashMap;
+
+/// Registration helper to consolidate number-theory stdlib functions
+pub fn register_number_theory_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+
+    // Prime number algorithms
+    f.insert("PrimeQ".to_string(), primes::prime_q as fn(&[Value]) -> VmResult<Value>);
+    f.insert("NextPrime".to_string(), primes::next_prime as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PreviousPrime".to_string(), primes::previous_prime as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PrimePi".to_string(), primes::prime_pi as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PrimeFactorization".to_string(), primes::prime_factorization as fn(&[Value]) -> VmResult<Value>);
+    f.insert("EulerPhi".to_string(), primes::euler_phi_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MoebiusMu".to_string(), primes::moebius_mu_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DivisorSigma".to_string(), primes::divisor_sigma_fn as fn(&[Value]) -> VmResult<Value>);
+
+    // Algebraic number theory
+    f.insert("GCD".to_string(), algebraic::gcd_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("LCM".to_string(), algebraic::lcm_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ChineseRemainder".to_string(), algebraic::chinese_remainder as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JacobiSymbol".to_string(), algebraic::jacobi_symbol_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ContinuedFraction".to_string(), algebraic::continued_fraction_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("AlgebraicNumber".to_string(), algebraic::algebraic_number as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MinimalPolynomial".to_string(), algebraic::minimal_polynomial as fn(&[Value]) -> VmResult<Value>);
+
+    // Modular arithmetic
+    f.insert("PowerMod".to_string(), modular::power_mod_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ModularInverse".to_string(), modular::modular_inverse_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DiscreteLog".to_string(), modular::discrete_log_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("QuadraticResidue".to_string(), modular::quadratic_residue_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PrimitiveRoot".to_string(), modular::primitive_root_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MultOrder".to_string(), modular::mult_order_fn as fn(&[Value]) -> VmResult<Value>);
+
+    // Cryptographic primitives
+    f.insert("RSAGenerate".to_string(), crypto::rsa_generate as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ECPoint".to_string(), crypto::ec_point as fn(&[Value]) -> VmResult<Value>);
+    f.insert("HashFunction".to_string(), crypto::hash_function as fn(&[Value]) -> VmResult<Value>);
+    f.insert("RandomPrime".to_string(), crypto::random_prime as fn(&[Value]) -> VmResult<Value>);
+
+    f
+}

@@ -69,6 +69,9 @@ impl CompactValue {
                 }
             }
             crate::vm::Value::Real(r) => CompactValue::Real(r),
+            crate::vm::Value::Rational(_, _) => CompactValue::Complex(Arc::new(crate::vm::Value::Missing)),
+            crate::vm::Value::BigReal { .. } => CompactValue::Complex(Arc::new(crate::vm::Value::Missing)),
+            crate::vm::Value::Complex { .. } => CompactValue::Complex(Arc::new(crate::vm::Value::Missing)),
             crate::vm::Value::String(s) => CompactValue::String(interner.intern_symbol_id(&s)),
             crate::vm::Value::Symbol(s) => CompactValue::Symbol(interner.intern_symbol_id(&s)),
             crate::vm::Value::List(items) => {
@@ -80,6 +83,7 @@ impl CompactValue {
             crate::vm::Value::Function(f) => CompactValue::Function(interner.intern_symbol_id(&f)),
             crate::vm::Value::Boolean(b) => CompactValue::Boolean(b),
             crate::vm::Value::Missing => CompactValue::Missing,
+            crate::vm::Value::Expr { .. } => CompactValue::Complex(Arc::new(crate::vm::Value::Missing)),
             crate::vm::Value::Object(_) => {
                 // Objects cannot be compacted, store as complex value
                 CompactValue::Complex(Arc::new(value))

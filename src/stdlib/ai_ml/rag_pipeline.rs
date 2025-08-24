@@ -558,8 +558,10 @@ impl Foreign for RAGPipelineWrapper {
     fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "query" => {
-                // Simplified implementation
-                Ok(Value::String("Mock RAG response".to_string()))
+                // Simplified implementation returning standardized Association
+                let mut m = std::collections::HashMap::new();
+                m.insert("answer".to_string(), Value::String("Mock RAG response".to_string()));
+                Ok(Value::Object(m))
             }
             "setMaxContextLength" => {
                 Ok(Value::String("OK".to_string()))
@@ -615,7 +617,7 @@ pub fn document_chunk(args: &[Value]) -> VmResult<Value> {
             map.insert("content".to_string(), Value::String(chunk.content));
             map.insert("start".to_string(), Value::Integer(chunk.start_index as i64));
             map.insert("end".to_string(), Value::Integer(chunk.end_index as i64));
-            Value::Dict(map)
+            Value::Object(map)
         })
         .collect();
 
@@ -680,7 +682,7 @@ pub fn context_retrieval(args: &[Value]) -> VmResult<Value> {
             map.insert("id".to_string(), Value::String(format!("context_{}", i)));
             map.insert("content".to_string(), Value::String(format!("Retrieved context {} for: {}", i, query)));
             map.insert("score".to_string(), Value::Float(0.9 - (i as f64 * 0.1)));
-            Value::Dict(map)
+            Value::Object(map)
         })
         .collect();
 
@@ -714,9 +716,12 @@ pub fn rag_query(args: &[Value]) -> VmResult<Value> {
         _ => return Err(LyraError::Custom("template must be string".to_string())),
     };
 
-    // Mock RAG response
+    // Mock RAG response as standardized Association
     let answer = format!("Based on the retrieved context, here's an answer to your question: {}", question);
-    Ok(Value::String(answer))
+    let mut m = HashMap::new();
+    m.insert("question".to_string(), Value::String(question));
+    m.insert("answer".to_string(), Value::String(answer));
+    Ok(Value::Object(m))
 }
 
 /// Rank retrieved contexts
@@ -747,14 +752,14 @@ pub fn context_rank(args: &[Value]) -> VmResult<Value> {
     let mut ranked_contexts = contexts;
     ranked_contexts.sort_by(|a, b| {
         let score_a = match a {
-            Value::Dict(dict) => dict.get("score").and_then(|v| match v {
+            Value::Object(dict) => dict.get("score").and_then(|v| match v {
                 Value::Float(f) => Some(*f),
                 _ => None,
             }).unwrap_or(0.0),
             _ => 0.0,
         };
         let score_b = match b {
-            Value::Dict(dict) => dict.get("score").and_then(|v| match v {
+            Value::Object(dict) => dict.get("score").and_then(|v| match v {
                 Value::Float(f) => Some(*f),
                 _ => None,
             }).unwrap_or(0.0),
@@ -796,7 +801,7 @@ pub fn document_index(args: &[Value]) -> VmResult<Value> {
     result.insert("total_chunks".to_string(), Value::Integer(documents.len() as i64 * 5)); // Mock chunk count
     result.insert("status".to_string(), Value::String("indexed".to_string()));
 
-    Ok(Value::Dict(result))
+    Ok(Value::Object(result))
 }
 
 /// Create RAG pipeline
@@ -871,7 +876,7 @@ pub fn context_window(args: &[Value]) -> VmResult<Value> {
     let mut current_length = 0;
 
     for context in contexts {
-        if let Value::Dict(dict) = &context {
+        if let Value::Object(dict) = &context {
             if let Some(Value::String(content)) = dict.get("content") {
                 if current_length + content.len() <= max_tokens {
                     current_length += content.len();
@@ -986,12 +991,12 @@ mod tests {
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("chunk1".to_string()));
-                Value::Dict(map)
+                Value::Object(map)
             },
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("chunk2".to_string()));
-                Value::Dict(map)
+                Value::Object(map)
             },
         ];
 
@@ -1015,7 +1020,7 @@ mod tests {
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("context1".to_string()));
-                Value::Dict(map)
+                Value::Object(map)
             }
         ];
 
@@ -1042,13 +1047,13 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("context1".to_string()));
                 map.insert("score".to_string(), Value::Float(0.8));
-                Value::Dict(map)
+                Value::Object(map)
             },
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("context2".to_string()));
                 map.insert("score".to_string(), Value::Float(0.9));
-                Value::Dict(map)
+                Value::Object(map)
             },
         ];
 
@@ -1076,12 +1081,12 @@ mod tests {
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("short".to_string()));
-                Value::Dict(map)
+                Value::Object(map)
             },
             {
                 let mut map = HashMap::new();
                 map.insert("content".to_string(), Value::String("longer content".to_string()));
-                Value::Dict(map)
+                Value::Object(map)
             },
         ];
 

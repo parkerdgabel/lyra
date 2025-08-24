@@ -402,17 +402,17 @@ impl Foreign for TestStage {
                         actual: args.len(),
                     });
                 }
+                // Normalized: return List of Associations
                 let mut results_list = vec![];
                 for (suite, result) in &self.test_results {
-                    results_list.push(Value::String(suite.clone()));
-                    results_list.push(Value::List(vec![
-                        Value::String("passed".to_string()),
-                        Value::Integer(result.passed),
-                        Value::String("failed".to_string()),
-                        Value::Integer(result.failed),
-                        Value::String("coverage".to_string()),
-                        Value::Float(result.coverage),
-                    ]));
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("suite".to_string(), Value::String(suite.clone()));
+                    m.insert("passed".to_string(), Value::Integer(result.passed));
+                    m.insert("failed".to_string(), Value::Integer(result.failed));
+                    m.insert("skipped".to_string(), Value::Integer(result.skipped));
+                    m.insert("coverage".to_string(), Value::Float(result.coverage));
+                    m.insert("duration".to_string(), Value::Integer(result.duration));
+                    results_list.push(Value::Object(m));
                 }
                 Ok(Value::List(results_list))
             }

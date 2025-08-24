@@ -6,6 +6,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::result::root_result;
 use std::any::Any;
 
 /// Parameters and results for root finding algorithms
@@ -359,7 +360,7 @@ pub fn bisection(args: &[Value]) -> VmResult<Value> {
     };
     
     match bisection_method(f, a, b, tolerance, max_iterations) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(root_result(res.root, res.iterations, res.function_value, res.converged, res.error_estimate, &res.method)),
         Err(e) => Err(VmError::Runtime(format!("Bisection failed: {}", e))),
     }
 }
@@ -412,7 +413,7 @@ pub fn newton_raphson(args: &[Value]) -> VmResult<Value> {
     };
     
     match newton_raphson_method(f, df, x0, tolerance, max_iterations) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(root_result(res.root, res.iterations, res.function_value, res.converged, res.error_estimate, &res.method)),
         Err(e) => Err(VmError::Runtime(format!("Newton-Raphson failed: {}", e))),
     }
 }
@@ -473,7 +474,7 @@ pub fn secant(args: &[Value]) -> VmResult<Value> {
     };
     
     match secant_method(f, x0, x1, tolerance, max_iterations) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(root_result(res.root, res.iterations, res.function_value, res.converged, res.error_estimate, &res.method)),
         Err(e) => Err(VmError::Runtime(format!("Secant failed: {}", e))),
     }
 }
@@ -534,7 +535,7 @@ pub fn brent(args: &[Value]) -> VmResult<Value> {
     };
     
     match brent_method(f, a, b, tolerance, max_iterations) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(root_result(res.root, res.iterations, res.function_value, res.converged, res.error_estimate, &res.method)),
         Err(e) => Err(VmError::Runtime(format!("Brent failed: {}", e))),
     }
 }
@@ -586,7 +587,16 @@ pub fn fixed_point(args: &[Value]) -> VmResult<Value> {
     };
     
     match fixed_point_iteration(g, x0, tolerance, max_iterations) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => {
+            let mut m = std::collections::HashMap::new();
+            m.insert("root".to_string(), Value::Real(res.root));
+            m.insert("iterations".to_string(), Value::Integer(res.iterations as i64));
+            m.insert("functionValue".to_string(), Value::Real(res.function_value));
+            m.insert("converged".to_string(), Value::Boolean(res.converged));
+            m.insert("errorEstimate".to_string(), Value::Real(res.error_estimate));
+            m.insert("method".to_string(), Value::String(res.method));
+            Ok(Value::Object(m))
+        }
         Err(e) => Err(VmError::Runtime(format!("Fixed point iteration failed: {}", e))),
     }
 }

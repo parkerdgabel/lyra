@@ -379,7 +379,7 @@ pub fn stdlib_to_export_with_docs(
 // Add a helper extension to FunctionSignature for attributes inference
 impl FunctionSignature {
     /// Create a function signature by inferring arity from attributes
-    pub fn infer_from_attributes(attributes: &[FunctionAttribute]) -> Self {
+    pub fn infer_from_attributes(_attributes: &[FunctionAttribute]) -> Self {
         // For now, create a basic signature - this would be expanded with proper type inference
         FunctionSignature::new("Stdlib", "Unknown", 1)
     }

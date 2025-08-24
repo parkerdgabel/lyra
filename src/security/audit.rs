@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Security event logging and audit trail implementation
 
 use super::{SecurityError, SecurityResult, SecurityConfig};
@@ -452,7 +453,6 @@ macro_rules! audit_log {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     
     #[test]
     fn test_audit_logger_creation() {

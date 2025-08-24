@@ -453,7 +453,7 @@ fn parse_single_rule_from_value(value: &Value) -> VmResult<Rule> {
                     // Extract pattern from lhs - handle both patterns and symbols
                     let pattern_ast = match lhs.as_ref() {
                         Expr::Pattern(p) => p.clone(),
-                        Expr::Symbol(sym) => {
+                        Expr::Symbol(_sym) => {
                             // For simple symbol replacement like x -> 3, create an Exact pattern
                             // that matches only that specific symbol
                             Pattern::Exact {
@@ -572,7 +572,7 @@ fn expr_to_value(expr: &Expr) -> VmResult<Value> {
             }
             Ok(Value::List(values))
         }
-        Expr::Function { head, args: _ } => {
+        Expr::Function { head: _, args: _ } => {
             // Try to evaluate if expression contains only numeric/evaluable components
             if let Some(evaluated_value) = try_evaluate_expression(expr) {
                 Ok(evaluated_value)

@@ -158,6 +158,35 @@ impl ModuleRegistry {
             .map(|module| module.exports.keys().cloned().collect())
             .unwrap_or_default()
     }
+
+    /// Audit: count exports per registered module (namespace -> count), sorted by namespace
+    pub fn audit_module_counts(&self) -> Vec<(String, usize)> {
+        let modules = self.modules.read().unwrap();
+        let mut counts: Vec<(String, usize)> = modules
+            .iter()
+            .map(|(ns, m)| (ns.clone(), m.exports.len()))
+            .collect();
+        counts.sort_by(|a, b| a.0.cmp(&b.0));
+        counts
+    }
+
+    /// Audit: find duplicate export names across different modules.
+    /// Returns (export_name, [namespaces...]) for any export present in 2+ modules.
+    pub fn audit_duplicate_exports(&self) -> Vec<(String, Vec<String>)> {
+        let modules = self.modules.read().unwrap();
+        let mut export_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for (ns, module) in modules.iter() {
+            for name in module.exports.keys() {
+                export_map.entry(name.clone()).or_default().push(ns.clone());
+            }
+        }
+        let mut dups: Vec<(String, Vec<String>)> = export_map
+            .into_iter()
+            .filter_map(|(name, nss)| if nss.len() > 1 { Some((name, nss)) } else { None })
+            .collect();
+        dups.sort_by(|a, b| a.0.cmp(&b.0));
+        dups
+    }
     
     /// Check if a module contains a specific function
     pub fn has_function(&self, namespace: &str, function_name: &str) -> bool {
@@ -410,6 +439,84 @@ impl ModuleRegistry {
             "TensorSize", crate::stdlib::ml::wrapper::tensor_size, vec![],
             "Returns the total number of elements in a tensor"
         ))?;
+
+        // Training / constructors
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "NetTrain", crate::stdlib::ml::wrapper::net_train, vec![],
+            "Train a neural network with a dataset and configuration"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "NetChain", crate::stdlib::ml::wrapper::net_chain, vec![],
+            "Construct a sequential neural network from layer specs"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "CreateTrainingConfig", crate::stdlib::ml::wrapper::create_training_config, vec![],
+            "Create a training configuration association"
+        ))?;
+
+        // Evaluation & preprocessing
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "TrainTestSplit", crate::stdlib::ml::wrapper::train_test_split, vec![],
+            "Split a dataset into train and test partitions"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "ClassificationReport", crate::stdlib::ml::wrapper::classification_report, vec![],
+            "Compute classification metrics (accuracy, precision, recall, F1)"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "RegressionReport", crate::stdlib::ml::wrapper::regression_report, vec![],
+            "Compute regression metrics (MSE, MAE, RMSE, R2)"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "StandardScale", crate::stdlib::ml::wrapper::standard_scale, vec![],
+            "Standardize a numeric list to zero mean, unit variance"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "OneHotEncode", crate::stdlib::ml::wrapper::one_hot_encode, vec![],
+            "One-hot encode a list of categorical strings"
+        ))?;
+
+        // Cross validation
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "CrossValidate", crate::stdlib::ml::wrapper::cross_validate, vec![],
+            "K-fold cross validation for datasets with builder options"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "CrossValidateTable", crate::stdlib::ml::wrapper::cross_validate_table, vec![],
+            "K-fold cross validation for tables (feature/target columns)"
+        ))?;
+
+        // NetGraph and unified forward
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "NetGraph", crate::stdlib::ml::wrapper::net_graph, vec![],
+            "Build a neural network graph from nodes and connections"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "AIForward", crate::stdlib::ml::wrapper::ai_forward, vec![],
+            "Unified forward pass for sequential lists or graph specs"
+        ))?;
+
+        // AutoML & MLOps
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "AutoMLQuickStart", crate::stdlib::ml::wrapper::automl_quick_start_dataset, vec![],
+            "Train a quick model given a dataset"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "AutoMLQuickStartTable", crate::stdlib::ml::wrapper::automl_quick_start_table, vec![],
+            "Train a quick model given a table, feature cols, and target col"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "ExperimentStart", crate::stdlib::ml::wrapper::experiment_start, vec![],
+            "Start a tracked ML experiment"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "ExperimentLogMetrics", crate::stdlib::ml::wrapper::experiment_log_metrics, vec![],
+            "Log scalar metrics to the current experiment"
+        ))?;
+        ml_core_module.add_export(super::stdlib_to_export_with_docs(
+            "ExperimentEnd", crate::stdlib::ml::wrapper::experiment_end, vec![],
+            "End the current ML experiment and return a summary"
+        ))?;
         
         self.register_module("std::ml::core", ml_core_module)?;
         
@@ -454,8 +561,272 @@ impl ModuleRegistry {
             "Identity", crate::stdlib::ml::wrapper::identity_layer, vec![],
             "Identity layer that returns input unchanged"
         ))?;
+
+        // Common layer wrappers
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Linear", crate::stdlib::ml::wrapper::linear, vec![],
+            "Apply a linear transformation with output feature size"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "ReLU", crate::stdlib::ml::wrapper::relu, vec![],
+            "Apply ReLU activation"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Sigmoid", crate::stdlib::ml::wrapper::sigmoid, vec![],
+            "Apply Sigmoid activation"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Tanh", crate::stdlib::ml::wrapper::tanh, vec![],
+            "Apply Tanh activation"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Softmax", crate::stdlib::ml::wrapper::softmax, vec![],
+            "Apply Softmax across features"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Conv2D", crate::stdlib::ml::wrapper::conv2d, vec![],
+            "2D convolution with options for stride and padding"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "MaxPool", crate::stdlib::ml::wrapper::max_pool, vec![],
+            "2D max pooling with kernel and optional stride"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "AvgPool", crate::stdlib::ml::wrapper::avg_pool, vec![],
+            "2D average pooling with kernel and optional stride"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "Dropout", crate::stdlib::ml::wrapper::dropout, vec![],
+            "Dropout regularization with probability and eval option"
+        ))?;
+        ml_layers_module.add_export(super::stdlib_to_export_with_docs(
+            "BatchNorm", crate::stdlib::ml::wrapper::batch_norm, vec![],
+            "Batch normalization with epsilon/momentum and eval option"
+        ))?;
         
         self.register_module("std::ml::layers", ml_layers_module)?;
+        
+        // Register additional stdlib modules via per-module registries to keep exports consistent
+        
+        // std::image
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::image".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Image I/O, filtering, morphology, analysis".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["image", "vision", "processing"].into_iter().map(String::from).collect(),
+                categories: vec!["computer-vision".to_string()],
+            });
+            for (name, func) in crate::stdlib::image::register_image_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::image", module)?;
+        }
+        
+        // std::vision
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::vision".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Computer vision algorithms (features, edges, transforms)".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["vision", "features", "edges", "transforms"].into_iter().map(String::from).collect(),
+                categories: vec!["computer-vision".to_string()],
+            });
+            for (name, func) in crate::stdlib::vision::register_vision_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::vision", module)?;
+        }
+        
+        // std::analytics::timeseries (consolidated)
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::analytics::timeseries".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Time series analysis (ARIMA, ACF, decomposition)".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["analytics", "timeseries", "forecasting"].into_iter().map(String::from).collect(),
+                categories: vec!["analytics".to_string()],
+            });
+            for (name, func) in crate::stdlib::analytics::timeseries::register_timeseries_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::analytics::timeseries", module)?;
+        }
+        
+        // std::network
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::network".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Networking primitives, WebSocket, distributed computing".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["network", "http", "distributed"].into_iter().map(String::from).collect(),
+                categories: vec!["networking".to_string()],
+            });
+            for (name, func) in crate::stdlib::network::register_network_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::network", module)?;
+        }
+        
+        // std::numerical
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::numerical".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Numerical analysis and methods".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["numerical", "optimization", "methods"].into_iter().map(String::from).collect(),
+                categories: vec!["mathematics".to_string()],
+            });
+            for (name, func) in crate::stdlib::numerical::register_numerical_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::numerical", module)?;
+        }
+        
+        // std::clustering
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::clustering".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Clustering algorithms and utilities".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["clustering", "kmeans", "dbscan"].into_iter().map(String::from).collect(),
+                categories: vec!["machine-learning".to_string()],
+            });
+            for (name, func) in crate::stdlib::clustering::register_clustering_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::clustering", module)?;
+        }
+        
+        // std::geometry
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::geometry".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Computational geometry functions".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["geometry", "convex", "distance"].into_iter().map(String::from).collect(),
+                categories: vec!["mathematics".to_string()],
+            });
+            for (name, func) in crate::stdlib::geometry::register_geometry_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::geometry", module)?;
+        }
+        
+        // std::number_theory
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::number_theory".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Number theory functions".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["primes", "number-theory"].into_iter().map(String::from).collect(),
+                categories: vec!["mathematics".to_string()],
+            });
+            for (name, func) in crate::stdlib::number_theory::register_number_theory_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::number_theory", module)?;
+        }
+        
+        // std::combinatorics
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::combinatorics".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Combinatorics functions".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["combinatorics", "permutations", "combinations"].into_iter().map(String::from).collect(),
+                categories: vec!["mathematics".to_string()],
+            });
+            for (name, func) in crate::stdlib::combinatorics::register_combinatorics_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::combinatorics", module)?;
+        }
+        
+        // std::data_processing
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::data_processing".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Data processing and transformation".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["data", "processing", "pipeline"].into_iter().map(String::from).collect(),
+                categories: vec!["data-processing".to_string()],
+            });
+            for (name, func) in crate::stdlib::data_processing::register_data_processing_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::data_processing", module)?;
+        }
+        
+        // std::topology
+        {
+            let mut module = Module::new(super::ModuleMetadata {
+                name: "std::topology".to_string(),
+                version: Version::new(0, 1, 0),
+                description: "Topology functions".to_string(),
+                authors: vec!["Lyra Team".to_string()],
+                license: "MIT".to_string(),
+                repository: None,
+                homepage: None,
+                documentation: None,
+                keywords: vec!["topology", "algebraic-topology"].into_iter().map(String::from).collect(),
+                categories: vec!["mathematics".to_string()],
+            });
+            for (name, func) in crate::stdlib::topology::register_topology_functions() {
+                module.add_export(super::stdlib_to_export(&name, func, vec![]))?;
+            }
+            self.register_module("std::topology", module)?;
+        }
         
         // Create std::rules module for pattern matching and replacement
         let mut rules_module = Module::new(super::ModuleMetadata {

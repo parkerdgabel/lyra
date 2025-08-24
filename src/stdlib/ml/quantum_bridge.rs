@@ -817,7 +817,7 @@ impl VariationalCircuit {
         }
     }
     
-    pub fn add_parameterized_gate(&mut self, mut gate: ParameterizedGate) -> MLResult<()> {
+    pub fn add_parameterized_gate(&mut self, gate: ParameterizedGate) -> MLResult<()> {
         // Validate qubit indices
         for &qubit in &gate.qubits {
             if qubit >= self.n_qubits {

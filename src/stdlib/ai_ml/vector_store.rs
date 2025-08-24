@@ -502,7 +502,7 @@ impl Foreign for VectorStoreWrapper {
             }
             "stats" => {
                 let stats = self.stats();
-                Ok(Value::Dict(stats))
+                Ok(Value::Object(stats))
             }
             _ => Err(ForeignError::UnknownMethod {
                 type_name: "VectorStore".to_string(),
@@ -631,7 +631,7 @@ pub fn vector_insert(args: &[Value]) -> VmResult<Value> {
 
     let metadata = if args.len() > 3 {
         match &args[3] {
-            Value::Dict(dict) => Some(dict.clone()),
+            Value::Object(dict) => Some(dict.clone()),
             _ => return Err(LyraError::Custom("metadata must be dictionary".to_string())),
         }
     } else {
@@ -679,7 +679,7 @@ pub fn vector_search(args: &[Value]) -> VmResult<Value> {
 
     let filter = if args.len() > 3 {
         match &args[3] {
-            Value::Dict(dict) => Some(dict.as_ref()),
+            Value::Object(dict) => Some(dict.as_ref()),
             _ => return Err(LyraError::Custom("filter must be dictionary".to_string())),
         }
     } else {
@@ -700,9 +700,9 @@ pub fn vector_search(args: &[Value]) -> VmResult<Value> {
                 .map(|f| Value::Float(f as f64))
                 .collect();
             map.insert("vector".to_string(), Value::List(vector_values));
-            map.insert("metadata".to_string(), Value::Dict(result.entry.metadata));
+            map.insert("metadata".to_string(), Value::Object(result.entry.metadata));
             
-            Value::Dict(map)
+            Value::Object(map)
         })
         .collect();
 
@@ -744,7 +744,7 @@ pub fn semantic_search(args: &[Value]) -> VmResult<Value> {
             map.insert("id".to_string(), Value::String("doc1".to_string()));
             map.insert("score".to_string(), Value::Float(0.95));
             map.insert("text".to_string(), Value::String(format!("Result for query: {}", text)));
-            Value::Dict(map)
+            Value::Object(map)
         }
     ];
 
@@ -813,13 +813,13 @@ pub fn vector_cluster(args: &[Value]) -> VmResult<Value> {
         _ => return Err(LyraError::Custom("First argument must be VectorStore".to_string())),
     };
 
-    let _algorithm = match &args[1] {
+    let algorithm = match &args[1] {
         Value::String(s) => s.clone(),
         _ => return Err(LyraError::Custom("algorithm must be string".to_string())),
     };
 
     let params = match &args[2] {
-        Value::Dict(dict) => dict,
+        Value::Object(dict) => dict,
         _ => return Err(LyraError::Custom("params must be dictionary".to_string())),
     };
 
@@ -833,23 +833,21 @@ pub fn vector_cluster(args: &[Value]) -> VmResult<Value> {
         .into_iter()
         .map(|cluster| {
             let mut map = HashMap::new();
-            map.insert("cluster_id".to_string(), Value::Integer(cluster.cluster_id as i64));
-            map.insert("members".to_string(), Value::List(
-                cluster.members.into_iter().map(Value::String).collect()
-            ));
+            map.insert("clusterId".to_string(), Value::Integer(cluster.cluster_id as i64));
+            map.insert("members".to_string(), Value::List(cluster.members.into_iter().map(Value::String).collect()));
             map.insert("score".to_string(), Value::Float(cluster.score as f64));
-            
-            let centroid_values: Vec<Value> = cluster.centroid
-                .into_iter()
-                .map(|f| Value::Float(f as f64))
-                .collect();
+            let centroid_values: Vec<Value> = cluster.centroid.into_iter().map(|f| Value::Float(f as f64)).collect();
             map.insert("centroid".to_string(), Value::List(centroid_values));
-            
-            Value::Dict(map)
+            Value::Object(map)
         })
         .collect();
 
-    Ok(Value::List(value_clusters))
+    // Return standardized Association wrapper
+    let mut outer = HashMap::new();
+    outer.insert("algorithm".to_string(), Value::String(algorithm));
+    outer.insert("k".to_string(), Value::Integer(k as i64));
+    outer.insert("clusters".to_string(), Value::List(value_clusters));
+    Ok(Value::Object(outer))
 }
 
 /// Batch vector operations

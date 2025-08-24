@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Jupyter Notebook Exporter
 //! 
 //! Exports Lyra REPL sessions to Jupyter notebook format (.ipynb)
@@ -290,6 +291,9 @@ impl JupyterExporter {
         match value {
             Value::Integer(n) => n.to_string(),
             Value::Real(f) => f.to_string(),
+            Value::Rational(n, d) => format!("Rational[{}, {}]", n, d),
+            Value::BigReal { value, precision } => format!("BigReal[{value}, p:{precision}]"),
+            Value::Complex { re, im } => format!("{} + I {}", self.value_to_string(re), self.value_to_string(im)),
             Value::String(s) => s.clone(),
             Value::Symbol(s) => s.clone(),
             Value::Boolean(b) => b.to_string(),
@@ -303,6 +307,11 @@ impl JupyterExporter {
             },
             Value::Object(_) => "Object[...]".to_string(),
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
+            Value::Expr { head, args } => {
+                let h = self.value_to_string(head);
+                let a: Vec<String> = args.iter().map(|v| self.value_to_string(v)).collect();
+                format!("{}[{}]", h, a.join(", "))
+            }
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pat) => format!("Pattern[{:?}]", pat),
             Value::Rule { lhs, rhs } => format!("{} -> {}", 
@@ -767,7 +776,6 @@ pub struct ExportConfigSummary {
 mod tests {
     use super::*;
     use crate::repl::export::session_snapshot::*;
-    use std::time::SystemTime;
     
     fn create_test_snapshot() -> SessionSnapshot {
         let mut snapshot = SessionSnapshot::new(SessionMetadata::new(

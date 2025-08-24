@@ -12,6 +12,7 @@ use crate::stdlib::data::{ForeignDataset, ForeignTable};
 use crate::stdlib::autodiff::Dual;
 use crate::stdlib::ml::preprocessing::{MLPreprocessor, AutoPreprocessor};
 use crate::vm::Value;
+use crate::stdlib::common::assoc;
 
 /// Training configuration for neural networks
 #[derive(Debug, Clone)]
@@ -39,6 +40,18 @@ pub struct TrainingResult {
     pub final_loss: f64,
     pub epochs_completed: usize,
     pub loss_history: Vec<f64>,
+}
+
+impl TrainingResult {
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        let history: Vec<Value> = self.loss_history.iter().map(|&x| Value::Real(x)).collect();
+        assoc(vec![
+            ("finalLoss", Value::Real(self.final_loss)),
+            ("epochsCompleted", Value::Integer(self.epochs_completed as i64)),
+            ("lossHistory", Value::List(history)),
+        ])
+    }
 }
 
 /// NetTrain: Main training function for neural networks

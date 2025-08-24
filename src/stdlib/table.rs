@@ -1783,3 +1783,29 @@ pub fn random_tensor(args: &[Value]) -> VmResult<Value> {
     let foreign_tensor = ForeignTensor::random(shape)?;
     Ok(Value::LyObj(LyObj::new(Box::new(foreign_tensor))))
 }
+
+/// Registration helper to consolidate table-related stdlib functions
+pub fn register_table_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+    // Legacy table ops
+    f.insert("GroupBy".to_string(), group_by as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Aggregate".to_string(), aggregate as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Count".to_string(), count as fn(&[Value]) -> VmResult<Value>);
+    // Constructors
+    f.insert("Table".to_string(), table as fn(&[Value]) -> VmResult<Value>);
+    f.insert("TableFromRows".to_string(), table_from_rows as fn(&[Value]) -> VmResult<Value>);
+    f.insert("EmptyTable".to_string(), empty_table as fn(&[Value]) -> VmResult<Value>);
+    // Series helpers
+    f.insert("Series".to_string(), series as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Range".to_string(), range as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Zeros".to_string(), zeros as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Ones".to_string(), ones as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ConstantSeries".to_string(), constant_series as fn(&[Value]) -> VmResult<Value>);
+    // Tensor helpers
+    f.insert("Tensor".to_string(), tensor as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ZerosTensor".to_string(), zeros_tensor as fn(&[Value]) -> VmResult<Value>);
+    f.insert("OnesTensor".to_string(), ones_tensor as fn(&[Value]) -> VmResult<Value>);
+    f.insert("EyeTensor".to_string(), eye_tensor as fn(&[Value]) -> VmResult<Value>);
+    f.insert("RandomTensor".to_string(), random_tensor as fn(&[Value]) -> VmResult<Value>);
+    f
+}

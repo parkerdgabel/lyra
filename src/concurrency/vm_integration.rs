@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 //! # VM Integration for Concurrency
 //! 
 //! Integrates the concurrency system with the existing Lyra VM,
@@ -167,7 +168,7 @@ impl ConcurrentLyraVM {
     /// Execute pattern matching concurrently
     pub fn match_patterns_concurrent(
         &self,
-        expression: &Value,
+        _expression: &Value,
         patterns: &[Pattern],
     ) -> VmResult<Vec<MatchResult>> {
         // TODO: Implement concurrent pattern matching once thread safety issues are resolved
@@ -353,9 +354,9 @@ impl PerformanceStats {
             0.0
         };
         
-        (cache_score * cache_weight + 
-         steal_score * steal_weight + 
-         utilization_score * utilization_weight)
+        cache_score * cache_weight + 
+        steal_score * steal_weight + 
+        utilization_score * utilization_weight
     }
 }
 

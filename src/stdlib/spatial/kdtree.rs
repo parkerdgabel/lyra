@@ -461,7 +461,7 @@ impl Foreign for KDTree {
         "KDTree"
     }
     
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "Length" => Ok(Value::Integer(self.len() as i64)),
             "Dimensions" => Ok(Value::Integer(self.dimensions() as i64)),

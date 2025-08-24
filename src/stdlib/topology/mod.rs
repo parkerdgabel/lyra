@@ -472,3 +472,20 @@ pub fn compute_betti_numbers(complex: &SimplicialComplex) -> Vec<usize> {
     
     betti
 }
+
+/// Registration helper to consolidate topology stdlib functions
+pub fn register_topology_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+    // Persistent homology and Betti numbers
+    f.insert("PersistentHomology".to_string(), homology::persistent_homology_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("BettiNumbers".to_string(), homology::betti_numbers_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PersistenceDiagram".to_string(), homology::persistence_diagram_fn as fn(&[Value]) -> VmResult<Value>);
+    // Simplicial complexes
+    f.insert("SimplicialComplex".to_string(), complexes::simplicial_complex_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("VietorisRips".to_string(), complexes::vietoris_rips_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CechComplex".to_string(), complexes::cech_complex_fn as fn(&[Value]) -> VmResult<Value>);
+    // Analysis
+    f.insert("TopologicalFeatures".to_string(), analysis::topological_features_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MapperAlgorithm".to_string(), analysis::mapper_algorithm_fn as fn(&[Value]) -> VmResult<Value>);
+    f
+}

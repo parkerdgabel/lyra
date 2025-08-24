@@ -786,9 +786,16 @@ pub fn canny_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_canny_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -807,7 +814,14 @@ pub fn canny_edges(args: &[Value]) -> VmResult<Value> {
             let params = CannyParams::default();
             
             let edge_map = detect_canny_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("CannyEdges expects 1 or 2 arguments".to_string())),
     }
@@ -832,9 +846,16 @@ pub fn sobel_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_sobel_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -853,7 +874,14 @@ pub fn sobel_edges(args: &[Value]) -> VmResult<Value> {
             let params = SobelParams::default();
             
             let edge_map = detect_sobel_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("SobelEdges expects 1 or 2 arguments".to_string())),
     }
@@ -878,9 +906,16 @@ pub fn laplacian_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_laplacian_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -899,7 +934,14 @@ pub fn laplacian_edges(args: &[Value]) -> VmResult<Value> {
             let params = LaplacianParams::default();
             
             let edge_map = detect_laplacian_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("LaplacianEdges expects 1 or 2 arguments".to_string())),
     }
@@ -924,9 +966,16 @@ pub fn prewitt_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_prewitt_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -945,7 +994,14 @@ pub fn prewitt_edges(args: &[Value]) -> VmResult<Value> {
             let params = SobelParams::default();
             
             let edge_map = detect_prewitt_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("PrewittEdges expects 1 or 2 arguments".to_string())),
     }
@@ -970,9 +1026,16 @@ pub fn roberts_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_roberts_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -991,7 +1054,14 @@ pub fn roberts_edges(args: &[Value]) -> VmResult<Value> {
             let params = SobelParams::default();
             
             let edge_map = detect_roberts_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("RobertsEdges expects 1 or 2 arguments".to_string())),
     }
@@ -1016,9 +1086,16 @@ pub fn scharr_edges(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let edge_map = detect_scharr_edges(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -1037,7 +1114,14 @@ pub fn scharr_edges(args: &[Value]) -> VmResult<Value> {
             let params = SobelParams::default();
             
             let edge_map = detect_scharr_edges(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(edge_map))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("edges".to_string(), Value::List(edge_map.edges.iter().cloned().map(|v| Value::Real(v as f64)).collect()));
+            m.insert("width".to_string(), Value::Integer(edge_map.width as i64));
+            m.insert("height".to_string(), Value::Integer(edge_map.height as i64));
+            m.insert("algorithm".to_string(), Value::String(edge_map.algorithm.clone()));
+            m.insert("thresholdLow".to_string(), Value::Real(edge_map.threshold_low as f64));
+            m.insert("thresholdHigh".to_string(), Value::Real(edge_map.threshold_high as f64));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("ScharrEdges expects 1 or 2 arguments".to_string())),
     }

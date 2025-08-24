@@ -409,7 +409,7 @@ pub fn create_stdlib_type_environment() -> TypeEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Symbol, Expr, Number};
+    use crate::ast::{Expr, Number};
 
     #[test]
     fn test_typed_compiler() {

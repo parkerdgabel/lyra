@@ -1,3 +1,4 @@
+#![allow(unused_assignments, unused_variables)]
 //! Distributed Computing Primitives
 //!
 //! This module implements location-transparent computation, service discovery,

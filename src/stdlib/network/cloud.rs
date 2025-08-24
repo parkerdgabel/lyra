@@ -66,7 +66,7 @@ impl Foreign for CloudStorage {
         "CloudStorage"
     }
     
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "BucketName" => Ok(Value::String(self.bucket_name.clone())),
             "Provider" => Ok(Value::String(self.provider.provider_name().to_string())),
@@ -2427,7 +2427,7 @@ pub fn cloud_function_deploy(args: &[Value]) -> VmResult<Value> {
     };
     
     match client.create_function(&config) {
-        Ok(arn) => {
+        Ok(_arn) => {
             function.lambda_client = Some(client);
             function.status = FunctionStatus::Active;
             function.last_modified = SystemTime::now();

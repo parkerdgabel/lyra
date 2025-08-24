@@ -5,6 +5,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::assoc;
 use std::any::Any;
 
 /// RSA public/private key pair
@@ -776,8 +777,17 @@ pub fn hash_function(args: &[Value]) -> VmResult<Value> {
     };
     
     let hash = simple_hash(&data, &algorithm);
-    let result = HashResult::new(data, algorithm, hash);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    // Emit standardized Association schema (legacy HashResult LyObj removed)
+    let hash_bytes: Vec<Value> = hash.iter().map(|b| Value::Integer(*b as i64)).collect();
+    let hex = hash.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    Ok(assoc(vec![
+        ("algorithm", Value::String(algorithm)),
+        ("dataSize", Value::Integer(data.len() as i64)),
+        ("hash", Value::List(hash_bytes)),
+        ("hexString", Value::String(hex)),
+        ("hashSize", Value::Integer(hash.len() as i64)),
+        ("success", Value::Boolean(true)),
+    ]))
 }
 
 /// Generate random prime

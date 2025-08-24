@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Benchmarking and Profiling System for REPL
 //! 
 //! Provides performance analysis, benchmarking, and profiling capabilities

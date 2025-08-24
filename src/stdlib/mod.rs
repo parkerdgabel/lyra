@@ -50,11 +50,22 @@ pub mod bioinformatics;
 pub mod signal;
 pub mod quantum;
 pub mod nlp;
+pub mod language;
+// Phase A lightweight utility modules (avoid pulling full utilities tree)
+#[path = "utilities/serialization.rs"]
+pub mod util_serialization;
+#[path = "utilities/config.rs"]
+pub mod util_config;
+#[path = "utilities/cache.rs"]
+pub mod util_cache;
 
 // New infrastructure and algorithm modules
 pub mod common;
 pub mod algorithms;
 pub mod data_structures;
+
+// Alias: prefer analytics::timeseries as consolidated entry under std::analytics
+pub use analytics::timeseries as timeseries_analytics;
 
 /// Standard library function signature
 pub type StdlibFunction = fn(&[Value]) -> VmResult<Value>;
@@ -75,23 +86,22 @@ impl StandardLibrary {
         // Register all function categories
         stdlib.register_list_functions();
         stdlib.register_string_functions();
-        stdlib.register_math_functions();
-        stdlib.register_calculus_functions();
+        // Consolidated mathematics registration via per-module registry
+        stdlib.register_mathematics_group();
+        // Analytics statistics remain consolidated under analytics::statistics
         stdlib.register_statistics_functions();
         stdlib.register_rule_functions();
         stdlib.register_table_functions();
         stdlib.register_tensor_functions();
         stdlib.register_ml_functions();
         stdlib.register_io_functions();
-        stdlib.register_linalg_functions();
-        stdlib.register_diffeq_functions();
-        stdlib.register_interp_functions();
-        stdlib.register_special_functions();
+        // Consolidated mathematics subdomains handled by register_mathematics_group()
         stdlib.register_graph_functions();
-        stdlib.register_optimization_functions();
         stdlib.register_signal_functions();
+        // Image consolidated under image::register_image_functions()
         stdlib.register_image_functions();
         stdlib.register_vision_functions();
+        // Timeseries consolidated under analytics::timeseries registry
         stdlib.register_timeseries_functions();
         stdlib.register_clustering_functions();
         stdlib.register_numerical_functions();
@@ -116,6 +126,12 @@ impl StandardLibrary {
         stdlib.register_nlp_functions();
         stdlib.register_algorithm_functions();
         stdlib.register_data_structure_functions();
+        stdlib.register_language_functions();
+        // Phase A additions
+        stdlib.register_serialization_functions();
+        stdlib.register_config_functions();
+        stdlib.register_cache_functions();
+        stdlib.register_object_store_functions();
 
         stdlib
     }
@@ -190,6 +206,45 @@ impl StandardLibrary {
         
         // String formatting
         self.register("StringFormat", string::advanced::string_format);
+
+        // Basic output
+        self.register("Print", Self::print_value);
+    }
+
+    /// Print[arg1, arg2, ...] → prints each argument; returns Missing
+    fn print_value(args: &[crate::vm::Value]) -> crate::vm::VmResult<crate::vm::Value> {
+        use crate::vm::Value;
+        fn fmt(v: &Value) -> String {
+            match v {
+                Value::Integer(n) => n.to_string(),
+                Value::Real(f) => if f.fract() == 0.0 { format!("{:.1}", f) } else { f.to_string() },
+                Value::String(s) | Value::Symbol(s) => s.clone(),
+                Value::Boolean(b) => if *b { "True".into() } else { "False".into() },
+                Value::List(items) => {
+                    let inner: Vec<String> = items.iter().map(fmt).collect();
+                    format!("{{{}}}", inner.join(", "))
+                }
+                Value::Object(_) => "Object[]".into(),
+                Value::LyObj(o) => format!("{}[...]", o.type_name()),
+                Value::Function(name) => format!("Function[{}]", name),
+                Value::Quote(_) => "Hold[...]".into(),
+                Value::Pattern(p) => format!("{}", p),
+                Value::Rule { lhs, rhs } => format!("{} -> {}", fmt(lhs), fmt(rhs)),
+                Value::PureFunction { .. } => "PureFunction[...]".into(),
+                Value::Slot { .. } => "Slot[...]".into(),
+                Value::Missing => "Missing[]".into(),
+            }
+        }
+        for a in args { println!("{}", fmt(a)); }
+        Ok(Value::Missing)
+    }
+
+    /// Consolidated mathematics registration via per-module registry
+    fn register_mathematics_group(&mut self) {
+        let functions = mathematics::register_mathematics_functions();
+        for (name, function) in functions {
+            self.register(name, function);
+        }
     }
 
 
@@ -275,29 +330,9 @@ impl StandardLibrary {
     }
 
     fn register_table_functions(&mut self) {
-        // Legacy table functions  
-        self.register("GroupBy", table::group_by);
-        self.register("Aggregate", table::aggregate);
-        self.register("Count", table::count);
-        
-        // Foreign table constructors
-        self.register("Table", table::table);
-        self.register("TableFromRows", table::table_from_rows);
-        self.register("EmptyTable", table::empty_table);
-        
-        // Foreign series constructors
-        self.register("Series", table::series);
-        self.register("Range", table::range);
-        self.register("Zeros", table::zeros);
-        self.register("Ones", table::ones);
-        self.register("ConstantSeries", table::constant_series);
-        
-        // Foreign tensor constructors
-        self.register("Tensor", table::tensor);
-        self.register("ZerosTensor", table::zeros_tensor);
-        self.register("OnesTensor", table::ones_tensor);
-        self.register("EyeTensor", table::eye_tensor);
-        self.register("RandomTensor", table::random_tensor);
+        // Consolidated registration from table module
+        let fns = crate::stdlib::table::register_table_functions();
+        for (n, f) in fns { self.register(n, f); }
     }
 
     fn register_tensor_functions(&mut self) {
@@ -320,39 +355,8 @@ impl StandardLibrary {
     }
 
     fn register_ml_functions(&mut self) {
-        // Spatial layer functions for tree-shaking optimized ML framework
-        self.register("FlattenLayer", ml::wrapper::flatten_layer);
-        self.register("ReshapeLayer", ml::wrapper::reshape_layer);
-        self.register("PermuteLayer", ml::wrapper::permute_layer);
-        self.register("TransposeLayer", ml::wrapper::transpose_layer);
-        
-        // Layer composition functions
-        self.register("Sequential", ml::wrapper::sequential_layer);
-        self.register("Identity", ml::wrapper::identity_layer);
-        
-        // Neural network training functions
-        self.register("NetTrain", ml::wrapper::net_train);
-        self.register("NetChain", ml::wrapper::net_chain);
-        self.register("CreateTrainingConfig", ml::wrapper::create_training_config);
-        
-        // Tensor utility functions
-        self.register("TensorShape", ml::wrapper::tensor_shape);
-        self.register("TensorRank", ml::wrapper::tensor_rank);
-        self.register("TensorSize", ml::wrapper::tensor_size);
-        
-        // Bio-ML integration functions
-        self.register("BiologicalSequenceToML", ml::bio_integration::biological_sequence_to_ml);
-        self.register("SequenceDataset", ml::bio_integration::sequence_dataset);
-        self.register("TrainSequenceClassifier", ml::bio_integration::train_sequence_classifier);
-        
-        // Quantum-ML bridge functions
-        self.register("QuantumFeatureMap", ml::quantum_bridge::quantum_feature_map);
-        self.register("QuantumDataEncoder", ml::quantum_bridge::quantum_data_encoder);
-        self.register("EncodeToQuantumState", ml::quantum_bridge::encode_to_quantum_state);
-        self.register("ParameterizedGate", ml::quantum_bridge::parameterized_gate);
-        self.register("VariationalCircuit", ml::quantum_bridge::variational_circuit);
-        self.register("PauliObservable", ml::quantum_bridge::pauli_observable);
-        self.register("QuantumGradientComputer", ml::quantum_bridge::quantum_gradient_computer);
+        let fns = crate::stdlib::ml::register_ml_functions();
+        for (n, f) in fns { self.register(n, f); }
     }
 
     fn register_io_functions(&mut self) {
@@ -550,83 +554,31 @@ impl StandardLibrary {
     }
 
     fn register_image_functions(&mut self) {
-        // Phase 6A: Core Infrastructure  
-        self.register("ImageImport", image::core::image_import);
-        self.register("ImageExport", image::core::image_export);
-        self.register("ImageInfo", image::core::image_info);
-        self.register("ImageResize", image::core::image_resize);
-        self.register("ImageHistogram", image::core::image_histogram);
-        
-        // Phase 6B: Filtering & Enhancement
-        self.register("GaussianFilter", image::filters::gaussian_filter);
-        self.register("MedianFilter", image::filters::median_filter);
-        self.register("SobelFilter", image::filters::sobel_filter);
-        self.register("CannyEdgeDetection", image::filters::canny_edge_detection);
-        self.register("ImageRotate", image::filters::image_rotate);
-        
-        // Phase 6C: Morphological Operations
-        self.register("Erosion", image::morphology::erosion);
-        self.register("Dilation", image::morphology::dilation);
-        self.register("Opening", image::morphology::opening);
-        self.register("Closing", image::morphology::closing);
-        
-        // Phase 6D: Advanced Analysis
-        self.register("AffineTransform", image::analysis::affine_transform);
-        self.register("PerspectiveTransform", image::analysis::perspective_transform);
-        self.register("ContourDetection", image::analysis::contour_detection);
-        self.register("FeatureDetection", image::analysis::feature_detection);
-        self.register("TemplateMatching", image::analysis::template_matching);
-        self.register("ImageSegmentation", image::analysis::image_segmentation);
+        let image_functions = image::register_image_functions();
+        for (name, function) in image_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_vision_functions(&mut self) {
-        // Phase 1.3: Computer Vision Core Algorithms
-        
-        // Feature Detection (4 functions)
-        self.register("HarrisCorners", vision::features::harris_corners);
-        self.register("SIFTFeatures", vision::features::sift_features);
-        self.register("ORBFeatures", vision::features::orb_features);
-        self.register("MatchFeatures", vision::features::match_features);
-        
-        // Edge Detection (6 functions)
-        self.register("CannyEdges", vision::edges::canny_edges);
-        self.register("SobelEdges", vision::edges::sobel_edges);
-        self.register("LaplacianEdges", vision::edges::laplacian_edges);
-        self.register("PrewittEdges", vision::edges::prewitt_edges);
-        self.register("RobertsEdges", vision::edges::roberts_edges);
-        self.register("ScharrEdges", vision::edges::scharr_edges);
-        
-        // Geometric Transformations (5 functions)
-        self.register("ApplyAffineTransform", vision::transforms::affine_transform);
-        self.register("ApplyPerspectiveTransform", vision::transforms::perspective_transform);
-        self.register("CreateTransform", vision::transforms::create_transform);
-        self.register("EstimateHomography", vision::transforms::estimate_homography);
-        self.register("TransformKeypoints", vision::transforms::transform_keypoints_func);
+        let vision_functions = vision::register_vision_functions();
+        for (name, function) in vision_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_timeseries_functions(&mut self) {
-        // Core time series functions
-        self.register("TimeSeries", timeseries::core::timeseries);
-        self.register("TimeSeriesWithIndex", timeseries::core::timeseries_with_index);
-        
-        // ARIMA/SARIMA models
-        self.register("ARIMA", timeseries::arima::arima);
-        self.register("SARIMA", timeseries::arima::sarima);
-        
-        // Forecasting methods
-        self.register("ExponentialSmoothing", timeseries::forecasting::exponential_smoothing);
-        self.register("MovingAverage", timeseries::forecasting::moving_average);
-        self.register("ExponentialMovingAverage", timeseries::forecasting::exponential_moving_average);
+        let ts_functions = analytics::timeseries::register_timeseries_functions();
+        for (name, function) in ts_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_clustering_functions(&mut self) {
-        // Core clustering infrastructure
-        self.register("ClusterData", clustering::core::cluster_data);
-        self.register("DistanceMatrix", clustering::core::distance_matrix);
-        
-        // K-means family algorithms
-        self.register("KMeans", clustering::kmeans::kmeans);
-        self.register("MiniBatchKMeans", clustering::kmeans::mini_batch_kmeans);
+        let clust_functions = clustering::register_clustering_functions();
+        for (name, function) in clust_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_sparse_functions(&mut self) {
@@ -661,38 +613,10 @@ impl StandardLibrary {
     }
 
     fn register_numerical_functions(&mut self) {
-        // Root finding and equation solving
-        self.register("Bisection", numerical::roots::bisection);
-        self.register("NewtonRaphson", numerical::roots::newton_raphson);
-        self.register("Secant", numerical::roots::secant);
-        self.register("Brent", numerical::roots::brent);
-        self.register("FixedPoint", numerical::roots::fixed_point);
-        
-        // Numerical integration
-        self.register("Trapezoidal", numerical::integration::trapezoidal);
-        self.register("Simpson", numerical::integration::simpson);
-        self.register("Romberg", numerical::integration::romberg);
-        self.register("GaussQuadrature", numerical::integration::gauss_quadrature_fn);
-        self.register("MonteCarlo", numerical::integration::monte_carlo);
-        
-        // Numerical differentiation
-        self.register("FiniteDifference", numerical::differentiation::finite_difference);
-        self.register("RichardsonExtrapolation", numerical::differentiation::richardson_extrapolation_fn);
-        
-        // Mesh generation (placeholders)
-        self.register("DelaunayMesh", numerical::mesh::delaunay_mesh);
-        self.register("VoronoiMesh", numerical::mesh::voronoi_mesh);
-        self.register("UniformMesh", numerical::mesh::uniform_mesh);
-        
-        // Finite element components (placeholders)
-        self.register("StiffnessMatrix", numerical::fem::stiffness_matrix);
-        self.register("MassMatrix", numerical::fem::mass_matrix);
-        self.register("LoadVector", numerical::fem::load_vector);
-        
-        // ODE/PDE solvers (placeholders)
-        self.register("RungeKutta4", numerical::solvers::runge_kutta4);
-        self.register("AdaptiveRK", numerical::solvers::adaptive_rk);
-        self.register("CrankNicolson", numerical::solvers::crank_nicolson);
+        let num_functions = numerical::register_numerical_functions();
+        for (name, function) in num_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_result_functions(&mut self) {
@@ -719,6 +643,9 @@ impl StandardLibrary {
         self.register("OptionUnwrapOr", result::option_unwrap_or);
         self.register("OptionMap", result::option_map);
         self.register("OptionAndThen", result::option_and_then);
+
+        // Schema inspection
+        self.register("Schema", common::schema::schema_function);
     }
     
     fn register_async_functions(&mut self) {
@@ -730,256 +657,59 @@ impl StandardLibrary {
     }
 
     fn register_network_functions(&mut self) {
-        // Phase 12A: Core Network Primitives
-        self.register("NetworkEndpoint", network::network_endpoint);
-        self.register("NetworkRequest", network::network_request);
-        self.register("NetworkAuth", network::network_auth);
-        self.register("URLRead", network::url_read);
-        self.register("URLWrite", network::url_write);
-        self.register("URLStream", network::url_stream);
-        self.register("NetworkPing", network::network_ping);
-        self.register("DNSResolve", network::dns_resolve);
-        self.register("HttpClient", network::http_client);
-        
-        // WebSocket operations
-        self.register("WebSocket", network::websocket);
-        self.register("WebSocketConnect", network::websocket_connect);
-        self.register("WebSocketSend", network::websocket_send);
-        self.register("WebSocketReceive", network::websocket_receive);
-        self.register("WebSocketClose", network::websocket_close);
-        self.register("WebSocketPing", network::websocket_ping);
-        
-        // Phase 12B: Event-Driven Architecture (placeholders)
-        self.register("EventStream", network::event_stream);
-        self.register("EventSubscribe", network::event_subscribe);
-        self.register("EventPublish", network::event_publish);
-        self.register("MessageQueue", network::message_queue);
-        self.register("NetworkChannel", network::network_channel);
-        
-        // Phase 12C: Distributed Computing (placeholders)
-        self.register("RemoteFunction", network::remote_function);
-        self.register("RemoteFunctionCall", network::remote_function_call);
-        self.register("DistributedMap", network::distributed_map);
-        self.register("DistributedMapExecute", network::distributed_map_execute);
-        self.register("DistributedReduce", network::distributed_reduce);
-        self.register("DistributedReduceExecute", network::distributed_reduce_execute);
-        self.register("ServiceRegistry", network::service_registry);
-        self.register("ServiceDiscover", network::service_discover);
-        self.register("ServiceHealthCheck", network::service_health_check);
-        self.register("LoadBalancer", network::load_balancer);
-        self.register("LoadBalancerRequest", network::load_balancer_request);
-        self.register("ComputeCluster", network::compute_cluster);
-        self.register("ClusterAddNode", network::cluster_add_node);
-        self.register("ClusterSubmitTask", network::cluster_submit_task);
-        self.register("ClusterGetStats", network::cluster_get_stats);
-        
-        // Phase 12D: Network Analysis (production implementations)
-        self.register("NetworkGraph", network::network_graph);
-        self.register("GraphAddNode", network::graph_add_node);
-        self.register("GraphAddEdge", network::graph_add_edge);
-        self.register("GraphShortestPath", network::graph_shortest_path);
-        self.register("GraphMST", network::graph_mst);
-        self.register("GraphComponents", network::graph_components);
-        self.register("GraphMetrics", network::graph_metrics);
-        
-        // Centrality and community analysis
-        self.register("NetworkCentrality", network::network_centrality);
-        self.register("CommunityDetection", network::community_detection);
-        self.register("GraphDiameter", network::graph_diameter);
-        self.register("GraphDensity", network::graph_density);
-        self.register("ClusteringCoefficient", network::clustering_coefficient);
-        
-        // Network flow algorithms
-        self.register("NetworkFlow", network::network_flow);
-        self.register("MinimumCut", network::minimum_cut);
-        self.register("FlowDecomposition", network::flow_decomposition);
-        self.register("FlowBottlenecks", network::flow_bottlenecks);
-        self.register("MaxFlowValue", network::max_flow_value);
-        
-        // Network monitoring and diagnostics
-        self.register("NetworkMonitor", network::network_monitor);
-        self.register("MonitorStart", network::monitor_start);
-        self.register("MonitorStop", network::monitor_stop);
-        self.register("MonitorGetMetrics", network::monitor_get_metrics);
-        self.register("MonitorSetAlerts", network::monitor_set_alerts);
-        self.register("MonitorPing", network::monitor_ping);
-        self.register("NetworkBottlenecks", network::network_bottlenecks);
-        self.register("OptimizeTopology", network::optimize_topology);
-        
-        // Phase 12E: Cloud Integration
-        self.register("CloudFunction", network::cloud_function);
-        self.register("CloudFunctionDeploy", network::cloud_function_deploy);
-        self.register("CloudFunctionInvoke", network::cloud_function_invoke);
-        self.register("CloudFunctionUpdate", network::cloud_function_update);
-        self.register("CloudFunctionLogs", network::cloud_function_logs);
-        self.register("CloudFunctionMetrics", network::cloud_function_metrics);
-        self.register("CloudFunctionDelete", network::cloud_function_delete);
-        self.register("CloudStorage", network::cloud_storage);
-        self.register("ContainerRun", network::container_run);
-        self.register("KubernetesService", network::kubernetes_service);
-        self.register("KubernetesDeploy", network::kubernetes_deploy);
-        self.register("DeploymentScale", network::deployment_scale);
-        self.register("RollingUpdate", network::rolling_update);
-        self.register("ConfigMapCreate", network::configmap_create);
-        self.register("ServiceExpose", network::service_expose);
-        self.register("PodLogs", network::pod_logs);
-        self.register("ResourceGet", network::resource_get);
-        self.register("ResourceDelete", network::resource_delete);
-        self.register("CloudDeploy", network::cloud_deploy);
-        self.register("CloudMonitor", network::cloud_monitor);
-        
-        // Cloud Storage API Functions
-        self.register("CloudUpload", network::cloud_upload);
-        self.register("CloudDownload", network::cloud_download);
-        self.register("CloudList", network::cloud_list);
-        self.register("CloudDelete", network::cloud_delete);
-        self.register("CloudMetadata", network::cloud_metadata);
-        self.register("CloudPresignedURL", network::cloud_presigned_url);
-        
-        // Docker Container API Functions
-        self.register("ContainerStop", network::container_stop);
-        self.register("ContainerLogs", network::container_logs);
-        self.register("ContainerInspect", network::container_inspect);
-        self.register("ContainerExec", network::container_exec);
-        self.register("ContainerList", network::container_list);
-        self.register("ContainerPull", network::container_pull);
+        let fns = crate::stdlib::network::register_network_functions();
+        for (n, f) in fns { self.register(n, f); }
+    }
+
+    fn register_serialization_functions(&mut self) {
+        let fns = crate::stdlib::util_serialization::register_serialization_functions();
+        for (n, f) in fns { self.register(n, f); }
+    }
+
+    fn register_config_functions(&mut self) {
+        let fns = crate::stdlib::util_config::register_config_functions();
+        for (n, f) in fns { self.register(n, f); }
+    }
+
+    fn register_cache_functions(&mut self) {
+        let fns = crate::stdlib::util_cache::register_cache_functions();
+        for (n, f) in fns { self.register(n, f); }
+    }
+
+    fn register_object_store_functions(&mut self) {
+        let fns = crate::stdlib::io::object_store::register_object_store_functions();
+        for (n, f) in fns { self.register(n, f); }
     }
 
     fn register_number_theory_functions(&mut self) {
-        // Phase 13A: Advanced Number Theory (25 functions)
-        
-        // Prime Number Algorithms (8 functions)
-        self.register("PrimeQ", number_theory::prime_q);
-        self.register("NextPrime", number_theory::next_prime);
-        self.register("PreviousPrime", number_theory::previous_prime);
-        self.register("PrimePi", number_theory::prime_pi);
-        self.register("PrimeFactorization", number_theory::prime_factorization);
-        self.register("EulerPhi", number_theory::euler_phi_fn);
-        self.register("MoebiusMu", number_theory::moebius_mu_fn);
-        self.register("DivisorSigma", number_theory::divisor_sigma_fn);
-        
-        // Algebraic Number Theory (7 functions)
-        self.register("GCD", number_theory::gcd_fn);
-        self.register("LCM", number_theory::lcm_fn);
-        self.register("ChineseRemainder", number_theory::chinese_remainder);
-        self.register("JacobiSymbol", number_theory::jacobi_symbol_fn);
-        self.register("ContinuedFraction", number_theory::continued_fraction_fn);
-        self.register("AlgebraicNumber", number_theory::algebraic_number);
-        self.register("MinimalPolynomial", number_theory::minimal_polynomial);
-        
-        // Modular Arithmetic (6 functions)
-        self.register("PowerMod", number_theory::power_mod_fn);
-        self.register("ModularInverse", number_theory::modular_inverse_fn);
-        self.register("DiscreteLog", number_theory::discrete_log_fn);
-        self.register("QuadraticResidue", number_theory::quadratic_residue_fn);
-        self.register("PrimitiveRoot", number_theory::primitive_root_fn);
-        self.register("MultOrder", number_theory::mult_order_fn);
-        
-        // Cryptographic Primitives (4 functions)
-        self.register("RSAGenerate", number_theory::rsa_generate);
-        self.register("ECPoint", number_theory::ec_point);
-        self.register("HashFunction", number_theory::hash_function);
-        self.register("RandomPrime", number_theory::random_prime);
+        let nt_functions = number_theory::register_number_theory_functions();
+        for (name, function) in nt_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_combinatorics_functions(&mut self) {
-        // Phase 13B: Combinatorics and Advanced Graph Algorithms
-        
-        // Basic Combinatorial Functions (4 functions)
-        self.register("Binomial", combinatorics::binomial_fn);
-        self.register("Multinomial", combinatorics::multinomial_fn);
-        self.register("Permutations", combinatorics::permutations_fn);
-        self.register("Combinations", combinatorics::combinations_fn);
-        
-        // Advanced Combinatorial Functions (4 functions)
-        self.register("StirlingNumber", combinatorics::stirling_number_fn);
-        self.register("BellNumber", combinatorics::bell_number_fn);
-        self.register("CatalanNumber", combinatorics::catalan_number_fn);
-        self.register("Partitions", combinatorics::partitions_fn);
-        
-        // Combinatorial Sequences (5 functions)
-        self.register("FibonacciNumber", combinatorics::fibonacci_number_fn);
-        self.register("LucasNumber", combinatorics::lucas_number_fn);
-        self.register("TribonacciNumber", combinatorics::tribonacci_number_fn);
-        self.register("PellNumber", combinatorics::pell_number_fn);
-        self.register("JacobsthalNumber", combinatorics::jacobsthal_number_fn);
-        
-        // Advanced Graph Algorithms are now registered via register_graph_functions()
+        let comb_functions = combinatorics::register_combinatorics_functions();
+        for (name, function) in comb_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_geometry_functions(&mut self) {
-        // Phase 13C.1: Computational Geometry (10 functions)
-        
-        // Core Geometric Primitives (4 functions)
-        self.register("ConvexHull", geometry::convex_hull::convex_hull_fn);
-        self.register("VoronoiDiagram", geometry::triangulation::voronoi_diagram_fn);
-        self.register("DelaunayTriangulation", geometry::triangulation::delaunay_triangulation_fn);
-        self.register("MinkowskiSum", geometry::operations::minkowski_sum_fn);
-        
-        // Geometric Queries & Analysis (3 functions)
-        self.register("PointInPolygon", geometry::queries::point_in_polygon_fn);
-        self.register("PolygonIntersection", geometry::queries::polygon_intersection_fn);
-        self.register("ClosestPair", geometry::queries::closest_pair_fn);
-        
-        // Advanced Geometric Operations (3 functions)
-        self.register("GeometricMedian", geometry::operations::geometric_median_fn);
-        self.register("ShapeMatching", geometry::operations::shape_matching_fn);
-        self.register("PolygonDecomposition", geometry::operations::polygon_decomposition_fn);
+        let geo_functions = geometry::register_geometry_functions();
+        for (name, function) in geo_functions {
+            self.register(name, function);
+        }
     }
 
     fn register_topology_functions(&mut self) {
-        // Phase 13C.2: Topological Data Analysis (8 functions)
-        
-        // Persistent Homology (3 functions)
-        self.register("PersistentHomology", topology::homology::persistent_homology_fn);
-        self.register("BettiNumbers", topology::homology::betti_numbers_fn);
-        self.register("PersistenceDiagram", topology::homology::persistence_diagram_fn);
-        
-        // Simplicial Complexes (3 functions)
-        self.register("SimplicialComplex", topology::complexes::simplicial_complex_fn);
-        self.register("VietorisRips", topology::complexes::vietoris_rips_fn);
-        self.register("CechComplex", topology::complexes::cech_complex_fn);
-        
-        // Topological Analysis (2 functions)
-        self.register("TopologicalFeatures", topology::analysis::topological_features_fn);
-        self.register("MapperAlgorithm", topology::analysis::mapper_algorithm_fn);
+        let fns = crate::stdlib::topology::register_topology_functions();
+        for (n, f) in fns { self.register(n, f); }
     }
     
     fn register_data_processing_functions(&mut self) {
-        // Agent 2: Data Manipulation & ETL System (20+ functions)
-        
-        // JSON Processing Functions (5 functions)
-        self.register("JSONParse", data_processing::json_parse);
-        self.register("JSONStringify", data_processing::json_stringify);
-        self.register("JSONQuery", data_processing::json_query);
-        self.register("JSONMerge", data_processing::json_merge);
-        self.register("JSONValidate", data_processing::json_validate);
-        
-        // CSV Processing Functions (4 functions)
-        self.register("CSVParse", data_processing::csv_parse);
-        self.register("CSVStringify", data_processing::csv_stringify);
-        self.register("CSVToTable", data_processing::csv_to_table);
-        self.register("TableToCSV", data_processing::table_to_csv);
-        
-        // Data Transformation Functions (7 functions)
-        self.register("DataTransform", data_processing::data_transform);
-        self.register("DataFilter", data_processing::data_filter);
-        self.register("DataGroup", data_processing::data_group);
-        self.register("DataJoin", data_processing::data_join);
-        self.register("DataSort", data_processing::data_sort);
-        self.register("DataSelect", data_processing::data_select);
-        self.register("DataRename", data_processing::data_rename);
-        
-        // Schema Operations Functions (4 functions)
-        self.register("ValidateData", data_processing::validate_data);
-        self.register("InferSchema", data_processing::infer_schema);
-        self.register("ConvertTypes", data_processing::convert_types);
-        self.register("NormalizeData", data_processing::normalize_data);
-        
-        // Query Engine Functions (3 functions)
-        self.register("DataQuery", data_processing::data_query);
-        self.register("DataIndex", data_processing::data_index);
-        self.register("DataAggregate", data_processing::data_aggregate);
+        let fns = crate::stdlib::data_processing::register_data_processing_functions();
+        for (n, f) in fns { self.register(n, f); }
     }
 
     fn register_temporal_functions(&mut self) {
@@ -1151,6 +881,12 @@ impl StandardLibrary {
         self.register("TempDirectory", system::temp_directory);
         self.register("CurrentUser", system::current_user);
         self.register("SystemArchitecture", system::system_architecture);
+    }
+
+    fn register_language_functions(&mut self) {
+        // Core language constructors and evaluator
+        self.register("Expr", language::expr_constructor);
+        self.register("Eval", language::eval_function);
     }
 
     fn register_collections_functions(&mut self) {

@@ -861,7 +861,6 @@ pub fn inspect(args: &[Value]) -> VmResult<Value> {
     }
 
     let inspection = InspectionResult::new(&args[0]);
-    let result = Value::LyObj(LyObj::new(Box::new(inspection.clone())));
     
     // Print the inspection result automatically
     println!("{}", "=== INSPECTION RESULT ===".bold().blue());
@@ -876,7 +875,16 @@ pub fn inspect(args: &[Value]) -> VmResult<Value> {
     }
     println!("{}", "========================".bold().blue());
 
-    Ok(result)
+    // Return standardized association
+    let mut meta_obj = std::collections::HashMap::new();
+    for (k, v) in &inspection.metadata {
+        meta_obj.insert(k.clone(), Value::String(v.clone()));
+    }
+    let mut m = std::collections::HashMap::new();
+    m.insert("type".to_string(), Value::String(inspection.type_info.clone()));
+    m.insert("structure".to_string(), Value::String(inspection.structure.clone()));
+    m.insert("metadata".to_string(), Value::Object(meta_obj));
+    Ok(Value::Object(m))
 }
 
 /// Step-through debugging with execution tracing
@@ -989,14 +997,18 @@ pub fn timing(args: &[Value]) -> VmResult<Value> {
     let result = args[0].clone();
     
     let duration = start.elapsed();
-    let timing_result = TimingResult::new(duration, result);
 
     println!(
         "{}",
         format!("Timing: {:.3}ms", duration.as_millis()).bright_green()
     );
 
-    Ok(Value::LyObj(LyObj::new(Box::new(timing_result))))
+    // Return standardized association
+    let mut m = std::collections::HashMap::new();
+    m.insert("durationSeconds".to_string(), Value::Real(duration.as_secs_f64()));
+    m.insert("durationMillis".to_string(), Value::Real(duration.as_millis() as f64));
+    m.insert("result".to_string(), result);
+    Ok(Value::Object(m))
 }
 
 /// Measure memory usage of an expression
@@ -1040,9 +1052,12 @@ pub fn profile_function(args: &[Value]) -> VmResult<Value> {
             let result = Value::String(format!("ProfileResult[{}]", name));
             
             let duration = start.elapsed();
-            let timing_result = TimingResult::new(duration, result);
-
-            Ok(Value::LyObj(LyObj::new(Box::new(timing_result))))
+            // Return standardized association
+            let mut m = std::collections::HashMap::new();
+            m.insert("durationSeconds".to_string(), Value::Real(duration.as_secs_f64()));
+            m.insert("durationMillis".to_string(), Value::Real(duration.as_millis() as f64));
+            m.insert("result".to_string(), result);
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::TypeError {
             expected: "Function".to_string(),
@@ -1105,7 +1120,25 @@ pub fn benchmark(args: &[Value]) -> VmResult<Value> {
         ).bright_green()
     );
 
-    Ok(Value::LyObj(LyObj::new(Box::new(benchmark_result))))
+    // Return standardized association
+    let mut m = std::collections::HashMap::new();
+    m.insert("iterations".to_string(), Value::Integer(benchmark_result.iterations as i64));
+    m.insert("totalTimeSec".to_string(), Value::Real(benchmark_result.total_time.as_secs_f64()));
+    m.insert("avgTimeSec".to_string(), Value::Real(benchmark_result.avg_time.as_secs_f64()));
+    m.insert("minTimeSec".to_string(), Value::Real(benchmark_result.min_time.as_secs_f64()));
+    m.insert("maxTimeSec".to_string(), Value::Real(benchmark_result.max_time.as_secs_f64()));
+    m.insert(
+        "timesSec".to_string(),
+        Value::List(
+            benchmark_result
+                .times
+                .iter()
+                .map(|d| Value::Real(d.as_secs_f64()))
+                .collect(),
+        ),
+    );
+    m.insert("stdDev".to_string(), Value::Real(benchmark_result.standard_deviation()));
+    Ok(Value::Object(m))
 }
 
 /// Compare performance of two expressions
@@ -1350,7 +1383,17 @@ pub fn test(args: &[Value]) -> VmResult<Value> {
         println!("  Actual:   {:?}", actual);
     }
 
-    Ok(Value::LyObj(LyObj::new(Box::new(test_result))))
+    // Return standardized association
+    let mut m = std::collections::HashMap::new();
+    m.insert("passed".to_string(), Value::Boolean(test_result.passed));
+    m.insert("expected".to_string(), test_result.expected.clone());
+    m.insert("actual".to_string(), test_result.actual.clone());
+    m.insert("durationSec".to_string(), Value::Real(test_result.duration.as_secs_f64()));
+    match &test_result.message {
+        Some(msg) => { m.insert("message".to_string(), Value::String(msg.clone())); }
+        None => { m.insert("message".to_string(), Value::Missing); }
+    }
+    Ok(Value::Object(m))
 }
 
 /// Run test suite
@@ -1394,8 +1437,26 @@ pub fn test_suite(args: &[Value]) -> VmResult<Value> {
                      suite.passed_count(), 
                      suite.tests.len(),
                      suite.success_rate() * 100.0);
-            
-            Ok(Value::LyObj(LyObj::new(Box::new(suite))))
+
+            // Return standardized association
+            let mut tests_list = Vec::new();
+            for t in &suite.tests {
+                let mut tm = std::collections::HashMap::new();
+                tm.insert("passed".to_string(), Value::Boolean(t.passed));
+                tm.insert("expected".to_string(), t.expected.clone());
+                tm.insert("actual".to_string(), t.actual.clone());
+                tm.insert("durationSec".to_string(), Value::Real(t.duration.as_secs_f64()));
+                if let Some(msg) = &t.message { tm.insert("message".to_string(), Value::String(msg.clone())); } else { tm.insert("message".to_string(), Value::Missing); }
+                tests_list.push(Value::Object(tm));
+            }
+            let mut m = std::collections::HashMap::new();
+            m.insert("name".to_string(), Value::String(suite.name.clone()));
+            m.insert("tests".to_string(), Value::List(tests_list));
+            m.insert("totalDurationSec".to_string(), Value::Real(suite.total_duration.as_secs_f64()));
+            m.insert("passedCount".to_string(), Value::Integer(suite.passed_count() as i64));
+            m.insert("failedCount".to_string(), Value::Integer(suite.failed_count() as i64));
+            m.insert("successRate".to_string(), Value::Real(suite.success_rate()));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::TypeError {
             expected: "List of tests".to_string(),
@@ -1874,6 +1935,24 @@ pub fn test_report(args: &[Value]) -> VmResult<Value> {
             println!("{}", "==================".bold().blue());
             Ok(Value::String("Test report generated".to_string()))
         }
+        Value::Object(m) => {
+            println!("{}", "=== TEST REPORT ===".bold().blue());
+            if let Some(Value::String(name)) = m.get("name") { println!("Suite: {}", name.bright_cyan()); }
+            let total_i: i64 = m
+                .get("tests")
+                .and_then(|v| v.as_list())
+                .map(|l| l.len() as i64)
+                .unwrap_or(0);
+            let passed_i: i64 = match m.get("passedCount") { Some(Value::Integer(n)) => *n, _ => 0 };
+            let failed_i: i64 = match m.get("failedCount") { Some(Value::Integer(n)) => *n, _ => 0 };
+            println!("Total Tests: {}", total_i);
+            println!("Passed: {}", passed_i.to_string().green());
+            println!("Failed: {}", failed_i.to_string().red());
+            let success_rate = if total_i > 0 { (passed_i as f64 / total_i as f64) * 100.0 } else { 0.0 };
+            println!("Success Rate: {:.1}%", success_rate);
+            println!("{}", "==================".bold().blue());
+            Ok(Value::String("Test report generated".to_string()))
+        }
         _ => Err(VmError::TypeError {
             expected: "TestSuite object".to_string(),
             actual: format!("{:?}", args[0]),
@@ -1906,9 +1985,25 @@ pub fn benchmark_suite(args: &[Value]) -> VmResult<Value> {
                 
                 let times = vec![duration; 5]; // Mock multiple runs
                 let benchmark_result = BenchmarkResult::new(times);
-                
                 println!("  Avg: {:.3}ms", benchmark_result.avg_time.as_millis());
-                results.push(Value::LyObj(LyObj::new(Box::new(benchmark_result))));
+                let mut m = std::collections::HashMap::new();
+                m.insert("iterations".to_string(), Value::Integer(benchmark_result.iterations as i64));
+                m.insert("totalTimeSec".to_string(), Value::Real(benchmark_result.total_time.as_secs_f64()));
+                m.insert("avgTimeSec".to_string(), Value::Real(benchmark_result.avg_time.as_secs_f64()));
+                m.insert("minTimeSec".to_string(), Value::Real(benchmark_result.min_time.as_secs_f64()));
+                m.insert("maxTimeSec".to_string(), Value::Real(benchmark_result.max_time.as_secs_f64()));
+                m.insert(
+                    "timesSec".to_string(),
+                    Value::List(
+                        benchmark_result
+                            .times
+                            .iter()
+                            .map(|d| Value::Real(d.as_secs_f64()))
+                            .collect(),
+                    ),
+                );
+                m.insert("stdDev".to_string(), Value::Real(benchmark_result.standard_deviation()));
+                results.push(Value::Object(m));
             }
             
             println!("{}", "=======================".bold().cyan());

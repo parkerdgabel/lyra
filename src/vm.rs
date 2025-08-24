@@ -60,6 +60,12 @@ impl From<crate::foreign::ForeignError> for VmError {
 pub enum Value {
     Integer(i64),
     Real(f64),
+    /// Exact rational number (numerator, denominator); denominator != 0
+    Rational(i64, i64),
+    /// Arbitrary-precision style real placeholder: value with precision bits
+    BigReal { value: f64, precision: u32 },
+    /// Complex number over the numeric tower; components preserve exactness
+    Complex { re: Box<Value>, im: Box<Value> },
     String(String),
     Symbol(String),
     List(Vec<Value>),
@@ -68,6 +74,8 @@ pub enum Value {
     Missing,            // Missing/unknown value (distinct from Null)
     Object(HashMap<String, Value>), // Object/dictionary type for structured data
     LyObj(LyObj),       // Foreign object wrapper for complex types (Series, Table, Dataset, Schema, Tensor)
+    /// Unified expression node: Head[args...] represented as values
+    Expr { head: Box<Value>, args: Vec<Value> },
     Quote(Box<crate::ast::Expr>), // Unevaluated expression for Hold attributes
     Pattern(crate::ast::Pattern), // Pattern expressions for pattern matching
     Rule { lhs: Box<Value>, rhs: Box<Value> }, // Rule expressions for transformations
@@ -81,6 +89,9 @@ pub enum Value {
 enum ValueSerde {
     Integer(i64),
     Real(f64),
+    Rational(i64, i64),
+    BigReal { value: f64, precision: u32 },
+    Complex { re: Box<Value>, im: Box<Value> },
     String(String),
     Symbol(String),
     List(Vec<Value>),
@@ -89,6 +100,7 @@ enum ValueSerde {
     Missing,
     Object(HashMap<String, Value>),
     LyObjPlaceholder { type_name: String }, // Simplified LyObj representation  
+    Expr { head: Box<Value>, args: Vec<Value> },
     Quote(Box<crate::ast::Expr>),
     Pattern(crate::ast::Pattern),
     Rule { lhs: Box<Value>, rhs: Box<Value> },
@@ -105,6 +117,9 @@ impl Serialize for Value {
         let serde_value = match self {
             Value::Integer(n) => ValueSerde::Integer(*n),
             Value::Real(f) => ValueSerde::Real(*f),
+            Value::Rational(n, d) => ValueSerde::Rational(*n, *d),
+            Value::BigReal { value, precision } => ValueSerde::BigReal { value: *value, precision: *precision },
+            Value::Complex { re, im } => ValueSerde::Complex { re: re.clone(), im: im.clone() },
             Value::String(s) => ValueSerde::String(s.clone()),
             Value::Symbol(s) => ValueSerde::Symbol(s.clone()),
             Value::List(items) => ValueSerde::List(items.clone()),
@@ -115,6 +130,7 @@ impl Serialize for Value {
             Value::LyObj(obj) => ValueSerde::LyObjPlaceholder { 
                 type_name: obj.type_name().to_string() 
             },
+            Value::Expr { head, args } => ValueSerde::Expr { head: head.clone(), args: args.clone() },
             Value::Quote(expr) => ValueSerde::Quote(expr.clone()),
             Value::Pattern(pat) => ValueSerde::Pattern(pat.clone()),
             Value::Rule { lhs, rhs } => ValueSerde::Rule { lhs: lhs.clone(), rhs: rhs.clone() },
@@ -134,6 +150,9 @@ impl<'de> Deserialize<'de> for Value {
         let value = match serde_value {
             ValueSerde::Integer(n) => Value::Integer(n),
             ValueSerde::Real(f) => Value::Real(f),
+            ValueSerde::Rational(n, d) => Value::Rational(n, d),
+            ValueSerde::BigReal { value, precision } => Value::BigReal { value, precision },
+            ValueSerde::Complex { re, im } => Value::Complex { re, im },
             ValueSerde::String(s) => Value::String(s),
             ValueSerde::Symbol(s) => Value::Symbol(s),
             ValueSerde::List(items) => Value::List(items),
@@ -146,6 +165,7 @@ impl<'de> Deserialize<'de> for Value {
                 // Real implementation would need registry-based reconstruction
                 Value::Missing
             }
+            ValueSerde::Expr { head, args } => Value::Expr { head, args },
             ValueSerde::Quote(expr) => Value::Quote(expr),
             ValueSerde::Pattern(pat) => Value::Pattern(pat),
             ValueSerde::Rule { lhs, rhs } => Value::Rule { lhs, rhs },
@@ -170,31 +190,46 @@ impl std::hash::Hash for Value {
                 // Hash the bit representation of f64 for consistent hashing
                 f.to_bits().hash(state);
             },
-            Value::String(s) => {
+            Value::Rational(n, d) => {
                 2u8.hash(state);
+                n.hash(state);
+                d.hash(state);
+            },
+            Value::BigReal { value, precision } => {
+                3u8.hash(state);
+                value.to_bits().hash(state);
+                precision.hash(state);
+            },
+            Value::Complex { re, im } => {
+                4u8.hash(state);
+                re.hash(state);
+                im.hash(state);
+            },
+            Value::String(s) => {
+                5u8.hash(state);
                 s.hash(state);
             },
             Value::Symbol(s) => {
-                3u8.hash(state);
+                6u8.hash(state);
                 s.hash(state);
             },
             Value::List(items) => {
-                4u8.hash(state);
+                7u8.hash(state);
                 items.hash(state);
             },
             Value::Function(name) => {
-                5u8.hash(state);
+                8u8.hash(state);
                 name.hash(state);
             },
             Value::Boolean(b) => {
-                6u8.hash(state);
+                9u8.hash(state);
                 b.hash(state);
             },
             Value::Missing => {
-                7u8.hash(state);
+                10u8.hash(state);
             },
             Value::Object(obj) => {
-                8u8.hash(state);
+                11u8.hash(state);
                 // Fast path: hash size first for quick differentiation
                 obj.len().hash(state);
                 
@@ -209,34 +244,39 @@ impl std::hash::Hash for Value {
                 }
             },
             Value::LyObj(obj) => {
-                9u8.hash(state);
+                12u8.hash(state);
                 // Fast hash using just type name (avoid expensive debug formatting)
                 obj.type_name().hash(state);
                 // Use a simple hash based on the object's type and debug representation
                 // This is a fallback until proper object identity is implemented
                 format!("{:?}", obj).hash(state);
             },
+            Value::Expr { head, args } => {
+                13u8.hash(state);
+                head.hash(state);
+                args.hash(state);
+            },
             Value::Quote(expr) => {
-                10u8.hash(state);
+                14u8.hash(state);
                 // Use pointer address for AST expressions to avoid expensive formatting
                 (expr.as_ref() as *const _ as usize).hash(state);
             },
             Value::Pattern(pattern) => {
-                11u8.hash(state);
+                15u8.hash(state);
                 // Pattern has proper Hash implementation, use it directly
                 pattern.hash(state);
             },
             Value::Rule { lhs, rhs } => {
-                12u8.hash(state);
+                16u8.hash(state);
                 lhs.hash(state);
                 rhs.hash(state);
             },
             Value::PureFunction { body } => {
-                13u8.hash(state);
+                17u8.hash(state);
                 body.hash(state);
             },
             Value::Slot { number } => {
-                14u8.hash(state);
+                18u8.hash(state);
                 number.hash(state);
             },
         }
@@ -248,6 +288,9 @@ impl PartialEq for Value {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => a == b,
             (Value::Real(a), Value::Real(b)) => a == b,
+            (Value::Rational(an, ad), Value::Rational(bn, bd)) => an == bn && ad == bd,
+            (Value::BigReal { value: av, precision: ap }, Value::BigReal { value: bv, precision: bp }) => av == bv && ap == bp,
+            (Value::Complex { re: ar, im: ai }, Value::Complex { re: br, im: bi }) => ar == br && ai == bi,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
@@ -256,6 +299,7 @@ impl PartialEq for Value {
             (Value::Missing, Value::Missing) => true,
             (Value::Object(a), Value::Object(b)) => a == b,
             (Value::LyObj(a), Value::LyObj(b)) => a == b,
+            (Value::Expr { head: ah, args: aa }, Value::Expr { head: bh, args: ba }) => ah == bh && aa == ba,
             (Value::Quote(a), Value::Quote(b)) => {
                 // Compare AST expressions structurally
                 format!("{:?}", a) == format!("{:?}", b)
@@ -287,6 +331,9 @@ impl Value {
         match self {
             Value::Integer(_) => 8,
             Value::Real(_) => 8,
+            Value::Rational(_, _) => 16,
+            Value::BigReal { .. } => 16,
+            Value::Complex { re, im } => re.memory_size() + im.memory_size(),
             Value::Boolean(_) => 1,
             Value::Missing => 0,
             Value::String(s) => s.len() + std::mem::size_of::<String>(),
@@ -301,6 +348,9 @@ impl Value {
                 obj.iter().map(|(k, v)| k.len() + v.memory_size()).sum::<usize>()
             }
             Value::LyObj(_) => std::mem::size_of::<crate::foreign::LyObj>(),
+            Value::Expr { head, args } => {
+                head.memory_size() + std::mem::size_of::<Vec<Value>>() + args.iter().map(|v| v.memory_size()).sum::<usize>()
+            }
             Value::Quote(_) => std::mem::size_of::<Box<crate::ast::Expr>>(),
             Value::Pattern(_) => std::mem::size_of::<crate::ast::Pattern>(),
             Value::Rule { lhs, rhs } => lhs.memory_size() + rhs.memory_size(),
@@ -308,6 +358,14 @@ impl Value {
             Value::Slot { .. } => std::mem::size_of::<Option<usize>>(),
         }
     }
+}
+
+impl Value {
+    // Convenience constructors for new numeric forms
+    pub fn complex(re: Value, im: Value) -> Value { Value::Complex { re: Box::new(re), im: Box::new(im) } }
+    pub fn rational(n: i64, d: i64) -> Value { Value::Rational(n, d) }
+    pub fn bigreal(value: f64, precision: u32) -> Value { Value::BigReal { value, precision } }
+    pub fn expr(head: Value, args: Vec<Value>) -> Value { Value::Expr { head: Box::new(head), args } }
 }
 
 /// Call frame for function calls
@@ -1535,7 +1593,6 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::OpCode;
 
     #[test]
     fn test_vm_creation() {

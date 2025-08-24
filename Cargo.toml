@@ -21,6 +21,7 @@ rustyline = "13.0"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 walkdir = "2.5"
 ndarray = "0.16"
 rand = "0.8"
@@ -189,6 +190,16 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.0"
 futures = "0.3"
 
+[features]
+default = []
+cloud = ["dep:object_store"]
+
+[dependencies.object_store]
+version = "0.9"
+default-features = false
+optional = true
+features = ["aws", "gcp", "azure", "http"]
+
 [lib]
 name = "lyra"
 path = "src/lib.rs"
@@ -252,4 +263,3 @@ harness = false
 [[bench]]
 name = "automated_performance_monitor"
 harness = false
-

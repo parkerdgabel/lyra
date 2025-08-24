@@ -10,8 +10,23 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
-use reqwest::{Client, Method};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use reqwest::redirect::Policy;
+
+// Shared Tokio runtime for HTTP/network operations
+static RUNTIME: Lazy<Mutex<Runtime>> = Lazy::new(|| {
+    Mutex::new(Runtime::new().expect("Failed to create shared Tokio runtime"))
+});
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .redirect(Policy::limited(10))
+        .build()
+        .expect("Failed to create shared HTTP Client")
+});
+use reqwest::Method;
 use url::Url;
+use crate::stdlib::common::options as opt;
 
 /// HTTP client configuration and state
 #[derive(Debug, Clone)]
@@ -48,25 +63,15 @@ impl HttpClient {
     
     /// Execute a network request using reqwest HTTP client
     pub fn execute(&self, request: &NetworkRequest) -> Result<NetworkResponse, String> {
-        let rt = Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
-        
-        rt.block_on(async { self.execute_async(request).await })
+        RUNTIME.lock().unwrap().block_on(async { self.execute_async(request).await })
     }
     
     /// Execute a network request asynchronously
     pub async fn execute_async(&self, request: &NetworkRequest) -> Result<NetworkResponse, String> {
         let start_time = Instant::now();
         
-        // Build reqwest client with configuration
-        let client = Client::builder()
-            .timeout(request.timeout)
-            .redirect(if self.follow_redirects {
-                reqwest::redirect::Policy::limited(self.max_redirects as usize)
-            } else {
-                reqwest::redirect::Policy::none()
-            })
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        // Use shared client; set per-request timeout on the builder
+        let client = HTTP_CLIENT.clone();
         
         // Convert HttpMethod to reqwest::Method
         let method = match request.method {
@@ -85,7 +90,7 @@ impl HttpClient {
             .map_err(|e| format!("Invalid URL '{}': {}", request.url, e))?;
         
         // Build request
-        let mut req_builder = client.request(method, url);
+        let mut req_builder = client.request(method, url).timeout(request.timeout);
         
         // Add headers
         let effective_headers = request.effective_headers();
@@ -132,7 +137,7 @@ impl HttpClient {
         &self, 
         response: reqwest::Response, 
         response_time: f64,
-        original_url: &str
+        _original_url: &str
     ) -> Result<NetworkResponse, String> {
         let status = response.status().as_u16();
         let final_url = response.url().to_string();
@@ -160,9 +165,7 @@ impl HttpClient {
     
     /// Execute multiple requests in parallel using async/await
     pub fn execute_parallel(&self, requests: &[NetworkRequest]) -> Vec<Result<NetworkResponse, String>> {
-        let rt = Runtime::new().expect("Failed to create tokio runtime");
-        
-        rt.block_on(async {
+        RUNTIME.lock().unwrap().block_on(async {
             let mut results = Vec::new();
             
             // Use tokio::join! for small number of requests, or spawn tasks for many
@@ -326,6 +329,111 @@ impl Foreign for URLStream {
 // WOLFRAM LANGUAGE INTERFACE FUNCTIONS
 // ===============================
 
+/// HTTPRetry - Execute a request with explicit retry policy
+/// Syntax: HTTPRetry[url|request, opts]
+/// opts: {
+///   retries: Integer (default 3),
+///   timeoutMs: Integer (per-attempt timeout, default from request or 30000),
+///   retryOn: List of status integers to retry on (e.g., {500, 502, 503, 504}),
+///   backoff: { type: "exponential"|"fixed", baseMs: 100, maxMs: 2000, jitter: true }
+/// }
+pub fn http_retry(args: &[Value]) -> VmResult<Value> {
+    if args.len() < 1 || args.len() > 2 {
+        return Err(VmError::TypeError { expected: "HTTPRetry[url|request, opts?]".into(), actual: format!("{} args", args.len()) });
+    }
+    // Build a NetworkRequest
+    let mut request = match &args[0] {
+        Value::String(url) => super::core::NetworkRequest::new(url.clone(), HttpMethod::GET),
+        Value::LyObj(obj) => {
+            if let Some(req) = obj.downcast_ref::<super::core::NetworkRequest>() { req.clone() }
+            else { return Err(VmError::TypeError { expected: "NetworkRequest object".into(), actual: obj.type_name().into() }); }
+        }
+        v => return Err(VmError::TypeError { expected: "String URL or NetworkRequest".into(), actual: format!("{:?}", v) })
+    };
+
+    // Defaults
+    let mut retries: u32 = 3;
+    let mut timeout_ms: u64 = 30_000;
+    let mut retry_on: Vec<u16> = vec![500, 502, 503, 504];
+    // backoff
+    let mut backoff_typ = "exponential".to_string();
+    let mut backoff_base: u64 = 100;
+    let mut backoff_max: u64 = 2000;
+    let mut backoff_jitter: bool = true;
+
+    if args.len() == 2 {
+        let opts = opt::expect_object(&args[1], "HTTPRetry")?;
+        retries = opt::get_int(opts, "retries", retries as i64)? as u32;
+        timeout_ms = opt::get_int(opts, "timeoutMs", timeout_ms as i64)? as u64;
+        if let Some(Value::List(items)) = opts.get("retryOn") {
+            retry_on.clear();
+            for it in items {
+                if let Value::Integer(i) = it { if *i > 0 && *i <= 999 { retry_on.push(*i as u16); } }
+            }
+        }
+        if let Some(Value::Object(bm)) = opts.get("backoff") {
+            backoff_typ = opt::get_string(bm, "type", &backoff_typ)?;
+            backoff_base = opt::get_int(bm, "baseMs", backoff_base as i64)? as u64;
+            backoff_max = opt::get_int(bm, "maxMs", backoff_max as i64)? as u64;
+            backoff_jitter = opt::get_bool(bm, "jitter", backoff_jitter)?;
+        }
+    }
+
+    // Ensure request uses per-attempt timeout and no internal retries
+    request.timeout = std::time::Duration::from_millis(timeout_ms);
+    request.retries = 0;
+    let client = HttpClient::new();
+
+    // Helper to compute backoff delay
+    let compute_delay = |attempt: u32| -> u64 {
+        let base = match backoff_typ.as_str() {
+            "fixed" => backoff_base,
+            _ => {
+                let shift = attempt.min(16) as u32;
+                let factor = 1u64.checked_shl(shift).unwrap_or(0);
+                backoff_base.saturating_mul(factor)
+            }
+        };
+        let capped = base.min(backoff_max);
+        if backoff_jitter {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let jitter = rng.gen_range(0..=capped / 4 + 1);
+            capped.saturating_add(jitter)
+        } else { capped }
+    };
+
+    // Run attempts synchronously via shared runtime
+    let result = RUNTIME.lock().unwrap().block_on(async {
+        let mut last_err: Option<String> = None;
+        for attempt in 0..=retries {
+            match client.execute_async(&request).await {
+                Ok(resp) => {
+                    if retry_on.contains(&resp.status) && attempt < retries {
+                        let delay = compute_delay(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        continue;
+                    }
+                    return Ok(Value::LyObj(LyObj::new(Box::new(resp))));
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < retries {
+                        let delay = compute_delay(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Err(VmError::Runtime(format!("HTTPRetry failed: {}", last_err.unwrap_or_else(|| "unknown error".into()))))
+    });
+
+    result
+}
+
 /// URLRead - Fetch data from URLs
 /// Syntax: URLRead[url], URLRead[request], URLRead[{url1, url2, ...}]
 pub fn url_read(args: &[Value]) -> VmResult<Value> {
@@ -488,6 +596,8 @@ pub fn url_stream(args: &[Value]) -> VmResult<Value> {
     let stream = URLStream::new(url);
     Ok(Value::LyObj(LyObj::new(Box::new(stream))))
 }
+
+// (old simple HTTPRetry removed in favor of advanced policy version above)
 
 /// NetworkPing - Test network connectivity using real ICMP ping
 /// Syntax: NetworkPing[host], NetworkPing[host, count]

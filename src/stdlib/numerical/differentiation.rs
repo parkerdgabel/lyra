@@ -5,6 +5,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::result::derivative_result;
 use std::any::Any;
 
 /// Results from numerical differentiation
@@ -347,7 +348,7 @@ pub fn finite_difference(args: &[Value]) -> VmResult<Value> {
     };
     
     match result {
-        Ok(res) => Ok(Value::LyObj(LyObj::new(Box::new(res)))),
+        Ok(res) => Ok(derivative_result(res.value, res.error_estimate, res.step_size, &res.method, res.order)),
         Err(e) => Err(VmError::Runtime(format!("Finite difference failed: {}", e))),
     }
 }
@@ -387,7 +388,7 @@ pub fn richardson_extrapolation_fn(args: &[Value]) -> VmResult<Value> {
     };
     
     match richardson_extrapolation(f, x, h) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(res) => Ok(derivative_result(res.value, res.error_estimate, res.step_size, &res.method, res.order)),
         Err(e) => Err(VmError::Runtime(format!("Richardson extrapolation failed: {}", e))),
     }
 }

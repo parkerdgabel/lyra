@@ -6,12 +6,12 @@
 use crate::stdlib::ml::{MLResult, MLError};
 use crate::stdlib::ml::layers::Tensor;
 use crate::stdlib::ml::{NetChain, NetTrain};
-use crate::stdlib::ml::training::{TrainingConfig, TrainingResult};
+use crate::stdlib::ml::training::TrainingConfig;
 use crate::stdlib::ml::dataloader::{DataLoader, DataLoaderConfig};
 use crate::stdlib::ml::automl::{ProblemType, ValidationStrategy};
 use crate::stdlib::data::{ForeignDataset, ForeignTable};
-use crate::stdlib::autodiff::Dual;
 use crate::vm::Value;
+use crate::stdlib::common::assoc;
 use std::collections::HashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -26,7 +26,7 @@ impl DataSplitter {
         dataset: &ForeignDataset,
         test_size: f64,
         shuffle: bool,
-        stratify: bool,
+        _stratify: bool,
     ) -> MLResult<(ForeignDataset, ForeignDataset)> {
         if !(0.0..=1.0).contains(&test_size) {
             return Err(MLError::DataError {
@@ -76,7 +76,7 @@ impl DataSplitter {
         table: &ForeignTable,
         test_size: f64,
         shuffle: bool,
-        stratify: bool,
+        _stratify: bool,
     ) -> MLResult<(ForeignTable, ForeignTable)> {
         if !(0.0..=1.0).contains(&test_size) {
             return Err(MLError::DataError {
@@ -94,7 +94,7 @@ impl DataSplitter {
             indices.shuffle(&mut rng);
         }
         
-        let (test_indices, train_indices) = indices.split_at(test_samples);
+        let (_test_indices, _train_indices) = indices.split_at(test_samples);
         
         // Create subset tables (simplified implementation)
         // In practice, this would create actual table subsets
@@ -401,6 +401,24 @@ impl ClassificationReport {
             self.confusion_matrix.tn
         )
     }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        assoc(vec![
+            ("accuracy", Value::Real(self.accuracy)),
+            ("precision", Value::Real(self.precision)),
+            ("recall", Value::Real(self.recall)),
+            ("f1Score", Value::Real(self.f1_score)),
+            ("support", Value::Integer(self.support as i64)),
+            ("confusionMatrix", assoc(vec![
+                ("tp", Value::Integer(self.confusion_matrix.tp as i64)),
+                ("fp", Value::Integer(self.confusion_matrix.fp as i64)),
+                ("tn", Value::Integer(self.confusion_matrix.tn as i64)),
+                ("fn", Value::Integer(self.confusion_matrix.fn_val as i64)),
+            ])),
+            ("reportType", Value::String("Classification".to_string())),
+        ])
+    }
 }
 
 /// Regression evaluation report
@@ -429,6 +447,18 @@ impl RegressionReport {
             self.r_squared,
             self.sample_count
         )
+    }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        assoc(vec![
+            ("meanSquaredError", Value::Real(self.mean_squared_error)),
+            ("meanAbsoluteError", Value::Real(self.mean_absolute_error)),
+            ("rootMeanSquaredError", Value::Real(self.root_mean_squared_error)),
+            ("rSquared", Value::Real(self.r_squared)),
+            ("sampleCount", Value::Integer(self.sample_count as i64)),
+            ("reportType", Value::String("Regression".to_string())),
+        ])
     }
 }
 
@@ -465,7 +495,7 @@ impl ConfusionMatrix {
 pub struct CrossValidator {
     k_folds: usize,
     shuffle: bool,
-    stratify: bool,
+        stratify: bool,
     scoring_metric: ScoringMetric,
 }
 
@@ -512,7 +542,7 @@ impl CrossValidator {
             
             // Train on training fold
             let trainer = NetTrain::with_config(training_config.clone());
-            let training_result = trainer.train_dataset_auto(&mut model, train_dataset, target_extraction)?;
+            let _training_result = trainer.train_dataset_auto(&mut model, train_dataset, target_extraction)?;
             
             // Evaluate on validation fold
             let evaluation_result = self.evaluate_model_on_dataset(&model, val_dataset, target_extraction)?;
@@ -675,6 +705,20 @@ impl CrossValidationResult {
         
         report
     }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        let scores: Vec<Value> = self.fold_scores.iter().map(|&x| Value::Real(x)).collect();
+        let reports: Vec<Value> = self.fold_reports.iter().map(|r| r.to_value()).collect();
+        assoc(vec![
+            ("foldScores", Value::List(scores)),
+            ("meanScore", Value::Real(self.mean_score)),
+            ("stdDev", Value::Real(self.std_deviation)),
+            ("bestFoldIndex", Value::Integer(self.best_fold_index as i64)),
+            ("scoringMetric", Value::String(format!("{:?}", self.scoring_metric))),
+            ("foldReports", Value::List(reports)),
+        ])
+    }
 }
 
 /// Evaluation result (classification or regression)
@@ -706,6 +750,14 @@ impl EvaluationResult {
         match self {
             EvaluationResult::Classification(report) => report.to_string(),
             EvaluationResult::Regression(report) => report.to_string(),
+        }
+    }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        match self {
+            EvaluationResult::Classification(report) => report.to_value(),
+            EvaluationResult::Regression(report) => report.to_value(),
         }
     }
 }
@@ -871,6 +923,24 @@ impl ModelSelectionResult {
         }
         
         report
+    }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        let results: Vec<Value> = self.all_results.iter().map(|(name, score, eval)| {
+            assoc(vec![
+                ("modelName", Value::String(name.clone())),
+                ("score", Value::Real(*score)),
+                ("report", eval.to_value()),
+            ])
+        }).collect();
+        assoc(vec![
+            ("bestModelName", Value::String(self.best_model_name.clone())),
+            ("bestScore", Value::Real(self.best_score)),
+            ("results", Value::List(results)),
+            ("evaluationStrategy", Value::String(format!("{:?}", self.evaluation_strategy))),
+            ("scoringMetric", Value::String(format!("{:?}", self.scoring_metric))),
+        ])
     }
 }
 
@@ -1125,6 +1195,35 @@ impl HyperparameterOptimizationResult {
         
         report
     }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        let cfg = &self.best_config;
+        let best_config = assoc(vec![
+            ("epochs", Value::Integer(cfg.epochs as i64)),
+            ("batchSize", Value::Integer(cfg.batch_size as i64)),
+            ("learningRate", Value::Real(cfg.learning_rate)),
+            ("printProgress", Value::Boolean(cfg.print_progress)),
+        ]);
+        let evals: Vec<Value> = self.all_evaluations.iter().map(|(c, s)| {
+            assoc(vec![
+                ("config", assoc(vec![
+                    ("epochs", Value::Integer(c.epochs as i64)),
+                    ("batchSize", Value::Integer(c.batch_size as i64)),
+                    ("learningRate", Value::Real(c.learning_rate)),
+                    ("printProgress", Value::Boolean(c.print_progress)),
+                ])),
+                ("score", Value::Real(*s)),
+            ])
+        }).collect();
+        assoc(vec![
+            ("bestConfig", best_config),
+            ("bestScore", Value::Real(self.best_score)),
+            ("evaluations", Value::List(evals)),
+            ("searchStrategy", Value::String(format!("{:?}", self.search_strategy))),
+            ("totalEvaluations", Value::Integer(self.total_evaluations as i64)),
+        ])
+    }
 }
 
 /// Evaluation utilities for common ML tasks
@@ -1297,6 +1396,15 @@ impl LearningCurveResult {
         
         report
     }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        assoc(vec![
+            ("trainSizes", Value::List(self.train_sizes.iter().map(|&x| Value::Integer(x as i64)).collect())),
+            ("trainScores", Value::List(self.train_scores.iter().map(|&x| Value::Real(x)).collect())),
+            ("validationScores", Value::List(self.validation_scores.iter().map(|&x| Value::Real(x)).collect())),
+        ])
+    }
 }
 
 /// High-level evaluation API for easy access
@@ -1413,6 +1521,22 @@ impl ModelComparisonResult {
         }
         
         report
+    }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        let results: Vec<Value> = self.model_results.iter().map(|(name, res)| {
+            assoc(vec![
+                ("modelName", Value::String(name.clone())),
+                ("report", res.to_value()),
+            ])
+        }).collect();
+        assoc(vec![
+            ("results", Value::List(results)),
+            ("bestModelName", Value::String(self.best_model_name.clone())),
+            ("comparisonMetric", Value::String(format!("{:?}", self.comparison_metric))),
+            ("problemType", Value::String(format!("{:?}", self.problem_type))),
+        ])
     }
 }
 
@@ -1578,6 +1702,20 @@ impl BootstrapEvaluationResult {
             self.bootstrap_scores.iter().fold(f64::INFINITY, |acc, &x| acc.min(x)),
             self.bootstrap_scores.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x))
         )
+    }
+
+    /// Convert to standardized Association
+    pub fn to_value(&self) -> Value {
+        assoc(vec![
+            ("meanScore", Value::Real(self.mean_score)),
+            ("medianScore", Value::Real(self.median_score)),
+            ("confidenceInterval95", assoc(vec![
+                ("lower", Value::Real(self.confidence_interval_95.0)),
+                ("upper", Value::Real(self.confidence_interval_95.1)),
+            ])),
+            ("scores", Value::List(self.bootstrap_scores.iter().map(|&x| Value::Real(x)).collect())),
+            ("iterations", Value::Integer(self.n_bootstrap as i64)),
+        ])
     }
 }
 

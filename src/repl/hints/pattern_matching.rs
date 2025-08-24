@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Pattern matching analysis and validation for intelligent hints
 //!
 //! This module provides comprehensive pattern matching assistance including
@@ -280,7 +281,7 @@ impl PatternAnalyzer {
     }
     
     /// Generate rule construction hints
-    pub fn get_rule_construction_hints(&self, pattern: &str, context: &str) -> Vec<RuleConstructionHint> {
+    pub fn get_rule_construction_hints(&self, pattern: &str, _context: &str) -> Vec<RuleConstructionHint> {
         let mut hints = Vec::new();
         
         // Analyze the pattern to suggest appropriate rules

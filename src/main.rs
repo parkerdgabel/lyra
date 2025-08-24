@@ -601,25 +601,26 @@ fn colorize_output(output: &str) -> String {
 
 /// Format a value for display in the REPL
 fn format_value(value: &lyra::vm::Value) -> String {
+    use colored::Colorize;
     match value {
-        lyra::vm::Value::Integer(n) => n.to_string(),
+        lyra::vm::Value::Integer(n) => n.to_string().bright_cyan().to_string(),
         lyra::vm::Value::Real(f) => {
             // Format floats nicely - remove trailing zeros
             if f.fract() == 0.0 {
-                format!("{:.1}", f)
+                format!("{:.1}", f).bright_blue().to_string()
             } else {
-                f.to_string()
+                f.to_string().bright_blue().to_string()
             }
         }
-        lyra::vm::Value::String(s) => format!("\"{}\"", s),
-        lyra::vm::Value::Symbol(s) => s.clone(),
+        lyra::vm::Value::String(s) => format!("\"{}\"", s.bright_green()),
+        lyra::vm::Value::Symbol(s) => s.bright_yellow().to_string(),
         lyra::vm::Value::List(items) => {
             let formatted_items: Vec<String> = items.iter().map(format_value).collect();
             format!("{{{}}}", formatted_items.join(", "))
         }
         lyra::vm::Value::Function(name) => format!("Function[{}]", name),
-        lyra::vm::Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
-        lyra::vm::Value::Missing => "Missing[]".to_string(),
+        lyra::vm::Value::Boolean(b) => if *b { "True".bright_magenta().to_string() } else { "False".bright_magenta().to_string() },
+        lyra::vm::Value::Missing => "Missing[]".bright_red().to_string(),
         lyra::vm::Value::LyObj(obj) => {
             // Enhanced display for tensor foreign objects
             if obj.type_name() == "Tensor" {
@@ -646,8 +647,34 @@ fn format_value(value: &lyra::vm::Value) -> String {
         lyra::vm::Value::Rule { lhs, rhs } => {
             format!("{} -> {}", format_value(lhs), format_value(rhs))
         }
-        lyra::vm::Value::Object(_) => {
-            "Object[]".to_string()
+        lyra::vm::Value::Object(map) => {
+            // Pretty-print Association as <|k1 -> v1, k2 -> v2|> (multi-line if large/complex)
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let multiline = keys.len() > 3 || keys.iter().any(|k| matches!(map[*k], lyra::vm::Value::Object(_) | lyra::vm::Value::List(_)));
+            let color_key = |k: &str| k.bright_yellow().to_string();
+            let indent_block = |s: &str, spaces: usize| -> String {
+                let pad = " ".repeat(spaces);
+                s.lines().enumerate().map(|(i, line)| if i == 0 { line.to_string() } else { format!("{}{}", pad, line) }).collect::<Vec<_>>().join("\n")
+            };
+            if multiline {
+                let mut out = String::from("<|\n");
+                for (i, k) in keys.iter().enumerate() {
+                    let v = format_value(map.get(k.as_str()).unwrap());
+                    let v_ind = indent_block(&v, 2 + color_key(k).len() + 4);
+                    out.push_str(&format!("  {} -> {}", color_key(k), v_ind));
+                    if i < keys.len() - 1 { out.push(','); }
+                    out.push('\n');
+                }
+                out.push_str("|>");
+                out
+            } else {
+                let pairs: Vec<String> = keys
+                    .into_iter()
+                    .map(|k| format!("{} -> {}", color_key(k), format_value(map.get(k.as_str()).unwrap())))
+                    .collect();
+                format!("<|{}|>", pairs.join(", "))
+            }
         }
         lyra::vm::Value::PureFunction { .. } => {
             "PureFunction[...]".to_string()

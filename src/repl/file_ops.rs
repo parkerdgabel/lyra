@@ -1,3 +1,4 @@
+#![allow(unused_variables, unused_mut)]
 //! File Operations for REPL
 //! 
 //! Provides file loading, saving, and execution capabilities for the Lyra REPL.
@@ -290,26 +291,62 @@ impl FileOperations {
 
     /// Format a value for display (simplified version)
     fn format_value(value: &Value) -> String {
+        use colored::Colorize;
         match value {
-            Value::Integer(n) => n.to_string(),
+            Value::Integer(n) => n.to_string().bright_cyan().to_string(),
             Value::Real(f) => {
                 if f.fract() == 0.0 {
-                    format!("{:.1}", f)
+                    format!("{:.1}", f).bright_blue().to_string()
                 } else {
-                    f.to_string()
+                    f.to_string().bright_blue().to_string()
                 }
             }
-            Value::String(s) => format!("\"{}\"", s),
-            Value::Symbol(s) => s.clone(),
+            Value::Rational(n, d) => format!("Rational[{}, {}]", n, d),
+            Value::BigReal { value, precision } => format!("BigReal[{:.12}, p:{}]", value, precision),
+            Value::Complex { re, im } => format!("{} + I {}", Self::format_value(re), Self::format_value(im)),
+            Value::String(s) => format!("\"{}\"", s.bright_green()),
+            Value::Symbol(s) => s.bright_yellow().to_string(),
             Value::List(items) => {
                 let formatted_items: Vec<String> = items.iter().map(Self::format_value).collect();
                 format!("{{{}}}", formatted_items.join(", "))
             }
             Value::Function(name) => format!("Function[{}]", name),
-            Value::Boolean(b) => if *b { "True" } else { "False" }.to_string(),
-            Value::Missing => "Missing[]".to_string(),
-            Value::Object(obj) => format!("Object[{:?}]", obj),
+            Value::Boolean(b) => if *b { "True".bright_magenta().to_string() } else { "False".bright_magenta().to_string() },
+            Value::Missing => "Missing[]".bright_red().to_string(),
+            Value::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                let multiline = keys.len() > 3 || keys.iter().any(|k| matches!(map[*k], Value::Object(_) | Value::List(_)));
+                let color_key = |k: &str| k.bright_yellow().to_string();
+                let indent_block = |s: &str, spaces: usize| -> String {
+                    let pad = " ".repeat(spaces);
+                    s.lines().enumerate().map(|(i, line)| if i == 0 { line.to_string() } else { format!("{}{}", pad, line) }).collect::<Vec<_>>().join("\n")
+                };
+                if multiline {
+                    let mut out = String::from("<|\n");
+                    for (i, k) in keys.iter().enumerate() {
+                        let v = Self::format_value(map.get(k.as_str()).unwrap());
+                        let v_ind = indent_block(&v, 2 + color_key(k).len() + 4);
+                        out.push_str(&format!("  {} -> {}", color_key(k), v_ind));
+                        if i < keys.len() - 1 { out.push(','); }
+                        out.push('\n');
+                    }
+                    out.push_str("|>");
+                    out
+                } else {
+                    let pairs: Vec<String> = keys
+                        .into_iter()
+                        .map(|k| format!("{} -> {}", color_key(k), Self::format_value(map.get(k.as_str()).unwrap())))
+                        .collect();
+                    format!("<|{}|>", pairs.join(", "))
+                }
+            }
             Value::LyObj(obj) => format!("{}[...]", obj.type_name()),
+            Value::Expr { head, args } => {
+                let h = Self::format_value(head);
+                let a: Vec<String> = args.iter().map(Self::format_value).collect();
+                format!("{}[{}]", h, a.join(", "))
+            }
             Value::Quote(expr) => format!("Hold[{:?}]", expr),
             Value::Pattern(pattern) => format!("{}", pattern),
             Value::Rule { lhs, rhs } => format!("{} -> {}", Self::format_value(lhs), Self::format_value(rhs)),
@@ -410,8 +447,7 @@ impl FileOperations {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_serializable_value_conversion() {

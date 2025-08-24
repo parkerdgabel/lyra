@@ -450,9 +450,12 @@ pub fn embedding_cluster(args: &[Value]) -> VmResult<Value> {
     };
     
     let clusters = cluster_embeddings(&embeddings, k)?;
-    
-    let result: Vec<Value> = clusters.into_iter().map(|c| Value::Integer(c as i64)).collect();
-    Ok(Value::List(result))
+    let assignments: Vec<Value> = clusters.into_iter().map(|c| Value::Integer(c as i64)).collect();
+    let mut obj = std::collections::HashMap::new();
+    obj.insert("k".to_string(), Value::Integer(k as i64));
+    obj.insert("assignments".to_string(), Value::List(assignments));
+    obj.insert("method".to_string(), Value::String("kmeans".to_string()));
+    Ok(Value::Object(obj))
 }
 
 /// Batch embedding generation

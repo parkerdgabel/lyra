@@ -142,6 +142,26 @@ impl MatrixAnalysisResult {
     }
 }
 
+// Helper conversion utilities for Associations
+fn listf64_to_value(v: &Vec<f64>) -> Value {
+    Value::List(v.iter().map(|&x| Value::Real(x)).collect())
+}
+
+fn matrix_to_value(m: &Vec<Vec<f64>>) -> Value {
+    Value::List(
+        m.iter()
+            .map(|row| Value::List(row.iter().map(|&x| Value::Real(x)).collect()))
+            .collect(),
+    )
+}
+
+fn matrix_opt_to_value(m: Option<Vec<Vec<f64>>>) -> Value {
+    match m {
+        Some(mat) => matrix_to_value(&mat),
+        None => Value::Missing,
+    }
+}
+
 // =============================================================================
 // MATRIX DECOMPOSITION FUNCTIONS
 // =============================================================================
@@ -173,18 +193,17 @@ pub fn svd(args: &[Value]) -> VmResult<Value> {
         compute_svd_bidiagonal(&matrix)?
     };
 
-    let decomp = MatrixDecomposition::new(
-        u,
-        Some(vt),
-        None,
-        sigma.clone(),
-        "SVD".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} SVD with {} singular values", m, n, sigma.len()),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    // Return standardized Association
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&u));
+    mobj.insert("factor2".to_string(), matrix_opt_to_value(Some(vt)));
+    mobj.insert("factor3".to_string(), Value::Missing);
+    mobj.insert("values".to_string(), listf64_to_value(&sigma));
+    mobj.insert("decompType".to_string(), Value::String("SVD".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} SVD with {} singular values", m, n, sigma.len())));
+    Ok(Value::Object(mobj))
 }
 
 /// QR Decomposition
@@ -210,18 +229,16 @@ pub fn qr_decomposition(args: &[Value]) -> VmResult<Value> {
     // Compute QR decomposition using Householder reflections
     let (q, r, success, condition) = compute_qr_householder(&matrix)?;
 
-    let decomp = MatrixDecomposition::new(
-        q,
-        Some(r),
-        None,
-        vec![], // QR doesn't have singular values
-        "QR".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} QR decomposition", m, n),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&q));
+    mobj.insert("factor2".to_string(), matrix_opt_to_value(Some(r)));
+    mobj.insert("factor3".to_string(), Value::Missing);
+    mobj.insert("values".to_string(), Value::List(vec![]));
+    mobj.insert("decompType".to_string(), Value::String("QR".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} QR decomposition", m, n)));
+    Ok(Value::Object(mobj))
 }
 
 /// LU Decomposition with partial pivoting
@@ -247,18 +264,16 @@ pub fn lu_decomposition(args: &[Value]) -> VmResult<Value> {
     // Compute LU decomposition with partial pivoting
     let (l, u, p, success, condition) = compute_lu_partial_pivot(&matrix)?;
 
-    let decomp = MatrixDecomposition::new(
-        l,
-        Some(u),
-        Some(p), // Permutation matrix
-        vec![], // LU doesn't have singular values
-        "LU".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} LU decomposition with partial pivoting", n, n),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&l));
+    mobj.insert("factor2".to_string(), matrix_opt_to_value(Some(u)));
+    mobj.insert("factor3".to_string(), matrix_opt_to_value(Some(p)));
+    mobj.insert("values".to_string(), Value::List(vec![]));
+    mobj.insert("decompType".to_string(), Value::String("LU".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} LU decomposition with partial pivoting", n, n)));
+    Ok(Value::Object(mobj))
 }
 
 /// Cholesky Decomposition for positive definite matrices
@@ -292,18 +307,16 @@ pub fn cholesky_decomposition(args: &[Value]) -> VmResult<Value> {
     // Compute Cholesky decomposition
     let (l, success, condition) = compute_cholesky(&matrix)?;
 
-    let decomp = MatrixDecomposition::new(
-        l,
-        None,
-        None,
-        vec![], // Cholesky doesn't have singular values
-        "Cholesky".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} Cholesky decomposition", n, n),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&l));
+    mobj.insert("factor2".to_string(), Value::Missing);
+    mobj.insert("factor3".to_string(), Value::Missing);
+    mobj.insert("values".to_string(), Value::List(vec![]));
+    mobj.insert("decompType".to_string(), Value::String("Cholesky".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} Cholesky decomposition", n, n)));
+    Ok(Value::Object(mobj))
 }
 
 /// Eigenvalue Decomposition for square matrices
@@ -333,18 +346,16 @@ pub fn eigen_decomposition(args: &[Value]) -> VmResult<Value> {
         compute_eigen_general(&matrix)?
     };
 
-    let decomp = MatrixDecomposition::new(
-        eigenvectors,
-        None,
-        None,
-        eigenvalues.clone(),
-        "Eigen".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} eigendecomposition with {} eigenvalues", n, n, eigenvalues.len()),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&eigenvectors));
+    mobj.insert("factor2".to_string(), Value::Missing);
+    mobj.insert("factor3".to_string(), Value::Missing);
+    mobj.insert("values".to_string(), listf64_to_value(&eigenvalues));
+    mobj.insert("decompType".to_string(), Value::String("Eigen".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} eigendecomposition with {} eigenvalues", n, n, eigenvalues.len())));
+    Ok(Value::Object(mobj))
 }
 
 /// Schur Decomposition - reduces matrix to upper triangular form
@@ -370,18 +381,16 @@ pub fn schur_decomposition(args: &[Value]) -> VmResult<Value> {
     // Compute Schur decomposition using QR algorithm
     let (q, t, eigenvalues, success, condition) = compute_schur_qr(&matrix)?;
 
-    let decomp = MatrixDecomposition::new(
-        q,
-        Some(t),
-        None,
-        eigenvalues.clone(),
-        "Schur".to_string(),
-        success,
-        condition,
-        format!("Computed {}x{} Schur decomposition with {} eigenvalues", n, n, eigenvalues.len()),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(decomp))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("factor1".to_string(), matrix_to_value(&q));
+    mobj.insert("factor2".to_string(), matrix_opt_to_value(Some(t)));
+    mobj.insert("factor3".to_string(), Value::Missing);
+    mobj.insert("values".to_string(), listf64_to_value(&eigenvalues));
+    mobj.insert("decompType".to_string(), Value::String("Schur".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("info".to_string(), Value::String(format!("Computed {}x{} Schur decomposition with {} eigenvalues", n, n, eigenvalues.len())));
+    Ok(Value::Object(mobj))
 }
 
 // =============================================================================
@@ -414,17 +423,15 @@ pub fn linear_solve(args: &[Value]) -> VmResult<Value> {
     // Solve using LU decomposition with partial pivoting
     let (solution, residual_norm, success, condition, rank) = solve_linear_system(&a_matrix, &b_matrix)?;
 
-    let result = LinearSystemResult::new(
-        solution,
-        residual_norm,
-        "LU with partial pivoting".to_string(),
-        success,
-        condition,
-        rank,
-        format!("Solved {}x{} linear system with {} RHS vectors", m, n, b_cols),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("solution".to_string(), matrix_to_value(&solution));
+    mobj.insert("residual".to_string(), Value::Real(residual_norm));
+    mobj.insert("method".to_string(), Value::String("LU with partial pivoting".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("rank".to_string(), Value::Integer(rank as i64));
+    mobj.insert("info".to_string(), Value::String(format!("Solved {}x{} linear system with {} RHS vectors", m, n, b_cols)));
+    Ok(Value::Object(mobj))
 }
 
 /// Least squares solution for overdetermined systems
@@ -453,17 +460,15 @@ pub fn least_squares(args: &[Value]) -> VmResult<Value> {
     // Solve using QR decomposition (normal equations approach)
     let (solution, residual_norm, success, condition, rank) = solve_least_squares(&a_matrix, &b_matrix)?;
 
-    let result = LinearSystemResult::new(
-        solution,
-        residual_norm,
-        "QR decomposition least squares".to_string(),
-        success,
-        condition,
-        rank,
-        format!("Solved {}x{} least squares system with {} RHS vectors", m, n, b_cols),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let mut mobj = std::collections::HashMap::new();
+    mobj.insert("solution".to_string(), matrix_to_value(&solution));
+    mobj.insert("residual".to_string(), Value::Real(residual_norm));
+    mobj.insert("method".to_string(), Value::String("QR decomposition least squares".to_string()));
+    mobj.insert("success".to_string(), Value::Boolean(success));
+    mobj.insert("condition".to_string(), Value::Real(condition));
+    mobj.insert("rank".to_string(), Value::Integer(rank as i64));
+    mobj.insert("info".to_string(), Value::String(format!("Solved {}x{} least squares system with {} RHS vectors", m, n, b_cols)));
+    Ok(Value::Object(mobj))
 }
 
 /// Compute Moore-Penrose pseudoinverse
@@ -812,7 +817,7 @@ fn is_symmetric(matrix: &[Vec<f64>]) -> bool {
 
 /// Compute SVD using Jacobi algorithm (for smaller matrices)
 fn compute_svd_jacobi(matrix: &[Vec<f64>]) -> VmResult<(Vec<Vec<f64>>, Vec<f64>, Vec<Vec<f64>>, bool, f64)> {
-    let (m, n) = (matrix.len(), matrix[0].len());
+    let (m, _n) = (matrix.len(), matrix[0].len());
     
     // For now, implement a simplified SVD using eigen decomposition of A^T A
     let at_a = multiply_transpose_a(&matrix);
@@ -1010,7 +1015,7 @@ fn compute_matrix_rank(matrix: &[Vec<f64>]) -> VmResult<usize> {
 /// Compute condition number estimate
 fn compute_condition_number(matrix: &[Vec<f64>]) -> VmResult<f64> {
     // Use 1-norm condition number estimation
-    let norm_a = compute_matrix_1_norm(matrix);
+    let _norm_a = compute_matrix_1_norm(matrix);
     
     // For condition number, we'd need ||A^-1||, which is expensive
     // Use a simple heuristic based on QR decomposition

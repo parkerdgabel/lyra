@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 /// Pure Function Slot Substitution Implementation
 /// 
 /// This module implements the core algorithm for substituting slots in pure functions

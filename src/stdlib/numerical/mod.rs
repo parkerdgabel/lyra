@@ -62,3 +62,46 @@ pub use differentiation::*;
 pub use mesh::*;
 pub use fem::*;
 pub use solvers::*;
+
+use crate::vm::{Value, VmResult};
+use std::collections::HashMap;
+
+/// Registration helper to consolidate numerical-related stdlib functions
+pub fn register_numerical_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+
+    // Root finding and equation solving
+    f.insert("Bisection".to_string(), roots::bisection as fn(&[Value]) -> VmResult<Value>);
+    f.insert("NewtonRaphson".to_string(), roots::newton_raphson as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Secant".to_string(), roots::secant as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Brent".to_string(), roots::brent as fn(&[Value]) -> VmResult<Value>);
+    f.insert("FixedPoint".to_string(), roots::fixed_point as fn(&[Value]) -> VmResult<Value>);
+
+    // Numerical integration
+    f.insert("Trapezoidal".to_string(), integration::trapezoidal as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Simpson".to_string(), integration::simpson as fn(&[Value]) -> VmResult<Value>);
+    f.insert("Romberg".to_string(), integration::romberg as fn(&[Value]) -> VmResult<Value>);
+    f.insert("GaussQuadrature".to_string(), integration::gauss_quadrature_fn as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MonteCarlo".to_string(), integration::monte_carlo as fn(&[Value]) -> VmResult<Value>);
+
+    // Numerical differentiation
+    f.insert("FiniteDifference".to_string(), differentiation::finite_difference as fn(&[Value]) -> VmResult<Value>);
+    f.insert("RichardsonExtrapolation".to_string(), differentiation::richardson_extrapolation_fn as fn(&[Value]) -> VmResult<Value>);
+
+    // Mesh generation
+    f.insert("DelaunayMesh".to_string(), mesh::delaunay_mesh as fn(&[Value]) -> VmResult<Value>);
+    f.insert("VoronoiMesh".to_string(), mesh::voronoi_mesh as fn(&[Value]) -> VmResult<Value>);
+    f.insert("UniformMesh".to_string(), mesh::uniform_mesh as fn(&[Value]) -> VmResult<Value>);
+
+    // Finite element components
+    f.insert("StiffnessMatrix".to_string(), fem::stiffness_matrix as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MassMatrix".to_string(), fem::mass_matrix as fn(&[Value]) -> VmResult<Value>);
+    f.insert("LoadVector".to_string(), fem::load_vector as fn(&[Value]) -> VmResult<Value>);
+
+    // ODE/PDE solvers
+    f.insert("RungeKutta4".to_string(), solvers::runge_kutta4 as fn(&[Value]) -> VmResult<Value>);
+    f.insert("AdaptiveRK".to_string(), solvers::adaptive_rk as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CrankNicolson".to_string(), solvers::crank_nicolson as fn(&[Value]) -> VmResult<Value>);
+
+    f
+}

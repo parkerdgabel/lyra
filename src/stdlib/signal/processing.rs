@@ -9,48 +9,14 @@
 //! - Advanced processing (Hilbert transform, envelope detection)
 
 use crate::vm::{Value, VmError, VmResult};
+use crate::stdlib::common::result::{spectral_result, filter_result};
 use crate::foreign::{Foreign, ForeignError, LyObj};
-use super::fft::{SignalData, SpectralResult, compute_fft, compute_ifft};
+use super::fft::{SignalData, compute_fft, compute_ifft};
 use crate::stdlib::common::Complex;
 use std::f64::consts::PI;
 use rand::prelude::*;
 
-/// Filter result container - Foreign object
-#[derive(Debug, Clone)]
-pub struct FilterResult {
-    /// Filtered signal samples
-    pub filtered_signal: Vec<f64>,
-    /// Filter type used
-    pub filter_type: String,
-    /// Filter parameters
-    pub parameters: Vec<f64>,
-    /// Success flag
-    pub success: bool,
-    /// Status message
-    pub message: String,
-}
-
-impl FilterResult {
-    pub fn new(filtered_signal: Vec<f64>, filter_type: String, parameters: Vec<f64>) -> Self {
-        FilterResult {
-            filtered_signal,
-            filter_type,
-            parameters,
-            success: true,
-            message: "Filter applied successfully".to_string(),
-        }
-    }
-
-    pub fn error(filter_type: String, message: String) -> Self {
-        FilterResult {
-            filtered_signal: vec![],
-            filter_type,
-            parameters: vec![],
-            success: false,
-            message,
-        }
-    }
-}
+// Filter results now return Associations instead of Foreign objects
 
 // =============================================================================
 // CONVOLUTION AND CORRELATION FUNCTIONS
@@ -165,9 +131,7 @@ pub fn fir_filter(args: &[Value]) -> VmResult<Value> {
     }
     
     let filtered = apply_fir_filter(&signal, &coefficients);
-    let filter_result = FilterResult::new(filtered, "FIR".to_string(), coefficients);
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    Ok(filter_result("FIR", coefficients.into_iter().map(Value::Real).collect(), filtered, true, "Filter applied successfully"))
 }
 
 /// IIR Filter
@@ -201,9 +165,7 @@ pub fn iir_filter(args: &[Value]) -> VmResult<Value> {
     let filtered = apply_iir_filter(&signal, &b_coeffs, &a_coeffs);
     let mut params = b_coeffs.clone();
     params.extend(&a_coeffs);
-    let filter_result = FilterResult::new(filtered, "IIR".to_string(), params);
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    Ok(filter_result("IIR", params.into_iter().map(Value::Real).collect(), filtered, true, "Filter applied successfully"))
 }
 
 /// Low-pass filter
@@ -227,9 +189,7 @@ pub fn low_pass_filter(args: &[Value]) -> VmResult<Value> {
     }
 
     let filtered = apply_butterworth_lowpass(&signal_data.to_real(), cutoff_freq, signal_data.sample_rate);
-    let filter_result = FilterResult::new(filtered, "LowPass".to_string(), vec![cutoff_freq]);
-
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    Ok(filter_result("LowPass", vec![Value::Real(cutoff_freq)], filtered, true, "Filter applied successfully"))
 }
 
 /// High-pass filter
@@ -253,9 +213,7 @@ pub fn high_pass_filter(args: &[Value]) -> VmResult<Value> {
     }
 
     let filtered = apply_butterworth_highpass(&signal_data.to_real(), cutoff_freq, signal_data.sample_rate);
-    let filter_result = FilterResult::new(filtered, "HighPass".to_string(), vec![cutoff_freq]);
-
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    Ok(filter_result("HighPass", vec![Value::Real(cutoff_freq)], filtered, true, "Filter applied successfully"))
 }
 
 /// Band-pass filter
@@ -280,9 +238,13 @@ pub fn band_pass_filter(args: &[Value]) -> VmResult<Value> {
     }
 
     let filtered = apply_butterworth_bandpass(&signal_data.to_real(), low_freq, high_freq, signal_data.sample_rate);
-    let filter_result = FilterResult::new(filtered, "BandPass".to_string(), vec![low_freq, high_freq]);
-
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    let mut m = std::collections::HashMap::new();
+    m.insert("filterType".to_string(), Value::String("BandPass".to_string()));
+    m.insert("parameters".to_string(), Value::List(vec![Value::Real(low_freq), Value::Real(high_freq)]));
+    m.insert("success".to_string(), Value::Boolean(true));
+    m.insert("message".to_string(), Value::String("Filter applied successfully".to_string()));
+    m.insert("filteredSignal".to_string(), Value::List(filtered.into_iter().map(Value::Real).collect()));
+    Ok(Value::Object(m))
 }
 
 /// Median filter for noise removal
@@ -306,9 +268,13 @@ pub fn median_filter(args: &[Value]) -> VmResult<Value> {
     }
 
     let filtered = apply_median_filter(&signal, window_size);
-    let filter_result = FilterResult::new(filtered, "Median".to_string(), vec![window_size as f64]);
-
-    Ok(Value::LyObj(LyObj::new(Box::new(filter_result))))
+    let mut m = std::collections::HashMap::new();
+    m.insert("filterType".to_string(), Value::String("Median".to_string()));
+    m.insert("parameters".to_string(), Value::List(vec![Value::Real(window_size as f64)]));
+    m.insert("success".to_string(), Value::Boolean(true));
+    m.insert("message".to_string(), Value::String("Filter applied successfully".to_string()));
+    m.insert("filteredSignal".to_string(), Value::List(filtered.into_iter().map(Value::Real).collect()));
+    Ok(Value::Object(m))
 }
 
 // =============================================================================
@@ -466,15 +432,7 @@ pub fn periodogram(args: &[Value]) -> VmResult<Value> {
     
     // Create frequency vector (normalized frequencies)
     let frequencies: Vec<f64> = (0..=n/2).map(|k| k as f64 / n as f64).collect();
-    let spectral_result = SpectralResult::new(
-        frequencies,
-        psd.clone(),
-        vec![0.0; psd.len()], // phases not used for periodogram
-        1.0, // normalized sample rate
-        "Periodogram".to_string(),
-    );
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(spectral_result))))
+    Ok(spectral_result(frequencies, psd, vec![0.0; (n/2)+1], 1.0, "Periodogram"))
 }
 
 /// Welch's method for PSD estimation
@@ -581,15 +539,7 @@ pub fn welch_psd(args: &[Value]) -> VmResult<Value> {
         .map(|k| k as f64 / segment_length as f64)
         .collect();
     
-    let spectral_result = SpectralResult::new(
-        frequencies,
-        psd_accumulator.clone(),
-        vec![0.0; num_freqs], // phases not computed for PSD
-        1.0, // normalized sample rate
-        "WelchPSD".to_string(),
-    );
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(spectral_result))))
+    Ok(spectral_result(frequencies, psd_accumulator, vec![0.0; num_freqs], 1.0, "WelchPSD"))
 }
 
 /// Spectrogram - Short-Time Fourier Transform
@@ -1255,84 +1205,7 @@ fn extract_positive_integer(value: &Value) -> VmResult<i64> {
     Ok(n)
 }
 
-// =============================================================================
-// FOREIGN TRAIT IMPLEMENTATIONS
-// =============================================================================
-
-impl Foreign for FilterResult {
-    fn type_name(&self) -> &'static str {
-        "FilterResult"
-    }
-
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        match method {
-            "FilteredSignal" => {
-                if !args.is_empty() {
-                    return Err(ForeignError::InvalidArity {
-                        method: method.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                    });
-                }
-                let signal_values: Vec<Value> = self.filtered_signal.iter().map(|&s| Value::Real(s)).collect();
-                Ok(Value::List(signal_values))
-            }
-            "FilterType" => {
-                if !args.is_empty() {
-                    return Err(ForeignError::InvalidArity {
-                        method: method.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                    });
-                }
-                Ok(Value::String(self.filter_type.clone()))
-            }
-            "Parameters" => {
-                if !args.is_empty() {
-                    return Err(ForeignError::InvalidArity {
-                        method: method.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                    });
-                }
-                let param_values: Vec<Value> = self.parameters.iter().map(|&p| Value::Real(p)).collect();
-                Ok(Value::List(param_values))
-            }
-            "Success" => {
-                if !args.is_empty() {
-                    return Err(ForeignError::InvalidArity {
-                        method: method.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                    });
-                }
-                Ok(Value::Symbol(if self.success { "True" } else { "False" }.to_string()))
-            }
-            "Message" => {
-                if !args.is_empty() {
-                    return Err(ForeignError::InvalidArity {
-                        method: method.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                    });
-                }
-                Ok(Value::String(self.message.clone()))
-            }
-            _ => Err(ForeignError::UnknownMethod {
-                type_name: self.type_name().to_string(),
-                method: method.to_string(),
-            }),
-        }
-    }
-
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+// No Foreign impls needed for filter results; Associations are returned directly
 
 #[cfg(test)]
 mod tests {
@@ -1383,12 +1256,11 @@ mod tests {
         let result = median_filter(&[signal, window_size]).unwrap();
         
         match result {
-            Value::LyObj(lyobj) => {
-                assert_eq!(lyobj.type_name(), "FilterResult");
-                let success = lyobj.call_method("Success", &[]).unwrap();
-                assert_eq!(success, Value::Symbol("True".to_string()));
+            Value::Object(m) => {
+                assert_eq!(m.get("filterType"), Some(&Value::String("Median".to_string())));
+                assert_eq!(m.get("success"), Some(&Value::Boolean(true)));
             }
-            _ => panic!("Expected FilterResult"),
+            _ => panic!("Expected Association"),
         }
     }
 
@@ -1420,12 +1292,11 @@ mod tests {
         let result = periodogram(&[signal]).unwrap();
         
         match result {
-            Value::LyObj(lyobj) => {
-                assert_eq!(lyobj.type_name(), "SpectralResult");
-                let method = lyobj.call_method("Method", &[]).unwrap();
-                assert_eq!(method, Value::String("Periodogram".to_string()));
+            Value::Object(m) => {
+                assert_eq!(m.get("method"), Some(&Value::String("Periodogram".to_string())));
+                assert!(m.get("frequencies").is_some());
             }
-            _ => panic!("Expected SpectralResult"),
+            _ => panic!("Expected Association"),
         }
     }
 }

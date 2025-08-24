@@ -195,7 +195,7 @@ impl Foreign for NumericalIntegral {
         "NumericalIntegral"
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "GetValue" => Ok(Value::Real(self.value)),
             "GetError" => Ok(Value::Real(self.error_estimate)),
@@ -820,7 +820,7 @@ pub fn spline_fit(args: &[Value]) -> VmResult<Value> {
         }),
     };
 
-    let smoothing = if args.len() == 3 {
+    let _smoothing = if args.len() == 3 {
         match &args[2] {
             Value::Real(r) => *r,
             Value::Integer(i) => *i as f64,
@@ -1084,7 +1084,7 @@ pub fn adaptive_method(args: &[Value]) -> VmResult<Value> {
         }),
     };
 
-    let method = if args.len() == 4 {
+    let _method = if args.len() == 4 {
         match &args[3] {
             Value::String(s) => s.clone(),
             _ => "Richardson".to_string(),
@@ -1230,7 +1230,7 @@ where
     F: Fn(f64) -> f64,
 {
     let mut fa = f(a);
-    let mut fb = f(b);
+    let fb = f(b);
     
     if fa * fb > 0.0 {
         return a;
@@ -1246,7 +1246,6 @@ where
         
         if fa * fc < 0.0 {
             b = c;
-            fb = fc;
         } else {
             a = c;
             fa = fc;
@@ -1276,7 +1275,7 @@ where
     let mut fc = fa;
     let mut s = b;
     let mut fs;
-    let mut d = 0.0;
+    let mut _d = 0.0;
     
     for _ in 0..100 {
         if (fa - fc).abs() > tol && (fb - fc).abs() > tol {
@@ -1292,9 +1291,9 @@ where
         
         if cond1 || cond2 {
             s = (a + b) / 2.0;
-            d = s - b;
+            _d = s - b;
         } else {
-            d = s - b;
+            _d = s - b;
         }
         
         fs = f(s);

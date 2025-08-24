@@ -134,7 +134,7 @@ pub fn detect_harris_corners(image: &Image, params: Option<HarrisParams>) -> VmR
     
     for y in window_radius..height-window_radius {
         for x in window_radius..width-window_radius {
-            let idx = y * width + x;
+            let _idx = y * width + x;
             
             // Compute structure matrix components in window
             let mut ixx = 0.0;
@@ -380,7 +380,7 @@ fn build_gaussian_pyramid(image: &Image, num_octaves: usize, num_scales: usize, 
     
     for octave in 0..num_octaves {
         let mut octave_images: Vec<Image> = Vec::new();
-        let scale_factor = 2.0_f32.powi(octave as i32);
+        let _scale_factor = 2.0_f32.powi(octave as i32);
         
         // Create base image for this octave
         let current_image = if octave == 0 {
@@ -588,7 +588,7 @@ fn compute_dominant_orientation(keypoint: &KeyPoint, image: &Image) -> VmResult<
 }
 
 /// Compute SIFT descriptor for a keypoint
-fn compute_sift_descriptor(keypoint: &KeyPoint, pyramid: &[Vec<Image>], descriptor_size: usize) -> VmResult<Vec<f32>> {
+fn compute_sift_descriptor(keypoint: &KeyPoint, _pyramid: &[Vec<Image>], descriptor_size: usize) -> VmResult<Vec<f32>> {
     // Simplified SIFT descriptor - just return a random descriptor for now
     // In a real implementation, this would compute the 128-dimensional SIFT descriptor
     let mut descriptor = vec![0.0; descriptor_size];
@@ -728,7 +728,7 @@ fn compute_brief_descriptor(keypoint: &KeyPoint, image: &Image, patch_size: usiz
     let radius = patch_size / 2;
     
     // Pre-defined test pattern (simplified)
-    let bit_idx = 0;
+    let _bit_idx = 0;
     for i in 0..descriptor_length {
         let (p1x, p1y, p2x, p2y) = generate_test_points(i, radius);
         
@@ -998,9 +998,33 @@ pub fn harris_corners(args: &[Value]) -> VmResult<Value> {
             };
             
             let features = detect_harris_corners(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => {
                     obj.downcast_ref::<Image>()
@@ -1019,7 +1043,31 @@ pub fn harris_corners(args: &[Value]) -> VmResult<Value> {
             let params = HarrisParams::default();
             
             let features = detect_harris_corners(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::TypeError {
             expected: "1 or 2 arguments".to_string(),
@@ -1047,9 +1095,33 @@ pub fn sift_features(args: &[Value]) -> VmResult<Value> {
             };
             
             let features = detect_sift_features(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -1068,7 +1140,31 @@ pub fn sift_features(args: &[Value]) -> VmResult<Value> {
             let params = SiftParams::default();
             
             let features = detect_sift_features(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("SIFTFeatures expects 1 or 2 arguments".to_string())),
     }
@@ -1093,9 +1189,33 @@ pub fn orb_features(args: &[Value]) -> VmResult<Value> {
                 })?;
             
             let features = detect_orb_features(image, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
-        [img, opts] => {
+        [img, _opts] => {
             let image = match img {
                 Value::LyObj(obj) => obj,
                 _ => return Err(VmError::TypeError {
@@ -1114,7 +1234,31 @@ pub fn orb_features(args: &[Value]) -> VmResult<Value> {
             let params = OrbParams::default();
             
             let features = detect_orb_features(image, Some(params))?;
-            Ok(Value::LyObj(LyObj::new(Box::new(features))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("featureType".to_string(), Value::String(features.feature_type.clone()));
+            let kps: Vec<Value> = features.keypoints.iter().map(|kp| {
+                let mut km = std::collections::HashMap::new();
+                km.insert("x".to_string(), Value::Real(kp.x as f64));
+                km.insert("y".to_string(), Value::Real(kp.y as f64));
+                km.insert("size".to_string(), Value::Real(kp.size as f64));
+                km.insert("angle".to_string(), Value::Real(kp.angle as f64));
+                km.insert("response".to_string(), Value::Real(kp.response as f64));
+                km.insert("octave".to_string(), Value::Integer(kp.octave as i64));
+                km.insert("classId".to_string(), Value::Integer(kp.class_id as i64));
+                Value::Object(km)
+            }).collect();
+            m.insert("keypoints".to_string(), Value::List(kps));
+            m.insert(
+                "descriptors".to_string(),
+                Value::List(
+                    features
+                        .descriptors
+                        .iter()
+                        .map(|d| Value::List(d.iter().map(|&f| Value::Real(f as f64)).collect()))
+                        .collect(),
+                ),
+            );
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("ORBFeatures expects 1 or 2 arguments".to_string())),
     }
@@ -1153,9 +1297,21 @@ pub fn match_features(args: &[Value]) -> VmResult<Value> {
             })?;
             
             let matches = match_features_brute_force(features1, features2, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(matches))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("matchType".to_string(), Value::String(matches.match_type.clone()));
+            m.insert("count".to_string(), Value::Integer(matches.matches.len() as i64));
+            let items: Vec<Value> = matches.matches.iter().map(|fm| {
+                let mut mm = std::collections::HashMap::new();
+                mm.insert("queryIndex".to_string(), Value::Integer(fm.query_idx as i64));
+                mm.insert("trainIndex".to_string(), Value::Integer(fm.train_idx as i64));
+                mm.insert("distance".to_string(), Value::Real(fm.distance as f64));
+                mm.insert("confidence".to_string(), Value::Real(fm.confidence as f64));
+                Value::Object(mm)
+            }).collect();
+            m.insert("matches".to_string(), Value::List(items));
+            Ok(Value::Object(m))
         }
-        [feat1, feat2, opts] => {
+        [feat1, feat2, _opts] => {
             let features1 = match feat1 {
             Value::LyObj(obj) => obj,
             _ => return Err(VmError::TypeError {
@@ -1186,7 +1342,19 @@ pub fn match_features(args: &[Value]) -> VmResult<Value> {
             
             // Parse options (simplified)
             let matches = match_features_ratio_test(features1, features2, None)?;
-            Ok(Value::LyObj(LyObj::new(Box::new(matches))))
+            let mut m = std::collections::HashMap::new();
+            m.insert("matchType".to_string(), Value::String(matches.match_type.clone()));
+            m.insert("count".to_string(), Value::Integer(matches.matches.len() as i64));
+            let items: Vec<Value> = matches.matches.iter().map(|fm| {
+                let mut mm = std::collections::HashMap::new();
+                mm.insert("queryIndex".to_string(), Value::Integer(fm.query_idx as i64));
+                mm.insert("trainIndex".to_string(), Value::Integer(fm.train_idx as i64));
+                mm.insert("distance".to_string(), Value::Real(fm.distance as f64));
+                mm.insert("confidence".to_string(), Value::Real(fm.confidence as f64));
+                Value::Object(mm)
+            }).collect();
+            m.insert("matches".to_string(), Value::List(items));
+            Ok(Value::Object(m))
         }
         _ => Err(VmError::Runtime("MatchFeatures expects 2 or 3 arguments".to_string())),
     }

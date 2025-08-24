@@ -470,7 +470,7 @@ impl Foreign for NetworkGraph {
                     _ => return Err(ForeignError::InvalidArgument("Target must be string".to_string())),
                 };
                 
-                match self.shortest_path(source, target) {
+                match self.shortest_path(&source, &target) {
                     Some(path) => {
                         let path_values: Vec<Value> = path.into_iter().map(Value::String).collect();
                         Ok(Value::List(path_values))

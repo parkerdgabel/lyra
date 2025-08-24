@@ -1165,7 +1165,6 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use tempfile::TempDir;
-    use std::collections::HashSet;
 
     #[test]
     fn test_history_entry_serialization() {

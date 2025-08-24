@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables)]
 //! # Parallel Pattern Matching Engine
 //! 
 //! High-performance parallel pattern matching system that distributes pattern matching
@@ -23,12 +24,27 @@ fn value_to_expr(value: &Value) -> Expr {
     match value {
         Value::Integer(n) => Expr::Number(Number::Integer(*n)),
         Value::Real(f) => Expr::Number(Number::Real(*f)),
+        Value::Rational(n, d) => {
+            // Approximate to real for matching fallback
+            let r = (*n as f64) / (*d as f64);
+            Expr::Number(Number::Real(r))
+        }
+        Value::BigReal { value, .. } => Expr::Number(Number::Real(*value)),
+        Value::Complex { re, im } => {
+            // Represent complex as a list [re, im] for matching
+            Expr::List(vec![value_to_expr(re), value_to_expr(im)])
+        }
         Value::String(s) => Expr::String(s.clone()),
         Value::Symbol(name) => Expr::Symbol(Symbol { name: name.clone() }),
         Value::List(items) => {
             let expr_items: Vec<Expr> = items.iter().map(value_to_expr).collect();
             Expr::List(expr_items)
         },
+        Value::Expr { head, args } => {
+            let head_expr = value_to_expr(head);
+            let arg_exprs: Vec<Expr> = args.iter().map(value_to_expr).collect();
+            Expr::Function { head: Box::new(head_expr), args: arg_exprs }
+        }
         Value::Function(name) => {
             // For functions, represent as a symbol
             Expr::Symbol(Symbol { name: name.clone() })

@@ -1,3 +1,4 @@
+#![allow(ambiguous_glob_reexports)]
 //! Mathematics Module
 //!
 //! This module provides comprehensive mathematical capabilities including:

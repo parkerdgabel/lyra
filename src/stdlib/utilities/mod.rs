@@ -15,6 +15,9 @@ pub mod developer;
 pub mod documentation;
 pub mod result;
 pub mod security;
+pub mod serialization;
+pub mod config;
+pub mod cache;
 
 // Re-export all utility functions for convenience
 pub use system::*;
@@ -23,6 +26,9 @@ pub use developer::*;
 pub use documentation::*;
 pub use result::*;
 pub use security::*;
+pub use serialization::*;
+pub use config::*;
+pub use cache::*;
 
 use crate::vm::{Value, VmResult};
 

@@ -684,8 +684,22 @@ pub fn contour_detection(args: &[Value]) -> VmResult<Value> {
     };
 
     let contours = image.detect_contours(threshold);
-    let contour_objects: Vec<Value> = contours.into_iter()
-        .map(|contour| Value::LyObj(LyObj::new(Box::new(contour))))
+    // Return list of Associations for each contour
+    let contour_objects: Vec<Value> = contours
+        .into_iter()
+        .map(|contour| {
+            let points_list: Vec<Value> = contour
+                .points
+                .iter()
+                .map(|(x, y)| Value::List(vec![Value::Real(*x as f64), Value::Real(*y as f64)]))
+                .collect();
+            let mut m = std::collections::HashMap::new();
+            m.insert("points".to_string(), Value::List(points_list));
+            m.insert("area".to_string(), Value::Real(contour.area as f64));
+            m.insert("perimeter".to_string(), Value::Real(contour.perimeter as f64));
+            m.insert("isClosed".to_string(), Value::Boolean(contour.is_closed));
+            Value::Object(m)
+        })
         .collect();
 
     Ok(Value::List(contour_objects))
@@ -713,8 +727,18 @@ pub fn feature_detection(args: &[Value]) -> VmResult<Value> {
     };
 
     let features = image.detect_features(threshold);
-    let feature_objects: Vec<Value> = features.into_iter()
-        .map(|feature| Value::LyObj(LyObj::new(Box::new(feature))))
+    // Return list of Associations for each feature point
+    let feature_objects: Vec<Value> = features
+        .into_iter()
+        .map(|feature| {
+            let mut m = std::collections::HashMap::new();
+            m.insert("x".to_string(), Value::Real(feature.x as f64));
+            m.insert("y".to_string(), Value::Real(feature.y as f64));
+            m.insert("confidence".to_string(), Value::Real(feature.confidence as f64));
+            m.insert("scale".to_string(), Value::Real(feature.scale as f64));
+            m.insert("angle".to_string(), Value::Real(feature.angle as f64));
+            Value::Object(m)
+        })
         .collect();
 
     Ok(Value::List(feature_objects))
@@ -758,7 +782,35 @@ pub fn image_segmentation(args: &[Value]) -> VmResult<Value> {
     };
 
     let result = image.segment_image(method);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    // Return Association with labels (Image), numRegions, regionStats list of Associations
+    let mut m = std::collections::HashMap::new();
+    m.insert("labels".to_string(), Value::LyObj(LyObj::new(Box::new(result.labels))));
+    m.insert("numRegions".to_string(), Value::Integer(result.num_regions as i64));
+    let stats_list: Vec<Value> = result
+        .region_stats
+        .iter()
+        .map(|stat| {
+            let mut sm = std::collections::HashMap::new();
+            sm.insert("label".to_string(), Value::Integer(stat.label as i64));
+            sm.insert("area".to_string(), Value::Real(stat.area as f64));
+            sm.insert(
+                "centroid".to_string(),
+                Value::List(vec![Value::Real(stat.centroid.0 as f64), Value::Real(stat.centroid.1 as f64)]),
+            );
+            sm.insert(
+                "boundingBox".to_string(),
+                Value::List(vec![
+                    Value::Real(stat.bounding_box.0 as f64),
+                    Value::Real(stat.bounding_box.1 as f64),
+                    Value::Real(stat.bounding_box.2 as f64),
+                    Value::Real(stat.bounding_box.3 as f64),
+                ]),
+            );
+            Value::Object(sm)
+        })
+        .collect();
+    m.insert("regionStats".to_string(), Value::List(stats_list));
+    Ok(Value::Object(m))
 }
 
 // ===============================

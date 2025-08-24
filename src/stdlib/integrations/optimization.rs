@@ -1083,15 +1083,51 @@ pub fn cost_analysis(args: &[Value]) -> VmResult<Value> {
         },
     ];
 
-    let cost_analysis = CostAnalysis {
-        pricing_model,
-        allocation_tags,
-        cost_data: Arc::new(Mutex::new(cost_data)),
-        total_cost: 1701.25,
-        cost_trends,
-    };
+    // Build standardized Association result
+    let mut cost_data_assoc = HashMap::new();
+    for (svc, breakdown) in &cost_data {
+        let mut b = HashMap::new();
+        b.insert("service".to_string(), Value::String(breakdown.service_name.clone()));
+        b.insert("currentCost".to_string(), Value::Real(breakdown.current_cost));
+        b.insert("projectedCost".to_string(), Value::Real(breakdown.projected_cost));
+        let mut cat = HashMap::new();
+        for (k, v) in &breakdown.cost_by_category {
+            cat.insert(k.clone(), Value::Real(*v));
+        }
+        b.insert("costByCategory".to_string(), Value::Object(cat));
+        b.insert("optimizationPotential".to_string(), Value::Real(breakdown.optimization_potential));
+        b.insert(
+            "recommendations".to_string(),
+            Value::List(breakdown.recommendations.iter().cloned().map(Value::String).collect()),
+        );
+        cost_data_assoc.insert(svc.clone(), Value::Object(b));
+    }
 
-    Ok(Value::LyObj(LyObj::new(Box::new(cost_analysis))))
+    let trends_list: Vec<Value> = cost_trends
+        .iter()
+        .map(|t| {
+            let mut sc = HashMap::new();
+            for (k, v) in &t.service_costs {
+                sc.insert(k.clone(), Value::Real(*v));
+            }
+            let mut m = HashMap::new();
+            m.insert("timestamp".to_string(), Value::Integer(t.timestamp));
+            m.insert("totalCost".to_string(), Value::Real(t.total_cost));
+            m.insert("serviceCosts".to_string(), Value::Object(sc));
+            Value::Object(m)
+        })
+        .collect();
+
+    let mut alloc_assoc = HashMap::new();
+    for (k, v) in allocation_tags.iter() { alloc_assoc.insert(k.clone(), Value::String(v.clone())); }
+
+    let mut result = HashMap::new();
+    result.insert("pricingModel".to_string(), Value::String(pricing_model));
+    result.insert("allocationTags".to_string(), Value::Object(alloc_assoc));
+    result.insert("totalCost".to_string(), Value::Real(1701.25));
+    result.insert("costData".to_string(), Value::Object(cost_data_assoc));
+    result.insert("costTrends".to_string(), Value::List(trends_list));
+    Ok(Value::Object(result))
 }
 
 /// RightSizing[services, utilization_data, recommendations] - Resource right-sizing
@@ -1171,14 +1207,25 @@ pub fn right_sizing(args: &[Value]) -> VmResult<Value> {
 
     let potential_savings = 251.00; // Sum of all cost savings
 
-    let right_sizing = RightSizing {
-        services,
-        target_utilization,
-        recommendations: Arc::new(Mutex::new(recommendations)),
-        potential_savings,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(right_sizing))))
+    // Build standardized Association result
+    let mut recs_assoc = HashMap::new();
+    for (svc, rec) in &recommendations {
+        let mut m = HashMap::new();
+        m.insert("service".to_string(), Value::String(rec.service_name.clone()));
+        m.insert("currentSize".to_string(), Value::String(rec.current_size.clone()));
+        m.insert("recommendedSize".to_string(), Value::String(rec.recommended_size.clone()));
+        m.insert("costSaving".to_string(), Value::Real(rec.cost_saving));
+        m.insert("performanceImpact".to_string(), Value::String(rec.performance_impact.clone()));
+        m.insert("confidenceLevel".to_string(), Value::Real(rec.confidence_level));
+        m.insert("implementationEffort".to_string(), Value::String(rec.implementation_effort.clone()));
+        recs_assoc.insert(svc.clone(), Value::Object(m));
+    }
+    let mut result = HashMap::new();
+    result.insert("services".to_string(), Value::List(services.iter().cloned().map(Value::String).collect()));
+    result.insert("targetUtilization".to_string(), Value::Real(target_utilization));
+    result.insert("recommendations".to_string(), Value::Object(recs_assoc));
+    result.insert("potentialSavings".to_string(), Value::Real(potential_savings));
+    Ok(Value::Object(result))
 }
 
 /// CostAlerts[thresholds, recipients, actions] - Cost monitoring and alerts
@@ -1244,15 +1291,16 @@ pub fn cost_alerts(args: &[Value]) -> VmResult<Value> {
         }),
     };
 
-    let cost_alerts = CostAlerts {
-        thresholds,
-        recipients,
-        actions,
-        active_alerts: Arc::new(Mutex::new(vec![])),
-        alert_history: Arc::new(Mutex::new(vec![])),
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(cost_alerts))))
+    // Build standardized Association result
+    let mut thresholds_obj = HashMap::new();
+    for (k, v) in thresholds.iter() { thresholds_obj.insert(k.clone(), Value::Real(*v)); }
+    let mut result = HashMap::new();
+    result.insert("thresholds".to_string(), Value::Object(thresholds_obj));
+    result.insert("recipients".to_string(), Value::List(recipients.iter().cloned().map(Value::String).collect()));
+    result.insert("actions".to_string(), Value::List(actions.iter().cloned().map(Value::String).collect()));
+    result.insert("activeAlerts".to_string(), Value::List(vec![]));
+    result.insert("alertHistory".to_string(), Value::List(vec![]));
+    Ok(Value::Object(result))
 }
 
 /// BudgetManagement[budgets, allocations, tracking] - Budget management and forecasting
@@ -1363,12 +1411,41 @@ pub fn budget_management(args: &[Value]) -> VmResult<Value> {
         },
     ];
 
-    let budget_mgmt = BudgetManagement {
-        budgets,
-        allocations,
-        tracking: Arc::new(Mutex::new(tracking_data)),
-        forecasts,
-    };
-
-    Ok(Value::LyObj(LyObj::new(Box::new(budget_mgmt))))
+    // Build standardized Association result
+    let mut budgets_obj = HashMap::new();
+    for (k, v) in budgets.iter() { budgets_obj.insert(k.clone(), Value::Real(*v)); }
+    let mut allocations_obj = HashMap::new();
+    for (k, v) in allocations.iter() { allocations_obj.insert(k.clone(), Value::String(v.clone())); }
+    let mut tracking_obj = HashMap::new();
+    for (k, t) in tracking_data.iter() {
+        let mut tm = HashMap::new();
+        tm.insert("budgetName".to_string(), Value::String(t.budget_name.clone()));
+        tm.insert("allocatedAmount".to_string(), Value::Real(t.allocated_amount));
+        tm.insert("spentAmount".to_string(), Value::Real(t.spent_amount));
+        tm.insert("remainingAmount".to_string(), Value::Real(t.remaining_amount));
+        tm.insert("utilizationPercentage".to_string(), Value::Real(t.utilization_percentage));
+        tm.insert("variance".to_string(), Value::Real(t.variance));
+        tm.insert("forecastAccuracy".to_string(), Value::Real(t.forecast_accuracy));
+        tracking_obj.insert(k.clone(), Value::Object(tm));
+    }
+    let forecasts_list: Vec<Value> = forecasts
+        .iter()
+        .map(|f| {
+            let mut m = HashMap::new();
+            m.insert("period".to_string(), Value::String(f.period.clone()));
+            m.insert("predictedSpend".to_string(), Value::Real(f.predicted_spend));
+            let mut ci = HashMap::new();
+            ci.insert("lower".to_string(), Value::Real(f.confidence_interval.0));
+            ci.insert("upper".to_string(), Value::Real(f.confidence_interval.1));
+            m.insert("confidenceInterval".to_string(), Value::Object(ci));
+            m.insert("factors".to_string(), Value::List(f.factors.iter().cloned().map(Value::String).collect()));
+            Value::Object(m)
+        })
+        .collect();
+    let mut result = HashMap::new();
+    result.insert("budgets".to_string(), Value::Object(budgets_obj));
+    result.insert("allocations".to_string(), Value::Object(allocations_obj));
+    result.insert("tracking".to_string(), Value::Object(tracking_obj));
+    result.insert("forecasts".to_string(), Value::List(forecasts_list));
+    Ok(Value::Object(result))
 }

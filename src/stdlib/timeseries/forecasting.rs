@@ -5,6 +5,7 @@
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::vm::{Value, VmResult, VmError};
+use crate::stdlib::common::assoc;
 use super::core::{TimeSeries, extract_timeseries};
 
 use std::any::Any;
@@ -98,7 +99,7 @@ impl ExponentialSmoothingModel {
 
         // Apply exponential smoothing
         for t in 1..n {
-            let previous_fitted = fitted_values[t - 1];
+            let _previous_fitted = fitted_values[t - 1];
             let actual = data[t];
 
             // Update level
@@ -597,7 +598,19 @@ pub fn moving_average(args: &[Value]) -> VmResult<Value> {
     };
 
     match MovingAverageResult::simple(series, window) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(result) => {
+            let values: Vec<Value> = result
+                .ma_values
+                .iter()
+                .map(|&v| if v.is_nan() { Value::String("Missing".to_string()) } else { Value::Real(v) })
+                .collect();
+            Ok(assoc(vec![
+                ("values", Value::List(values)),
+                ("window", Value::Integer(result.window as i64)),
+                ("type", Value::String("Simple".to_string())),
+                ("originalLength", Value::Integer(result.original_series.len() as i64)),
+            ]))
+        }
         Err(e) => Err(VmError::TypeError {
             expected: "valid moving average calculation".to_string(),
             actual: e,
@@ -627,7 +640,19 @@ pub fn exponential_moving_average(args: &[Value]) -> VmResult<Value> {
     };
 
     match MovingAverageResult::exponential(series, alpha) {
-        Ok(result) => Ok(Value::LyObj(LyObj::new(Box::new(result)))),
+        Ok(result) => {
+            let values: Vec<Value> = result
+                .ma_values
+                .iter()
+                .map(|&v| if v.is_nan() { Value::String("Missing".to_string()) } else { Value::Real(v) })
+                .collect();
+            Ok(assoc(vec![
+                ("values", Value::List(values)),
+                ("alpha", Value::Real(alpha)),
+                ("type", Value::String("Exponential".to_string())),
+                ("originalLength", Value::Integer(result.original_series.len() as i64)),
+            ]))
+        }
         Err(e) => Err(VmError::TypeError {
             expected: "valid exponential moving average calculation".to_string(),
             actual: e,
@@ -765,14 +790,14 @@ mod tests {
         // Test MovingAverage function
         let window = Value::Integer(3);
         let result = moving_average(&[ts_result, window]).unwrap();
-        
         match result {
-            Value::LyObj(obj) => {
-                let ma_result = obj.downcast_ref::<MovingAverageResult>().unwrap();
-                assert_eq!(ma_result.window, 3);
-                assert_eq!(ma_result.ma_type, MovingAverageType::Simple);
+            Value::Object(map) => {
+                assert_eq!(map.get("window").and_then(|v| v.as_real()).unwrap() as i64, 3);
+                assert_eq!(map.get("type").and_then(|v| v.as_string()).unwrap(), "Simple");
+                let vals_len = match map.get("values").unwrap() { Value::List(vs) => vs.len(), _ => 0 };
+                assert!(vals_len > 0);
             }
-            _ => panic!("Expected MovingAverageResult object"),
+            other => panic!("Expected association, got {:?}", other),
         }
     }
 }

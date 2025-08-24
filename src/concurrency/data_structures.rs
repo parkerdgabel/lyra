@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables)]
 //! # Thread-Safe Data Structures
 //! 
 //! Lock-free and thread-safe data structures optimized for symbolic computation.
@@ -295,7 +296,7 @@ impl ConcurrentSymbolTable {
     pub fn set_symbol(&self, name: &str, value: Value) {
         let name_owned = name.to_string();
         
-        if let Some(mut symbol) = self.symbols.get_mut(&name_owned) {
+        if let Some(symbol) = self.symbols.get_mut(&name_owned) {
             symbol.store(value);
             self.stats.updates.fetch_add(1, Ordering::Relaxed);
         } else {

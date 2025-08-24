@@ -22,9 +22,10 @@ pub use edges::*;
 pub use transforms::*;
 
 use crate::foreign::{Foreign, ForeignError, LyObj};
-use crate::vm::Value;
+use crate::vm::{Value, VmResult};
 use std::any::Any;
 use std::fmt;
+use std::collections::HashMap;
 
 /// Keypoint structure for feature detection
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +104,7 @@ impl Foreign for FeatureSet {
         "FeatureSet"
     }
 
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "Length" => Ok(Value::Integer(self.len() as i64)),
             "FeatureType" => Ok(Value::String(self.feature_type.clone())),
@@ -218,6 +219,34 @@ impl fmt::Display for EdgeMap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "EdgeMap[{}x{} {}]", self.width, self.height, self.algorithm)
     }
+}
+
+/// Registration helper to consolidate vision-related stdlib functions
+pub fn register_vision_functions() -> HashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = HashMap::new();
+
+    // Feature Detection
+    f.insert("HarrisCorners".to_string(), features::harris_corners as fn(&[Value]) -> VmResult<Value>);
+    f.insert("SIFTFeatures".to_string(), features::sift_features as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ORBFeatures".to_string(), features::orb_features as fn(&[Value]) -> VmResult<Value>);
+    f.insert("MatchFeatures".to_string(), features::match_features as fn(&[Value]) -> VmResult<Value>);
+
+    // Edge Detection
+    f.insert("CannyEdges".to_string(), edges::canny_edges as fn(&[Value]) -> VmResult<Value>);
+    f.insert("SobelEdges".to_string(), edges::sobel_edges as fn(&[Value]) -> VmResult<Value>);
+    f.insert("LaplacianEdges".to_string(), edges::laplacian_edges as fn(&[Value]) -> VmResult<Value>);
+    f.insert("PrewittEdges".to_string(), edges::prewitt_edges as fn(&[Value]) -> VmResult<Value>);
+    f.insert("RobertsEdges".to_string(), edges::roberts_edges as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ScharrEdges".to_string(), edges::scharr_edges as fn(&[Value]) -> VmResult<Value>);
+
+    // Geometric Transformations
+    f.insert("ApplyAffineTransform".to_string(), transforms::affine_transform as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ApplyPerspectiveTransform".to_string(), transforms::perspective_transform as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CreateTransform".to_string(), transforms::create_transform as fn(&[Value]) -> VmResult<Value>);
+    f.insert("EstimateHomography".to_string(), transforms::estimate_homography as fn(&[Value]) -> VmResult<Value>);
+    f.insert("TransformKeypoints".to_string(), transforms::transform_keypoints_func as fn(&[Value]) -> VmResult<Value>);
+
+    f
 }
 
 /// Transformation matrix for geometric operations

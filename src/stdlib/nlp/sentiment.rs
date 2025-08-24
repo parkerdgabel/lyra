@@ -4,51 +4,12 @@
 //! including emotion detection and advanced sentiment modeling.
 
 use crate::vm::{Value, VmResult, VmError};
-use crate::foreign::{LyObj, Foreign, ForeignError};
+use crate::stdlib::common::assoc;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::any::Any;
+ 
 
-/// Rule-based sentiment result with detailed rule explanations
-#[derive(Debug, Clone)]
-pub struct RuleBasedSentimentResult {
-    pub polarity: f64,
-    pub confidence: f64,
-    pub label: String,
-    pub triggered_rules: Vec<String>,
-    pub word_scores: HashMap<String, f64>,
-    pub sentence_scores: Vec<f64>,
-}
-
-impl Foreign for RuleBasedSentimentResult {
-    fn type_name(&self) -> &'static str {
-        "RuleBasedSentimentResult"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for RuleBasedSentimentResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RuleBasedSentimentResult[label: {}, polarity: {:.3}, rules: {}]", 
-               self.label, self.polarity, self.triggered_rules.len())
-    }
-}
-
-/// Statistical sentiment model Foreign object
+/// Statistical sentiment model (internal helper only)
 #[derive(Debug, Clone)]
 pub struct StatisticalSentimentModel {
     pub word_probabilities: HashMap<String, HashMap<String, f64>>, // word -> {class -> probability}
@@ -56,35 +17,6 @@ pub struct StatisticalSentimentModel {
     pub vocabulary: HashSet<String>,
     pub classes: Vec<String>,
 }
-
-impl Foreign for StatisticalSentimentModel {
-    fn type_name(&self) -> &'static str {
-        "StatisticalSentimentModel"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for StatisticalSentimentModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StatisticalSentimentModel[vocab: {}, classes: {}]", 
-               self.vocabulary.len(), self.classes.len())
-    }
-}
-
 impl StatisticalSentimentModel {
     pub fn new() -> Self {
         StatisticalSentimentModel {
@@ -184,42 +116,6 @@ impl StatisticalSentimentModel {
     }
 }
 
-/// Emotion detection result Foreign object
-#[derive(Debug, Clone)]
-pub struct EmotionResult {
-    pub primary_emotion: String,
-    pub confidence: f64,
-    pub emotion_scores: HashMap<String, f64>,
-}
-
-impl Foreign for EmotionResult {
-    fn type_name(&self) -> &'static str {
-        "EmotionResult"
-    }
-    
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
-        Err(ForeignError::UnknownMethod { 
-            type_name: self.type_name().to_string(), 
-            method: method.to_string() 
-        })
-    }
-    
-    fn clone_boxed(&self) -> Box<dyn Foreign> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl fmt::Display for EmotionResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "EmotionResult[primary: {}, confidence: {:.3}]", 
-               self.primary_emotion, self.confidence)
-    }
-}
-
 // Helper functions
 
 fn simple_tokenize(text: &str) -> Vec<String> {
@@ -237,7 +133,7 @@ fn normalize_word(word: &str) -> String {
 }
 
 // Advanced rule-based sentiment analysis
-fn advanced_rule_based_sentiment(text: &str) -> RuleBasedSentimentResult {
+fn advanced_rule_based_sentiment(text: &str) -> (f64, f64, String, Vec<String>, HashMap<String, f64>, Vec<f64>) {
     let mut triggered_rules = Vec::new();
     let mut word_scores = HashMap::new();
     let mut sentence_scores = Vec::new();
@@ -358,18 +254,11 @@ fn advanced_rule_based_sentiment(text: &str) -> RuleBasedSentimentResult {
         "neutral"
     };
     
-    RuleBasedSentimentResult {
-        polarity,
-        confidence,
-        label: label.to_string(),
-        triggered_rules,
-        word_scores,
-        sentence_scores,
-    }
+    (polarity, confidence, label.to_string(), triggered_rules, word_scores, sentence_scores)
 }
 
 // Emotion detection using keyword-based approach
-fn detect_emotions(text: &str) -> EmotionResult {
+fn detect_emotions(text: &str) -> (String, f64, HashMap<String, f64>) {
     let emotion_lexicons: HashMap<&str, Vec<&str>> = [
         ("joy", vec!["happy", "joy", "delighted", "cheerful", "elated", "excited", "thrilled", "glad", "pleased"]),
         ("anger", vec!["angry", "furious", "rage", "mad", "irritated", "annoyed", "frustrated", "outraged"]),
@@ -417,11 +306,7 @@ fn detect_emotions(text: &str) -> EmotionResult {
     
     let confidence = emotion_scores.get(&primary_emotion).copied().unwrap_or(0.0);
     
-    EmotionResult {
-        primary_emotion,
-        confidence,
-        emotion_scores,
-    }
+    (primary_emotion, confidence, emotion_scores)
 }
 
 // Exported function implementations
@@ -438,8 +323,19 @@ pub fn rule_based_sentiment(args: &[Value]) -> VmResult<Value> {
         }),
     };
     
-    let result = advanced_rule_based_sentiment(&text);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let (polarity, confidence, label, triggered_rules, word_scores, sentence_scores) = advanced_rule_based_sentiment(&text);
+    let rules_list = Value::List(triggered_rules.into_iter().map(Value::String).collect());
+    let mut ws_obj: HashMap<String, Value> = HashMap::new();
+    for (k,v) in word_scores { ws_obj.insert(k, Value::Real(v)); }
+    let sent_scores = Value::List(sentence_scores.into_iter().map(Value::Real).collect());
+    Ok(assoc(vec![
+        ("label", Value::String(label)),
+        ("polarity", Value::Real(polarity)),
+        ("confidence", Value::Real(confidence)),
+        ("triggeredRules", rules_list),
+        ("wordScores", Value::Object(ws_obj)),
+        ("sentenceScores", sent_scores),
+    ]))
 }
 
 /// Statistical sentiment analysis using Naive Bayes
@@ -491,29 +387,18 @@ pub fn statistical_sentiment(args: &[Value]) -> VmResult<Value> {
     // Predict sentiment for input text
     let predictions = model.predict(&text);
     
-    // Create result similar to rule-based sentiment
+    // Create result similar structure
     let (predicted_class, confidence) = predictions.iter()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .map(|(class, conf)| (class.clone(), *conf))
         .unwrap_or_else(|| ("neutral".to_string(), 0.0));
-    
-    // Convert to polarity scale
-    let polarity = match predicted_class.as_str() {
-        "positive" => confidence,
-        "negative" => -confidence,
-        _ => 0.0,
-    };
-    
-    let result = RuleBasedSentimentResult {
-        polarity,
-        confidence,
-        label: predicted_class,
-        triggered_rules: vec!["Statistical model prediction".to_string()],
-        word_scores: HashMap::new(),
-        sentence_scores: vec![polarity],
-    };
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let polarity = if predicted_class == "positive" { confidence } else if predicted_class == "negative" { -confidence } else { 0.0 };
+    Ok(assoc(vec![
+        ("label", Value::String(predicted_class)),
+        ("polarity", Value::Real(polarity)),
+        ("confidence", Value::Real(confidence)),
+        ("probabilities", Value::Object(predictions.into_iter().map(|(k,v)| (k, Value::Real(v))).collect())),
+    ]))
 }
 
 /// Emotion detection in text
@@ -528,6 +413,12 @@ pub fn emotion_detection(args: &[Value]) -> VmResult<Value> {
         }),
     };
     
-    let result = detect_emotions(&text);
-    Ok(Value::LyObj(LyObj::new(Box::new(result))))
+    let (primary, confidence, scores) = detect_emotions(&text);
+    let mut scores_obj: HashMap<String, Value> = HashMap::new();
+    for (k,v) in scores { scores_obj.insert(k, Value::Real(v)); }
+    Ok(assoc(vec![
+        ("primary", Value::String(primary)),
+        ("confidence", Value::Real(confidence)),
+        ("scores", Value::Object(scores_obj)),
+    ]))
 }

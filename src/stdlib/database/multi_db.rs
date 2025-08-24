@@ -33,6 +33,17 @@ pub struct CachedResult {
     ttl: std::time::Duration,
 }
 
+impl CachedResult {
+    /// Convert to standardized Association for external consumption
+    pub fn to_value(&self) -> Value {
+        let mut m = HashMap::new();
+        m.insert("data".to_string(), self.data.clone());
+        m.insert("timestamp".to_string(), Value::String(self.timestamp.to_rfc3339()));
+        m.insert("ttlMs".to_string(), Value::Integer(self.ttl.as_millis() as i64));
+        Value::Object(m)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConsistencyLevel {
     Eventual,

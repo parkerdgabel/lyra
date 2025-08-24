@@ -12,6 +12,7 @@ use parking_lot::RwLock;
 use serde_json::{Value as JsonValue, Map as JsonMap};
 use jsonpath_lib::Compiled as CompiledJsonPath;
 use csv::{ReaderBuilder, WriterBuilder};
+use std::collections::HashMap as StdHashMap;
 
 #[cfg(test)]
 mod tests {
@@ -2048,4 +2049,38 @@ pub fn data_aggregate(args: &[Value]) -> VmResult<Value> {
     
     // Placeholder implementation for data aggregation
     Ok(args[0].clone())
+}
+
+/// Registration helper to consolidate data-processing stdlib functions
+pub fn register_data_processing_functions() -> StdHashMap<String, fn(&[Value]) -> VmResult<Value>> {
+    let mut f = StdHashMap::new();
+    // JSON
+    f.insert("JSONParse".to_string(), json_parse as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JSONStringify".to_string(), json_stringify as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JSONQuery".to_string(), json_query as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JSONMerge".to_string(), json_merge as fn(&[Value]) -> VmResult<Value>);
+    f.insert("JSONValidate".to_string(), json_validate as fn(&[Value]) -> VmResult<Value>);
+    // CSV
+    f.insert("CSVParse".to_string(), csv_parse as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CSVStringify".to_string(), csv_stringify as fn(&[Value]) -> VmResult<Value>);
+    f.insert("CSVToTable".to_string(), csv_to_table as fn(&[Value]) -> VmResult<Value>);
+    f.insert("TableToCSV".to_string(), table_to_csv as fn(&[Value]) -> VmResult<Value>);
+    // Transformations
+    f.insert("DataTransform".to_string(), data_transform as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataFilter".to_string(), data_filter as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataGroup".to_string(), data_group as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataJoin".to_string(), data_join as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataSort".to_string(), data_sort as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataSelect".to_string(), data_select as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataRename".to_string(), data_rename as fn(&[Value]) -> VmResult<Value>);
+    // Schema ops
+    f.insert("ValidateData".to_string(), validate_data as fn(&[Value]) -> VmResult<Value>);
+    f.insert("InferSchema".to_string(), infer_schema as fn(&[Value]) -> VmResult<Value>);
+    f.insert("ConvertTypes".to_string(), convert_types as fn(&[Value]) -> VmResult<Value>);
+    f.insert("NormalizeData".to_string(), normalize_data as fn(&[Value]) -> VmResult<Value>);
+    // Query engine
+    f.insert("DataQuery".to_string(), data_query as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataIndex".to_string(), data_index as fn(&[Value]) -> VmResult<Value>);
+    f.insert("DataAggregate".to_string(), data_aggregate as fn(&[Value]) -> VmResult<Value>);
+    f
 }

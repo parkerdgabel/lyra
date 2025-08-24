@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Smart hints system for Lyra REPL
 //!
 //! This module provides intelligent, context-aware hints including:
@@ -287,7 +288,7 @@ impl LyraHintEngine {
     }
     
     /// Generate symbol resolution hint
-    fn generate_symbol_hint(&self, symbol_name: &str, line: &str, pos: usize) -> HintResult {
+    fn generate_symbol_hint(&self, symbol_name: &str, _line: &str, _pos: usize) -> HintResult {
         if !self.config.show_symbol_resolution {
             return HintResult::None;
         }

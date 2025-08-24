@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Pattern Matching Engine for Lyra Symbolic Computation
 //!
 //! This module implements the core pattern matching algorithm that enables

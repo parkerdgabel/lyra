@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! Lightweight syntax validation for Lyra expressions
 //!
 //! This module provides basic syntax validation that can detect common errors

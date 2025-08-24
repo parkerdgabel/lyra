@@ -8,6 +8,7 @@
 //! All algorithms are optimized for performance and mathematical accuracy.
 
 use crate::vm::{Value, VmError, VmResult};
+use crate::stdlib::common::result::spectral_result;
 use crate::foreign::{Foreign, ForeignError, LyObj};
 use crate::stdlib::common::Complex;
 use std::f64::consts::PI;
@@ -255,7 +256,7 @@ fn generate_frequency_bins(n: usize, sample_rate: f64) -> Vec<f64> {
 // =============================================================================
 
 /// Fast Fourier Transform
-/// Usage: FFT[signal] -> Returns SpectralResult
+/// Usage: FFT[signal] -> Returns Association with frequencies, magnitudes, phases, sampleRate, method
 pub fn fft(args: &[Value]) -> VmResult<Value> {
     if args.len() != 1 {
         return Err(VmError::TypeError {
@@ -267,15 +268,10 @@ pub fn fft(args: &[Value]) -> VmResult<Value> {
     let signal_data = parse_signal_input(&args[0])?;
     let spectrum = compute_fft(&signal_data.samples)?;
     
-    let spectral_result = SpectralResult::new(
-        generate_frequency_bins(spectrum.len(), signal_data.sample_rate),
-        spectrum.iter().map(|c| c.magnitude()).collect(),
-        spectrum.iter().map(|c| c.phase()).collect(),
-        signal_data.sample_rate,
-        "FFT".to_string(),
-    );
-
-    Ok(Value::LyObj(LyObj::new(Box::new(spectral_result))))
+    let frequencies = generate_frequency_bins(spectrum.len(), signal_data.sample_rate);
+    let magnitudes: Vec<f64> = spectrum.iter().map(|c| c.magnitude()).collect();
+    let phases: Vec<f64> = spectrum.iter().map(|c| c.phase()).collect();
+    Ok(spectral_result(frequencies, magnitudes, phases, signal_data.sample_rate, "FFT"))
 }
 
 /// Inverse Fast Fourier Transform
@@ -296,7 +292,7 @@ pub fn ifft(args: &[Value]) -> VmResult<Value> {
 }
 
 /// Real FFT for real-valued signals
-/// Usage: RealFFT[signal] -> Returns SpectralResult with one-sided spectrum
+/// Usage: RealFFT[signal] -> Returns Association with one-sided spectrum
 pub fn real_fft(args: &[Value]) -> VmResult<Value> {
     if args.len() != 1 {
         return Err(VmError::TypeError {
@@ -306,9 +302,8 @@ pub fn real_fft(args: &[Value]) -> VmResult<Value> {
     }
 
     let real_signal = extract_real_signal(&args[0])?;
-    let spectral_result = compute_real_fft(&real_signal)?;
-    
-    Ok(Value::LyObj(LyObj::new(Box::new(spectral_result))))
+    let spectral = compute_real_fft(&real_signal)?;
+    Ok(spectral_result(spectral.frequencies, spectral.magnitudes, spectral.phases, spectral.sample_rate, &spectral.method))
 }
 
 /// Discrete Cosine Transform
@@ -391,6 +386,23 @@ fn parse_complex_spectrum(value: &Value) -> VmResult<Vec<Complex>> {
                     actual: format!("LyObj (not SpectralResult): {}", lyobj.type_name()),
                 })
             }
+        }
+        Value::Object(m) => {
+            // Accept Association with keys: magnitudes, phases
+            let mags = m.get("magnitudes").and_then(|v| v.as_list())
+                .ok_or_else(|| VmError::TypeError { expected: "Association with 'magnitudes' list".to_string(), actual: format!("{:?}", value) })?;
+            let phases = m.get("phases").and_then(|v| v.as_list())
+                .ok_or_else(|| VmError::TypeError { expected: "Association with 'phases' list".to_string(), actual: format!("{:?}", value) })?;
+            if mags.len() != phases.len() {
+                return Err(VmError::Runtime("magnitudes and phases length mismatch".to_string()));
+            }
+            let mut result = Vec::with_capacity(mags.len());
+            for (mv, pv) in mags.iter().zip(phases.iter()) {
+                let mag = mv.as_real().ok_or_else(|| VmError::TypeError { expected: "Real".to_string(), actual: format!("{:?}", mv) })?;
+                let ph = pv.as_real().ok_or_else(|| VmError::TypeError { expected: "Real".to_string(), actual: format!("{:?}", pv) })?;
+                result.push(Complex::from_polar(mag, ph));
+            }
+            Ok(result)
         }
         _ => Err(VmError::TypeError {
             expected: "spectral result".to_string(),
@@ -638,14 +650,14 @@ mod tests {
         ];
         
         let result = fft(&[Value::List(signal)]).unwrap();
-        
         match result {
-            Value::LyObj(lyobj) => {
-                assert_eq!(lyobj.type_name(), "SpectralResult");
-                let method = lyobj.call_method("Method", &[]).unwrap();
-                assert_eq!(method, Value::String("FFT".to_string()));
+            Value::Object(map) => {
+                assert_eq!(map.get("method"), Some(&Value::String("FFT".to_string())));
+                assert!(map.get("frequencies").is_some());
+                assert!(map.get("magnitudes").is_some());
+                assert!(map.get("phases").is_some());
             }
-            _ => panic!("Expected SpectralResult"),
+            _ => panic!("Expected Association result"),
         }
     }
 
@@ -689,23 +701,16 @@ mod tests {
         ];
         
         let result = real_fft(&[Value::List(signal)]).unwrap();
-        
         match result {
-            Value::LyObj(lyobj) => {
-                assert_eq!(lyobj.type_name(), "SpectralResult");
-                let method = lyobj.call_method("Method", &[]).unwrap();
-                assert_eq!(method, Value::String("RealFFT".to_string()));
-                
-                let magnitudes = lyobj.call_method("Magnitudes", &[]).unwrap();
-                match magnitudes {
-                    Value::List(mags) => {
-                        // Real FFT should return N/2+1 frequency bins
-                        assert_eq!(mags.len(), 5); // 8/2 + 1 = 5
-                    }
-                    _ => panic!("Expected magnitude list"),
+            Value::Object(map) => {
+                assert_eq!(map.get("method"), Some(&Value::String("RealFFT".to_string())));
+                if let Some(Value::List(mags)) = map.get("magnitudes") {
+                    assert_eq!(mags.len(), 5); // 8/2 + 1 = 5
+                } else {
+                    panic!("Expected magnitudes list in Association");
                 }
             }
-            _ => panic!("Expected SpectralResult"),
+            _ => panic!("Expected Association result"),
         }
     }
 

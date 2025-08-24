@@ -585,7 +585,7 @@ impl Foreign for SequenceDataset {
         self
     }
     
-    fn call_method(&self, method: &str, args: &[Value]) -> Result<Value, ForeignError> {
+    fn call_method(&self, method: &str, _args: &[Value]) -> Result<Value, ForeignError> {
         match method {
             "length" => Ok(Value::Integer(self.len() as i64)),
             "sequenceType" => {
@@ -652,7 +652,7 @@ impl BioMLWorkflow {
     }
     
     /// Create sequence classifier network architecture
-    fn create_sequence_classifier(&self, input_size: usize, output_size: usize) -> MLResult<NetChain> {
+    fn create_sequence_classifier(&self, _input_size: usize, _output_size: usize) -> MLResult<NetChain> {
         // Use NetChain builder pattern to create appropriate architecture
         let network = NetChain::new(vec![]);
         
