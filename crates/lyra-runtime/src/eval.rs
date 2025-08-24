@@ -4,6 +4,7 @@ use std::thread::{self, JoinHandle};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
+use std::sync::OnceLock;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -22,10 +23,17 @@ pub struct Evaluator {
     trace_steps: Vec<Value>,
 }
 
+static DEFAULT_REGISTRAR: OnceLock<fn(&mut Evaluator)> = OnceLock::new();
+
+pub fn set_default_registrar(f: fn(&mut Evaluator)) {
+    let _ = DEFAULT_REGISTRAR.set(f);
+}
+
 impl Evaluator {
     pub fn new() -> Self {
         let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, trace_enabled: false, trace_steps: Vec::new() };
         register_compat_prelude(&mut ev);
+        if let Some(f) = DEFAULT_REGISTRAR.get().copied() { f(&mut ev); }
         ev
     }
 
@@ -1090,6 +1098,8 @@ fn not_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Not".into())), args } }
     match ev.eval(args[0].clone()) { Value::Boolean(b) => Value::Boolean(!b), _ => Value::Boolean(false) }
 }
+
+pub fn value_order_key(v: &Value) -> String { value_order(v) }
 
 fn value_order(v: &Value) -> String {
     // Simple canonical string for ordering

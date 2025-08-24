@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use lyra_core::format_value;
-use lyra_runtime::Evaluator;
+use lyra_runtime::{Evaluator, set_default_registrar};
 use lyra_stdlib as stdlib;
 use lyra_parser::Parser;
 use rustyline::{Editor, error::ReadlineError};
@@ -10,6 +10,8 @@ use rustyline::history::DefaultHistory;
 fn main() -> Result<()> {
     let mut rl = Editor::<(), DefaultHistory>::new()?;
     println!("{}", "Lyra REPL (prototype)".bright_yellow().bold());
+    // Ensure spawned Evaluators (e.g., in Futures) inherit stdlib
+    set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();
     // Register full stdlib for REPL usage
     stdlib::register_all(&mut ev);
