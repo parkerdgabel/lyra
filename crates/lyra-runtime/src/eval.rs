@@ -29,7 +29,7 @@ impl Evaluator {
         ev.register("Divide", divide as NativeFn, Attributes::LISTABLE);
         ev.register("Power", power as NativeFn, Attributes::empty());
         ev.register("Map", map as NativeFn, Attributes::empty());
-        ev.register("If", iff as NativeFn, Attributes::empty());
+        ev.register("If", iff as NativeFn, Attributes::HOLD_REST);
         ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
         ev.register("Less", less as NativeFn, Attributes::LISTABLE);
         ev.register("LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
@@ -68,10 +68,21 @@ impl Evaluator {
         ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
         ev.register("Await", await_fn as NativeFn, Attributes::empty());
         ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
+        ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
+        ev.register("Gather", gather as NativeFn, Attributes::empty());
+        ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
         ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
         // Phase 0 additions
         ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
         ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
+        // Small stdlib v0 helpers
+        ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
+        ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
+        ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
+        ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
+        // Echo helpers for attribute tests
+        ev.register("OrderlessEcho", orderless_echo as NativeFn, Attributes::ORDERLESS | Attributes::HOLD_ALL);
+        ev.register("FlatEcho", flat_echo as NativeFn, Attributes::FLAT | Attributes::HOLD_ALL);
         ev
     }
 
@@ -353,6 +364,86 @@ fn parallel_map(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args } }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut futures = Vec::with_capacity(items.len());
+            for it in items.into_iter() {
+                let call = Value::Expr { head: Box::new(f.clone()), args: vec![it] };
+                let fut = future_fn(ev, vec![call]);
+                futures.push(fut);
+            }
+            Value::List(futures)
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args: vec![f, other] },
+    }
+}
+
+fn gather(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Gather".into())), args } }
+    match ev.eval(args[0].clone()) {
+        Value::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for it in items.into_iter() {
+                let res = await_fn(ev, vec![it]);
+                out.push(res);
+            }
+            Value::List(out)
+        }
+        other => await_fn(ev, vec![other]),
+    }
+}
+
+fn busy_wait(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let cycles = match args.as_slice() {
+        [Value::Integer(n)] => *n as usize,
+        [n] => match ev.eval(n.clone()) { Value::Integer(i)=> i as usize, _=> 10 },
+        _ => 10,
+    };
+    for _ in 0..cycles {
+        if let Some(tok) = &ev.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    Value::Symbol("Done".into())
+}
+
+fn even_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Boolean(n % 2 == 0),
+        [other] => Value::Boolean(matches!(other, Value::List(_)) == false && false),
+        _ => Value::Expr { head: Box::new(Value::Symbol("EvenQ".into())), args },
+    }
+}
+
+fn odd_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Boolean(n % 2 != 0),
+        [other] => Value::Boolean(matches!(other, Value::List(_)) == false && false),
+        _ => Value::Expr { head: Box::new(Value::Symbol("OddQ".into())), args },
+    }
+}
+
+fn string_length(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::Integer(s.chars().count() as i64),
+        [other] => match ev.eval(other.clone()) { Value::String(s)=>Value::Integer(s.chars().count() as i64), v=> Value::Expr { head: Box::new(Value::Symbol("StringLength".into())), args: vec![v] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("StringLength".into())), args },
+    }
+}
+
+fn to_upper(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::String(s.to_uppercase()),
+        [other] => match ev.eval(other.clone()) { Value::String(s)=>Value::String(s.to_uppercase()), v=> Value::Expr { head: Box::new(Value::Symbol("ToUpper".into())), args: vec![v] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("ToUpper".into())), args },
+    }
+}
+
+fn orderless_echo(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::List(args) }
+fn flat_echo(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::List(args) }
+
 fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args } }
     let v = ev.eval(args[0].clone());
@@ -362,13 +453,28 @@ fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args } }
     let expr = args[0].clone();
-    let _result = ev.eval(expr);
+    let _result = ev.eval(expr.clone());
+    let mut heads: Vec<Value> = Vec::new();
+    collect_heads(&expr, &mut heads);
+    let steps = heads.into_iter().map(|h| Value::Assoc(vec![
+        ("head".to_string(), h),
+    ].into_iter().collect())).collect();
     Value::Assoc(vec![
-        ("steps".to_string(), Value::List(vec![])),
+        ("steps".to_string(), Value::List(steps)),
         ("algorithm".to_string(), Value::String("stub".into())),
         ("provider".to_string(), Value::String("cpu".into())),
         ("estCost".to_string(), Value::Assoc(Default::default())),
     ].into_iter().collect())
+}
+
+fn collect_heads(v: &Value, out: &mut Vec<Value>) {
+    match v {
+        Value::Expr { head, args } => {
+            out.push((**head).clone());
+            for a in args { collect_heads(a, out); }
+        }
+        _ => {}
+    }
 }
 
 fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Value>) -> Value {

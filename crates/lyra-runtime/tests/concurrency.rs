@@ -37,3 +37,30 @@ fn explain_and_schema_exist() {
     let s2 = format_value(&out2);
     assert!(s2.contains("\"name\""));
 }
+
+#[test]
+fn map_async_and_gather() {
+    let s = eval_one("Gather[MapAsync[(x)=>Times[x,x], {1,2,3}]]");
+    assert_eq!(s, "{1, 4, 9}");
+}
+
+#[test]
+fn cancel_future_and_await_failure() {
+    use lyra_parser::Parser;
+    use lyra_runtime::Evaluator;
+    use lyra_core::pretty::format_value;
+    // Build one evaluator for multiple statements
+    let mut ev = Evaluator::new();
+    let mut p = Parser::from_source("f = Future[BusyWait[50]]; Cancel[f]; Await[f]");
+    let vals = p.parse_all().expect("parse");
+    let mut last = lyra_core::value::Value::Symbol("Null".into());
+    for v in vals { last = ev.eval(v); }
+    let s = format_value(&last);
+    assert!(s.contains("Cancel::abort"));
+}
+
+#[test]
+fn await_unknown_future_failure() {
+    let s = eval_one("Await[999999]");
+    assert!(s.contains("Await::invfuture"));
+}

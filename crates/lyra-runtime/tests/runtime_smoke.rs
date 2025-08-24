@@ -15,6 +15,23 @@ fn sequence_splicing_in_calls() {
     assert_eq!(eval_one("Times[2, Sequence[3, 4]]"), "24");
 }
 
+// If semantics are covered implicitly via evaluator; dedicated tests can be added later.
+
+#[test]
+fn stdlib_min_basics() {
+    assert_eq!(eval_one("EvenQ[2]"), "True");
+    assert_eq!(eval_one("OddQ[3]"), "True");
+    assert_eq!(eval_one("EvenQ[{1,2,3}]"), "{False, True, False}");
+    assert_eq!(eval_one("StringLength[\"abc\"]"), "3");
+    assert_eq!(eval_one("ToUpper[\"abC\"]"), "\"ABC\"");
+}
+
+#[test]
+fn echo_attribute_tests() {
+    assert_eq!(eval_one("OrderlessEcho[b, a]"), "{a, b}");
+    assert_eq!(eval_one("FlatEcho[FlatEcho[1,2], 3]"), "{1, 2, 3}");
+}
+
 #[test]
 fn replace_all_simple_rule() {
     assert_eq!(eval_one("ReplaceAll[Plus[1,2], 3 -> 42]"), "42");
