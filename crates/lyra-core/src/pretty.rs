@@ -6,6 +6,7 @@ pub fn format_value(v: &Value) -> String {
         Value::Real(f) => {
             if f.fract() == 0.0 { format!("{:.1}", f) } else { f.to_string() }
         }
+        Value::BigReal(s) => s.clone(),
         Value::Rational { num, den } => format!("{}/{}", num, den),
         Value::Complex { re, im } => format!("Complex[{}, {}]", format_value(re), format_value(im)),
         Value::String(s) => format!("\"{}\"", s),

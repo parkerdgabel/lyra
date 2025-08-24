@@ -1386,6 +1386,7 @@ fn value_order(v: &Value) -> String {
     match v {
         Value::Integer(n) => format!("0:{n:020}"),
         Value::Real(f) => format!("1:{:.*}", 16, f),
+        Value::BigReal(s) => format!("1b:{s}"),
         Value::Rational { num, den } => format!("1r:{}/{}", num, den),
         Value::Complex { re, im } => format!("1c:{}+{}i", value_order(re), value_order(im)),
         Value::String(s) => format!("2:{s}"),

@@ -33,6 +33,22 @@ fn complex_addition() {
 }
 
 #[test]
+fn bigreal_arithmetic() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    let a = Value::BigReal("1.5".into());
+    let b = Value::Integer(2);
+    let expr = Value::Expr { head: Box::new(sym("Plus")), args: vec![a, b] };
+    let out = ev.eval(expr);
+    assert_eq!(out, Value::BigReal("3.5".into()));
+    let c = Value::BigReal("2.5".into());
+    let d = Value::BigReal("2".into());
+    let expr2 = Value::Expr { head: Box::new(sym("Times")), args: vec![c, d] };
+    let out2 = ev.eval(expr2);
+    assert_eq!(out2, Value::BigReal("5".into()));
+}
+
+#[test]
 fn rational_minus_divide_power() {
     set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();

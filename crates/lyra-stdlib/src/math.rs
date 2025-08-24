@@ -91,12 +91,28 @@ fn rat_value(num: i64, den: i64) -> Value {
     if d == 1 { Value::Integer(n) } else { Value::Rational { num: n, den: d } }
 }
 
+fn format_float(v: f64) -> String {
+    // Trim trailing zeros and decimal point
+    let s = format!("{:.12}", v);
+    let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
+    if s.is_empty() { "0".into() } else { s }
+}
+
 fn add_numeric(a: Value, b: Value) -> Option<Value> {
     match (a, b) {
         (Value::Integer(x), Value::Integer(y)) => Some(Value::Integer(x + y)),
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x + y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) + y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x + (y as f64))),
+        (Value::BigReal(ax), Value::BigReal(by)) => {
+            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf + yf)))
+        }
+        (Value::BigReal(ax), other) | (other, Value::BigReal(ax)) => {
+            let xf = ax.parse::<f64>().ok()?;
+            let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            Some(Value::BigReal(format_float(xf + yf)))
+        }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 + n2 * d1, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
             Some(rat_value(num + x * den, den))
@@ -123,6 +139,15 @@ fn mul_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x * y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) * y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x * (y as f64))),
+        (Value::BigReal(ax), Value::BigReal(by)) => {
+            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf * yf)))
+        }
+        (Value::BigReal(ax), other) | (other, Value::BigReal(ax)) => {
+            let xf = ax.parse::<f64>().ok()?;
+            let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            Some(Value::BigReal(format_float(xf * yf)))
+        }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * n2, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) | (Value::Rational { num, den }, Value::Integer(x)) => {
             Some(rat_value(num * x, den))
@@ -157,6 +182,20 @@ fn sub_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x - y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) - y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x - (y as f64))),
+        (Value::BigReal(ax), Value::BigReal(by)) => {
+            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf - yf)))
+        }
+        (Value::BigReal(ax), other) => {
+            let xf = ax.parse::<f64>().ok()?;
+            let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            Some(Value::BigReal(format_float(xf - yf)))
+        }
+        (other, Value::BigReal(by)) => {
+            let xf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf - yf)))
+        }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => Some(rat_value(n1 * d2 - n2 * d1, d1 * d2)),
         (Value::Integer(x), Value::Rational { num, den }) => {
             Some(rat_value(x * den - num, den))
@@ -189,6 +228,20 @@ fn div_numeric(a: Value, b: Value) -> Option<Value> {
         (Value::Real(x), Value::Real(y)) => Some(Value::Real(x / y)),
         (Value::Integer(x), Value::Real(y)) => Some(Value::Real((x as f64) / y)),
         (Value::Real(x), Value::Integer(y)) => Some(Value::Real(x / (y as f64))),
+        (Value::BigReal(ax), Value::BigReal(by)) => {
+            let xf = ax.parse::<f64>().ok()?; let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf / yf)))
+        }
+        (Value::BigReal(ax), other) => {
+            let xf = ax.parse::<f64>().ok()?;
+            let yf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            Some(Value::BigReal(format_float(xf / yf)))
+        }
+        (other, Value::BigReal(by)) => {
+            let xf = match other { Value::Integer(n)=>n as f64, Value::Real(r)=>r, Value::Rational{num,den} => (num as f64)/(den as f64), _=>return None };
+            let yf = by.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf / yf)))
+        }
         (Value::Rational { num: n1, den: d1 }, Value::Rational { num: n2, den: d2 }) => { if n2 == 0 { None } else { Some(rat_value(n1 * d2, d1 * n2)) } }
         (Value::Integer(x), Value::Rational { num, den }) => {
             if num == 0 { return None; }
@@ -240,6 +293,10 @@ fn pow_numeric(base: Value, exp: Value) -> Option<Value> {
             if e >= 0 { Some(Value::Integer(a.pow(e as u32))) } else { let (rn, rd) = reduce_rat(1, a.pow((-e) as u32)); Some(Value::Rational { num: rn, den: rd }) }
         }
         (Value::Real(a), Value::Integer(e)) => Some(Value::Real(a.powi(e as i32))),
+        (Value::BigReal(ax), Value::Integer(e)) => {
+            let xf = ax.parse::<f64>().ok()?;
+            Some(Value::BigReal(format_float(xf.powi(e as i32))))
+        }
         (Value::Rational { num, den }, Value::Integer(e)) => {
             if e >= 0 { Some(rat_value(num.pow(e as u32), den.pow(e as u32))) }
             else { let p = (-e) as u32; Some(rat_value(den.pow(p), num.pow(p))) }

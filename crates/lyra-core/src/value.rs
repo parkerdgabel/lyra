@@ -7,6 +7,7 @@ pub type AssocMap = HashMap<String, Value>;
 pub enum Value {
     Integer(i64),
     Real(f64),
+    BigReal(String),
     Rational { num: i64, den: i64 },
     Complex { re: Box<Value>, im: Box<Value> },
     String(String),
