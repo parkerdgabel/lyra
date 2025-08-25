@@ -18,9 +18,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking","json","multipart","rustls-tls"], optional = true }
 rustls = { version = "0.21", default-features = false, features = ["tls12"], optional = true }
 rustls-pemfile = { version = "1", optional = true }
+bollard = { version = "0.16", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread","macros","time"], optional = true }
+futures-util = { version = "0.3", optional = true }
+tar = { version = "0.4", optional = true }
+bytes = { version = "1", optional = true }
 
 [features]
-default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db"]
+default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers"]
 core = []
 string = []
 math = []
@@ -41,6 +46,11 @@ dataset = []
 db = []
 db_sqlite = ["dep:rusqlite"]
 db_duckdb = ["dep:duckdb"]
+containers = []
+containers_docker = ["dep:bollard","dep:tokio","dep:futures-util","dep:tar","dep:bytes"]
+containers_podman = []
+containers_containerd = []
+containers_k8s = []
 
 [dependencies.rug]
 optional = true
