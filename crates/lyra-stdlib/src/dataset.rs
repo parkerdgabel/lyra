@@ -785,6 +785,15 @@ fn head_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return limit_rows(ev, vec![subj, Value::Integer(n)]);
     }
     if let Value::List(items) = subj { let k = n.max(0) as usize; return Value::List(items.into_iter().take(k).collect()); }
+    if let Value::Assoc(m) = subj {
+        let k = n.max(0) as usize;
+        let mut keys: Vec<String> = m.keys().cloned().collect();
+        keys.sort();
+        let selected: Vec<String> = keys.into_iter().take(k).collect();
+        let mut out = HashMap::new();
+        for key in selected { if let Some(v) = m.get(&key) { out.insert(key, v.clone()); } }
+        return Value::Assoc(out);
+    }
     Value::Expr { head: Box::new(Value::Symbol("Head".into())), args }
 }
 
@@ -801,6 +810,17 @@ fn tail_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return ds_handle(new_id);
     }
     if let Value::List(items) = subj { let k = n.max(0) as usize; let len=items.len(); return if k>=len { Value::List(items) } else { Value::List(items.into_iter().skip(len-k).collect()) } }
+    if let Value::Assoc(m) = subj {
+        let k = n.max(0) as usize;
+        let mut keys: Vec<String> = m.keys().cloned().collect();
+        keys.sort();
+        let total = keys.len();
+        let start = total.saturating_sub(k);
+        let selected: Vec<String> = keys.into_iter().skip(start).collect();
+        let mut out = HashMap::new();
+        for key in selected { if let Some(v) = m.get(&key) { out.insert(key, v.clone()); } }
+        return Value::Assoc(out);
+    }
     Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args }
 }
 
