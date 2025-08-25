@@ -7,6 +7,10 @@ use lyra_runtime::attrs::Attributes;
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 pub fn register_logic(ev: &mut Evaluator) {
+    ev.register("If", if_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("When", when_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Unless", unless_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Switch", switch_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
     ev.register("Less", less as NativeFn, Attributes::LISTABLE);
     ev.register("LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
@@ -71,4 +75,82 @@ fn odd_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [other] => Value::Boolean(matches!(other, Value::List(_)) == false && false),
         _ => Value::Expr { head: Box::new(Value::Symbol("OddQ".into())), args },
     }
+}
+
+// -------- Control flow --------
+fn if_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [cond, then_] => match ev.eval(cond.clone()) {
+            Value::Boolean(true) => ev.eval(then_.clone()),
+            Value::Boolean(false) => Value::Symbol("Null".into()),
+            other => Value::Expr { head: Box::new(Value::Symbol("If".into())), args: vec![other, then_.clone()] },
+        },
+        [cond, then_, else_] => match ev.eval(cond.clone()) {
+            Value::Boolean(true) => ev.eval(then_.clone()),
+            Value::Boolean(false) => ev.eval(else_.clone()),
+            other => Value::Expr { head: Box::new(Value::Symbol("If".into())), args: vec![other, then_.clone(), else_.clone()] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("If".into())), args },
+    }
+}
+
+fn when_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [cond, body] => match ev.eval(cond.clone()) { Value::Boolean(true) => ev.eval(body.clone()), Value::Boolean(false)=>Value::Symbol("Null".into()), other=> Value::Expr { head: Box::new(Value::Symbol("When".into())), args: vec![other, body.clone()] } },
+        [cond, body, else_] => match ev.eval(cond.clone()) { Value::Boolean(true) => ev.eval(body.clone()), Value::Boolean(false)=>ev.eval(else_.clone()), other=> Value::Expr { head: Box::new(Value::Symbol("When".into())), args: vec![other, body.clone(), else_.clone()] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("When".into())), args },
+    }
+}
+
+fn unless_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [cond, body] => match ev.eval(cond.clone()) { Value::Boolean(false) => ev.eval(body.clone()), Value::Boolean(true)=>Value::Symbol("Null".into()), other=> Value::Expr { head: Box::new(Value::Symbol("Unless".into())), args: vec![other, body.clone()] } },
+        [cond, body, else_] => match ev.eval(cond.clone()) { Value::Boolean(false) => ev.eval(body.clone()), Value::Boolean(true)=>ev.eval(else_.clone()), other=> Value::Expr { head: Box::new(Value::Symbol("Unless".into())), args: vec![other, body.clone(), else_.clone()] } },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Unless".into())), args },
+    }
+}
+
+fn switch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Switch".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let (rules_v, default_v) = match args.as_slice() {
+        [_, rules] => (ev.eval(rules.clone()), None),
+        [_, rules, default_] => (ev.eval(rules.clone()), Some(default_.clone())),
+        _ => (Value::Symbol("Null".into()), None),
+    };
+    // rules may be Assoc or List of pairs
+    // Matching semantics:
+    // - If rule key is a function/expr, apply to subj; if True, return evaluated value
+    // - Else compare equality key == subj
+    if let Value::Assoc(m) = rules_v {
+        // try keys in sorted order for determinism
+        let mut keys: Vec<String> = m.keys().cloned().collect();
+        keys.sort();
+        for k in keys {
+            if k == "_" { continue; }
+            let key_v = Value::String(k.clone());
+            if value_matches(ev, &key_v, &subj) { return ev.eval(m.get(&k).cloned().unwrap()); }
+        }
+        if let Some(v) = m.get("_") { return ev.eval(v.clone()); }
+        if let Some(d) = default_v { return ev.eval(d); }
+        return Value::Symbol("Null".into());
+    }
+    if let Value::List(items) = rules_v {
+        for it in items {
+            if let Value::List(mut pair) = it { if pair.len()==2 { let rhs = pair.remove(1); let lhs = pair.remove(0); if value_matches(ev, &lhs, &subj) { return ev.eval(rhs); } } }
+        }
+        if let Some(d) = default_v { return ev.eval(d); }
+        return Value::Symbol("Null".into());
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Switch".into())), args: vec![subj, rules_v] }
+}
+
+fn value_matches(ev: &mut Evaluator, test: &Value, subj: &Value) -> bool {
+    // Predicate form: test[subj] => True
+    if matches!(test, Value::Expr { .. } | Value::PureFunction { .. } | Value::Symbol(_)) && !matches!(test, Value::String(_)) {
+        let call = Value::Expr { head: Box::new(test.clone()), args: vec![subj.clone()] };
+        return matches!(ev.eval(call), Value::Boolean(true));
+    }
+    // Literal equality
+    test == subj
 }
