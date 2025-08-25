@@ -582,6 +582,39 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
+// Filtered registration variant for tree-shaken builds.
+// Only registers symbols that satisfy the provided predicate.
+pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
+    let mut reg = |name: &str, f: NativeFn, attrs: Attributes| {
+        if pred(name) { ev.register(name, f, attrs); }
+    };
+    reg("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Await", await_fn as NativeFn, Attributes::empty());
+    reg("ParallelMap", parallel_map as NativeFn, Attributes::empty());
+    reg("ParallelTable", parallel_table as NativeFn, Attributes::HOLD_ALL);
+    reg("MapAsync", map_async as NativeFn, Attributes::empty());
+    reg("Gather", gather as NativeFn, Attributes::empty());
+    reg("BusyWait", busy_wait as NativeFn, Attributes::empty());
+    reg("Cancel", cancel_fn as NativeFn, Attributes::empty());
+    reg("Fail", fail_fn as NativeFn, Attributes::empty());
+    reg("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
+    reg("EndScope", end_scope_fn as NativeFn, Attributes::empty());
+    reg("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
+    reg("BoundedChannel", bounded_channel_fn as NativeFn, Attributes::empty());
+    reg("Send", send_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Receive", receive_fn as NativeFn, Attributes::empty());
+    reg("CloseChannel", close_channel_fn as NativeFn, Attributes::empty());
+    reg("TrySend", try_send_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("TryReceive", try_receive_fn as NativeFn, Attributes::empty());
+    reg("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
+}
+
 pub fn register_explain(ev: &mut Evaluator) {
     ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
 }

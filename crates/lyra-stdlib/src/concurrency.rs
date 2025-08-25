@@ -87,3 +87,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
         tool_spec!("StopActor", summary: "Stop the actor", params: ["actor"], tags: ["concurrency","actor"]),
     ]);
 }
+
+pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    lyra_runtime::eval::register_concurrency_filtered(ev, pred);
+}

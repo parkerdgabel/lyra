@@ -131,6 +131,7 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "tools")] crate::tools::register_tools_filtered(ev, &predicate);
     #[cfg(feature = "assoc")] crate::assoc::register_assoc_filtered(ev, &predicate);
     #[cfg(feature = "logic")] crate::logic::register_logic_filtered(ev, &predicate);
+    #[cfg(feature = "concurrency")] crate::concurrency::register_concurrency_filtered(ev, &predicate);
     #[cfg(feature = "schema")] crate::schema::register_schema_filtered(ev, &predicate);
     #[cfg(feature = "explain")] crate::explain::register_explain_filtered(ev, &predicate);
     #[cfg(feature = "io")] crate::io::register_io_filtered(ev, &predicate);
@@ -153,10 +154,6 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
     #[cfg(feature = "testing")] crate::testing::register_testing_filtered(ev, &predicate);
 
-    #[cfg(feature = "math")] crate::math::register_math_filtered(ev, &predicate);
-    #[cfg(feature = "list")] crate::list::register_list_filtered(ev, &predicate);
-    #[cfg(feature = "assoc")] crate::assoc::register_assoc_filtered(ev, &predicate);
-    #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
     // Dispatchers last
     crate::dispatch::register_dispatch(ev);
 }
