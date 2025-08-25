@@ -87,7 +87,7 @@ impl ChannelQueue {
             if guard.q.len() < self.cap { guard.q.push_back(v); self.not_empty.notify_one(); return true; }
             if let Some(tok) = &cancel { if tok.load(Ordering::Relaxed) { return false; } }
             if let Some(dl) = deadline { if Instant::now() > dl { return false; } }
-            let (g, _timeout) = if let Some(dl) = deadline { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() } else { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() };
+            let (g, _timeout) = if let Some(_dl) = deadline { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() } else { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() };
             guard = g;
         }
     }
@@ -1712,7 +1712,7 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let rules = collect_rules(ev, args[1].clone());
     // HoldFirst semantics
     let target = args[0].clone();
-    let limit = 1usize;
+    let _limit = 1usize;
     let env_snapshot = ev.env.clone();
     let pred = |pred: &Value, arg: &Value| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());

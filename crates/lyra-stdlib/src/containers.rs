@@ -133,9 +133,9 @@ fn pull_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn build_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn build_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("BuildImage".into())), args } }
-    let rt = match get_runtime(&args[0]) { Some(id)=> id, None => return Value::Expr { head: Box::new(Value::Symbol("BuildImage".into())), args } };
+    let _rt = match get_runtime(&args[0]) { Some(id)=> id, None => return Value::Expr { head: Box::new(Value::Symbol("BuildImage".into())), args } };
     #[cfg(feature = "containers_docker")]
     {
         let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
@@ -266,7 +266,7 @@ fn inspect_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn remove_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn remove_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("RemoveImage".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -282,7 +282,7 @@ fn remove_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn prune_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn prune_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<1 { return Value::Expr { head: Box::new(Value::Symbol("PruneImages".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -297,7 +297,7 @@ fn prune_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn search_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn search_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("SearchImages".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -313,7 +313,7 @@ fn search_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] }
 }
 
-fn image_history(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn image_history(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ImageHistory".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -328,7 +328,7 @@ fn image_history(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] }
 }
 
-fn inspect_registry_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn inspect_registry_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("InspectRegistryImage".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -344,7 +344,7 @@ fn inspect_registry_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn export_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn export_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ExportImages".into())), args } }
     #[cfg(feature = "containers_docker")]
     {
@@ -386,7 +386,7 @@ fn create_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn start_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value { if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("StartContainer".into())), args } } Value::Boolean(true) }
 fn stop_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("StopContainer".into())), args } }
-    if let Some((rt_id, cid)) = get_container(&args[1]) {
+    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
             let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
@@ -399,7 +399,7 @@ fn stop_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn restart_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value { if args.len()<1 { return Value::Expr { head: Box::new(Value::Symbol("RestartContainer".into())), args } } Value::Boolean(true) }
 fn remove_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("RemoveContainer".into())), args } }
-    if let Some((rt_id, cid)) = get_container(&args[1]) {
+    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
             let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
@@ -436,7 +436,7 @@ fn copy_from_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value { if args
 
 fn inspect_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("InspectContainer".into())), args } }
-    if let Some((rt_id, cid)) = get_container(&args[1]) {
+    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
             let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
@@ -449,7 +449,7 @@ fn wait_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value { if args.len(
 
 fn list_containers(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<1 { return Value::Expr { head: Box::new(Value::Symbol("ListContainers".into())), args } }
-    if let Some(rt_id) = get_runtime(&args[0]) {
+    if let Some(_rt_id) = get_runtime(&args[0]) {
         #[cfg(feature = "containers_docker")]
         {
             let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
@@ -460,6 +460,7 @@ fn list_containers(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ---------- Logs / Stats / Events (cursor-like) ----------
+#[allow(dead_code)]
 #[derive(Clone)]
 struct CCurState { kind: String, rt_dsn: String, target: Value, opts: HashMap<String, Value>, offset: i64, buffer: Vec<Value> }
 static CCUR_REG: OnceLock<Mutex<HashMap<i64, CCurState>>> = OnceLock::new();
@@ -482,7 +483,7 @@ fn containers_logs(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     drop(reg);
     let id = next_ccur_id();
     // For Docker, prefetch bounded logs into buffer
-    let mut buffer: Vec<Value> = Vec::new();
+    let buffer: Vec<Value> = Vec::new();
     #[cfg(feature = "containers_docker")]
     {
         if let Some((rtid, cid)) = get_container(&args[1]) {
@@ -634,6 +635,7 @@ pub fn register_containers(ev: &mut Evaluator) {
 }
 
 // Helpers to access runtime info
+#[allow(dead_code)]
 fn get_rt_dsn(rt_id: i64) -> String { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| s.dsn.clone()).unwrap_or_default() }
 
 // Docker backend implementation

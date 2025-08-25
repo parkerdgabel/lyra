@@ -254,6 +254,7 @@ fn parse_date_flexible(s: &str) -> Option<i64> {
     None
 }
 
+#[allow(deprecated)]
 fn parse_date_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [s] => match ev.eval(s.clone()) { Value::String(x)=> parse_date_flexible(&x).map(Value::Integer).unwrap_or(Value::Symbol("Null".into())), v=> Value::Expr { head: Box::new(Value::Symbol("ParseDate".into())), args: vec![v] } },
@@ -268,6 +269,7 @@ fn parse_date_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+#[allow(deprecated)]
 fn format_date_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [ts] => match ev.eval(ts.clone()) { Value::Integer(secs)=> Value::String(chrono::NaiveDateTime::from_timestamp_opt(secs, 0).map(|ndt| ndt.format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default()), v=> Value::Expr { head: Box::new(Value::Symbol("FormatDate".into())), args: vec![v] } },

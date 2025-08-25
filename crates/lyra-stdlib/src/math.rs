@@ -419,7 +419,7 @@ fn broadcast_elementwise(s1: &Vec<usize>, d1: &Vec<f64>, s2: &Vec<usize>, d2: &V
         let mut rem = idx;
         let mut off1 = 0usize; let mut off2 = 0usize;
         for i in 0..ndim {
-            let dim = out_shape[i];
+            let _dim = out_shape[i];
             let coord = rem / (out_shape[i+1..].iter().product::<usize>().max(1));
             rem %= out_shape[i+1..].iter().product::<usize>().max(1);
             let c1 = if sh1[i]==1 { 0 } else { coord };

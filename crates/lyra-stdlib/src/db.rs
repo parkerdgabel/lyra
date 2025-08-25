@@ -203,15 +203,15 @@ fn table_to_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } }
     let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };
-    let mut sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args: vec![args[0].clone(), other] } };
-    let params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
+    let sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args: vec![args[0].clone(), other] } };
+    let _params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
     // For Mock connector, support a trivial form: "SELECT * FROM table" only
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };
     drop(reg);
     match st.kind {
         ConnectorKind::Mock => {
-            let mut parts = sql.trim().split_whitespace().collect::<Vec<_>>();
+            let parts = sql.trim().split_whitespace().collect::<Vec<_>>();
             if parts.len()>=4 && parts[0].eq_ignore_ascii_case("select") && parts[1]=="*" && parts[2].eq_ignore_ascii_case("from") {
                 let table = parts[3].trim_matches('"').to_string();
                 let rows = fetch_table_rows(conn_id, &table).unwrap_or_default();
@@ -300,7 +300,7 @@ fn sql_to_rows(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     drop(reg);
     let rows = match st.kind {
         ConnectorKind::Mock => {
-            let mut parts = sql.trim().split_whitespace().collect::<Vec<_>>();
+            let parts = sql.trim().split_whitespace().collect::<Vec<_>>();
             if parts.len()>=4 && parts[0].eq_ignore_ascii_case("select") && parts[1]=="*" && parts[2].eq_ignore_ascii_case("from") {
                 let table = parts[3].trim_matches('"').to_string();
                 fetch_table_rows(conn_id, &table).unwrap_or_default()
@@ -313,6 +313,7 @@ fn sql_to_rows(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ---------- Streaming cursors (simulated) ----------
+#[allow(dead_code)]
 #[derive(Clone)]
 struct CursorState { kind: ConnectorKind, dsn: String, sql: String, offset: i64, fetch_size: i64 }
 
@@ -358,6 +359,7 @@ fn fetch_cursor(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut reg = cur_reg().lock().unwrap();
     let st = match reg.get_mut(&id) { Some(s)=>s, None=> return Value::Expr { head: Box::new(Value::Symbol("Fetch".into())), args } };
     let batch = if n>0 { n } else { st.fetch_size };
+    #[allow(unused_variables)]
     let paged_sql = format!("{} LIMIT {} OFFSET {}", st.sql, batch, st.offset);
     let rows = match st.kind {
         ConnectorKind::Mock => Vec::new(),
@@ -445,7 +447,7 @@ fn upsert_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let rows = match &rows_v { Value::List(vs)=>vs.clone(), _=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args: vec![args[0].clone(), Value::String(table), rows_v] } };
     let keys: Vec<String> = if args.len()>=4 { if let Value::Assoc(m) = ev.eval(args[3].clone()) { if let Some(Value::List(ks))=m.get("Keys") { ks.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect() } else { vec![] } } else { vec![] } } else { vec![] };
     let reg = conn_reg().lock().unwrap();
-    let mut st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args } };
+    let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args } };
     drop(reg);
     let mut inserted = 0;
     match st.kind {
@@ -580,6 +582,7 @@ fn rollback_tx(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ExplainSQL[dataset] -> String explaining pushdown and produced SQL (scaffolding)
+#[allow(dead_code)]
 fn explain_sql(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("ExplainSQL".into())), args } }
     // Placeholder: real implementation will walk Dataset plan and render SQL
@@ -614,8 +617,9 @@ pub fn register_db(ev: &mut Evaluator) {
 fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } }
     let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
-    let mut sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args: vec![args[0].clone(), other] } };
-    let params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
+    #[allow(unused_variables)]
+    let sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args: vec![args[0].clone(), other] } };
+    let _params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
     drop(reg);
@@ -623,7 +627,7 @@ fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ConnectorKind::Mock => Value::Boolean(true),
         #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
             if let Some(c) = st.sqlite_conn.as_ref() {
-                if let Some(pm) = &params_map {
+                if let Some(pm) = & _params_map {
                     let ok = exec_sqlite_prepared_conn(&mut *c.lock().unwrap(), &sql, pm).is_ok();
                     Value::Boolean(ok)
                 } else {
@@ -633,7 +637,7 @@ fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
             if let Some(c) = st.duckdb_conn.as_ref() {
-                let sql2 = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
+                let sql2 = if let Some(pm) = & _params_map { substitute_params(&sql, pm) } else { sql };
                 let ok = c.lock().unwrap().execute_batch(&sql2).is_ok(); Value::Boolean(ok)
             } else { Value::Boolean(false) }
         }

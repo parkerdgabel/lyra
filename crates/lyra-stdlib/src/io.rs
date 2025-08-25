@@ -7,7 +7,7 @@ use serde::Serialize;
 
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
-#[cfg(feature = "tools")] use crate::{schema_str, schema_bool, schema_int};
+#[cfg(feature = "tools")] use crate::{schema_str, schema_bool};
 #[cfg(feature = "tools")] use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;

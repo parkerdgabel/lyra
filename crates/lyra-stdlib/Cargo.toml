@@ -14,6 +14,10 @@ rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 duckdb = { version = "0.10", optional = true }
 base64 = "0.21"
 regex = "1"
+aho-corasick = { version = "1", optional = true }
+ignore = { version = "0.4", optional = true }
+chardetng = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking","json","multipart","rustls-tls"], optional = true }
 rustls = { version = "0.21", default-features = false, features = ["tls12"], optional = true }
@@ -23,12 +27,26 @@ tokio = { version = "1", features = ["rt-multi-thread","macros","time"], optiona
 futures-util = { version = "0.3", optional = true }
 tar = { version = "0.4", optional = true }
 bytes = { version = "1", optional = true }
+blake3 = { version = "1", optional = true }
+rand = { version = "0.8", optional = true }
+chacha20poly1305 = { version = "0.10", features = ["std"], optional = true }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+rand_core = { version = "0.6", optional = true }
+subtle = { version = "2", optional = true }
+sha2 = { version = "0.10", optional = true }
+hmac = { version = "0.12", optional = true }
+hkdf = { version = "0.12", optional = true }
+argon2 = { version = "0.5", optional = true, features = ["std"] }
+image = { version = "0.24", optional = true, default-features = false, features = ["png","jpeg","gif","tiff","bmp","webp"] }
+hound = { version = "3", optional = true }
+symphonia = { version = "0.5", optional = true, default-features = false, features = ["aac","mp3","flac","vorbis","isomp4","ogg","wav","pcm"] }
 
 [features]
-default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers"]
+default = ["core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text", "collections"]
 core = []
 string = []
 math = []
+algebra = []
 list = []
 assoc = []
 logic = []
@@ -51,6 +69,44 @@ containers_docker = ["dep:bollard","dep:tokio","dep:futures-util","dep:tar","dep
 containers_podman = []
 containers_containerd = []
 containers_k8s = []
+graphs = []
+graphs_petgraph = []
+crypto = ["dep:blake3","dep:sha2","dep:hmac","dep:hkdf","dep:argon2","dep:rand","dep:chacha20poly1305","dep:ed25519-dalek","dep:rand_core","dep:subtle"]
+crypto_sha2 = ["dep:sha2"]
+crypto_aes = []
+crypto_chacha = ["dep:chacha20poly1305"]
+crypto_blake3 = ["dep:blake3"]
+crypto_ed25519 = ["dep:ed25519-dalek","dep:rand_core"]
+crypto_rsa = []
+crypto_x25519 = []
+crypto_argon2 = []
+crypto_jose = []
+crypto_hpke = []
+image = ["dep:image"]
+image_avif = []
+image_heif = []
+image_simd = []
+image_svg_text = []
+audio = ["dep:hound","dep:symphonia"]
+audio_mp3 = ["audio"]
+audio_ogg_vorbis = ["audio"]
+audio_flac = ["audio"]
+media = []
+text = []
+text_fuzzy = ["dep:fuzzy-matcher"]
+text_index = ["dep:rusqlite"]
+collections = []
+
+# Internal feature wiring for optional crates
+text_glob = ["dep:ignore"]
+text_multipattern = ["dep:aho-corasick"]
+text_encoding_detect = ["dep:chardetng", "dep:encoding_rs"]
+
+[dependencies.fuzzy-matcher]
+optional = true
+version = "0.3"
+
+# tantivy removed; using SQLite FTS5 via rusqlite
 
 [dependencies.rug]
 optional = true

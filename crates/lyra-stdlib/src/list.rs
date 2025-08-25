@@ -693,7 +693,7 @@ fn map_packed(ev: &mut Evaluator, f: &Value, shape: Vec<usize>, data: Vec<f64>) 
             Value::Real(r) => out.push(r),
             Value::Rational { num, den } if den != 0 => out.push((num as f64)/(den as f64)),
             Value::BigReal(s) => if let Ok(r)=s.parse::<f64>() { out.push(r) } else { return Value::Expr { head: Box::new(Value::Symbol("Map".into())), args: vec![f.clone(), Value::PackedArray { shape, data: out }] } },
-            other => {
+            _other => {
                 // Fallback: map over unpacked list
                 let list = packed_to_list(ev, vec![Value::PackedArray { shape: shape.clone(), data: out }]);
                 return map_list(ev, f, list);

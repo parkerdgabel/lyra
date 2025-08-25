@@ -19,6 +19,7 @@ use std::fs;
 #[derive(Clone, Debug)]
 struct BuiltinEntry { name: String, summary: String, attrs: Vec<String> }
 
+#[allow(dead_code)]
 struct ReplHelper {
     builtins: Vec<BuiltinEntry>,
     env_names: Vec<String>,
@@ -653,6 +654,7 @@ fn render_profile_summary(steps: &Vec<Value>) {
     println!("{} {} | {} {}", "Profile actions:".bold(), ta, "heads:".bold(), th);
 }
 
+#[allow(dead_code)]
 fn explain_steps_to_string(steps: &Vec<Value>) -> String {
     let mut out = String::new();
     for s in steps {

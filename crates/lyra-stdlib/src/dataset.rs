@@ -381,16 +381,13 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                 other => other,
             }).collect()
         }
-        Plan::GroupBy { input, keys } => {
+        Plan::GroupBy { input, keys: _ } => {
             // No materialization; represent as rows annotated with group key (for Explain only)
             // For evaluation, just pass-through rows; aggregation happens in Agg
             eval_plan(ev, input)
         }
         Plan::Agg { input, aggs } => {
             // If the input is a GroupBy plan, extract its keys; otherwise aggregate over all rows
-            fn extract_group_keys(p: &Plan) -> Option<Vec<String>> {
-                match p { Plan::GroupBy { keys, .. } => Some(keys.clone()), _ => None }
-            }
             let (base_plan, keys) = match &**input {
                 Plan::GroupBy { input: inner, keys } => (&**inner, keys.clone()),
                 _ => (&**input, Vec::new()),
@@ -408,7 +405,7 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                 }
             }
             let mut out_rows: Vec<Value> = Vec::new();
-            for (k, rows) in groups.into_iter() {
+            for (_k, rows) in groups.into_iter() {
                 let first = rows.get(0).cloned().unwrap_or(Value::Assoc(HashMap::new()));
                 let mut out = match first {
                     Value::Assoc(m) => {
@@ -965,7 +962,7 @@ fn infer_and_cast_rows(rows_v: &Value, sample_rows: usize) -> Value {
 fn cast_value(v: &Value, ty: ColType) -> Value {
     match (v, ty) {
         (Value::Symbol(s), _) if s=="Null" => Value::Symbol("Null".into()),
-        (Value::String(s), ColType::Null) => Value::Symbol("Null".into()),
+        (Value::String(_s), ColType::Null) => Value::Symbol("Null".into()),
         (Value::String(s), ColType::Boolean) => {
             let t = s.trim(); Value::Boolean(t.eq_ignore_ascii_case("true"))
         }
@@ -1137,7 +1134,7 @@ fn agg(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ds_handle(new_id)
 }
 
-fn join_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub(crate) fn join_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Join[left, right, onList, opts? where How->"inner"|"left"]
     if args.len()<3 { return Value::Expr { head: Box::new(Value::Symbol("Join".into())), args } }
     let left_id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Join".into())), args } };
@@ -1255,7 +1252,7 @@ fn distinct_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args }
 }
 
-fn union_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub(crate) fn union_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Union[ds1, ds2, ...] or Union[{...}, <|By->"columns"|>] or lists of assocs
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Union".into())), args } }
     let (vals, by_columns) = if args.len()>=2 && matches!(ev.eval(args[args.len()-1].clone()), Value::Assoc(_)) {

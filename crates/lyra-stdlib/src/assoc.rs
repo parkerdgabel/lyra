@@ -19,6 +19,15 @@ pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
     ev.register("SortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
+    // Immutable assoc utilities
+    ev.register("AssocGet", assoc_get as NativeFn, Attributes::empty());
+    ev.register("AssocContainsKeyQ", assoc_contains_key_q as NativeFn, Attributes::empty());
+    ev.register("AssocSet", assoc_set as NativeFn, Attributes::empty());
+    ev.register("AssocDelete", assoc_delete as NativeFn, Attributes::empty());
+    ev.register("AssocSelect", assoc_select as NativeFn, Attributes::empty());
+    ev.register("AssocDrop", assoc_drop as NativeFn, Attributes::empty());
+    ev.register("AssocInvert", assoc_invert as NativeFn, Attributes::empty());
+    ev.register("AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -205,6 +214,76 @@ fn sort_by(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         other => other,
     }
 }
+
+fn assoc_get(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [a, k] => match ev.eval(a.clone()) { Value::Assoc(m) => m.get(&match k { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> lyra_core::pretty::format_value(&ev.eval(other.clone())) }).cloned().unwrap_or(Value::Symbol("Null".into())), other => other },
+        [a, k, default] => match ev.eval(a.clone()) { Value::Assoc(m) => m.get(&match k { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> lyra_core::pretty::format_value(&ev.eval(other.clone())) }).cloned().unwrap_or(ev.eval(default.clone())), other => other },
+        _ => Value::Expr { head: Box::new(Value::Symbol("AssocGet".into())), args },
+    }
+}
+
+fn assoc_contains_key_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("AssocContainsKeyQ".into())), args } }
+    match ev.eval(args[0].clone()) { Value::Assoc(m) => {
+        let k = match &args[1] { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> lyra_core::pretty::format_value(&ev.eval(other.clone())) };
+        Value::Boolean(m.contains_key(&k))
+    } other => other }
+}
+
+fn assoc_set(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=3 { return Value::Expr { head: Box::new(Value::Symbol("AssocSet".into())), args } }
+    match ev.eval(args[0].clone()) { Value::Assoc(mut m) => { let k = match &args[1] { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> lyra_core::pretty::format_value(&ev.eval(other.clone())) }; let v = ev.eval(args[2].clone()); m.insert(k, v); Value::Assoc(m) } other => other }
+}
+
+fn assoc_delete(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("AssocDelete".into())), args } }
+    match ev.eval(args[0].clone()) { Value::Assoc(mut m) => {
+        match ev.eval(args[1].clone()) {
+            Value::List(keys) => { for k in keys { if let Value::String(s)|Value::Symbol(s) = k { m.remove(&s); } }
+            }
+            Value::String(s) | Value::Symbol(s) => { m.remove(&s); }
+            other => { let k = lyra_core::pretty::format_value(&other); m.remove(&k); }
+        }
+        Value::Assoc(m)
+    } other => other }
+}
+
+fn assoc_select(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("AssocSelect".into())), args } }
+    match (ev.eval(args[0].clone()), ev.eval(args[1].clone())) { (Value::Assoc(m), Value::List(keys)) => {
+        let mut out = std::collections::HashMap::new();
+        for k in keys { if let Value::String(s)|Value::Symbol(s) = k { if let Some(v)=m.get(&s) { out.insert(s.clone(), v.clone()); } } }
+        Value::Assoc(out)
+    } (other, _) => other }
+}
+
+fn assoc_drop(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("AssocDrop".into())), args } }
+    match (ev.eval(args[0].clone()), ev.eval(args[1].clone())) { (Value::Assoc(mut m), Value::List(keys)) => {
+        for k in keys { if let Value::String(s)|Value::Symbol(s) = k { m.remove(&s); } }
+        Value::Assoc(m)
+    } (other, _) => other }
+}
+
+fn assoc_invert(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("AssocInvert".into())), args } }
+    match ev.eval(args[0].clone()) { Value::Assoc(m) => {
+        let mut out = std::collections::HashMap::new();
+        for (k,v) in m { let ks = k; let vs = lyra_core::pretty::format_value(&v); out.insert(vs, Value::String(ks)); }
+        Value::Assoc(out)
+    } other => other }
+}
+
+fn assoc_rename_keys(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("AssocRenameKeys".into())), args } }
+    match (ev.eval(args[0].clone()), ev.eval(args[1].clone())) { (Value::Assoc(m), Value::Assoc(mapping)) => {
+        let mut out = std::collections::HashMap::new();
+        for (k,v) in m { let newk = mapping.get(&k).and_then(|vv| match vv { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or(k); out.insert(newk, v); }
+        Value::Assoc(out)
+    } (other, _) => other }
+}
+
 
 fn group_by(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("GroupBy".into())), args } }
