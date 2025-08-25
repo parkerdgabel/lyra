@@ -22,6 +22,9 @@ struct ConnectionState {
     dsn: String,
     kind: ConnectorKind,
     mock_tables: HashMap<String, Vec<Value>>, // table -> Vec<Assoc rows>
+    #[cfg(feature = "db_sqlite")] sqlite_conn: Option<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    #[cfg(feature = "db_duckdb")] duckdb_conn: Option<std::sync::Arc<std::sync::Mutex<duckdb::Connection>>>,
+    in_tx: bool,
 }
 
 static CONN_REG: OnceLock<Mutex<HashMap<i64, ConnectionState>>> = OnceLock::new();
@@ -87,7 +90,16 @@ fn connect(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         other => return Value::Expr { head: Box::new(Value::Symbol("Connect".into())), args: vec![other] },
     };
     let id = next_conn_id();
-    conn_reg().lock().unwrap().insert(id, ConnectionState { dsn, kind, mock_tables: HashMap::new() });
+    // Initialize persistent connection for SQL engines
+    #[cfg(feature = "db_sqlite")] let mut sqlite_conn: Option<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>> = None;
+    #[cfg(feature = "db_sqlite")] {
+        if matches!(kind, ConnectorKind::Sqlite) { if let Ok(c) = sqlite_open(&dsn) { sqlite_conn = Some(std::sync::Arc::new(std::sync::Mutex::new(c))); } }
+    }
+    #[cfg(feature = "db_duckdb")] let mut duckdb_conn: Option<std::sync::Arc<std::sync::Mutex<duckdb::Connection>>> = None;
+    #[cfg(feature = "db_duckdb")] {
+        if matches!(kind, ConnectorKind::DuckDb) { if let Ok(c) = duckdb_open(&dsn) { duckdb_conn = Some(std::sync::Arc::new(std::sync::Mutex::new(c))); } }
+    }
+    conn_reg().lock().unwrap().insert(id, ConnectionState { dsn, kind, mock_tables: HashMap::new(), #[cfg(feature = "db_sqlite")] sqlite_conn, #[cfg(feature = "db_duckdb")] duckdb_conn, in_tx: false });
     conn_handle(id)
 }
 
@@ -309,6 +321,210 @@ fn close_cursor(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("Close".into())), args }
 }
 
+// ---------- Writes ----------
+fn insert_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 3 { return Value::Expr { head: Box::new(Value::Symbol("InsertRows".into())), args } }
+    let conn_id = match get_conn(&args[0]) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("InsertRows".into())), args } };
+    let table = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("InsertRows".into())), args: vec![args[0].clone(), other, args[2].clone()] } };
+    let rows_v = ev.eval(args[2].clone());
+    let rows = match &rows_v { Value::List(vs)=>vs.clone(), _=> return Value::Expr { head: Box::new(Value::Symbol("InsertRows".into())), args: vec![args[0].clone(), Value::String(table), rows_v] } };
+    let reg = conn_reg().lock().unwrap();
+    let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("InsertRows".into())), args } };
+    drop(reg);
+    // Build column set from first row
+    let mut cols: Vec<String> = Vec::new();
+    for r in &rows {
+        if let Value::Assoc(m) = r { for k in m.keys() { if !cols.contains(k) { cols.push(k.clone()); } } }
+    }
+    if cols.is_empty() { return Value::Integer(0); }
+    // Build multi-values INSERT
+    let mut sql = String::new();
+    sql.push_str(&format!("INSERT INTO {} ({} ) VALUES ", table, cols.join(", ")));
+    let mut first = true;
+    let mut count = 0;
+    for r in &rows {
+        if let Value::Assoc(m) = r {
+            if !first { sql.push_str(", "); } else { first=false; }
+            let vals: Vec<String> = cols.iter().map(|c| value_to_sql_literal(m.get(c).unwrap_or(&Value::Symbol("Null".into())))).collect();
+            sql.push_str(&format!("({})", vals.join(", ")));
+            count += 1;
+        }
+    }
+    match st.kind {
+        ConnectorKind::Mock => { /* store in mock */
+            let mut reg = conn_reg().lock().unwrap();
+            if let Some(state) = reg.get_mut(&conn_id) {
+                let ent = state.mock_tables.entry(table).or_default();
+                ent.extend(rows.clone());
+            }
+            Value::Integer(count)
+        }
+        #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
+            if let Some(conn) = st.sqlite_conn.as_ref() {
+                let mut guard = conn.lock().unwrap();
+                if !st.in_tx { let _ = guard.execute_batch("BEGIN"); }
+                let res = guard.execute_batch(&sql).map(|_| Value::Integer(count)).unwrap_or(Value::Integer(0));
+                if !st.in_tx { let _ = guard.execute_batch("COMMIT"); }
+                return res;
+            }
+            Value::Integer(0)
+        }
+        #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
+            if let Some(conn) = st.duckdb_conn.as_ref() {
+                let mut guard = conn.lock().unwrap();
+                if !st.in_tx { let _ = guard.execute_batch("BEGIN TRANSACTION"); }
+                let res = guard.execute_batch(&sql).map(|_| Value::Integer(count)).unwrap_or(Value::Integer(0));
+                if !st.in_tx { let _ = guard.execute_batch("COMMIT"); }
+                return res;
+            }
+            Value::Integer(0)
+        }
+    }
+}
+
+fn upsert_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // UpsertRows[conn, table, rows, <|Keys->{...}|>] via delete+insert fallback
+    if args.len() < 3 { return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args } }
+    let conn_id = match get_conn(&args[0]) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args } };
+    let table = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args: vec![args[0].clone(), other, args[2].clone()] } };
+    let rows_v = ev.eval(args[2].clone());
+    let rows = match &rows_v { Value::List(vs)=>vs.clone(), _=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args: vec![args[0].clone(), Value::String(table), rows_v] } };
+    let keys: Vec<String> = if args.len()>=4 { if let Value::Assoc(m) = ev.eval(args[3].clone()) { if let Some(Value::List(ks))=m.get("Keys") { ks.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect() } else { vec![] } } else { vec![] } } else { vec![] };
+    let reg = conn_reg().lock().unwrap();
+    let mut st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("UpsertRows".into())), args } };
+    drop(reg);
+    let mut inserted = 0;
+    match st.kind {
+        ConnectorKind::Mock => {
+            let mut reg = conn_reg().lock().unwrap();
+            if let Some(state) = reg.get_mut(&conn_id) {
+                let ent = state.mock_tables.entry(table).or_default();
+                for r in rows {
+                    if let Value::Assoc(m) = &r {
+                        if !keys.is_empty() {
+                            ent.retain(|row| match row { Value::Assoc(mm)=> { !keys.iter().all(|k| mm.get(k)==m.get(k)) }, _=> true });
+                        }
+                        ent.push(r);
+                        inserted += 1;
+                    }
+                }
+            }
+            Value::Integer(inserted)
+        }
+        #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
+            // Use generic delete+insert approach
+            let mut sql = String::new();
+            if !st.in_tx {
+                sql.push_str("BEGIN; ");
+            }
+            for r in rows {
+                if let Value::Assoc(m) = r {
+                    if !keys.is_empty() {
+                        let conds: Vec<String> = keys.iter().map(|k| format!("{} = {}", k, value_to_sql_literal(m.get(k).unwrap_or(&Value::Symbol("Null".into()))))).collect();
+                        sql.push_str(&format!("DELETE FROM {} WHERE {}; ", table, conds.join(" AND ")));
+                    }
+                    let cols: Vec<String> = m.keys().cloned().collect();
+                    let vals: Vec<String> = cols.iter().map(|c| value_to_sql_literal(m.get(c).unwrap())).collect();
+                    sql.push_str(&format!("INSERT INTO {} ({}) VALUES ({}); ", table, cols.join(", "), vals.join(", "))); inserted += 1;
+                }
+            }
+            if !st.in_tx { sql.push_str("COMMIT;"); }
+            if let Some(conn) = st.sqlite_conn.as_ref() { let _ = conn.lock().unwrap().execute_batch(&sql); }
+            Value::Integer(inserted)
+        }
+        #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
+            let mut sql = String::new();
+            if !st.in_tx { sql.push_str("BEGIN TRANSACTION; "); }
+            for r in rows {
+                if let Value::Assoc(m) = r {
+                    if !keys.is_empty() {
+                        let conds: Vec<String> = keys.iter().map(|k| format!("{} = {}", k, value_to_sql_literal(m.get(k).unwrap_or(&Value::Symbol("Null".into()))))).collect();
+                        sql.push_str(&format!("DELETE FROM {} WHERE {}; ", table, conds.join(" AND ")));
+                    }
+                    let cols: Vec<String> = m.keys().cloned().collect();
+                    let vals: Vec<String> = cols.iter().map(|c| value_to_sql_literal(m.get(c).unwrap())).collect();
+                    sql.push_str(&format!("INSERT INTO {} ({}) VALUES ({}); ", table, cols.join(", "), vals.join(", "))); inserted += 1;
+                }
+            }
+            if !st.in_tx { sql.push_str("COMMIT;"); }
+            if let Some(conn) = st.duckdb_conn.as_ref() { let _ = conn.lock().unwrap().execute_batch(&sql); }
+            Value::Integer(inserted)
+        }
+    }
+}
+
+fn write_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // WriteDataset[ds, conn, table, <|Mode->"Append"|"Overwrite"|>]
+    if args.len() < 3 { return Value::Expr { head: Box::new(Value::Symbol("WriteDataset".into())), args } }
+    let ds = ev.eval(args[0].clone());
+    let conn = args[1].clone();
+    let table = ev.eval(args[2].clone());
+    let mode = if args.len()>=4 { if let Value::Assoc(m) = ev.eval(args[3].clone()) { match m.get("Mode") { Some(Value::String(s))|Some(Value::Symbol(s)) => s.clone(), _=> "Append".into() } } else { "Append".into() } } else { "Append".into() };
+    let rows = match ds { Value::Assoc(_) | Value::List(_) | Value::Expr{..} => ev.eval(Value::Expr { head: Box::new(Value::Symbol("Collect".into())), args: vec![ds] }), other => other };
+    if let Value::String(tname) | Value::Symbol(tname) = table {
+        if mode.eq_ignore_ascii_case("Overwrite") {
+            // Best-effort truncate via DELETE
+            let conn_id = match get_conn(&conn) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("WriteDataset".into())), args } };
+            let reg = conn_reg().lock().unwrap();
+            let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("WriteDataset".into())), args } };
+            drop(reg);
+            match st.kind {
+                ConnectorKind::Mock => {
+                    let mut reg = conn_reg().lock().unwrap();
+                    if let Some(state) = reg.get_mut(&conn_id) { state.mock_tables.insert(tname.clone(), Vec::new()); }
+                }
+                #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => { if let Some(c) = st.sqlite_conn.as_ref() { let _ = c.lock().unwrap().execute(&format!("DELETE FROM {}", tname), []); } }
+                #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => { if let Some(c) = st.duckdb_conn.as_ref() { let _ = c.lock().unwrap().execute(&format!("DELETE FROM {}", tname), []); } }
+            }
+        }
+        return insert_rows(ev, vec![conn, Value::String(tname), rows]);
+    }
+    Value::Expr { head: Box::new(Value::Symbol("WriteDataset".into())), args }
+}
+
+// ---------- Transactions ----------
+fn begin_tx(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Begin".into())), args } }
+    let id = match get_conn(&args[0]) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("Begin".into())), args } };
+    let mut reg = conn_reg().lock().unwrap();
+    if let Some(st) = reg.get_mut(&id) {
+        match st.kind {
+            ConnectorKind::Mock => { st.in_tx = true; return Value::Boolean(true); }
+            #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => { if let Some(c) = &st.sqlite_conn { let _ = c.lock().unwrap().execute_batch("BEGIN"); st.in_tx = true; return Value::Boolean(true); } }
+            #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => { if let Some(c) = &st.duckdb_conn { let _ = c.lock().unwrap().execute_batch("BEGIN TRANSACTION"); st.in_tx = true; return Value::Boolean(true); } }
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn commit_tx(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Commit".into())), args } }
+    let id = match get_conn(&args[0]) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("Commit".into())), args } };
+    let mut reg = conn_reg().lock().unwrap();
+    if let Some(st) = reg.get_mut(&id) {
+        match st.kind {
+            ConnectorKind::Mock => { st.in_tx = false; return Value::Boolean(true); }
+            #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => { if let Some(c) = &st.sqlite_conn { let _ = c.lock().unwrap().execute_batch("COMMIT"); st.in_tx = false; return Value::Boolean(true); } }
+            #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => { if let Some(c) = &st.duckdb_conn { let _ = c.lock().unwrap().execute_batch("COMMIT"); st.in_tx = false; return Value::Boolean(true); } }
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn rollback_tx(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Rollback".into())), args } }
+    let id = match get_conn(&args[0]) { Some(id)=>id, None=> return Value::Expr { head: Box::new(Value::Symbol("Rollback".into())), args } };
+    let mut reg = conn_reg().lock().unwrap();
+    if let Some(st) = reg.get_mut(&id) {
+        match st.kind {
+            ConnectorKind::Mock => { st.in_tx = false; return Value::Boolean(true); }
+            #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => { if let Some(c) = &st.sqlite_conn { let _ = c.lock().unwrap().execute_batch("ROLLBACK"); st.in_tx = false; return Value::Boolean(true); } }
+            #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => { if let Some(c) = &st.duckdb_conn { let _ = c.lock().unwrap().execute_batch("ROLLBACK"); st.in_tx = false; return Value::Boolean(true); } }
+        }
+    }
+    Value::Boolean(false)
+}
+
 // ExplainSQL[dataset] -> String explaining pushdown and produced SQL (scaffolding)
 fn explain_sql(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("ExplainSQL".into())), args } }
@@ -330,6 +546,13 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("SQLCursor", sql_cursor as NativeFn, Attributes::empty());
     ev.register("Fetch", fetch_cursor as NativeFn, Attributes::empty());
     ev.register("Close", close_cursor as NativeFn, Attributes::empty());
+    // Writes and transactions
+    ev.register("InsertRows", insert_rows as NativeFn, Attributes::empty());
+    ev.register("UpsertRows", upsert_rows as NativeFn, Attributes::empty());
+    ev.register("WriteDataset", write_dataset as NativeFn, Attributes::empty());
+    ev.register("Begin", begin_tx as NativeFn, Attributes::empty());
+    ev.register("Commit", commit_tx as NativeFn, Attributes::empty());
+    ev.register("Rollback", rollback_tx as NativeFn, Attributes::empty());
 }
 
 // ---------- SQLite helpers (feature-gated) ----------
