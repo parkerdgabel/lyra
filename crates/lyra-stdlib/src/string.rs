@@ -54,6 +54,15 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("CamelCase", camel_case_fn as NativeFn, Attributes::LISTABLE);
     ev.register("SnakeCase", snake_case_fn as NativeFn, Attributes::LISTABLE);
     ev.register("KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
+    // Regex helpers
+    ev.register("RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("RegexFind", regex_find_fn as NativeFn, Attributes::empty());
+    ev.register("RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
+    ev.register("RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
+    // Date/time helpers
+    ev.register("ParseDate", parse_date_fn as NativeFn, Attributes::empty());
+    ev.register("FormatDate", format_date_fn as NativeFn, Attributes::empty());
+    ev.register("DateDiff", date_diff_fn as NativeFn, Attributes::empty());
 }
 
 // Bring NativeFn alias into scope by mirroring lyra-runtime's type
@@ -181,6 +190,110 @@ fn string_trim_suffix(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [a, b] => { let aa = ev.eval(a.clone()); let bb = ev.eval(b.clone()); string_trim_suffix(ev, vec![aa, bb]) }
         _ => Value::Expr { head: Box::new(Value::Symbol("StringTrimSuffix".into())), args },
     }
+}
+
+// -------------- Regex helpers --------------
+fn compile_regex(pat: &str) -> Result<regex::Regex, String> {
+    regex::Regex::new(pat).map_err(|e| e.to_string())
+}
+
+fn regex_match_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexMatch".into())), args: vec![v, p.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x)|Value::Symbol(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexMatch".into())), args: vec![Value::String(ss), v] } };
+            match compile_regex(&pp) { Ok(re)=> Value::Boolean(re.is_match(&ss)), Err(_)=> Value::Expr { head: Box::new(Value::Symbol("RegexMatch".into())), args: vec![Value::String(ss), Value::String(pp)] } }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexMatch".into())), args },
+    }
+}
+
+fn regex_find_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexFind".into())), args: vec![v, p.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x)|Value::Symbol(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexFind".into())), args: vec![Value::String(ss), v] } };
+            match compile_regex(&pp) { Ok(re)=> re.find(&ss).map(|m| Value::String(m.as_str().to_string())).unwrap_or(Value::Symbol("Null".into())), Err(_)=> Value::Expr { head: Box::new(Value::Symbol("RegexFind".into())), args: vec![Value::String(ss), Value::String(pp)] } }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexFind".into())), args },
+    }
+}
+
+fn regex_find_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexFindAll".into())), args: vec![v, p.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x)|Value::Symbol(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexFindAll".into())), args: vec![Value::String(ss), v] } };
+            match compile_regex(&pp) { Ok(re)=> Value::List(re.find_iter(&ss).map(|m| Value::String(m.as_str().to_string())).collect()), Err(_)=> Value::Expr { head: Box::new(Value::Symbol("RegexFindAll".into())), args: vec![Value::String(ss), Value::String(pp)] } }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexFindAll".into())), args },
+    }
+}
+
+fn regex_replace_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p, r] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexReplace".into())), args: vec![v, p.clone(), r.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x)|Value::Symbol(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexReplace".into())), args: vec![Value::String(ss), v, r.clone()] } };
+            let rr = match ev.eval(r.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("RegexReplace".into())), args: vec![Value::String(ss), Value::String(pp), v] } };
+            match compile_regex(&pp) { Ok(re)=> Value::String(re.replace_all(&ss, rr.as_str()).to_string()), Err(_)=> Value::Expr { head: Box::new(Value::Symbol("RegexReplace".into())), args: vec![Value::String(ss), Value::String(pp), Value::String(rr)] } }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexReplace".into())), args },
+    }
+}
+
+// -------------- Date/time helpers --------------
+fn parse_date_flexible(s: &str) -> Option<i64> {
+    // Try RFC3339
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) { return Some(dt.timestamp()); }
+    // Try RFC2822
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(s) { return Some(dt.timestamp()); }
+    // Common formats
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") { return Some(chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc).timestamp()); }
+    if let Ok(nd) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") { return Some(chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(nd.and_hms_opt(0,0,0)?, chrono::Utc).timestamp()); }
+    None
+}
+
+fn parse_date_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s] => match ev.eval(s.clone()) { Value::String(x)=> parse_date_flexible(&x).map(Value::Integer).unwrap_or(Value::Symbol("Null".into())), v=> Value::Expr { head: Box::new(Value::Symbol("ParseDate".into())), args: vec![v] } },
+        [s, fmt] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("ParseDate".into())), args: vec![v, fmt.clone()] } };
+            let ff = match ev.eval(fmt.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("ParseDate".into())), args: vec![Value::String(ss), v] } };
+            match chrono::NaiveDateTime::parse_from_str(&ss, &ff).ok().map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc).timestamp()) {
+                Some(ts) => Value::Integer(ts), None => Value::Symbol("Null".into())
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("ParseDate".into())), args },
+    }
+}
+
+fn format_date_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [ts] => match ev.eval(ts.clone()) { Value::Integer(secs)=> Value::String(chrono::NaiveDateTime::from_timestamp_opt(secs, 0).map(|ndt| ndt.format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default()), v=> Value::Expr { head: Box::new(Value::Symbol("FormatDate".into())), args: vec![v] } },
+        [ts, fmt] => {
+            let secs = match ev.eval(ts.clone()) { Value::Integer(s)=>s, v=> return Value::Expr { head: Box::new(Value::Symbol("FormatDate".into())), args: vec![v, fmt.clone()] } };
+            let ff = match ev.eval(fmt.clone()) { Value::String(x)=>x, v=> return Value::Expr { head: Box::new(Value::Symbol("FormatDate".into())), args: vec![Value::Integer(secs), v] } };
+            Value::String(chrono::NaiveDateTime::from_timestamp_opt(secs, 0).map(|ndt| ndt.format(&ff).to_string()).unwrap_or_default())
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("FormatDate".into())), args },
+    }
+}
+
+fn date_diff_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("DateDiff".into())), args } }
+    let a = match ev.eval(args[0].clone()) { Value::Integer(s)=>s, Value::String(s)=> parse_date_flexible(&s).unwrap_or(0), v=> return Value::Expr { head: Box::new(Value::Symbol("DateDiff".into())), args: vec![v, args.get(1).cloned().unwrap_or(Value::Symbol("Null".into()))] } };
+    let b = match ev.eval(args[1].clone()) { Value::Integer(s)=>s, Value::String(s)=> parse_date_flexible(&s).unwrap_or(0), v=> return Value::Expr { head: Box::new(Value::Symbol("DateDiff".into())), args: vec![Value::Integer(a), v] } };
+    let secs = a - b;
+    let unit = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::String(u)|Value::Symbol(u)=>u.to_lowercase(), _=>"seconds".into() } } else { "seconds".into() };
+    let val = match unit.as_str() {
+        "seconds" => secs as f64,
+        "minutes" => (secs as f64) / 60.0,
+        "hours" => (secs as f64) / 3600.0,
+        "days" => (secs as f64) / 86400.0,
+        _ => secs as f64,
+    };
+    if val.fract()==0.0 { Value::Integer(val as i64) } else { Value::Real(val) }
 }
 
 fn string_trim_chars(ev: &mut Evaluator, args: Vec<Value>) -> Value {
