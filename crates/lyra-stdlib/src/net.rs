@@ -2,6 +2,7 @@ use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use serde_json as sj;
+use crate::register_if;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
 
@@ -64,6 +65,35 @@ pub fn register_net(ev: &mut Evaluator) {
         #[cfg(feature = "net_https")]
         tool_spec!("HttpServeTls", summary: "Start an HTTPS server with TLS cert/key", params: ["handler","opts"], tags: ["net","http","server","tls"], effects: ["net.listen"]),
     ]);
+}
+
+pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "HttpGet", http_get as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpPost", http_post as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpPut", http_put as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpPatch", http_patch as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpDelete", http_delete as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpHead", http_head as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpOptions", http_options as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Download", download as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DownloadStream", download_stream as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpRequest", http_request_generic as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpServe", http_serve as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "HttpServerStop", http_server_stop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpServerAddr", http_server_addr as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpServeRoutes", http_serve_routes as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "PathMatch", path_match_builtin as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondFile", respond_file as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondText", respond_text as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondJson", respond_json as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondBytes", respond_bytes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondHtml", respond_html as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondRedirect", respond_redirect as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RespondNoContent", respond_no_content as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CookiesHeader", cookies_header as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GetResponseCookies", get_response_cookies as NativeFn, Attributes::empty());
+    #[cfg(feature = "net_https")]
+    register_if(ev, pred, "HttpServeTls", http_serve_tls as NativeFn, Attributes::HOLD_ALL);
 }
 
 fn failure(tag: &str, msg: &str) -> Value {

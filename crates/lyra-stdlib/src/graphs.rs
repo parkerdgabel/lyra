@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 use std::collections::{HashMap, HashSet};
 use std::sync::{OnceLock, Mutex};
 
@@ -1032,4 +1033,40 @@ pub fn register_graphs(ev: &mut Evaluator) {
     ev.register("KCore", kcore as NativeFn, Attributes::empty());
     ev.register("MinimumSpanningTree", mst as NativeFn, Attributes::empty());
     ev.register("MaxFlow", max_flow as NativeFn, Attributes::empty());
+}
+
+pub fn register_graphs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "GraphCreate", graph_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DropGraph", drop_graph as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GraphInfo", graph_info as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AddNodes", add_nodes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UpsertNodes", upsert_nodes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AddEdges", add_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UpsertEdges", upsert_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveNodes", remove_nodes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveEdges", remove_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListNodes", list_nodes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListEdges", list_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HasNode", has_node as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HasEdge", has_edge as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Neighbors", neighbors as NativeFn, Attributes::empty());
+    register_if(ev, pred, "IncidentEdges", incident_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Subgraph", subgraph as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SampleNodes", sample_nodes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SampleEdges", sample_edges as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BFS", bfs as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DFS", dfs as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ShortestPaths", shortest_paths as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ConnectedComponents", connected_components as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StronglyConnectedComponents", strongly_connected_components as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TopologicalSort", topological_sort as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PageRank", pagerank as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DegreeCentrality", degree_centrality as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ClosenessCentrality", closeness_centrality as NativeFn, Attributes::empty());
+    register_if(ev, pred, "LocalClustering", local_clustering as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GlobalClustering", global_clustering as NativeFn, Attributes::empty());
+    register_if(ev, pred, "KCoreDecomposition", kcore_decomposition as NativeFn, Attributes::empty());
+    register_if(ev, pred, "KCore", kcore as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MinimumSpanningTree", mst as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MaxFlow", max_flow as NativeFn, Attributes::empty());
 }

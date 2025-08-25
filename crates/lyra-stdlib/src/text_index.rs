@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 #[cfg(feature = "text_index")] use rusqlite::{Connection, params};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -10,6 +11,13 @@ pub fn register_text_index(ev: &mut Evaluator) {
     ev.register("IndexAdd", index_add as NativeFn, Attributes::empty());
     ev.register("IndexSearch", index_search as NativeFn, Attributes::empty());
     ev.register("IndexInfo", index_info as NativeFn, Attributes::empty());
+}
+
+pub fn register_text_index_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "IndexCreate", index_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "IndexAdd", index_add as NativeFn, Attributes::empty());
+    register_if(ev, pred, "IndexSearch", index_search as NativeFn, Attributes::empty());
+    register_if(ev, pred, "IndexInfo", index_info as NativeFn, Attributes::empty());
 }
 
 fn index_create(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

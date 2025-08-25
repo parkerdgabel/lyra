@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
 
@@ -1466,6 +1467,42 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("col", col_fn as NativeFn, Attributes::empty());
     ev.register("Cast", cast_fn as NativeFn, Attributes::empty());
     ev.register("Coalesce", coalesce_fn as NativeFn, Attributes::empty());
+}
+
+pub fn register_dataset_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Collect", collect_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SelectCols", select_cols as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Select", select_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FilterRows", filter_rows as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "LimitRows", limit_rows as NativeFn, Attributes::empty());
+    register_if(ev, pred, "WithColumns", with_columns as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Count", count_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Columns", columns_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DatasetSchema", dataset_schema as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExplainDataset", explain_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExplainSQL", explain_sql_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReadCSVDataset", read_csv_dataset as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ShowDataset", show_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReadJsonLinesDataset", read_jsonl_dataset as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetFromDbTable", dataset_from_db_table as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GroupBy", group_by as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Agg", agg as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Join", join_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Sort", sort_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Distinct", distinct_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DistinctOn", distinct_on as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RenameCols", rename_cols as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Union", union_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Concat", concat_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UnionByPosition", union_by_position as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Offset", offset_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Head", head_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Tail", tail_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Describe", describe_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "col", col_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Cast", cast_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Coalesce", coalesce_fn as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {

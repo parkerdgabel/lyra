@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 
 #[cfg(feature = "text_fuzzy")] use fuzzy_matcher::skim::SkimMatcherV2;
 #[cfg(feature = "text_fuzzy")] use fuzzy_matcher::FuzzyMatcher;
@@ -11,6 +12,12 @@ pub fn register_text_fuzzy(ev: &mut Evaluator) {
     ev.register("FuzzyFindInText", fuzzy_find_in_text as NativeFn, Attributes::empty());
     ev.register("FuzzyFindInList", fuzzy_find_in_list as NativeFn, Attributes::empty());
     ev.register("FuzzyFindInFiles", fuzzy_find_in_files as NativeFn, Attributes::empty());
+}
+
+pub fn register_text_fuzzy_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "FuzzyFindInText", fuzzy_find_in_text as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FuzzyFindInList", fuzzy_find_in_list as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FuzzyFindInFiles", fuzzy_find_in_files as NativeFn, Attributes::empty());
 }
 
 fn matcher_from_opts(_opts: &std::collections::HashMap<String, Value>) -> SkimMatcherV2 {
@@ -112,4 +119,3 @@ fn fuzzy_find_in_files(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ("durationMs".into(), Value::Integer(0)),
     ].into_iter().collect())
 }
-

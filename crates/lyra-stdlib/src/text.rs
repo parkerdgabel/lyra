@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 use regex::Regex;
 #[cfg(feature = "text_multipattern")] use aho_corasick::AhoCorasick;
 #[cfg(feature = "text_glob")] use ignore::{WalkBuilder, overrides::OverrideBuilder};
@@ -17,6 +18,16 @@ pub fn register_text(ev: &mut Evaluator) {
     ev.register("TextReplace", text_replace as NativeFn, Attributes::empty());
     ev.register("TextDetectEncoding", text_detect_encoding as NativeFn, Attributes::empty());
     ev.register("TextSearch", text_search as NativeFn, Attributes::empty());
+}
+
+pub fn register_text_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "TextFind", text_find as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextCount", text_count as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextFilesWithMatch", text_files_with_match as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextLines", text_lines as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextReplace", text_replace as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextDetectEncoding", text_detect_encoding as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TextSearch", text_search as NativeFn, Attributes::empty());
 }
 
 fn ok_summary(files: usize, files_with: usize, total: usize, dur_ms: u128) -> Value {

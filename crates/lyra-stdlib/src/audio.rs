@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 use std::io::Cursor;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -560,4 +561,19 @@ fn audio_save(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Ok(_) => Value::Assoc(std::iter::once(("path".into(), Value::String(out_path))).collect()),
         Err(e) => failure("Audio::save", &e.to_string()),
     }
+}
+
+
+pub fn register_audio_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "AudioInfo", audio_info as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioDecode", audio_decode as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioEncode", audio_encode as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioConvert", audio_convert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioTrim", audio_trim as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioGain", audio_gain as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioResample", audio_resample as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioConcat", audio_concat as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioFade", audio_fade as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioChannelMix", audio_channel_mix as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AudioSave", audio_save as NativeFn, Attributes::empty());
 }

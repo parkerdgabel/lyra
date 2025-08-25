@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
 #[cfg(feature = "db_sqlite")] use base64;
@@ -611,6 +612,27 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("Begin", begin_tx as NativeFn, Attributes::empty());
     ev.register("Commit", commit_tx as NativeFn, Attributes::empty());
     ev.register("Rollback", rollback_tx as NativeFn, Attributes::empty());
+}
+
+pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Connect", connect as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Disconnect", disconnect as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Close", close_cursor as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Begin", begin_tx as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Commit", commit_tx as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Rollback", rollback_tx as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Ping", ping as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Exec", exec_query as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Fetch", fetch_cursor as NativeFn, Attributes::empty());
+    register_if(ev, pred, "InsertRows", insert_rows as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UpsertRows", upsert_rows as NativeFn, Attributes::empty());
+    register_if(ev, pred, "WriteDataset", write_dataset as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegisterTable", register_table as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListTables", list_tables as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Table", table_to_dataset as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SQL", sql_query as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SQLCursor", sql_cursor as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
 }
 
 // Exec[conn, sql, params?] -> executes non-SELECT (DDL/DML); returns Boolean success

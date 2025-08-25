@@ -4,6 +4,7 @@ use lyra_runtime::attrs::Attributes;
 use serde_json as sj;
 use serde_json::ser::{PrettyFormatter, Serializer};
 use serde::Serialize;
+use crate::register_if;
 
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
@@ -67,6 +68,34 @@ pub fn register_io(ev: &mut Evaluator) {
         tool_spec!("RenderCSV", summary: "Render rows to CSV string", params: ["rows","opts"], tags: ["io","csv"]),
         tool_spec!("WriteCSV", summary: "Write rows to CSV file", params: ["path","rows","opts"], tags: ["io","csv"], effects: ["fs.write"]),
     ]);
+}
+
+pub fn register_io_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "ReadFile", read_file as NativeFn, Attributes::empty());
+    register_if(ev, pred, "WriteFile", write_file as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReadLines", read_lines as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FileExistsQ", file_exists_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListDirectory", list_directory as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Stat", stat_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PathJoin", path_join as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PathSplit", path_split as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CanonicalPath", canonical_path as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExpandPath", expand_path as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CurrentDirectory", current_directory as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetDirectory", set_directory as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Basename", basename_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Dirname", dirname_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FileStem", file_stem_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FileExtension", file_extension_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GetEnv", get_env as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetEnv", set_env as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReadStdin", read_stdin as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToJson", to_json as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FromJson", from_json as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ParseCSV", parse_csv as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReadCSV", read_csv as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RenderCSV", render_csv as NativeFn, Attributes::empty());
+    register_if(ev, pred, "WriteCSV", write_csv as NativeFn, Attributes::empty());
 }
 
 fn read_file(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

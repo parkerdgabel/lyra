@@ -2,6 +2,7 @@ use lyra_core::pretty::format_value;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 use chacha20poly1305::KeyInit;
 use hmac::Mac;
 
@@ -56,6 +57,25 @@ pub fn register_crypto(ev: &mut Evaluator) {
         tool_spec!("JwtSign", summary: "Sign JWT (HS256 or EdDSA)", params: ["claims","key","opts"], tags: ["crypto","jwt"]),
         tool_spec!("JwtVerify", summary: "Verify JWT and return claims", params: ["jwt","keys","opts"], tags: ["crypto","jwt"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
     ]);
+}
+
+pub fn register_crypto_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "RandomBytes", random_bytes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RandomHex", random_hex as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Hash", hash_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "AeadKeyGen", aead_key_gen as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AeadEncrypt", aead_encrypt as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AeadDecrypt", aead_decrypt as NativeFn, Attributes::empty());
+    register_if(ev, pred, "KeypairGenerate", keypair_generate as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Sign", sign_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Verify", verify_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Hmac", hmac_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HmacVerify", hmac_verify as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Hkdf", hkdf_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PasswordHash", password_hash_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PasswordVerify", password_verify_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "JwtSign", jwt_sign as NativeFn, Attributes::empty());
+    register_if(ev, pred, "JwtVerify", jwt_verify as NativeFn, Attributes::empty());
 }
 
 fn failure(tag: &str, msg: &str) -> Value {

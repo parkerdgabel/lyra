@@ -537,6 +537,8 @@ fn nd_permute_dims(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+use crate::register_if;
+
 pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDArray", ndarray as NativeFn, Attributes::HOLD_ALL);
     ev.register("NDShape", nd_shape as NativeFn, Attributes::empty());
@@ -567,6 +569,38 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDSin", nd_sin as NativeFn, Attributes::empty());
     ev.register("NDCos", nd_cos as NativeFn, Attributes::empty());
     ev.register("NDTanh", nd_tanh as NativeFn, Attributes::empty());
+}
+
+pub fn register_ndarray_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "NDArray", ndarray as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "NDShape", nd_shape as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDReshape", nd_reshape as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDTranspose", nd_transpose as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDConcat", nd_concat as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDSum", nd_sum as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDMean", nd_mean as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDArgMax", nd_argmax as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDMatMul", nd_matmul as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDType", nd_type as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDAsType", nd_as_type as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDSlice", nd_slice as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDPermuteDims", nd_permute_dims as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDMap", nd_map as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "NDReduce", nd_reduce as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "NDAdd", nd_add as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDSub", nd_sub as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDMul", nd_mul as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDDiv", nd_div as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDEltwise", nd_eltwise as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "NDPow", nd_pow as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDClip", nd_clip as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDRelu", nd_relu as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDExp", nd_exp as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDSqrt", nd_sqrt as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDLog", nd_log as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDSin", nd_sin as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDCos", nd_cos as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NDTanh", nd_tanh as NativeFn, Attributes::empty());
 }
 
 fn call_unary_to_f64(ev: &mut Evaluator, f: &Value, x: f64) -> Option<f64> {

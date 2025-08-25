@@ -2,6 +2,7 @@ use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use image::GenericImageView;
 use lyra_runtime::Evaluator;
+use crate::register_if;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -37,6 +38,20 @@ pub fn register_image(ev: &mut Evaluator) {
         tool_spec!("ImageTransform", summary: "Apply pipeline of operations", params: ["input","pipeline"], tags: ["image","pipeline"], output_schema: schema_str!()),
         tool_spec!("ImageSave", summary: "Encode and write image to path", params: ["input","output","encoding"], tags: ["image","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
     ]);
+}
+
+pub fn register_image_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "ImageInfo", image_info as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageCanvas", image_canvas as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageDecode", image_decode as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageEncode", image_encode as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageResize", image_resize as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageConvert", image_convert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageCrop", image_crop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImagePad", image_pad as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageThumbnail", image_thumbnail as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageTransform", image_transform as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageSave", image_save as NativeFn, Attributes::empty());
 }
 
 fn failure(tag: &str, msg: &str) -> Value {
