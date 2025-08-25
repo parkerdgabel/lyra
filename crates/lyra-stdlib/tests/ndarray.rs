@@ -78,4 +78,16 @@ fn ndarray_sum_mean_argmax_matmul() {
     // NDReduce across axis 1 with Max
     let r2 = ev.eval(Value::expr(Value::Symbol("NDReduce".into()), vec![a.clone(), Value::Symbol("Max".into()), Value::Integer(1)]));
     match r2 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2]); assert_eq!(data, vec![3.0,6.0]); }, other => panic!("unexpected reduce axis: {}", lyra_core::pretty::format_value(&other)) }
+    // NDAdd broadcasting row vector
+    let row = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::Integer(10), Value::Integer(20), Value::Integer(30)]) ]));
+    let addres = ev.eval(Value::expr(Value::Symbol("NDAdd".into()), vec![a.clone(), row.clone()]));
+    match addres { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert_eq!(data, vec![11.0,22.0,33.0,14.0,25.0,36.0]); }, other => panic!("unexpected NDAdd: {}", lyra_core::pretty::format_value(&other)) }
+    // NDMul broadcasting 2x1 * 1x3
+    let col = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::List(vec![Value::Integer(2)]), Value::List(vec![Value::Integer(3)]) ]) ]));
+    let mulres = ev.eval(Value::expr(Value::Symbol("NDMul".into()), vec![col.clone(), row.clone()]));
+    match mulres { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert_eq!(data, vec![20.0,40.0,60.0,30.0,60.0,90.0]); }, other => panic!("unexpected NDMul: {}", lyra_core::pretty::format_value(&other)) }
+    // NDEltwise with a custom function: (x+y)/2
+    let halfsum = Value::PureFunction { params: None, body: Box::new(Value::Expr { head: Box::new(Value::Symbol("Divide".into())), args: vec![ Value::Expr { head: Box::new(Value::Symbol("Plus".into())), args: vec![Value::Slot(Some(1)), Value::Slot(Some(2))] }, Value::Integer(2) ] }) };
+    let ew = ev.eval(Value::expr(Value::Symbol("NDEltwise".into()), vec![halfsum, a.clone(), a.clone()]));
+    match ew { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert_eq!(data, vec![1.0,2.0,3.0,4.0,5.0,6.0]); }, other => panic!("unexpected NDEltwise: {}", lyra_core::pretty::format_value(&other)) }
 }

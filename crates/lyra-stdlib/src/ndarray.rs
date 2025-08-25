@@ -223,6 +223,150 @@ fn nd_matmul(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     pack(vec![m, n], out)
 }
 
+fn num_to_f64(v: &Value) -> Option<f64> {
+    match v {
+        Value::Integer(n) => Some(*n as f64),
+        Value::Real(x) => Some(*x),
+        Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+        Value::BigReal(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn broadcast_shapes(s1: &[usize], s2: &[usize]) -> Option<Vec<usize>> {
+    let ndim = std::cmp::max(s1.len(), s2.len());
+    let mut sh1 = vec![1; ndim];
+    let mut sh2 = vec![1; ndim];
+    sh1[ndim - s1.len()..].clone_from_slice(&s1);
+    sh2[ndim - s2.len()..].clone_from_slice(&s2);
+    let mut out = Vec::with_capacity(ndim);
+    for i in 0..ndim {
+        let (a,b) = (sh1[i], sh2[i]);
+        if a==b { out.push(a); } else if a==1 { out.push(b); } else if b==1 { out.push(a); } else { return None; }
+    }
+    Some(out)
+}
+
+fn broadcast_binop_arrays(a_sh: &[usize], a_dat: &[f64], b_sh: &[usize], b_dat: &[f64], op: fn(f64,f64)->f64) -> Option<Value> {
+    let out_shape = broadcast_shapes(a_sh, b_sh)?;
+    let ndim = out_shape.len();
+    let mut sh1 = vec![1; ndim];
+    let mut sh2 = vec![1; ndim];
+    sh1[ndim - a_sh.len()..].clone_from_slice(a_sh);
+    sh2[ndim - b_sh.len()..].clone_from_slice(b_sh);
+    let st1 = strides(&sh1);
+    let st2 = strides(&sh2);
+    let out_total: usize = out_shape.iter().product();
+    // tails for decoding linear -> coords
+    let mut tails: Vec<usize> = vec![1; ndim];
+    for i in 0..ndim { tails[i] = out_shape[i+1..].iter().product::<usize>().max(1); }
+    let mut out = Vec::with_capacity(out_total);
+    for lin in 0..out_total {
+        let mut rem = lin;
+        let mut off1 = 0usize; let mut off2 = 0usize;
+        for i in 0..ndim {
+            let c = rem / tails[i]; rem %= tails[i];
+            let c1 = if sh1[i]==1 { 0 } else { c };
+            let c2 = if sh2[i]==1 { 0 } else { c };
+            off1 += c1 * st1[i];
+            off2 += c2 * st2[i];
+        }
+        out.push(op(a_dat[off1], b_dat[off2]));
+    }
+    Some(pack(out_shape, out))
+}
+
+fn nd_add(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDAdd".into())), args } }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x+y).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDAdd".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, other) | (other, Value::PackedArray { shape, data }) => {
+            if let Some(s) = num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x+s).collect()); }
+            Value::Expr { head: Box::new(Value::Symbol("NDAdd".into())), args: vec![a,b] }
+        }
+        _ => {
+            match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x+y), _ => Value::Expr { head: Box::new(Value::Symbol("NDAdd".into())), args: vec![a,b] } }
+        }
+    }
+}
+
+fn nd_sub(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDSub".into())), args } }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x-y).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDSub".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, other) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x-s).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDSub".into())), args: vec![a,b] } }
+        (other, Value::PackedArray { shape, data }) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| s-*x).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDSub".into())), args: vec![a,b] } }
+        _ => { match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x-y), _ => Value::Expr { head: Box::new(Value::Symbol("NDSub".into())), args: vec![a,b] } } }
+    }
+}
+
+fn nd_mul(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDMul".into())), args } }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x*y).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDMul".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, other) | (other, Value::PackedArray { shape, data }) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x*s).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDMul".into())), args: vec![a,b] } }
+        _ => { match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x*y), _ => Value::Expr { head: Box::new(Value::Symbol("NDMul".into())), args: vec![a,b] } } }
+    }
+}
+
+fn nd_div(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDDiv".into())), args } }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x/y).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDDiv".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, other) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x/s).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDDiv".into())), args: vec![a,b] } }
+        (other, Value::PackedArray { shape, data }) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| s/ *x).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDDiv".into())), args: vec![a,b] } }
+        _ => { match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x/y), _ => Value::Expr { head: Box::new(Value::Symbol("NDDiv".into())), args: vec![a,b] } } }
+    }
+}
+
+fn nd_eltwise(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NDEltwise[f, a, b]
+    if args.len()!=3 { return Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args } }
+    let f = args[0].clone();
+    let a = ev.eval(args[1].clone());
+    let b = ev.eval(args[2].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => {
+            let out_shape = match broadcast_shapes(sa, sb) { Some(s)=>s, None=> return Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] } };
+            let ndim = out_shape.len();
+            let mut sh1 = vec![1; ndim]; let mut sh2 = vec![1; ndim];
+            sh1[ndim - sa.len()..].clone_from_slice(sa);
+            sh2[ndim - sb.len()..].clone_from_slice(sb);
+            let st1 = strides(&sh1); let st2 = strides(&sh2);
+            let mut tails = vec![1usize; ndim]; for i in 0..ndim { tails[i] = out_shape[i+1..].iter().product::<usize>().max(1); }
+            let total: usize = out_shape.iter().product();
+            let mut out = Vec::with_capacity(total);
+            for lin in 0..total {
+                let mut rem = lin; let mut off1=0usize; let mut off2=0usize;
+                for i in 0..ndim { let c = rem / tails[i]; rem%=tails[i]; let c1 = if sh1[i]==1 { 0 } else { c }; let c2 = if sh2[i]==1 { 0 } else { c }; off1 += c1*st1[i]; off2 += c2*st2[i]; }
+                if let Some(y) = call_binary_to_f64(ev, &f, da[off1], db[off2]) { out.push(y); } else { return Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] } }
+            }
+            pack(out_shape, out)
+        }
+        (Value::PackedArray { shape, data }, other) | (other, Value::PackedArray { shape, data }) => {
+            if let Some(s) = num_to_f64(other) {
+                let mut out = Vec::with_capacity(data.len());
+                for &x in data { if let Some(y) = call_binary_to_f64(ev, &f, x, s) { out.push(y); } else { return Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] } } }
+                pack(shape.clone(), out)
+            } else { Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] } }
+        }
+        _ => {
+            match (num_to_f64(&a), num_to_f64(&b)) {
+                (Some(x), Some(y)) => call_binary_to_f64(ev, &f, x, y).map(Value::Real).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] }),
+                _ => Value::Expr { head: Box::new(Value::Symbol("NDEltwise".into())), args: vec![f,a,b] }
+            }
+        }
+    }
+}
+
 fn nd_slice(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Forms:
     // - NDSlice[a, axis, start, len]  (axis 0-based; start 1-based; len>=0)
@@ -346,6 +490,11 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDPermuteDims", nd_permute_dims as NativeFn, Attributes::empty());
     ev.register("NDMap", nd_map as NativeFn, Attributes::HOLD_ALL);
     ev.register("NDReduce", nd_reduce as NativeFn, Attributes::HOLD_ALL);
+    ev.register("NDAdd", nd_add as NativeFn, Attributes::empty());
+    ev.register("NDSub", nd_sub as NativeFn, Attributes::empty());
+    ev.register("NDMul", nd_mul as NativeFn, Attributes::empty());
+    ev.register("NDDiv", nd_div as NativeFn, Attributes::empty());
+    ev.register("NDEltwise", nd_eltwise as NativeFn, Attributes::HOLD_ALL);
 }
 
 fn call_unary_to_f64(ev: &mut Evaluator, f: &Value, x: f64) -> Option<f64> {
