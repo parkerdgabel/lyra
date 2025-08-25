@@ -464,25 +464,43 @@ fn pow_numeric(base: Value, exp: Value) -> Option<Value> {
 }
 
 fn plus(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let mut it = args.into_iter();
-    if let Some(first) = it.next() {
-        let mut acc = first;
-        for a in it {
-            match add_numeric(acc, a) { Some(v) => acc = v, None => return Value::Expr { head: Box::new(Value::Symbol("Plus".into())), args: vec![] } }
+    if args.is_empty() { return Value::Integer(0); }
+    let mut acc = args[0].clone();
+    for i in 1..args.len() {
+        let a = args[i].clone();
+        match add_numeric(acc.clone(), a.clone()) {
+            Some(v) => acc = v,
+            None => {
+                // Fall back to symbolic form preserving remaining args (with folded prefix)
+                let mut rest = Vec::with_capacity(args.len() - i + 1);
+                rest.push(acc);
+                rest.push(a);
+                rest.extend_from_slice(&args[i+1..]);
+                return Value::Expr { head: Box::new(Value::Symbol("Plus".into())), args: rest };
+            }
         }
-        acc
-    } else { Value::Integer(0) }
+    }
+    acc
 }
 
 fn times(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let mut it = args.into_iter();
-    if let Some(first) = it.next() {
-        let mut acc = first;
-        for a in it {
-            match mul_numeric(acc, a) { Some(v) => acc = v, None => return Value::Expr { head: Box::new(Value::Symbol("Times".into())), args: vec![] } }
+    if args.is_empty() { return Value::Integer(1); }
+    let mut acc = args[0].clone();
+    for i in 1..args.len() {
+        let a = args[i].clone();
+        match mul_numeric(acc.clone(), a.clone()) {
+            Some(v) => acc = v,
+            None => {
+                // Fall back to symbolic form preserving remaining args (with folded prefix)
+                let mut rest = Vec::with_capacity(args.len() - i + 1);
+                rest.push(acc);
+                rest.push(a);
+                rest.extend_from_slice(&args[i+1..]);
+                return Value::Expr { head: Box::new(Value::Symbol("Times".into())), args: rest };
+            }
         }
-        acc
-    } else { Value::Integer(1) }
+    }
+    acc
 }
 
 fn minus(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

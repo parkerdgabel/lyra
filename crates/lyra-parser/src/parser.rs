@@ -165,7 +165,13 @@ impl Parser {
             self.skip_ws();
             match self.peekc() {
                 Some('*') => { self.nextc(); let rhs = self.parse_power()?; lhs = Value::expr(Value::Symbol("Times".into()), vec![lhs, rhs]); }
-                Some('/') => { self.nextc(); let rhs = self.parse_power()?; lhs = Value::expr(Value::Symbol("Divide".into()), vec![lhs, rhs]); }
+                Some('/') => {
+                    // Do not consume '/' if part of '/;' (Condition)
+                    let mut i = self.pos + 1;
+                    while i < self.src.len() && self.src[i].is_whitespace() { i += 1; }
+                    if i < self.src.len() && self.src[i] == ';' { break; }
+                    self.nextc(); let rhs = self.parse_power()?; lhs = Value::expr(Value::Symbol("Divide".into()), vec![lhs, rhs]);
+                }
                 _ => break,
             }
         }
@@ -188,6 +194,62 @@ impl Parser {
         let mut base = self.parse_call_or_atom()?;
         loop {
             self.skip_ws();
+            // ReplaceAll and ReplaceRepeated operators: expr /. rules, expr //. rules
+            if self.starts_with("//.") {
+                self.pos += 3; // consume //.
+                self.skip_ws();
+                // parse rule spec with tight binding of '->' and optional '/;'
+                let mut lhs_r = self.parse_logical()?;
+                self.skip_ws();
+                if self.starts_with("/;") {
+                    self.pos += 2; self.skip_ws();
+                    let cond = self.parse_logical()?;
+                    lhs_r = Value::expr(Value::Symbol("Condition".into()), vec![lhs_r, cond]);
+                }
+                self.skip_ws();
+                let rhs = if self.starts_with("->") {
+                    self.pos += 2; self.skip_ws();
+                    let rhs_r = self.parse_logical()?;
+                    Value::expr(Value::Symbol("Rule".into()), vec![lhs_r, rhs_r])
+                } else { lhs_r };
+                base = Value::expr(Value::Symbol("ReplaceRepeated".into()), vec![base, rhs]);
+                continue;
+            }
+            if self.starts_with("/.") {
+                self.pos += 2; // consume /.
+                self.skip_ws();
+                // parse rule spec with tight binding of '->' and optional '/;'
+                let mut lhs_r = self.parse_logical()?;
+                self.skip_ws();
+                if self.starts_with("/;") {
+                    self.pos += 2; self.skip_ws();
+                    let cond = self.parse_logical()?;
+                    lhs_r = Value::expr(Value::Symbol("Condition".into()), vec![lhs_r, cond]);
+                }
+                self.skip_ws();
+                let rhs = if self.starts_with("->") {
+                    self.pos += 2; self.skip_ws();
+                    let rhs_r = self.parse_logical()?;
+                    Value::expr(Value::Symbol("Rule".into()), vec![lhs_r, rhs_r])
+                } else { lhs_r };
+                base = Value::expr(Value::Symbol("ReplaceAll".into()), vec![base, rhs]);
+                continue;
+            }
+            // Postfix function application: expr // f  ==> f[expr]
+            if self.starts_with("//") {
+                self.pos += 2;
+                self.skip_ws();
+                // parse RHS as call or symbol
+                let rhs = self.parse_call_or_atom()?;
+                let call = match rhs {
+                    Value::Expr { head, mut args } => { args.insert(0, base); Value::Expr { head, args } }
+                    Value::Symbol(s) => Value::expr(Value::Symbol(s), vec![base]),
+                    Value::PureFunction { .. } => Value::expr(rhs, vec![base]),
+                    other => Value::expr(other, vec![base]),
+                };
+                base = call;
+                continue;
+            }
             // Double-bracket part selection: expr[[index]]
             if self.starts_with("[[") {
                 self.pos += 2; // consume [[
@@ -203,6 +265,27 @@ impl Parser {
                 // consume ']]'
                 self.pos += 2;
                 base = Value::expr(Value::Symbol("Part".into()), vec![base, idx]);
+                continue;
+            }
+            // Infix function application: a ~ f ~ b  ==> f[a, b]
+            if self.peekc()==Some('~') {
+                // consume '~'
+                self.nextc();
+                self.skip_ws();
+                let func = self.parse_call_or_atom()?;
+                self.skip_ws();
+                if self.peekc()!=Some('~') { return Err(LyraError::Parse("expected '~' in infix form".into())); }
+                self.nextc();
+                self.skip_ws();
+                // parse rhs as a tight unit; do not consume further '~' here
+                let rhs = self.parse_call_or_atom()?;
+                let mut args = vec![base, rhs];
+                // If func is already a call, insert base/rhs in front
+                let call = match func {
+                    Value::Expr { head, args: mut fargs } => { fargs.splice(0..0, args.drain(..)); Value::Expr { head, args: fargs } }
+                    other => Value::expr(other, args),
+                };
+                base = call;
                 continue;
             }
             break;
@@ -287,6 +370,14 @@ impl Parser {
                 }
                 if self.nextc()!=Some(']') { return Err(LyraError::Parse("expected ']'".into())); }
                 base = Value::expr(base, args);
+                continue;
+            }
+            // Prefix function application: f @ x  ==> f[x]
+            if self.peekc()==Some('@') {
+                self.nextc();
+                self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(base, vec![rhs]);
                 continue;
             }
             // pipelines: a |> f[args] or a |> f

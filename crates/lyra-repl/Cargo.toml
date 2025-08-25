@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rustyline = { workspace = true }
+rustyline = { workspace = true, features = ["custom-bindings", "with-fuzzy"] }
 colored = { workspace = true }
 anyhow = { workspace = true }
 lyra-core = { path = "../lyra-core" }
 lyra-parser = { path = "../lyra-parser" }
 lyra-runtime = { path = "../lyra-runtime" }
 lyra-stdlib = { path = "../lyra-stdlib" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [[bin]]
 name = "lyra"

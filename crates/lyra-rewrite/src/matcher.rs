@@ -93,7 +93,23 @@ fn match_pat(ctx: &MatcherCtx, pat: &Value, expr: &Value, binds: &mut Bindings) 
                 } else { false }
             }
         },
-        Value::Symbol(s) => match expr { Value::Symbol(s2) => s==s2, _=>false },
+        Value::Symbol(s) => {
+            // Support shorthand named typed blanks like Symbol("x_Integer")
+            if let Some(pos) = s.find('_') {
+                let name = s[..pos].to_string();
+                let ty = s[pos+1..].to_string();
+                let ty_val = Value::Symbol(ty);
+                if type_matches(&ty_val, expr) {
+                    if !name.is_empty() {
+                        if let Some(prev) = binds.get(&name) { if prev != expr { return false; } }
+                        binds.insert(name, expr.clone());
+                    }
+                    true
+                } else { false }
+            } else {
+                match expr { Value::Symbol(s2) => s==s2, _=>false }
+            }
+        },
         _ => pat == expr,
     }
 }

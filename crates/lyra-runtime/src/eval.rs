@@ -167,6 +167,10 @@ impl Evaluator {
         self.builtins.insert(name.to_string(), (f, attrs));
     }
 
+    pub fn env_keys(&self) -> Vec<String> {
+        self.env.keys().cloned().collect()
+    }
+
     pub fn eval(&mut self, v: Value) -> Value {
         if let Some(tok) = &self.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
         if let Some(dl) = self.deadline { if Instant::now() > dl { return time_budget_failure(); } }
@@ -536,6 +540,7 @@ pub fn register_core(ev: &mut Evaluator) {
     ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Replace", replace as NativeFn, Attributes::HOLD_ALL);
     ev.register("ReplaceAll", replace_all_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ReplaceRepeated", replace_repeated_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("ReplaceFirst", replace_first as NativeFn, Attributes::HOLD_ALL);
     ev.register("Thread", thread as NativeFn, Attributes::HOLD_ALL);
     ev.register("SetDownValues", set_downvalues_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1459,15 +1464,28 @@ fn thread(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 // legacy list helper removed: Transpose
 
 fn collect_rules(ev: &mut Evaluator, rules_v: Value) -> Vec<(Value, Value)> {
-    let mut out = Vec::new();
-    let val = ev.eval(rules_v);
-    match val {
-        Value::List(rs) => {
-            for r in rs { if let Value::Expr { head, args } = r { if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 { out.push((args[0].clone(), args[1].clone())); } } }
+    fn extract(v: Value) -> Vec<(Value, Value)> {
+        let mut out = Vec::new();
+        match v {
+            Value::List(rs) => {
+                for r in rs {
+                    if let Value::Expr { head, args } = r {
+                        if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 {
+                            out.push((args[0].clone(), args[1].clone()));
+                        }
+                    }
+                }
+            }
+            Value::Expr { head, args } if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 => {
+                out.push((args[0].clone(), args[1].clone()))
+            }
+            _ => {}
         }
-        Value::Expr { head, args } if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 => out.push((args[0].clone(), args[1].clone())),
-        _ => {}
+        out
     }
+    // Prefer raw structure (to preserve patterns), then fall back to evaluated form
+    let mut out = extract(rules_v.clone());
+    if out.is_empty() { out = extract(ev.eval(rules_v)); }
     out
 }
 
@@ -1477,7 +1495,8 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [expr, rules_v] => {
             let rules = collect_rules(ev, rules_v.clone());
-            let target = ev.eval(expr.clone());
+            // HoldFirst semantics: do not evaluate target before replacement
+            let target = expr.clone();
             // Emit first match for Explain if enabled
             if ev.trace_enabled {
                 for (lhs, rhs) in &rules {
@@ -1537,7 +1556,8 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [expr, rules_v, Value::Integer(n)] => {
             let limit = (*n as isize).max(0) as usize;
             let rules = collect_rules(ev, rules_v.clone());
-            let target = ev.eval(expr.clone());
+            // HoldFirst semantics
+            let target = expr.clone();
             let env_snapshot = ev.env.clone();
             let pred = |pred: &Value, arg: &Value| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
@@ -1583,7 +1603,8 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceAll".into())), args } }
     let rules = collect_rules(ev, args[1].clone());
-    let target = ev.eval(args[0].clone());
+    // HoldFirst semantics
+    let target = args[0].clone();
     let env_snapshot = ev.env.clone();
     let pred = |pred: &Value, arg: &Value| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
@@ -1618,6 +1639,69 @@ fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+    // ReplaceAll: general recursive traversal using matcher
+    use lyra_rewrite::matcher::{match_rule_with, substitute_named};
+    fn replace_all_rec(ctx: &lyra_rewrite::matcher::MatcherCtx, v: Value, rules: &[(Value, Value)]) -> Value {
+        // Top-level match
+        for (lhs, rhs) in rules {
+            if let Some(b) = match_rule_with(ctx, lhs, &v) { return substitute_named(rhs, &b); }
+        }
+        match v {
+            Value::List(items) => Value::List(items.into_iter().map(|x| replace_all_rec(ctx, x, rules)).collect()),
+            Value::Assoc(m) => Value::Assoc(m.into_iter().map(|(k,x)| (k, replace_all_rec(ctx, x, rules))).collect()),
+            Value::Expr { head, args } => {
+                let new_head = replace_all_rec(ctx, *head, rules);
+                let new_args: Vec<Value> = args.into_iter().map(|a| replace_all_rec(ctx, a, rules)).collect();
+                Value::Expr { head: Box::new(new_head), args: new_args }
+            }
+            other => other,
+        }
+    }
+    let out = replace_all_rec(&ctx, target, &rules);
+    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+    return ev.eval(out);
+}
+
+fn replace_repeated_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceRepeated".into())), args } }
+    let rules = collect_rules(ev, args[1].clone());
+    // HoldFirst semantics
+    let target = args[0].clone();
+    let env_snapshot = ev.env.clone();
+    let pred = |pred: &Value, arg: &Value| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+        let res = matches!(ev2.eval(call), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("pred".to_string(), pred.clone()),
+            ("arg".to_string(), arg.clone()),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("PatternTest".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
+    };
+    let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+        let data = Value::Assoc(vec![
+            ("expr".to_string(), cond_sub),
+            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+            ("result".to_string(), Value::Boolean(res)),
+        ].into_iter().collect());
+        trace_push_step(Value::Assoc(vec![
+            ("action".to_string(), Value::String("ConditionEvaluated".into())),
+            ("head".to_string(), Value::Symbol("Condition".into())),
+            ("data".to_string(), data),
+        ].into_iter().collect()));
+        res
+    };
+    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+    // ReplaceRepeated: iterate until fixed point
     let out = lyra_rewrite::engine::rewrite_all_with_ctx(&ctx, target, &rules);
     if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
     return ev.eval(out);
@@ -1626,7 +1710,8 @@ fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceFirst".into())), args } }
     let rules = collect_rules(ev, args[1].clone());
-    let target = ev.eval(args[0].clone());
+    // HoldFirst semantics
+    let target = args[0].clone();
     let limit = 1usize;
     let env_snapshot = ev.env.clone();
     let pred = |pred: &Value, arg: &Value| {
@@ -1662,7 +1747,48 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
-    let out = lyra_rewrite::engine::rewrite_with_limit_with_ctx(&ctx, target, &rules, limit);
+    // ReplaceFirst via recursive traversal with limit 1 (and elementwise fast path handled in ReplaceAll)
+    use lyra_rewrite::matcher::{match_rule_with, substitute_named};
+    fn replace_first_rec(ctx: &lyra_rewrite::matcher::MatcherCtx, v: Value, rules: &[(Value, Value)], left: &mut usize) -> Value {
+        if *left == 0 { return v; }
+        for (lhs, rhs) in rules {
+            if let Some(b) = match_rule_with(ctx, lhs, &v) { *left = left.saturating_sub(1); return substitute_named(rhs, &b); }
+        }
+        match v {
+            Value::List(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                let mut it = items.into_iter();
+                while let Some(x) = it.next() {
+                    out.push(replace_first_rec(ctx, x, rules, left));
+                    if *left == 0 { out.extend(it); break; }
+                }
+                Value::List(out)
+            }
+            Value::Assoc(m) => {
+                let mut out_map = std::collections::HashMap::new();
+                let mut it = m.into_iter();
+                while let Some((k,x)) = it.next() {
+                    let val = replace_first_rec(ctx, x, rules, left);
+                    out_map.insert(k, val);
+                    if *left == 0 { for (kk,vv) in it { out_map.insert(kk, vv); } break; }
+                }
+                Value::Assoc(out_map)
+            }
+            Value::Expr { head, args } => {
+                let new_head = replace_first_rec(ctx, *head, rules, left);
+                let mut new_args = Vec::with_capacity(args.len());
+                let mut it = args.into_iter();
+                while let Some(a) = it.next() {
+                    new_args.push(replace_first_rec(ctx, a, rules, left));
+                    if *left == 0 { new_args.extend(it); break; }
+                }
+                Value::Expr { head: Box::new(new_head), args: new_args }
+            }
+            other => other,
+        }
+    }
+    let mut left = 1usize;
+    let out = replace_first_rec(&ctx, target, &rules, &mut left);
     if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
     return ev.eval(out);
 }

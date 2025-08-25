@@ -18,6 +18,7 @@ Scope: Full language re-architecture, from parser to packages
 - Values: Integer, Rational, Real(BigFloat), Complex, String, Boolean, Symbol, List, Association(Object), ByteArray, Date/Quantity (extensible), Foreign.
 - Patterns: `_`, `_Type`, `x_`, `__`, `___`, `_?p`, `pat /; cond`, `pat1 | pat2`, `pat..`, `pat...`, `Sequence[...]` (for splicing).
 - Rules: `lhs -> rhs` (immediate), `lhs :> rhs` (delayed); `Replace`/`ReplaceAll` APIs.
+- Rules: `lhs -> rhs` (immediate), `lhs :> rhs` (delayed); rule operators: `expr /. rule` (ReplaceAll), `expr //. rule` (ReplaceRepeated).
 - Attributes (per-Symbol): Hold*, Listable, Flat, Orderless, OneIdentity, NumericFunction, Protected/ReadProtected.
 - Definitions: OwnValues, DownValues, UpValues, SubValues; pattern-indexed via discrimination nets; deterministic ordering.
 - Exactness and Precision: Integer/Rational exact; Real tracks precision; Complex wraps exact/inexact; explicit coercions.
@@ -27,6 +28,7 @@ Scope: Full language re-architecture, from parser to packages
 - Modern niceties:
   - Pipelines: `expr |> f[opts] |> g`.
   - Dot calls: `obj.method[a,b]`.
+  - WL operator forms: `f @ x` (prefix), `x // f` (postfix), `a ~ f ~ b` (infix), `expr /. rule` (ReplaceAll), `expr //. rule` (ReplaceRepeated).
   - Lambdas: `(x,y) => body` and slots `#1 &`.
   - Interpolation: `"sum={Total[x]}"`.
   - Ranges/slices: `a[[i]]`, `a[[i;;j;;k]]`.

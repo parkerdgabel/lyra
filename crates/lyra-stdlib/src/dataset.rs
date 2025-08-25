@@ -10,6 +10,7 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 #[derive(Clone)]
 enum Plan {
     FromRows(Vec<Value>),                 // Vec<Assoc>
+    DbTable { conn_id: i64, name: String },
     Select { input: Box<Plan>, cols: Vec<String> },
     SelectRename { input: Box<Plan>, mapping: HashMap<String, String> }, // new -> old
     Filter { input: Box<Plan>, pred: Value }, // pred[row] -> Boolean
@@ -50,9 +51,192 @@ fn get_ds(v: &Value) -> Option<i64> {
     None
 }
 
+// ---------- SQL Rendering (scaffold) ----------
+// Render a subset of plan nodes to SQL for DbTable-backed datasets.
+// Supported pushdown nodes: DbTable, Select, SelectRename, Filter (simple), Distinct (no columns), Sort, Limit, Offset.
+
+#[derive(Default, Clone)]
+struct SqlBuild {
+    table: Option<String>,
+    select: Option<Vec<(String, Option<String>)>>, // (expr, alias)
+    where_clause: Option<String>,
+    order_by: Vec<(String, bool)>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    distinct: bool,
+    pushed: Vec<String>,
+    client_side: Vec<String>,
+}
+
+fn ident(name: &str) -> String { name.to_string() }
+fn lit_to_sql(v: &Value) -> Option<String> {
+    match v {
+        Value::Integer(n) => Some(n.to_string()),
+        Value::Real(f) => Some(f.to_string()),
+        Value::Boolean(b) => Some(if *b { "TRUE".into() } else { "FALSE".into() }),
+        Value::String(s) => Some(format!("'{}'", s.replace("'", "''"))),
+        Value::Symbol(s) if s=="Null" => Some("NULL".into()),
+        _ => None,
+    }
+}
+
+fn col_expr_to_sql(v: &Value) -> Option<String> {
+    // Part[row, "col"]
+    if let Value::Expr { head, args } = v {
+        if matches!(**head, Value::Symbol(ref s) if s=="Part") {
+            if args.len()==2 {
+                if matches!(args[0], Value::Symbol(ref s) if s=="row") {
+                    match &args[1] {
+                        Value::String(c) | Value::Symbol(c) => return Some(ident(c)),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn pred_expr_to_sql(pred: &Value) -> Option<String> {
+    // Accept either a PureFunction body or a direct boolean expr tree
+    let root = match pred {
+        Value::PureFunction { body, .. } => &**body,
+        other => other,
+    };
+    render_bool_expr(root)
+}
+
+fn render_bool_expr(v: &Value) -> Option<String> {
+    match v {
+        Value::Expr { head, args } => {
+            let sym = if let Value::Symbol(s) = &**head { s } else { return None };
+            match sym.as_str() {
+                "And" => {
+                    if args.len()==2 { Some(format!("({}) AND ({})", render_bool_expr(&args[0])?, render_bool_expr(&args[1])?)) } else { None }
+                }
+                "Or" => {
+                    if args.len()==2 { Some(format!("({}) OR ({})", render_bool_expr(&args[0])?, render_bool_expr(&args[1])?)) } else { None }
+                }
+                "Not" => {
+                    if args.len()==1 { Some(format!("NOT ({})", render_bool_expr(&args[0])?)) } else { None }
+                }
+                "Equal" | "Less" | "Greater" | "LessEqual" | "GreaterEqual" => {
+                    if args.len()==2 {
+                        let op = match sym.as_str() { "Equal"=>"=", "Less"=>"<", "Greater"=>">", "LessEqual"=>"<=", "GreaterEqual"=>">=", _=>"=" };
+                        let lhs = if let Some(c) = col_expr_to_sql(&args[0]) { c } else { lit_to_sql(&args[0])? };
+                        let rhs = if let Some(c) = col_expr_to_sql(&args[1]) { c } else { lit_to_sql(&args[1])? };
+                        Some(format!("{} {} {}", lhs, op, rhs))
+                    } else { None }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
+    match plan {
+        Plan::DbTable { name, .. } => { acc.table = Some(name.clone()); acc.pushed.push("DbTable".into()); acc }
+        Plan::FromRows(_) => { acc.client_side.push("FromRows".into()); acc }
+        Plan::Select { input, cols } => {
+            acc = fold_sql(input, acc);
+            let sels = cols.iter().map(|c| (ident(c), None)).collect();
+            acc.select = Some(sels);
+            acc.pushed.push("Select".into());
+            acc
+        }
+        Plan::SelectRename { input, mapping } => {
+            acc = fold_sql(input, acc);
+            let sels = mapping.iter().map(|(new, old)| (ident(old), Some(new.clone()))).collect();
+            acc.select = Some(sels);
+            acc.pushed.push("SelectRename".into());
+            acc
+        }
+        Plan::Filter { input, pred } => {
+            acc = fold_sql(input, acc);
+            if let Some(cond) = pred_expr_to_sql(pred) {
+                acc.where_clause = Some(match acc.where_clause { Some(w) => format!("({}) AND ({})", w, cond), None => cond });
+                acc.pushed.push("Filter".into());
+            } else {
+                acc.client_side.push("Filter".into());
+            }
+            acc
+        }
+        Plan::Limit { input, n } => { acc = fold_sql(input, acc); acc.limit = Some(*n); acc.pushed.push("Limit".into()); acc }
+        Plan::Offset { input, n } => { acc = fold_sql(input, acc); acc.offset = Some(*n); acc.pushed.push("Offset".into()); acc }
+        Plan::Tail { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("Tail".into()); acc }
+        Plan::WithColumns { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("WithColumns".into()); acc }
+        Plan::GroupBy { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("GroupBy".into()); acc }
+        Plan::Agg { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("Agg".into()); acc }
+        Plan::Join { left, .. } => { acc = fold_sql(left, acc); acc.client_side.push("Join".into()); acc }
+        Plan::Sort { input, by } => {
+            acc = fold_sql(input, acc);
+            acc.order_by.extend(by.iter().cloned());
+            acc.pushed.push("Sort".into());
+            acc
+        }
+        Plan::Distinct { input, cols } => {
+            acc = fold_sql(input, acc);
+            if cols.is_none() { acc.distinct = true; acc.pushed.push("Distinct".into()); } else { acc.client_side.push("Distinct(cols)".into()); }
+            acc
+        }
+        Plan::Union { inputs: _, by_columns: _ } => { acc.client_side.push("Union".into()); acc }
+    }
+}
+
+fn build_sql_string(sb: &SqlBuild) -> Option<String> {
+    let table = sb.table.as_ref()?;
+    let select_list = if let Some(cols) = &sb.select {
+        if cols.is_empty() { "*".into() } else {
+            cols.iter().map(|(expr, alias)| match alias { Some(a)=>format!("{} AS {}", expr, ident(a)), None=>expr.clone() }).collect::<Vec<_>>().join(", ")
+        }
+    } else { "*".into() };
+    let mut s = String::new();
+    s.push_str("SELECT ");
+    if sb.distinct { s.push_str("DISTINCT "); }
+    s.push_str(&select_list);
+    s.push_str(" FROM ");
+    s.push_str(&table);
+    if let Some(w) = &sb.where_clause { s.push_str(" WHERE "); s.push_str(w); }
+    if !sb.order_by.is_empty() {
+        s.push_str(" ORDER BY ");
+        let parts: Vec<String> = sb.order_by.iter().map(|(c, asc)| format!("{} {}", ident(c), if *asc { "ASC" } else { "DESC" })).collect();
+        s.push_str(&parts.join(", "));
+    }
+    if let Some(n) = sb.limit { if n >= 0 { s.push_str(&format!(" LIMIT {}", n)); } }
+    if let Some(n) = sb.offset { if n > 0 { s.push_str(&format!(" OFFSET {}", n)); } }
+    Some(s)
+}
+
+fn explain_sql_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("ExplainSQL".into())), args } }
+    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("ExplainSQL".into())), args } };
+    let reg = ds_reg().lock().unwrap();
+    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("ExplainSQL".into())), args } };
+    let sb = fold_sql(&st.plan, SqlBuild::default());
+    if let Some(sql) = build_sql_string(&sb) {
+        let mut out = String::new();
+        out.push_str(&sql);
+        out.push_str("\n-- pushdown: ");
+        out.push_str(&sb.pushed.join(", "));
+        if !sb.client_side.is_empty() { out.push_str("\n-- client_side: "); out.push_str(&sb.client_side.join(", ")); }
+        Value::String(out)
+    } else {
+        Value::String("ExplainSQL unavailable: not a DbTable-backed dataset".into())
+    }
+}
+
 fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
     match p {
         Plan::FromRows(rows) => rows.clone(),
+        Plan::DbTable { conn_id, name } => {
+            #[cfg(feature = "db")]
+            {
+                if let Some(rows) = crate::db::fetch_table_rows(*conn_id, name) { return rows; }
+            }
+            Vec::new()
+        }
         Plan::Select { input, cols } => {
             let rows = eval_plan(ev, input);
             rows.into_iter().map(|r| match r {
@@ -315,11 +499,30 @@ fn dataset_from_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ds_handle(id)
 }
 
+// Internal helper used by db module: build a Dataset whose plan is a DbTable scan
+fn dataset_from_db_table(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("__DatasetFromDbTable".into())), args } }
+    let (conn_id, name) = match (&args[0], &args[1]) {
+        (Value::Integer(cid), Value::String(name)) => (*cid, name.clone()),
+        (Value::Integer(cid), Value::Symbol(name)) => (*cid, name.clone()),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("__DatasetFromDbTable".into())), args },
+    };
+    let id = next_ds_id();
+    ds_reg().lock().unwrap().insert(id, DatasetState { plan: Plan::DbTable { conn_id, name } });
+    ds_handle(id)
+}
+
 fn collect_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Collect".into())), args } }
     let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Collect".into())), args } };
     let reg = ds_reg().lock().unwrap();
     let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Collect".into())), args } };
+    // Try pushdown execution (DbTable and supported nodes)
+    if let Some((conn_id, sql)) = try_render_sql(&st.plan) {
+        let call = Value::Expr { head: Box::new(Value::Symbol("__SQLToRows".into())), args: vec![Value::Integer(conn_id), Value::String(sql)] };
+        let rows_v = ev.eval(call);
+        if let Value::List(rows) = rows_v { return Value::List(rows); }
+    }
     Value::List(eval_plan(ev, &st.plan))
 }
 
@@ -402,6 +605,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let pad = " ".repeat(indent);
         match plan {
             Plan::FromRows(rows) => { out.push_str(&format!("{}FromRows(rows={})\n", pad, rows.len())); }
+            Plan::DbTable { conn_id, name } => { out.push_str(&format!("{}DbTable conn={} name=\"{}\"\n", pad, conn_id, name)); }
             Plan::Select { input, cols } => { out.push_str(&format!("{}Select {:?}\n", pad, cols)); pp(input, indent+2, out); }
             Plan::Filter { input, .. } => { out.push_str(&format!("{}Filter [pred]\n", pad)); pp(input, indent+2, out); }
             Plan::Limit { input, n } => { out.push_str(&format!("{}Limit {}\n", pad, n)); pp(input, indent+2, out); }
@@ -431,7 +635,12 @@ fn show_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let id = match get_ds(&ev.eval(ds_v)) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("ShowDataset".into())), args } };
     let reg = ds_reg().lock().unwrap();
     let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("ShowDataset".into())), args } };
-    let mut rows = eval_plan(ev, &st.plan);
+    // Try pushdown with LIMIT n
+    let mut rows = if let Some((conn_id, mut sql)) = try_render_sql(&st.plan) {
+        if n > 0 { sql.push_str(&format!(" LIMIT {}", n)); }
+        let call = Value::Expr { head: Box::new(Value::Symbol("__SQLToRows".into())), args: vec![Value::Integer(conn_id), Value::String(sql)] };
+        match ev.eval(call) { Value::List(rows)=>rows, _=> eval_plan(ev, &st.plan) }
+    } else { eval_plan(ev, &st.plan) };
     let take = n.max(0) as usize;
     if rows.len() > take { rows.truncate(take); }
     // render basic table
@@ -470,6 +679,28 @@ fn show_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::String(out)
+}
+
+// Attempt to render SQL and return (conn_id, sql) if pushdown is possible
+fn try_render_sql(plan: &Plan) -> Option<(i64, String)> {
+    // Find a DbTable to extract connection id
+    fn find_conn_id(p: &Plan) -> Option<i64> {
+        match p {
+            Plan::DbTable { conn_id, .. } => Some(*conn_id),
+            Plan::Select { input, .. } | Plan::SelectRename { input, .. } | Plan::Filter { input, .. } |
+            Plan::Limit { input, .. } | Plan::Offset { input, .. } | Plan::Sort { input, .. } | Plan::Distinct { input, .. } | Plan::WithColumns { input, .. } |
+            Plan::GroupBy { input, .. } | Plan::Agg { input, .. } | Plan::Tail { input, .. } => find_conn_id(input),
+            Plan::Join { left, right, .. } => find_conn_id(left).or_else(|| find_conn_id(right)),
+            Plan::Union { inputs, .. } => inputs.iter().find_map(find_conn_id),
+            Plan::FromRows(_) => None,
+        }
+    }
+    let sb = fold_sql(plan, SqlBuild::default());
+    if let Some(sql) = build_sql_string(&sb) {
+        if !sb.client_side.is_empty() { return None; }
+        if let Some(cid) = find_conn_id(plan) { return Some((cid, sql)); }
+    }
+    None
 }
 
 fn read_csv_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1036,9 +1267,12 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Columns", columns_ds as NativeFn, Attributes::empty());
     ev.register("DatasetSchema", dataset_schema as NativeFn, Attributes::empty());
     ev.register("ExplainDataset", explain_ds as NativeFn, Attributes::empty());
+    ev.register("ExplainSQL", explain_sql_ds as NativeFn, Attributes::empty());
     ev.register("ReadCSVDataset", read_csv_dataset as NativeFn, Attributes::empty());
     ev.register("ShowDataset", show_ds as NativeFn, Attributes::empty());
     ev.register("ReadJsonLinesDataset", read_jsonl_dataset as NativeFn, Attributes::empty());
+    // Internal: used by db module to create a dataset referencing a DB table
+    ev.register("__DatasetFromDbTable", dataset_from_db_table as NativeFn, Attributes::empty());
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
     ev.register("Agg", agg as NativeFn, Attributes::empty());
     ev.register("Join", join_ds as NativeFn, Attributes::empty());

@@ -74,3 +74,36 @@ fn sequence_splicing_in_args() {
     let out = rw::engine::rewrite_once(expr, &rules);
     assert_eq!(out, call("g", vec![int(1), int(2), int(3), int(9)]));
 }
+
+#[test]
+fn top_level_namedblank_matches_integer() {
+    let lhs = call("NamedBlank", vec![sym("x"), sym("Integer")]);
+    let rhs = sym("x");
+    let rules = vec![(lhs, rhs)];
+    let out = rw::engine::rewrite_once(int(5), &rules);
+    assert_eq!(out, int(5));
+}
+
+#[test]
+fn replace_all_like_over_list_with_typed_blank() {
+    use lyra_core::value::Value;
+    // Rule: x_Integer -> x^2
+    let lhs = call("NamedBlank", vec![sym("x"), sym("Integer")]);
+    let rhs = call("Power", vec![sym("x"), int(2)]);
+    let rules = vec![(lhs, rhs)];
+    let expr = Value::List(vec![int(1), int(2), int(3)]);
+    let out = rw::engine::rewrite_once(expr, &rules);
+    if let Value::List(items) = out {
+        assert_eq!(items.len(), 3);
+        for (i, it) in items.into_iter().enumerate() {
+            match it {
+                Value::Expr { head, args } => {
+                    assert!(matches!(*head, Value::Symbol(ref s) if s=="Power"));
+                    assert!(matches!(args[0], Value::Integer(n) if n == (i as i64)+1));
+                    assert!(matches!(args[1], Value::Integer(2)));
+                }
+                _ => panic!("expected Power expr"),
+            }
+        }
+    } else { panic!("expected list") }
+}

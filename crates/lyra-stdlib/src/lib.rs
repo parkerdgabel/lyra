@@ -15,6 +15,7 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "io")] pub mod io;
 #[cfg(feature = "net")] pub mod net;
 #[cfg(feature = "dataset")] pub mod dataset;
+#[cfg(feature = "db")] pub mod db;
 
 pub fn register_all(ev: &mut Evaluator) {
     // Core forms from the runtime (assignment, replacement, threading)
@@ -33,6 +34,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "io")] io::register_io(ev);
     #[cfg(feature = "net")] net::register_net(ev);
     #[cfg(feature = "dataset")] dataset::register_dataset(ev);
+    #[cfg(feature = "db")] db::register_db(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
 }
 
@@ -51,6 +53,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "io" => { #[cfg(feature = "io")] io::register_io(ev) }
             "net" => { #[cfg(feature = "net")] net::register_net(ev) }
             "dataset" => { #[cfg(feature = "dataset")] dataset::register_dataset(ev) }
+            "db" => { #[cfg(feature = "db")] db::register_db(ev) }
             _ => {}
         }
     }

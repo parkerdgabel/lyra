@@ -17,7 +17,7 @@ pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("AssociationMapPairs", association_map_pairs as NativeFn, Attributes::empty());
     ev.register("Merge", merge as NativeFn, Attributes::empty());
     ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
-    ev.register("SortBy", sort_by as NativeFn, Attributes::empty());
+    ev.register("SortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
@@ -180,17 +180,27 @@ fn key_sort(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn sort_by(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SortBy".into())), args } }
-    match ev.eval(args[1].clone()) {
+    let f = args[0].clone();
+    let subject = ev.eval(args[1].clone());
+    match subject {
         Value::Assoc(m) => {
             let mut items: Vec<(String, Value)> = m.into_iter().collect();
             items.sort_by(|(ka, va), (kb, vb)| {
-                let va_key = ev.eval(Value::Expr { head: Box::new(args[0].clone()), args: vec![Value::String(ka.clone()), va.clone()] });
-                let vb_key = ev.eval(Value::Expr { head: Box::new(args[0].clone()), args: vec![Value::String(kb.clone()), vb.clone()] });
+                let va_key = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![Value::String(ka.clone()), va.clone()] });
+                let vb_key = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![Value::String(kb.clone()), vb.clone()] });
                 lyra_runtime::eval::value_order_key(&va_key).cmp(&lyra_runtime::eval::value_order_key(&vb_key))
             });
             let mut out = HashMap::new();
             for (k,v) in items { out.insert(k,v); }
             Value::Assoc(out)
+        }
+        Value::List(items) => {
+            let mut tuples: Vec<(String, Value)> = items.into_iter().map(|it| {
+                let k = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it.clone()] });
+                (lyra_runtime::eval::value_order_key(&k), ev.eval(it))
+            }).collect();
+            tuples.sort_by(|(ka, _), (kb, _)| ka.cmp(kb));
+            Value::List(tuples.into_iter().map(|(_, v)| v).collect())
         }
         other => other,
     }

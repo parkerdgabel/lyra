@@ -156,12 +156,14 @@ Out[3]= 3.0
 lyra[4]> MatchQ[42, _Integer]
 Out[4]= True
 
-# Rule application  
-lyra[5]> {1, 2, 3} /. x_Integer -> x^2
+# Rule application (WL-style operators)
+lyra[5]> {1, 2, 3} /. x_Integer -> x^2    # ReplaceAll
 Out[5]= {1, 4, 9}
+lyra[6]> 10 //. (x_Integer /; x > 0) -> x - 1  # ReplaceRepeated
+Out[6]= 0
 
 # Help system
-lyra[6]> help
+lyra[7]> help
 # Interactive help and command reference
 
 # List all functions
@@ -195,7 +197,13 @@ x_?NumberQ         # Pattern with test
 # Rules and transformations  
 x -> x^2           # Immediate rule
 x :> RandomReal[]  # Delayed rule
-expr /. rule       # Apply rule to expression
+expr /. rule       # ReplaceAll (single pass)
+expr //. rule      # ReplaceRepeated (until fixed point)
+
+# Additional operator forms (WL-compatible)
+f @ x              # Prefix: f[x]
+x // f             # Postfix: f[x]
+a ~ f ~ b          # Infix: f[a, b]
 ```
 
 ### Advanced Features

@@ -38,3 +38,25 @@ fn postfix_prefix_and_infix_evaluate() {
 fn replacefirst_with_named_pattern() {
     assert_eq!(eval_one("ReplaceFirst[{1,2,3}, x_Integer -> 9]"), "{9, 2, 3}");
 }
+
+#[test]
+fn matcher_sees_namedblank_on_integer() {
+    // Build a NamedBlank lhs via parsing
+    let mut p = Parser::from_source("x_Integer -> x^2");
+    let vals = p.parse_all().expect("parse");
+    let rule = vals.last().unwrap().clone();
+    let lhs = match rule {
+        lyra_core::value::Value::Expr { head, args } if matches!(*head, lyra_core::value::Value::Symbol(ref s) if s=="Rule") => args[0].clone(),
+        _ => panic!("no rule"),
+    };
+    // Inspect shape
+    let lhs_s = lyra_core::pretty::format_value(&lhs);
+    eprintln!("LHS={}", lhs_s);
+    assert!(lyra_rewrite::matcher::match_rule(&lhs, &lyra_core::value::Value::Integer(1)).is_some());
+}
+
+#[test]
+fn replace_all_with_rule_list_symbols() {
+    // Plus[x, y] /. {x -> 1, y -> 2} => 3
+    assert_eq!(eval_one("Plus[x, y] /. {x -> 1, y -> 2}"), "3");
+}

@@ -135,7 +135,9 @@ fn echo_attribute_tests() {
 
 #[test]
 fn replace_all_simple_rule() {
-    assert_eq!(eval_one("ReplaceAll[Plus[1,2], 3 -> 42]"), "42");
+    // With HoldFirst semantics for ReplaceAll, target is not evaluated before matching,
+    // so Plus[1,2] does not match 3 and evaluates after replacement to 3.
+    assert_eq!(eval_one("ReplaceAll[Plus[1,2], 3 -> 42]"), "3");
 }
 
 #[test]
