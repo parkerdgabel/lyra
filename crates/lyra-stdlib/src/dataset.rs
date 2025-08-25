@@ -11,6 +11,7 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 enum Plan {
     FromRows(Vec<Value>),                 // Vec<Assoc>
     Select { input: Box<Plan>, cols: Vec<String> },
+    SelectRename { input: Box<Plan>, mapping: HashMap<String, String> }, // new -> old
     Filter { input: Box<Plan>, pred: Value }, // pred[row] -> Boolean
     Limit { input: Box<Plan>, n: i64 },
     WithColumns { input: Box<Plan>, defs: HashMap<String, Value> }, // defs: col -> expr[row]
@@ -53,6 +54,17 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                 Value::Assoc(m) => {
                     let mut out = HashMap::new();
                     for c in cols { if let Some(v) = m.get(c) { out.insert(c.clone(), v.clone()); } }
+                    Value::Assoc(out)
+                }
+                other => other,
+            }).collect()
+        }
+        Plan::SelectRename { input, mapping } => {
+            let rows = eval_plan(ev, input);
+            rows.into_iter().map(|r| match r {
+                Value::Assoc(m) => {
+                    let mut out = HashMap::new();
+                    for (newk, oldk) in mapping { if let Some(v) = m.get(oldk) { out.insert(newk.clone(), v.clone()); } }
                     Value::Assoc(out)
                 }
                 other => other,
@@ -313,6 +325,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::Select { input, cols } => { out.push_str(&format!("{}Select {:?}\n", pad, cols)); pp(input, indent+2, out); }
             Plan::Filter { input, .. } => { out.push_str(&format!("{}Filter [pred]\n", pad)); pp(input, indent+2, out); }
             Plan::Limit { input, n } => { out.push_str(&format!("{}Limit {}\n", pad, n)); pp(input, indent+2, out); }
+            Plan::SelectRename { input, mapping } => { out.push_str(&format!("{}SelectRename {:?}\n", pad, mapping.keys().collect::<Vec<_>>())); pp(input, indent+2, out); }
             Plan::WithColumns { input, defs } => { out.push_str(&format!("{}WithColumns keys={:?}\n", pad, defs.keys().collect::<Vec<_>>())); pp(input, indent+2, out); }
             Plan::GroupBy { input, keys } => { out.push_str(&format!("{}GroupBy {:?}\n", pad, keys)); pp(input, indent+2, out); }
             Plan::Agg { input, aggs } => { out.push_str(&format!("{}Agg {:?}\n", pad, aggs.keys().collect::<Vec<_>>())); pp(input, indent+2, out); }
@@ -477,12 +490,27 @@ fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let spec_v = ev.eval(args[1].clone());
     // Dataset projection
     if let Some(ds_id) = get_ds(&subj) {
-        let cols: Vec<String> = match &spec_v {
-            Value::List(vs) => vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect(),
-            _ => Vec::new(),
-        };
-        if cols.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] } }
-        return select_cols(ev, vec![ds_handle(ds_id), Value::List(cols.into_iter().map(Value::String).collect())]);
+        match &spec_v {
+            Value::List(vs) => {
+                let cols: Vec<String> = vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect();
+                if cols.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] } }
+                return select_cols(ev, vec![ds_handle(ds_id), Value::List(cols.into_iter().map(Value::String).collect())]);
+            }
+            Value::Assoc(map) => {
+                let mut mapping: HashMap<String, String> = HashMap::new();
+                for (newk, src) in map.iter() {
+                    if let Value::String(s)|Value::Symbol(s) = src { mapping.insert(newk.clone(), s.clone()); }
+                }
+                if mapping.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] } }
+                // Build SelectRename plan node
+                let mut reg = ds_reg().lock().unwrap();
+                let st = match reg.get(&ds_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] } };
+                let new_id = next_ds_id();
+                reg.insert(new_id, DatasetState { plan: Plan::SelectRename { input: Box::new(st.plan), mapping } });
+                return ds_handle(new_id);
+            }
+            _ => {}
+        }
     }
     // Assoc projection/rename
     match (&subj, &spec_v) {
