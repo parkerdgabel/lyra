@@ -8,9 +8,14 @@ version.workspace = true
 lyra-runtime = { path = "../lyra-runtime" }
 lyra-core = { path = "../lyra-core" }
 lyra-parser = { path = "../lyra-parser" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking","json","multipart","rustls-tls"], optional = true }
+rustls = { version = "0.21", default-features = false, features = ["tls12"], optional = true }
+rustls-pemfile = { version = "1", optional = true }
 
 [features]
-default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools"]
+default = ["core", "string", "math", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset"]
 core = []
 string = []
 math = []
@@ -24,6 +29,10 @@ tools = []
 testing = []
 simd_kernels = []
 big-real-rug = ["rug"]
+io = []
+net = []
+net_https = ["net", "reqwest", "rustls", "rustls-pemfile"]
+dataset = []
 
 [dependencies.rug]
 optional = true

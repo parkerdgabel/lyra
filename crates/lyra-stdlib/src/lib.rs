@@ -12,6 +12,9 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "schema")] pub mod schema;
 #[cfg(feature = "explain")] pub mod explain;
 #[cfg(feature = "testing")] pub mod testing;
+#[cfg(feature = "io")] pub mod io;
+#[cfg(feature = "net")] pub mod net;
+#[cfg(feature = "dataset")] pub mod dataset;
 
 pub fn register_all(ev: &mut Evaluator) {
     // Core forms from the runtime (assignment, replacement, threading)
@@ -27,6 +30,9 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "concurrency")] concurrency::register_concurrency(ev);
     #[cfg(feature = "schema")] schema::register_schema(ev);
     #[cfg(feature = "explain")] explain::register_explain(ev);
+    #[cfg(feature = "io")] io::register_io(ev);
+    #[cfg(feature = "net")] net::register_net(ev);
+    #[cfg(feature = "dataset")] dataset::register_dataset(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
 }
 
@@ -42,6 +48,9 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "concurrency" => { #[cfg(feature = "concurrency")] concurrency::register_concurrency(ev) }
             "schema" => { #[cfg(feature = "schema")] schema::register_schema(ev) }
             "explain" => { #[cfg(feature = "explain")] explain::register_explain(ev) }
+            "io" => { #[cfg(feature = "io")] io::register_io(ev) }
+            "net" => { #[cfg(feature = "net")] net::register_net(ev) }
+            "dataset" => { #[cfg(feature = "dataset")] dataset::register_dataset(ev) }
             _ => {}
         }
     }
