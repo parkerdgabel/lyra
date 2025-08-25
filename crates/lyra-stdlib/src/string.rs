@@ -2,6 +2,7 @@ use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
 use lyra_core::value::Value;
 use lyra_parser::Parser;
+use crate::register_if;
 
 pub fn register_string(ev: &mut Evaluator) {
     ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
@@ -63,6 +64,66 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("ParseDate", parse_date_fn as NativeFn, Attributes::empty());
     ev.register("FormatDate", format_date_fn as NativeFn, Attributes::empty());
     ev.register("DateDiff", date_diff_fn as NativeFn, Attributes::empty());
+}
+
+pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "StringLength", string_length as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "ToLower", to_lower as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringJoin", string_join as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringJoinWith", string_join_with as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringTrim", string_trim as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTrimLeft", string_trim_left as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTrimRight", string_trim_right as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTrimPrefix", string_trim_prefix as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTrimSuffix", string_trim_suffix as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTrimChars", string_trim_chars as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringContains", string_contains as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringSplit", string_split as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SplitLines", split_lines as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "JoinLines", join_lines as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringReplace", string_replace as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringReplaceFirst", string_replace_first as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringPadLeft", string_pad_left as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringPadRight", string_pad_right as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringSlice", string_slice as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "IndexOf", index_of as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "LastIndexOf", last_index_of as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringRepeat", string_repeat as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "IsBlank", is_blank as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Capitalize", capitalize as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "TitleCase", title_case as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "EqualsIgnoreCase", equals_ignore_case as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringChars", string_chars as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringFromChars", string_from_chars as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringInterpolate", string_interpolate as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringInterpolateWith", string_interpolate_with as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringFormat", string_format as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringFormatMap", string_format_map as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TemplateRender", template_render as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HtmlEscape", html_escape_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "HtmlUnescape", html_unescape_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "UrlEncode", url_encode_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "UrlDecode", url_decode_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "JsonEscape", json_escape_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "JsonUnescape", json_unescape_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "UrlFormEncode", url_form_encode_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "UrlFormDecode", url_form_decode_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Slugify", slugify_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StringTruncate", string_truncate_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "CamelCase", camel_case_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "SnakeCase", snake_case_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "RegexFind", regex_find_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ParseDate", parse_date_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FormatDate", format_date_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DateDiff", date_diff_fn as NativeFn, Attributes::empty());
 }
 
 // Bring NativeFn alias into scope by mirroring lyra-runtime's type

@@ -1,6 +1,9 @@
 use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
+#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
+#[cfg(feature = "tools")] use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -16,6 +19,52 @@ pub fn register_functional(ev: &mut Evaluator) {
     ev.register("Through", through_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Identity", identity_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("ConstantFunction", constant_function_fn as NativeFn, Attributes::HOLD_ALL);
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("Apply", summary: "Apply function to expression or list", params: ["f","expr","level?"], tags: ["functional","apply"], examples: [
+            Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([
+                    ("f".to_string(), Value::Symbol("Plus".into())),
+                    ("expr".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)])),
+                ]))),
+                ("result".to_string(), Value::Integer(6)),
+            ]))
+        ]),
+        tool_spec!("Compose", summary: "Left-to-right function composition", params: ["funcs"], tags: ["functional","compose"], examples: [
+            Value::Assoc(HashMap::from([
+                ("args".to_string(), Value::Assoc(HashMap::from([
+                    ("funcs".to_string(), Value::List(vec![
+                        Value::pure_function(None, Value::Expr{ head: Box::new(Value::Symbol("Times".into())), args: vec![Value::Slot(None), Value::Integer(2)] }),
+                        Value::pure_function(None, Value::Expr{ head: Box::new(Value::Symbol("Plus".into())), args: vec![Value::Slot(None), Value::Integer(3)] }),
+                    ]))
+                ])))
+            ]))
+        ]),
+        tool_spec!("RightCompose", summary: "Right-to-left function composition", params: ["funcs"], tags: ["functional","compose"]),
+        tool_spec!("Nest", summary: "Iteratively apply f n times", params: ["f","x","n"], tags: ["functional","iteration"]),
+        tool_spec!("NestList", summary: "List of iterates from Nest", params: ["f","x","n"], tags: ["functional","iteration"]),
+        tool_spec!("FoldList", summary: "Running fold over list", params: ["f","init","list"], tags: ["functional","fold"]),
+        tool_spec!("FixedPoint", summary: "Iterate until f[x]==x", params: ["f","x","opts?"], tags: ["functional","fixedpoint"]),
+        tool_spec!("FixedPointList", summary: "All iterates to fixed point", params: ["f","x","opts?"], tags: ["functional","fixedpoint"]),
+        tool_spec!("Through", summary: "Apply list of functions to a value", params: ["funcs","x"], tags: ["functional"]),
+        tool_spec!("Identity", summary: "Return the input unchanged", params: ["x"], tags: ["functional"]),
+        tool_spec!("ConstantFunction", summary: "Function that returns a constant", params: ["c"], tags: ["functional"]),
+    ]);
+}
+
+pub fn register_functional_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    crate::register_if(ev, pred, "Apply", apply_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Compose", compose_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "RightCompose", right_compose_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Nest", nest_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "NestList", nest_list_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "FoldList", fold_list_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "FixedPoint", fixed_point_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "FixedPointList", fixed_point_list_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Through", through_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Identity", identity_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "ConstantFunction", constant_function_fn as NativeFn, Attributes::HOLD_ALL);
 }
 
 fn uneval(head: &str, args: Vec<Value>) -> Value {

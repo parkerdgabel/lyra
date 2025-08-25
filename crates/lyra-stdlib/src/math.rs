@@ -4,6 +4,7 @@ use lyra_core::value::Value;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
 #[cfg(feature = "tools")] use std::collections::HashMap;
+use crate::register_if;
 
 pub fn register_math(ev: &mut Evaluator) {
     ev.register("Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
@@ -68,6 +69,17 @@ pub fn register_math(ev: &mut Evaluator) {
             ]))),
         ]))),
     ]);
+}
+
+pub fn register_math_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Plus", plus as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
+    register_if(ev, pred, "Times", times as NativeFn, Attributes::LISTABLE | Attributes::FLAT | Attributes::ORDERLESS | Attributes::ONE_IDENTITY);
+    register_if(ev, pred, "Minus", minus as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Divide", divide as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Power", power as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Abs", abs_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Min", min_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
+    register_if(ev, pred, "Max", max_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
 }
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;

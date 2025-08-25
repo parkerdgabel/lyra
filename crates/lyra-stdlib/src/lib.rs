@@ -1,6 +1,7 @@
 //! Lyra Standard Library registration helpers.
 
 use lyra_runtime::Evaluator;
+use lyra_runtime::attrs::Attributes;
 
 #[cfg(feature = "math")] pub mod math;
 #[cfg(feature = "algebra")] pub mod algebra;
@@ -28,7 +29,21 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "text_index")] pub mod text_index;
 #[cfg(feature = "collections")] pub mod collections;
 #[cfg(feature = "ndarray")] pub mod ndarray;
+#[cfg(feature = "ml")] pub mod ml;
+#[cfg(feature = "nn")] pub mod nn;
+#[cfg(feature = "functional")] pub mod functional;
 mod dispatch;
+
+// Conditional registration helper used by filtered registrars
+pub fn register_if(
+    ev: &mut Evaluator,
+    filter: &dyn Fn(&str) -> bool,
+    name: &str,
+    f: fn(&mut Evaluator, Vec<lyra_core::value::Value>) -> lyra_core::value::Value,
+    attrs: Attributes,
+) {
+    if filter(name) { ev.register(name, f, attrs); }
+}
 
 pub fn register_all(ev: &mut Evaluator) {
     // Core forms from the runtime (assignment, replacement, threading)
@@ -60,6 +75,9 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "text_index")] text_index::register_text_index(ev);
     #[cfg(feature = "collections")] collections::register_collections(ev);
     #[cfg(feature = "ndarray")] ndarray::register_ndarray(ev);
+    #[cfg(feature = "ml")] ml::register_ml(ev);
+    #[cfg(feature = "nn")] nn::register_nn(ev);
+    #[cfg(feature = "functional")] functional::register_functional(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
     // Register dispatchers last to resolve name conflicts (Join, etc.)
     dispatch::register_dispatch(ev);
@@ -92,7 +110,24 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "text_fuzzy" => { #[cfg(feature = "text_fuzzy")] text_fuzzy::register_text_fuzzy(ev) }
             "text_index" => { #[cfg(feature = "text_index")] text_index::register_text_index(ev) }
             "collections" => { #[cfg(feature = "collections")] collections::register_collections(ev) }
+            "ml" => { #[cfg(feature = "ml")] ml::register_ml(ev) }
+            "nn" => { #[cfg(feature = "nn")] nn::register_nn(ev) }
+            "functional" => { #[cfg(feature = "functional")] functional::register_functional(ev) }
             _ => {}
         }
     }
+}
+
+// Register only selected symbol names across modules. Always includes core + introspection.
+pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&str>) {
+    #[cfg(feature = "core")] lyra_runtime::eval::register_core(ev);
+    lyra_runtime::eval::register_introspection(ev);
+    let predicate = |n: &str| names.contains(n);
+    #[cfg(feature = "string")] crate::string::register_string_filtered(ev, &predicate);
+    #[cfg(feature = "math")] crate::math::register_math_filtered(ev, &predicate);
+    #[cfg(feature = "list")] crate::list::register_list_filtered(ev, &predicate);
+    #[cfg(feature = "assoc")] crate::assoc::register_assoc_filtered(ev, &predicate);
+    #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
+    // Dispatchers last
+    crate::dispatch::register_dispatch(ev);
 }

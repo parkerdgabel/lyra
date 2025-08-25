@@ -4,6 +4,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
 #[cfg(feature = "tools")] use std::collections::HashMap;
+use crate::register_if;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -121,6 +122,42 @@ pub fn register_list(ev: &mut Evaluator) {
         tool_spec!("MapIndexed", summary: "Map with index (1-based)", params: ["f","list"], tags: ["list","map"]),
         tool_spec!("Slice", summary: "Slice list by start and length", params: ["list","start","len?"], tags: ["list","slice"]),
     ]);
+}
+
+pub fn register_list_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Length", length as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Range", range as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Join", join as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Reverse", reverse as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Total", total as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Flatten", flatten as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Partition", partition as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Transpose", transpose as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Map", map_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Filter", filter as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Reject", reject as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Any", any_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "All", all_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Find", find_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Position", position_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Take", take_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Drop", drop_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TakeWhile", take_while_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "DropWhile", drop_while_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Zip", zip_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Unzip", unzip_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Sort", sort_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Unique", unique_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Tally", tally_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CountBy", count_by_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Reduce", reduce_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Scan", scan_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "MapIndexed", map_indexed_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Slice", slice_list_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "PackedShape", packed_shape as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Part", part as NativeFn, Attributes::empty());
 }
 
 fn length(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -523,6 +560,10 @@ fn reduce_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
             other => other,
         },
+        [f] => {
+            let body = Value::Expr { head: Box::new(Value::Symbol("Reduce".into())), args: vec![f.clone(), Value::Slot(None)] };
+            Value::pure_function(None, body)
+        }
         _ => Value::Expr { head: Box::new(Value::Symbol("Reduce".into())), args },
     }
 }
@@ -562,6 +603,10 @@ fn scan_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
             other => other,
         },
+        [f] => {
+            let body = Value::Expr { head: Box::new(Value::Symbol("Scan".into())), args: vec![f.clone(), Value::Slot(None)] };
+            Value::pure_function(None, body)
+        }
         _ => Value::Expr { head: Box::new(Value::Symbol("Scan".into())), args },
     }
 }
@@ -711,12 +756,19 @@ fn map_list(ev: &mut Evaluator, f: &Value, v: Value) -> Value {
 }
 
 fn map_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Map".into())), args } }
-    let f = args[0].clone();
-    let subj = ev.eval(args[1].clone());
-    match subj {
-        Value::PackedArray { shape, data } => map_packed(ev, &f, shape, data),
-        other => map_list(ev, &f, other),
+    match args.as_slice() {
+        [f, x] => {
+            let subj = ev.eval(x.clone());
+            match subj {
+                Value::PackedArray { shape, data } => map_packed(ev, f, shape, data),
+                other => map_list(ev, f, other),
+            }
+        }
+        [f] => {
+            let body = Value::Expr { head: Box::new(Value::Symbol("Map".into())), args: vec![f.clone(), Value::Slot(None)] };
+            Value::pure_function(None, body)
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Map".into())), args },
     }
 }
 

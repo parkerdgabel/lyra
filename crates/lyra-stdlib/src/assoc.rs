@@ -4,6 +4,7 @@ use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
+use crate::register_if;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -53,6 +54,28 @@ pub fn register_assoc(ev: &mut Evaluator) {
         tool_spec!("AssociationMapKV", summary: "Map key/value pairs in an association", params: ["fn","assoc"], tags: ["assoc"]),
         tool_spec!("AssociationMapPairs", summary: "Map to key/value pairs or assoc", params: ["fn","assoc"], tags: ["assoc"]),
     ]);
+}
+
+pub fn register_assoc_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Keys", keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Values", values as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Lookup", lookup as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssociationMap", association_map as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssociationMapKeys", association_map_keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssociationMapKV", association_map_kv as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssociationMapPairs", association_map_pairs as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Merge", merge as NativeFn, Attributes::empty());
+    register_if(ev, pred, "KeySort", key_sort as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "GroupBy", group_by as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocGet", assoc_get as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocContainsKeyQ", assoc_contains_key_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocSet", assoc_set as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocDelete", assoc_delete as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocSelect", assoc_select as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocDrop", assoc_drop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocInvert", assoc_invert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
 }
 
 fn keys(ev: &mut Evaluator, args: Vec<Value>) -> Value {
