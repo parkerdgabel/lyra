@@ -1,0 +1,2 @@
+StringLength["héllo"];
+StringJoin[{"a","b","c"}]

@@ -1,0 +1,17 @@
+[package]
+name = "lyra-compiler"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+lyra-core = { path = "../lyra-core" }
+lyra-parser = { path = "../lyra-parser" }
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+lazy_static = { workspace = true }
+
+[[bin]]
+name = "lyra-shake"
+path = "src/bin/lyra-shake.rs"

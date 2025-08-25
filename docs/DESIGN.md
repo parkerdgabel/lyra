@@ -77,6 +77,7 @@ Scope: Full language re-architecture, from parser to packages
   - Parse → Canonicalize → Infer (shapes/precision/effects) → Optimize (inline/simple rules, constant fold, vectorize listable) → DCE/Tree Shaking → Lower (provider-impl) → Backend.
 - Backends: Interpreter, AOT native (LLVM/Rust), WASM; mixed-mode JIT for numeric kernels.
 - Artifacts: minimal binaries with only reachable stdlib and providers; manifest embeds capabilities and budgets.
+  - Implementation details and rollout plan: see docs/TREE_SHAKING.md.
 
 8. Package Management
 - Manifests: name, version, deps, features, capabilities, budgets, license, platforms.
