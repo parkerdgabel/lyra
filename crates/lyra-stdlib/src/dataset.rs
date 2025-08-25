@@ -21,6 +21,7 @@ enum Plan {
     Sort { input: Box<Plan>, by: Vec<(String, bool)> }, // (col, asc)
     Distinct { input: Box<Plan>, cols: Option<Vec<String>> },
     Union { inputs: Vec<Plan>, by_columns: bool },
+    Offset { input: Box<Plan>, n: i64 },
 }
 
 #[derive(Clone)]
@@ -236,6 +237,11 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
             }
             out
         }
+        Plan::Offset { input, n } => {
+            let mut rows = eval_plan(ev, input);
+            let k = (*n).max(0) as usize;
+            if k >= rows.len() { Vec::new() } else { rows.drain(0..k); rows }
+        }
     }
 }
 
@@ -401,6 +407,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::Sort { input, by } => { out.push_str(&format!("{}Sort {:?}\n", pad, by)); pp(input, indent+2, out); }
             Plan::Distinct { input, cols } => { out.push_str(&format!("{}Distinct {:?}\n", pad, cols)); pp(input, indent+2, out); }
             Plan::Union { inputs, by_columns } => { out.push_str(&format!("{}Union by_columns={} inputs={}\n", pad, by_columns, inputs.len())); for p in inputs { pp(p, indent+2, out); } }
+            Plan::Offset { input, n } => { out.push_str(&format!("{}Offset {}\n", pad, n)); pp(input, indent+2, out); }
         }
     }
     let mut s = String::new();
@@ -735,6 +742,33 @@ fn concat_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn union_by_position(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // UnionByPosition[ds1, ds2, ...] or UnionByPosition[{...}]
+    let mut as_list = if args.len()==1 { match ev.eval(args[0].clone()) { Value::List(v)=>v, x=>vec![x] } } else { args.into_iter().map(|v| ev.eval(v)).collect() };
+    as_list.push(Value::Assoc(HashMap::from([(String::from("By"), Value::String(String::from("position")))])));
+    union_general(ev, as_list)
+}
+
+fn offset_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Offset[ds_or_list, n]
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let n = match ev.eval(args[1].clone()) { Value::Integer(k)=>k, other=> return Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args: vec![subj, other] } };
+    if let Some(id) = get_ds(&subj) {
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::Offset { input: Box::new(st.plan), n } });
+        return ds_handle(new_id);
+    }
+    if let Value::List(items) = subj {
+        let k = n.max(0) as usize;
+        if k >= items.len() { return Value::List(vec![]); }
+        return Value::List(items.into_iter().skip(k).collect());
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args }
+}
+
 fn rename_cols(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("RenameCols".into())), args } }
     // Delegate to Select with mapping for consistency
@@ -764,6 +798,8 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
     ev.register("Union", union_general as NativeFn, Attributes::empty());
     ev.register("Concat", concat_general as NativeFn, Attributes::empty());
+    ev.register("UnionByPosition", union_by_position as NativeFn, Attributes::empty());
+    ev.register("Offset", offset_general as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
