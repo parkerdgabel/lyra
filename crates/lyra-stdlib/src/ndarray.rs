@@ -223,6 +223,55 @@ fn nd_matmul(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     pack(vec![m, n], out)
 }
 
+fn nd_slice(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Forms:
+    // - NDSlice[a, axis, start, len]  (axis 0-based; start 1-based; len>=0)
+    // - NDSlice[a, {start, len}]      (1D only; start 1-based)
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+    let ndim = shape.len();
+    if args.len()==2 {
+        // 1D form: list {start,len}
+        match ev.eval(args[1].clone()) {
+            Value::List(xs) if xs.len()==2 && ndim==1 => {
+                let start = match xs[0] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+                let len = match xs[1] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+                if start < 1 || len < 0 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+                let s0 = (start as usize).saturating_sub(1);
+                let l = len as usize;
+                if s0 + l > shape[0] { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+                let out = data[s0..s0+l].to_vec();
+                return pack(vec![l], out);
+            }
+            _ => {}
+        }
+    }
+    if args.len()!=4 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+    let axis = match ev.eval(args[1].clone()) { Value::Integer(n)=> n as isize, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+    let start = match ev.eval(args[2].clone()) { Value::Integer(n)=> n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+    let len = match ev.eval(args[3].clone()) { Value::Integer(n)=> n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+    if axis < 0 || (axis as usize) >= ndim || start < 1 || len < 0 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+    let ax = axis as usize;
+    let s0 = (start as usize).saturating_sub(1);
+    let l = len as usize;
+    if s0 + l > shape[ax] { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+    let st = strides(&shape);
+    let outer: usize = shape[..ax].iter().product();
+    let inner: usize = shape[ax+1..].iter().product();
+    let mut out_shape = shape.clone(); out_shape[ax] = l;
+    let mut out = Vec::with_capacity(total_elems(&out_shape));
+    for o in 0..outer { for k in 0..l { let base = o*st[0] + (s0+k)*st[ax]; for i in 0..inner { out.push(data[base + i]); } } }
+    pack(out_shape, out)
+}
+
+fn nd_permute_dims(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Alias to NDTranspose with explicit permutation
+    match args.as_slice() {
+        [a, perm] => nd_transpose(ev, vec![a.clone(), perm.clone()]),
+        _ => Value::Expr { head: Box::new(Value::Symbol("NDPermuteDims".into())), args },
+    }
+}
+
 pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDArray", ndarray as NativeFn, Attributes::HOLD_ALL);
     ev.register("NDShape", nd_shape as NativeFn, Attributes::empty());
@@ -235,4 +284,6 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDMatMul", nd_matmul as NativeFn, Attributes::empty());
     ev.register("NDType", nd_type as NativeFn, Attributes::empty());
     ev.register("NDAsType", nd_as_type as NativeFn, Attributes::empty());
+    ev.register("NDSlice", nd_slice as NativeFn, Attributes::empty());
+    ev.register("NDPermuteDims", nd_permute_dims as NativeFn, Attributes::empty());
 }
