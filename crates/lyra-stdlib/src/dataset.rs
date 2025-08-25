@@ -455,6 +455,7 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
     ev.register("Collect", collect_ds as NativeFn, Attributes::empty());
     ev.register("SelectCols", select_cols as NativeFn, Attributes::empty());
+    ev.register("Select", select_general as NativeFn, Attributes::empty());
     ev.register("FilterRows", filter_rows as NativeFn, Attributes::HOLD_ALL);
     ev.register("LimitRows", limit_rows as NativeFn, Attributes::empty());
     ev.register("WithColumns", with_columns as NativeFn, Attributes::HOLD_ALL);
@@ -468,4 +469,82 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
     ev.register("Agg", agg as NativeFn, Attributes::empty());
     ev.register("Join", join_ds as NativeFn, Attributes::empty());
+}
+
+fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let spec_v = ev.eval(args[1].clone());
+    // Dataset projection
+    if let Some(ds_id) = get_ds(&subj) {
+        let cols: Vec<String> = match &spec_v {
+            Value::List(vs) => vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect(),
+            _ => Vec::new(),
+        };
+        if cols.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] } }
+        return select_cols(ev, vec![ds_handle(ds_id), Value::List(cols.into_iter().map(Value::String).collect())]);
+    }
+    // Assoc projection/rename
+    match (&subj, &spec_v) {
+        (Value::Assoc(m), Value::List(keys)) => {
+            let mut out = HashMap::new();
+            for k in keys {
+                if let Value::String(s)|Value::Symbol(s) = k { if let Some(v)=m.get(s) { out.insert(s.clone(), v.clone()); } }
+            }
+            return Value::Assoc(out);
+        }
+        (Value::Assoc(m), Value::Assoc(map)) => {
+            // rename: newName -> oldName
+            let mut out = HashMap::new();
+            for (newk, src) in map {
+                if let Value::String(srcs)|Value::Symbol(srcs) = src { if let Some(v)=m.get(srcs) { out.insert(newk.clone(), v.clone()); } }
+            }
+            return Value::Assoc(out);
+        }
+        _ => {}
+    }
+    // List of Assoc: project per row
+    if let Value::List(items) = subj.clone() {
+        match &spec_v {
+            Value::List(keys) => {
+                if items.iter().all(|it| matches!(it, Value::Assoc(_))) && keys.iter().all(|k| matches!(k, Value::String(_)|Value::Symbol(_))) {
+                    let mut out_rows: Vec<Value> = Vec::with_capacity(items.len());
+                    for it in items.into_iter() {
+                        if let Value::Assoc(m) = it {
+                            let mut row = HashMap::new();
+                            for k in keys {
+                                if let Value::String(s)|Value::Symbol(s) = k { if let Some(v)=m.get(s) { row.insert(s.clone(), v.clone()); } }
+                            }
+                            out_rows.push(Value::Assoc(row));
+                        }
+                    }
+                    return Value::List(out_rows);
+                }
+                // List indexing: keys are integers (1-based)
+                if keys.iter().all(|k| matches!(k, Value::Integer(_))) && items.iter().all(|it| !matches!(it, Value::Assoc(_))) {
+                    let idxs: Vec<usize> = keys.iter().filter_map(|k| if let Value::Integer(i)=k { Some((*i).max(1) as usize - 1) } else { None }).collect();
+                    let out: Vec<Value> = idxs.into_iter().filter_map(|u| items.get(u).cloned()).collect();
+                    return Value::List(out);
+                }
+            }
+            Value::Assoc(rename) => {
+                if items.iter().all(|it| matches!(it, Value::Assoc(_))) {
+                    let mut out_rows: Vec<Value> = Vec::with_capacity(items.len());
+                    for it in items.into_iter() {
+                        if let Value::Assoc(m) = it {
+                            let mut row = HashMap::new();
+                            for (newk, src) in rename.iter() {
+                                if let Value::String(srcs)|Value::Symbol(srcs) = src { if let Some(v)=m.get(srcs) { row.insert(newk.clone(), v.clone()); } }
+                            }
+                            out_rows.push(Value::Assoc(row));
+                        }
+                    }
+                    return Value::List(out_rows);
+                }
+            }
+            _ => {}
+        }
+    }
+    // Fallback: not supported form
+    Value::Expr { head: Box::new(Value::Symbol("Select".into())), args: vec![subj, spec_v] }
 }
