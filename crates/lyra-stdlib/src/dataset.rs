@@ -66,6 +66,7 @@ struct SqlBuild {
     distinct: bool,
     pushed: Vec<String>,
     client_side: Vec<String>,
+    group_by: Vec<String>,
 }
 
 fn ident(name: &str) -> String { name.to_string() }
@@ -167,9 +168,61 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
         Plan::Offset { input, n } => { acc = fold_sql(input, acc); acc.offset = Some(*n); acc.pushed.push("Offset".into()); acc }
         Plan::Tail { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("Tail".into()); acc }
         Plan::WithColumns { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("WithColumns".into()); acc }
-        Plan::GroupBy { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("GroupBy".into()); acc }
-        Plan::Agg { input, .. } => { acc = fold_sql(input, acc); acc.client_side.push("Agg".into()); acc }
-        Plan::Join { left, .. } => { acc = fold_sql(left, acc); acc.client_side.push("Join".into()); acc }
+        Plan::GroupBy { input, keys } => {
+            acc = fold_sql(input, acc);
+            acc.group_by = keys.clone();
+            acc.pushed.push("GroupBy".into());
+            acc
+        }
+        Plan::Agg { input, aggs } => {
+            // If preceding step set group_by, render aggregates; otherwise global aggregates
+            acc = fold_sql(input, acc);
+            let mut sels: Vec<(String, Option<String>)> = Vec::new();
+            if !acc.group_by.is_empty() {
+                for g in &acc.group_by { sels.push((ident(g), None)); }
+            }
+            // Render supported aggregates: Count[], Sum[col]
+            for (alias, spec) in aggs.iter() {
+                if let Value::Expr { head, args } = spec {
+                    if let Value::Symbol(fname) = &**head {
+                        match fname.as_str() {
+                            "Count" => {
+                                sels.push(("COUNT(*)".into(), Some(alias.clone())));
+                                continue;
+                            }
+                            "Sum" => {
+                                if let Some(arg0) = args.get(0) {
+                                    if let Some(csql) = col_expr_to_sql(arg0) { sels.push((format!("SUM({})", csql), Some(alias.clone()))); continue; }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                acc.client_side.push(format!("Agg({})", alias));
+            }
+            if acc.client_side.iter().any(|s| s.starts_with("Agg(")) { return acc; }
+            acc.select = Some(sels);
+            acc.pushed.push("Agg".into());
+            acc
+        }
+        Plan::Join { left, right, on, how } => {
+            // Support only simple joins of two DbTables without prior transforms
+            fn table_name_only(p: &Plan) -> Option<String> {
+                match p { Plan::DbTable { name, .. } => Some(name.clone()), _ => None }
+            }
+            if let (Some(lt), Some(rt)) = (table_name_only(left), table_name_only(right)) {
+                let hows = if how=="left" { "LEFT JOIN" } else { "INNER JOIN" };
+                let using = format!("USING ({})", on.join(", "));
+                acc.table = Some(format!("{} {} {} {}", lt, hows, rt, using));
+                acc.pushed.push(format!("Join({})", how));
+                acc
+            } else {
+                acc = fold_sql(left, acc);
+                acc.client_side.push("Join".into());
+                acc
+            }
+        }
         Plan::Sort { input, by } => {
             acc = fold_sql(input, acc);
             acc.order_by.extend(by.iter().cloned());
@@ -199,6 +252,10 @@ fn build_sql_string(sb: &SqlBuild) -> Option<String> {
     s.push_str(" FROM ");
     s.push_str(&table);
     if let Some(w) = &sb.where_clause { s.push_str(" WHERE "); s.push_str(w); }
+    if !sb.group_by.is_empty() {
+        s.push_str(" GROUP BY ");
+        s.push_str(&sb.group_by.join(", "));
+    }
     if !sb.order_by.is_empty() {
         s.push_str(" ORDER BY ");
         let parts: Vec<String> = sb.order_by.iter().map(|(c, asc)| format!("{} {}", ident(c), if *asc { "ASC" } else { "DESC" })).collect();

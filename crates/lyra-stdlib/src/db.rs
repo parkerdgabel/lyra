@@ -4,6 +4,7 @@ use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
 #[cfg(feature = "db_sqlite")] use base64;
+#[cfg(feature = "db_sqlite")] use base64::Engine;
 
 // Database connection abstraction (initial scaffolding)
 // We start with a Mock connector that stores in-memory tables for dev/testing.
@@ -53,15 +54,17 @@ fn get_conn(v: &Value) -> Option<i64> {
 pub fn fetch_table_rows(conn_id: i64, table: &str) -> Option<Vec<Value>> {
     let reg = conn_reg().lock().unwrap();
     let st = reg.get(&conn_id)?;
-    match st.kind {
+    match st.kind.clone() {
         ConnectorKind::Mock => st.mock_tables.get(table).cloned(),
         #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
+            let dsn = st.dsn.clone();
             drop(reg);
-            fetch_sqlite_rows(&st.dsn, &format!("SELECT * FROM {}", table)).ok()
+            fetch_sqlite_rows(&dsn, &format!("SELECT * FROM {}", table)).ok()
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
+            let dsn = st.dsn.clone();
             drop(reg);
-            fetch_duckdb_rows(&st.dsn, &format!("SELECT * FROM {}", table)).ok()
+            fetch_duckdb_rows(&dsn, &format!("SELECT * FROM {}", table)).ok()
         }
     }
 }
@@ -540,6 +543,7 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("RegisterTable", register_table as NativeFn, Attributes::empty());
     ev.register("Table", table_to_dataset as NativeFn, Attributes::empty());
     ev.register("SQL", sql_query as NativeFn, Attributes::empty());
+    ev.register("Exec", exec_query as NativeFn, Attributes::empty());
     // ExplainSQL is implemented in dataset.rs to access the logical plan
     // Internal helpers
     ev.register("__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
@@ -553,6 +557,26 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("Begin", begin_tx as NativeFn, Attributes::empty());
     ev.register("Commit", commit_tx as NativeFn, Attributes::empty());
     ev.register("Rollback", rollback_tx as NativeFn, Attributes::empty());
+}
+
+// Exec[conn, sql, params?] -> executes non-SELECT (DDL/DML); returns Boolean success
+fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } }
+    let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
+    let mut sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args: vec![args[0].clone(), other] } };
+    if args.len()>=3 { if let Value::Assoc(m) = ev.eval(args[2].clone()) { sql = substitute_params(&sql, &m); } }
+    let reg = conn_reg().lock().unwrap();
+    let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
+    drop(reg);
+    match st.kind {
+        ConnectorKind::Mock => Value::Boolean(true),
+        #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
+            if let Some(c) = st.sqlite_conn.as_ref() { let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok) } else { Value::Boolean(false) }
+        }
+        #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
+            if let Some(c) = st.duckdb_conn.as_ref() { let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok) } else { Value::Boolean(false) }
+        }
+    }
 }
 
 // ---------- SQLite helpers (feature-gated) ----------
