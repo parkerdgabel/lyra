@@ -54,7 +54,7 @@ fn cmd_analyze(mut args: Vec<String>) -> Result<()> {
 }
 
 fn print_help() {
-    eprintln!("lyra-shake — tree shaking utilities\n\nUSAGE:\n  lyra-shake analyze [files...] [-o manifest.json]\n\nCommands:\n  analyze   Analyze entry files and emit symbols/features/capabilities manifest\n");
+    eprintln!("lyra-shake — tree shaking utilities\n\nUSAGE:\n  lyra-shake analyze [files...] [-o manifest.json]\n  lyra-shake build [files...] [--features-extra a,b] [--release] [--no-size-opt]\n\nCommands:\n  analyze   Analyze entry files and emit symbols/features/capabilities manifest\n  build     Analyze and build a minimal lyra-runner with only required features\n\nFlags:\n  --features-extra   Comma-separated extra cargo features to include in build\n  --release          Build in release mode\n  --no-size-opt      Disable size optimization flags (LTO/strip/opt-level=z)\n");
 }
 
 
@@ -62,10 +62,12 @@ fn cmd_build(mut args: Vec<String>) -> Result<()> {
     let mut files: Vec<PathBuf> = vec![];
     let mut features_extra: Vec<String> = vec![];
     let mut release = false;
+    let mut size_opt = true;
     while !args.is_empty() {
         let a = args.remove(0);
         if a=="--features-extra" { if !args.is_empty() { features_extra = args.remove(0).split(',').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect(); } continue; }
         if a=="--release" { release = true; continue; }
+        if a=="--no-size-opt" { size_opt = false; continue; }
         if a.starts_with('-') { return Err(anyhow!("Unknown flag: {}", a)); }
         files.push(PathBuf::from(a));
     }
@@ -94,6 +96,14 @@ fn cmd_build(mut args: Vec<String>) -> Result<()> {
     if release { cmd.arg("--release"); }
     if !feats.is_empty() {
         cmd.arg("--features").arg(feats.join(","));
+    }
+    if size_opt {
+        // Favor minimal binary size: LTO, fewer codegen units, strip symbols, and size-focused opt level.
+        // Merge with existing RUSTFLAGS if set.
+        let mut flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+        let extra = " -C codegen-units=1 -C strip=symbols -C opt-level=z";
+        flags.push_str(extra);
+        cmd.env("RUSTFLAGS", flags.trim());
     }
     let status = cmd.status()?;
     if !status.success() { return Err(anyhow!("cargo build failed")); }

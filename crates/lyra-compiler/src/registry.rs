@@ -86,8 +86,11 @@ lazy_static! {
         ] { m.insert(s, E { features: &["graphs"], effects: &[] }); }
 
         // Text & search
-        for s in ["TextSearch","TextFind","TextReplace","TextLines","TextCount","TextDetectEncoding"] { m.insert(s, E { features: &["text"], effects: &[] }); }
-        for s in ["TextFilesWithMatch"] { m.insert(s, E { features: &["text"], effects: &["fs"] }); }
+        for s in ["TextSearch","TextFind","TextReplace","TextLines","TextCount"] { m.insert(s, E { features: &["text"], effects: &[] }); }
+        // Encoding detection benefits from optional detector feature
+        m.insert("TextDetectEncoding", E { features: &["text","text_encoding_detect"], effects: &[] });
+        // File search relies on glob walking when available
+        m.insert("TextFilesWithMatch", E { features: &["text","text_glob"], effects: &["fs"] });
         for s in ["FuzzyFindInList","FuzzyFindInText"] { m.insert(s, E { features: &["text_fuzzy"], effects: &[] }); }
         for s in ["FuzzyFindInFiles"] { m.insert(s, E { features: &["text_fuzzy"], effects: &["fs"] }); }
         for s in ["IndexCreate","IndexAdd","IndexSearch","IndexInfo"] { m.insert(s, E { features: &["text_index"], effects: &["db","fs"] }); }
