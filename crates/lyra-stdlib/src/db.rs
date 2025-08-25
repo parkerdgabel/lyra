@@ -69,6 +69,45 @@ pub fn fetch_table_rows(conn_id: i64, table: &str) -> Option<Vec<Value>> {
     }
 }
 
+// Expose table column introspection for join projection
+#[allow(dead_code)]
+pub fn db_table_columns(conn_id: i64, table: &str) -> Option<Vec<String>> {
+    let reg = conn_reg().lock().unwrap();
+    let st = reg.get(&conn_id)?.clone();
+    drop(reg);
+    match st.kind {
+        ConnectorKind::Mock => {
+            st.mock_tables.get(table).and_then(|rows| rows.iter().find_map(|r| match r { Value::Assoc(m)=> Some(m.keys().cloned().collect::<Vec<_>>()), _=> None }))
+        }
+        #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
+            list_sqlite_columns(&st.dsn, table).ok()
+        }
+        #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
+            list_duckdb_columns(&st.dsn, table).ok()
+        }
+    }
+}
+
+#[cfg(feature = "db_sqlite")]
+fn list_sqlite_columns(dsn: &str, table: &str) -> rusqlite::Result<Vec<String>> {
+    let conn = sqlite_open(dsn)?;
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info('{}')", table.replace("'", "''")))?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? { out.push(row.get::<usize, String>(1)?); }
+    Ok(out)
+}
+
+#[cfg(feature = "db_duckdb")]
+fn list_duckdb_columns(dsn: &str, table: &str) -> duckdb::Result<Vec<String>> {
+    let conn = duckdb_open(dsn)?;
+    let mut stmt = conn.prepare("SELECT column_name FROM information_schema.columns WHERE table_name = ?")?;
+    let mut rows = stmt.query([table])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? { if let Ok(Some(name)) = row.get::<usize, Option<String>>(0) { out.push(name); } }
+    Ok(out)
+}
+
 fn connect(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Connect".into())), args } }
     // Accept DSN string or options assoc with DSN key

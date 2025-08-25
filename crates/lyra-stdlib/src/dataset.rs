@@ -21,6 +21,7 @@ enum Plan {
     Join { left: Box<Plan>, right: Box<Plan>, on: Vec<String>, how: String },
     Sort { input: Box<Plan>, by: Vec<(String, bool)> }, // (col, asc)
     Distinct { input: Box<Plan>, cols: Option<Vec<String>> },
+    DistinctOn { input: Box<Plan>, keys: Vec<String>, order_by: Vec<(String, bool)>, keep_last: bool },
     Union { inputs: Vec<Plan>, by_columns: bool },
     Offset { input: Box<Plan>, n: i64 },
     Tail { input: Box<Plan>, n: i64 },
@@ -253,6 +254,22 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
             }
             acc
         }
+        Plan::DistinctOn { input, keys, order_by, keep_last } => {
+            // Build subquery with ROW_NUMBER window
+            let inner = fold_sql(input, SqlBuild::default());
+            if !inner.client_side.is_empty() { acc.client_side.push("DistinctOn".into()); return acc; }
+            if let Some(inner_sql) = build_sql_string(&inner) {
+                let ord_sql = if order_by.is_empty() { keys.iter().map(|k| format!("{} ASC", ident(k))).collect::<Vec<_>>().join(", ") } else { order_by.iter().map(|(c, asc)| format!("{} {}", ident(c), if *asc ^ *keep_last { "ASC" } else { "DESC" })).collect::<Vec<_>>().join(", ") };
+                let part = keys.iter().map(|k| ident(k)).collect::<Vec<_>>().join(", ");
+                let sub = format!("SELECT t.*, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {}) AS rn FROM ({}) AS t", part, ord_sql, inner_sql);
+                acc.table = Some(format!("({})", sub));
+                acc.where_clause = Some("rn = 1".into());
+                acc.pushed.push("DistinctOn".into());
+                return acc;
+            }
+            acc.client_side.push("DistinctOn".into());
+            acc
+        }
         Plan::Union { inputs: _, by_columns: _ } => { acc.client_side.push("Union".into()); acc }
     }
 }
@@ -468,6 +485,39 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                     let key = lyra_core::pretty::format_value(&r);
                     if seen.insert(key) { out.push(r); }
                 }
+            }
+            out
+        }
+        Plan::DistinctOn { input, keys, order_by, keep_last } => {
+            // client-side fallback: group by keys, sort per group by order_by, pick first/last
+            let rows = eval_plan(ev, input);
+            use std::collections::HashMap as Map;
+            let mut groups: Map<String, Vec<Value>> = Map::new();
+            for r in rows.into_iter() {
+                if let Value::Assoc(m) = &r {
+                    let kk: Vec<String> = keys.iter().map(|k| m.get(k).map(|v| lyra_core::pretty::format_value(v)).unwrap_or_default()).collect();
+                    let key = kk.join("\u{1f}");
+                    groups.entry(key).or_default().push(r);
+                }
+            }
+            let mut out: Vec<Value> = Vec::new();
+            for (_k, mut rs) in groups.into_iter() {
+                rs.sort_by(|a, b| {
+                    let (ma, mb) = match (a, b) { (Value::Assoc(ma), Value::Assoc(mb)) => (ma, mb), _ => return std::cmp::Ordering::Equal };
+                    for (col, asc) in order_by.iter() {
+                        let va = ma.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                        let vb = mb.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                        let ka = lyra_runtime::eval::value_order_key(&va);
+                        let kb = lyra_runtime::eval::value_order_key(&vb);
+                        let ord = ka.cmp(&kb);
+                        if ord != std::cmp::Ordering::Equal {
+                            let ord2 = if *asc { ord } else { ord.reverse() };
+                            return ord2;
+                        }
+                    }
+                    std::cmp::Ordering::Equal
+                });
+                if *keep_last { if let Some(v) = rs.pop() { out.push(v); } } else { if let Some(v) = rs.first().cloned() { out.push(v); } }
             }
             out
         }
@@ -692,6 +742,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::Join { left, right, on, how } => { out.push_str(&format!("{}Join how={} on={:?}\n", pad, how, on)); pp(left, indent+2, out); pp(right, indent+2, out); }
             Plan::Sort { input, by } => { out.push_str(&format!("{}Sort {:?}\n", pad, by)); pp(input, indent+2, out); }
             Plan::Distinct { input, cols } => { out.push_str(&format!("{}Distinct {:?}\n", pad, cols)); pp(input, indent+2, out); }
+            Plan::DistinctOn { input, keys, order_by, keep_last } => { out.push_str(&format!("{}DistinctOn keys={:?} order_by={:?} keep_last={}\n", pad, keys, order_by, keep_last)); pp(input, indent+2, out); }
             Plan::Union { inputs, by_columns } => { out.push_str(&format!("{}Union by_columns={} inputs={}\n", pad, by_columns, inputs.len())); for p in inputs { pp(p, indent+2, out); } }
             Plan::Offset { input, n } => { out.push_str(&format!("{}Offset {}\n", pad, n)); pp(input, indent+2, out); }
             Plan::Tail { input, n } => { out.push_str(&format!("{}Tail {}\n", pad, n)); pp(input, indent+2, out); }
@@ -765,12 +816,14 @@ fn try_render_sql(plan: &Plan) -> Option<(i64, String)> {
             Plan::DbTable { conn_id, .. } => Some(*conn_id),
             Plan::Select { input, .. } | Plan::SelectRename { input, .. } | Plan::Filter { input, .. } |
             Plan::Limit { input, .. } | Plan::Offset { input, .. } | Plan::Sort { input, .. } | Plan::Distinct { input, .. } | Plan::WithColumns { input, .. } |
-            Plan::GroupBy { input, .. } | Plan::Agg { input, .. } | Plan::Tail { input, .. } => find_conn_id(input),
+            Plan::GroupBy { input, .. } | Plan::Agg { input, .. } | Plan::DistinctOn { input, .. } | Plan::Tail { input, .. } => find_conn_id(input),
             Plan::Join { left, right, .. } => find_conn_id(left).or_else(|| find_conn_id(right)),
             Plan::Union { inputs, .. } => inputs.iter().find_map(find_conn_id),
             Plan::FromRows(_) => None,
         }
     }
+    // Special-case: base-table join with column introspection for deterministic projection
+    if let Some((conn_id, sql)) = try_render_join_with_projection(plan) { return Some((conn_id, sql)); }
     let sb = fold_sql(plan, SqlBuild::default());
     if let Some(sql) = build_sql_string(&sb) {
         if !sb.client_side.is_empty() { return None; }
@@ -778,6 +831,32 @@ fn try_render_sql(plan: &Plan) -> Option<(i64, String)> {
     }
     None
 }
+
+#[cfg(feature = "db")]
+fn try_render_join_with_projection(plan: &Plan) -> Option<(i64, String)> {
+    // Only handle Join of two DbTables without extra transforms
+    if let Plan::Join { left, right, on, how } = plan {
+        if let (Plan::DbTable { conn_id: lcid, name: lname }, Plan::DbTable { conn_id: rcid, name: rname }) = (&**left, &**right) {
+            if lcid != rcid { return None; }
+            // Fetch columns via db helper
+            #[cfg(feature = "db")]
+            {
+                if let (Some(lcols), Some(rcols)) = (crate::db::db_table_columns(*lcid, lname), crate::db::db_table_columns(*lcid, rname)) {
+                    let mut select_parts: Vec<String> = Vec::new();
+                    for c in &lcols { select_parts.push(format!("l.{}", c)); }
+                    for c in &rcols { if !on.contains(c) { select_parts.push(format!("r.{} AS {}_right", c, c)); } }
+                    let hows = if how=="left" { "LEFT JOIN" } else { "INNER JOIN" };
+                    let using = if !on.is_empty() { format!("USING ({})", on.join(", ")) } else { String::from("ON 1=1") };
+                    let sql = format!("SELECT {} FROM {} AS l {} {} AS r {}", select_parts.join(", "), lname, hows, rname, using);
+                    return Some((*lcid, sql));
+                }
+            }
+        }
+    }
+    None
+}
+#[cfg(not(feature = "db"))]
+fn try_render_join_with_projection(_plan: &Plan) -> Option<(i64, String)> { None }
 
 fn read_csv_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Delegate to existing ReadCSV to get rows, then optionally infer types, then wrap
@@ -1331,6 +1410,30 @@ fn rename_cols(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     select_general(ev, args)
 }
 
+fn distinct_on(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // DistinctOn[ds|rows, keys, <|OrderBy->..., Keep->"first"|"last"|>]
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("DistinctOn".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let keys_v = ev.eval(args[1].clone());
+    let keys: Vec<String> = match keys_v { Value::List(vs)=> vs.into_iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).collect(), _=> Vec::new() };
+    let (order_by, keep_last) = if args.len()>=3 { if let Value::Assoc(m) = ev.eval(args[2].clone()) {
+        let keep_last = matches!(m.get("Keep"), Some(Value::String(s)) if s.eq_ignore_ascii_case("last")) || matches!(m.get("Keep"), Some(Value::Symbol(s)) if s.eq_ignore_ascii_case("last"));
+        let order_by = match m.get("OrderBy") { Some(Value::List(vs)) => vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=> Some((s.clone(), true)), Value::Assoc(am)=> { if am.len()==1 { let (k,v)=am.iter().next().unwrap(); let asc = !matches!(v, Value::String(ss) if ss.eq_ignore_ascii_case("desc")) && !matches!(v, Value::Symbol(ss) if ss.eq_ignore_ascii_case("desc")); Some((k.clone(), asc)) } else { None } } _=> None }).collect(), Some(Value::Assoc(am)) => am.iter().filter_map(|(k,v)| { let asc = !matches!(v, Value::String(ss) if ss.eq_ignore_ascii_case("desc")) && !matches!(v, Value::Symbol(ss) if ss.eq_ignore_ascii_case("desc")); Some((k.clone(), asc)) }).collect(), Some(Value::String(s))|Some(Value::Symbol(s)) => vec![(s.clone(), true)], _=> Vec::new() };
+        (order_by, keep_last)
+    } else { (Vec::new(), false) } } else { (Vec::new(), false) };
+    if let Some(id) = get_ds(&subj) {
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("DistinctOn".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::DistinctOn { input: Box::new(st.plan), keys, order_by, keep_last } });
+        return ds_handle(new_id);
+    }
+    // For non-datasets, fall back to converting to dataset and using plan for determinism
+    let ds = dataset_from_rows(ev, vec![subj.clone()]);
+    let opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+    distinct_on(ev, vec![ds, Value::List(keys.into_iter().map(Value::String).collect()), opts])
+}
+
 pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
     ev.register("Collect", collect_ds as NativeFn, Attributes::empty());
@@ -1354,6 +1457,7 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Join", join_ds as NativeFn, Attributes::empty());
     ev.register("Sort", sort_ds as NativeFn, Attributes::empty());
     ev.register("Distinct", distinct_ds as NativeFn, Attributes::empty());
+    ev.register("DistinctOn", distinct_on as NativeFn, Attributes::empty());
     ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
     ev.register("Union", union_general as NativeFn, Attributes::empty());
     ev.register("Concat", concat_general as NativeFn, Attributes::empty());
