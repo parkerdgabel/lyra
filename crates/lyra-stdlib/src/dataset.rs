@@ -473,10 +473,16 @@ fn show_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn read_csv_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // Delegate to existing ReadCSV to get rows, then wrap
-    let call = Value::Expr { head: Box::new(Value::Symbol("ReadCSV".into())), args };
-    let rows = ev.eval(call);
-    dataset_from_rows(ev, vec![rows])
+    // Delegate to existing ReadCSV to get rows, then optionally infer types, then wrap
+    let mut call_args = args.clone();
+    let opts_v = if args.len()>=2 { Some(ev.eval(args[1].clone())) } else { None };
+    let infer_types = if let Some(Value::Assoc(m)) = &opts_v { matches!(m.get("InferTypes"), Some(Value::Boolean(true))) } else { false };
+    let sample_rows = if let Some(Value::Assoc(m)) = &opts_v { if let Some(Value::Integer(n)) = m.get("SampleRows") { (*n).max(0) as usize } else { 1000 } } else { 1000 };
+    // Build call to ReadCSV
+    let call = Value::Expr { head: Box::new(Value::Symbol("ReadCSV".into())), args: call_args.drain(..).collect() };
+    let rows_v = ev.eval(call);
+    let rows_typed = if infer_types { infer_and_cast_rows(&rows_v, sample_rows) } else { rows_v };
+    dataset_from_rows(ev, vec![rows_typed])
 }
 
 fn read_jsonl_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -491,7 +497,159 @@ fn read_jsonl_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             if let Value::Assoc(_) = j { rows.push(j); }
         }
     }
-    dataset_from_rows(ev, vec![Value::List(rows)])
+    // Optional post-select of columns via opts Columns->{...}
+    let rows_v = Value::List(rows);
+    let rows_v = if args.len()>=2 {
+        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
+            if let Some(Value::List(cols)) = m.get("Columns") {
+                let ds = dataset_from_rows(ev, vec![rows_v.clone()]);
+                return select_general(ev, vec![ds, Value::List(cols.clone())]);
+            }
+        }
+        rows_v
+    } else { rows_v };
+    dataset_from_rows(ev, vec![rows_v])
+}
+
+// -------------- Type inference helpers --------------
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ColType { Null, Boolean, Integer, Real, String }
+
+fn parse_cell(s: &str) -> ColType {
+    let t = s.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("null") || t=="NA" { return ColType::Null; }
+    if t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("false") { return ColType::Boolean; }
+    if let Ok(_i) = t.parse::<i64>() { return ColType::Integer; }
+    if let Ok(_f) = t.parse::<f64>() { return ColType::Real; }
+    ColType::String
+}
+
+fn unify(t1: ColType, t2: ColType) -> ColType {
+    use ColType::*;
+    match (t1, t2) {
+        (a, b) if a==b => a,
+        (Null, x) | (x, Null) => x,
+        (Integer, Real) | (Real, Integer) => Real,
+        (_, String) | (String, _) => String,
+        (Boolean, Integer) | (Boolean, Real) | (Integer, Boolean) | (Real, Boolean) => String,
+        _ => String,
+    }
+}
+
+fn infer_and_cast_rows(rows_v: &Value, sample_rows: usize) -> Value {
+    // rows_v expected to be List of Assoc<String,String>
+    let rows = match rows_v { Value::List(vs)=>vs, _=> return rows_v.clone() };
+    if rows.is_empty() { return Value::List(vec![]); }
+    // Gather columns
+    let mut cols: Vec<String> = Vec::new();
+    if let Value::Assoc(m) = &rows[0] { cols.extend(m.keys().cloned()); }
+    if cols.is_empty() { return Value::List(rows.clone()); }
+    // Infer per column
+    use std::collections::HashMap as Map;
+    let mut types: Map<String, ColType> = Map::new();
+    for c in &cols { types.insert(c.clone(), ColType::Null); }
+    let mut seen = 0usize;
+    for r in rows.iter() {
+        if let Value::Assoc(m) = r {
+            for c in &cols {
+                if let Some(Value::String(s)) = m.get(c) { let t = parse_cell(s); let cur = types.get(c).copied().unwrap_or(ColType::Null); types.insert(c.clone(), unify(cur, t)); }
+                else if let Some(Value::Symbol(sym)) = m.get(c) { if sym=="Null" { /* ignore */ } else { types.insert(c.clone(), ColType::String); } }
+                else { types.insert(c.clone(), ColType::String); }
+            }
+        }
+        seen += 1; if seen >= sample_rows { break; }
+    }
+    // Cast rows according to inferred types
+    let mut out_rows: Vec<Value> = Vec::with_capacity(rows.len());
+    for r in rows.iter() {
+        if let Value::Assoc(m) = r {
+            let mut out: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            for c in &cols {
+                let tt = types.get(c).copied().unwrap_or(ColType::String);
+                let v = m.get(c).cloned().unwrap_or(Value::Symbol("Null".into()));
+                let casted = cast_value(&v, tt);
+                out.insert(c.clone(), casted);
+            }
+            out_rows.push(Value::Assoc(out));
+        } else { out_rows.push(r.clone()); }
+    }
+    Value::List(out_rows)
+}
+
+fn cast_value(v: &Value, ty: ColType) -> Value {
+    match (v, ty) {
+        (Value::Symbol(s), _) if s=="Null" => Value::Symbol("Null".into()),
+        (Value::String(s), ColType::Null) => Value::Symbol("Null".into()),
+        (Value::String(s), ColType::Boolean) => {
+            let t = s.trim(); Value::Boolean(t.eq_ignore_ascii_case("true"))
+        }
+        (Value::String(s), ColType::Integer) => s.trim().parse::<i64>().map(Value::Integer).unwrap_or(Value::String(s.clone())),
+        (Value::String(s), ColType::Real) => s.trim().parse::<f64>().map(Value::Real).unwrap_or(Value::String(s.clone())),
+        (Value::String(s), ColType::String) => Value::String(s.clone()),
+        (other, _) => other.clone(),
+    }
+}
+
+// -------------- Describe --------------
+fn describe_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Describe".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    // Dataset path
+    let rows_v = if let Some(id) = get_ds(&subj) {
+        let reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None => return Value::Expr { head: Box::new(Value::Symbol("Describe".into())), args } };
+        Value::List(eval_plan(ev, &st.plan))
+    } else { subj.clone() };
+    // List-of-assoc expected
+    match rows_v {
+        Value::List(rows) => {
+            let n = rows.len() as i64;
+            use std::collections::HashMap as Map;
+            let mut cols: Vec<String> = Vec::new();
+            if let Some(Value::Assoc(m)) = rows.get(0) { cols.extend(m.keys().cloned()); }
+            let mut summary: Map<String, Value> = Map::new();
+            for c in cols {
+                let mut non_null = 0i64; let mut nulls = 0i64; let mut ty = ColType::Null; let mut example: Option<Value> = None;
+                use std::collections::HashSet; let mut uniq: HashSet<String> = HashSet::new();
+                for r in rows.iter() {
+                    if let Value::Assoc(m) = r {
+                        if let Some(v) = m.get(&c) {
+                            if matches!(v, Value::Symbol(s) if s=="Null") { nulls+=1; continue; }
+                            non_null += 1;
+                            if example.is_none() { example = Some(v.clone()); }
+                            ty = unify(ty, value_to_coltype(v));
+                            uniq.insert(lyra_core::pretty::format_value(v));
+                        } else { nulls+=1; }
+                    }
+                }
+                let col_sum = Value::Assoc(Map::from([
+                    ("type".into(), Value::String(match ty { ColType::Null=>"Null", ColType::Boolean=>"Boolean", ColType::Integer=>"Integer", ColType::Real=>"Real", ColType::String=>"String" }.into())),
+                    ("nonNull".into(), Value::Integer(non_null)),
+                    ("nulls".into(), Value::Integer(nulls)),
+                    ("unique".into(), Value::Integer(uniq.len() as i64)),
+                    ("example".into(), example.unwrap_or(Value::Symbol("Null".into()))),
+                ]));
+                summary.insert(c, col_sum);
+            }
+            Value::Assoc(Map::from([
+                ("count".into(), Value::Integer(n)),
+                ("columns".into(), Value::Assoc(summary)),
+            ]))
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Describe".into())), args: vec![rows_v] },
+    }
+}
+
+fn value_to_coltype(v: &Value) -> ColType {
+    match v {
+        Value::Boolean(_) => ColType::Boolean,
+        Value::Integer(_) => ColType::Integer,
+        Value::Real(_) | Value::Rational{..} | Value::BigReal(_) => ColType::Real,
+        Value::String(_) => ColType::String,
+        Value::Symbol(s) if s=="Null" => ColType::Null,
+        Value::Symbol(_) => ColType::String,
+        Value::Assoc(_) | Value::List(_) | Value::Expr{..} | Value::PackedArray{..} | Value::PureFunction{..} | Value::Complex{..} | Value::Slot(_) => ColType::String,
+    }
 }
 
 fn with_columns(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -857,6 +1015,7 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Offset", offset_general as NativeFn, Attributes::empty());
     ev.register("Head", head_general as NativeFn, Attributes::empty());
     ev.register("Tail", tail_general as NativeFn, Attributes::empty());
+    ev.register("Describe", describe_general as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
