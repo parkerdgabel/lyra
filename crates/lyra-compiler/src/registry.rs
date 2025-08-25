@@ -50,9 +50,9 @@ lazy_static! {
         for s in ["Connect","Disconnect","Close","Begin","Commit","Rollback","Ping","Exec","Fetch","InsertRows","UpsertRows","WriteDataset","RegisterTable","ListTables","Table","SQL","SQLCursor","__SQLToRows"] {
             m.insert(s, E { features: &["db"], effects: &["db"] });
         }
-        // Optional DB engines
-        m.insert("SqliteQuery", E { features: &["db_sqlite"], effects: &["db","fs"] });
-        m.insert("DuckDbQuery", E { features: &["db_duckdb"], effects: &["db","fs"] });
+        // Engine-specific features are enabled at build time via cargo features (db_sqlite, db_duckdb).
+        // Function names are engine-agnostic (e.g., SQL/Exec/Connect), so static symbol analysis cannot
+        // disambiguate engine use; CLI may add extra features via flags if needed.
 
         // Filesystem / IO
         for s in [
