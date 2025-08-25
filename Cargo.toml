@@ -5,6 +5,7 @@ members = [
   "crates/lyra-repl",
   "crates/lyra-runtime", "crates/lyra-stdlib", "crates/lyra-rewrite",
   "crates/lyra-compiler",
+  "crates/lyra-runner",
 ]
 resolver = "2"
 

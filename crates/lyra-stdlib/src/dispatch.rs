@@ -31,7 +31,8 @@ fn join_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 _ => {
                     // If any side is a dataset, delegate to dataset Join
                     if is_dataset_handle(&av) || is_dataset_handle(&bv) {
-                        return crate::dataset::join_ds(ev, vec![av, bv, Value::List(vec![])]);
+                        #[cfg(feature = "dataset")] { return crate::dataset::join_ds(ev, vec![av, bv, Value::List(vec![])]); }
+                        #[cfg(not(feature = "dataset"))] { return Value::expr(Value::symbol("Join"), vec![av, bv]); }
                     }
                     // Fallback: keep unevaluated
                     Value::expr(Value::symbol("Join"), vec![av, bv])
@@ -45,7 +46,8 @@ fn join_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             if is_dataset_handle(&av) || is_dataset_handle(&bv) {
                 let mut v = vec![av, bv];
                 v.extend(rest.iter().cloned().map(|x| ev.eval(x)));
-                return crate::dataset::join_ds(ev, v);
+                #[cfg(feature = "dataset")] { return crate::dataset::join_ds(ev, v); }
+                #[cfg(not(feature = "dataset"))] { return Value::expr(Value::symbol("Join"), v); }
             }
             Value::expr(Value::symbol("Join"), {
                 let mut v = vec![av, bv];
@@ -69,11 +71,13 @@ fn union_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::expr(Value::symbol("Union"), args); }
     let evald: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
     if evald.iter().any(|v| is_dataset_handle(v)) {
-        return crate::dataset::union_general(ev, evald);
+        #[cfg(feature = "dataset")] { return crate::dataset::union_general(ev, evald); }
+        #[cfg(not(feature = "dataset"))] { return Value::expr(Value::symbol("Union"), evald); }
     }
     // If all args are lists and appear to be rows (assoc), delegate to dataset union_general for row-wise union-by-columns
     if !evald.is_empty() && all_lists(&evald) && evald.iter().any(|v| list_is_assoc_rows(v)) {
-        return crate::dataset::union_general(ev, evald);
+        #[cfg(feature = "dataset")] { return crate::dataset::union_general(ev, evald); }
+        #[cfg(not(feature = "dataset"))] { return Value::expr(Value::symbol("Union"), evald); }
     }
     // If any are Set handles, use SetUnion
     if evald.iter().any(|v| is_set_handle(v)) {

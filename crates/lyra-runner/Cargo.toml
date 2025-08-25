@@ -1,0 +1,51 @@
+[package]
+name = "lyra-runner"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+lyra-core = { path = "../lyra-core" }
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib", default-features = false }
+lyra-parser = { path = "../lyra-parser" }
+
+[features]
+default = []
+core = ["lyra-stdlib/core"]
+string = ["lyra-stdlib/string"]
+math = ["lyra-stdlib/math"]
+algebra = ["lyra-stdlib/algebra"]
+list = ["lyra-stdlib/list"]
+assoc = ["lyra-stdlib/assoc"]
+logic = ["lyra-stdlib/logic"]
+concurrency = ["lyra-stdlib/concurrency"]
+schema = ["lyra-stdlib/schema"]
+explain = ["lyra-stdlib/explain"]
+tools = ["lyra-stdlib/tools"]
+io = ["lyra-stdlib/io"]
+net = ["lyra-stdlib/net"]
+net_https = ["lyra-stdlib/net_https"]
+dataset = ["lyra-stdlib/dataset"]
+db = ["lyra-stdlib/db"]
+db_sqlite = ["lyra-stdlib/db_sqlite"]
+db_duckdb = ["lyra-stdlib/db_duckdb"]
+containers = ["lyra-stdlib/containers"]
+graphs = ["lyra-stdlib/graphs"]
+crypto = ["lyra-stdlib/crypto"]
+image = ["lyra-stdlib/image"]
+audio = ["lyra-stdlib/audio"]
+media = ["lyra-stdlib/media"]
+text = ["lyra-stdlib/text"]
+text_fuzzy = ["lyra-stdlib/text_fuzzy"]
+text_index = ["lyra-stdlib/text_index"]
+collections = ["lyra-stdlib/collections"]
+ndarray = ["lyra-stdlib/ndarray"]
+ml = ["lyra-stdlib/ml"]
+nn = ["lyra-stdlib/nn"]
+functional = ["lyra-stdlib/functional"]
+testing = ["lyra-stdlib/testing"]
+
+[[bin]]
+name = "lyra-runner"
+path = "src/main.rs"
