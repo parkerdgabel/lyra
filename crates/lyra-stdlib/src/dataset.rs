@@ -22,6 +22,7 @@ enum Plan {
     Distinct { input: Box<Plan>, cols: Option<Vec<String>> },
     Union { inputs: Vec<Plan>, by_columns: bool },
     Offset { input: Box<Plan>, n: i64 },
+    Tail { input: Box<Plan>, n: i64 },
 }
 
 #[derive(Clone)]
@@ -242,6 +243,11 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
             let k = (*n).max(0) as usize;
             if k >= rows.len() { Vec::new() } else { rows.drain(0..k); rows }
         }
+        Plan::Tail { input, n } => {
+            let mut rows = eval_plan(ev, input);
+            let k = (*n).max(0) as usize;
+            if k >= rows.len() { rows } else { rows.split_off(rows.len()-k) }
+        }
     }
 }
 
@@ -408,6 +414,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::Distinct { input, cols } => { out.push_str(&format!("{}Distinct {:?}\n", pad, cols)); pp(input, indent+2, out); }
             Plan::Union { inputs, by_columns } => { out.push_str(&format!("{}Union by_columns={} inputs={}\n", pad, by_columns, inputs.len())); for p in inputs { pp(p, indent+2, out); } }
             Plan::Offset { input, n } => { out.push_str(&format!("{}Offset {}\n", pad, n)); pp(input, indent+2, out); }
+            Plan::Tail { input, n } => { out.push_str(&format!("{}Tail {}\n", pad, n)); pp(input, indent+2, out); }
         }
     }
     let mut s = String::new();
@@ -769,6 +776,34 @@ fn offset_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args }
 }
 
+fn head_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Head[subj, n?] default n=10
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Head".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let n = if args.len()>=2 { match ev.eval(args[1].clone()) { Value::Integer(k)=>k, other=> return Value::Expr { head: Box::new(Value::Symbol("Head".into())), args: vec![subj, other] } } } else { 10 };
+    if let Some(_id) = get_ds(&subj) {
+        return limit_rows(ev, vec![subj, Value::Integer(n)]);
+    }
+    if let Value::List(items) = subj { let k = n.max(0) as usize; return Value::List(items.into_iter().take(k).collect()); }
+    Value::Expr { head: Box::new(Value::Symbol("Head".into())), args }
+}
+
+fn tail_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Tail[subj, n?] default n=10
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args } }
+    let subj = ev.eval(args[0].clone());
+    let n = if args.len()>=2 { match ev.eval(args[1].clone()) { Value::Integer(k)=>k, other=> return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args: vec![subj, other] } } } else { 10 };
+    if let Some(id) = get_ds(&subj) {
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::Tail { input: Box::new(st.plan), n } });
+        return ds_handle(new_id);
+    }
+    if let Value::List(items) = subj { let k = n.max(0) as usize; let len=items.len(); return if k>=len { Value::List(items) } else { Value::List(items.into_iter().skip(len-k).collect()) } }
+    Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args }
+}
+
 fn rename_cols(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("RenameCols".into())), args } }
     // Delegate to Select with mapping for consistency
@@ -800,6 +835,8 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Concat", concat_general as NativeFn, Attributes::empty());
     ev.register("UnionByPosition", union_by_position as NativeFn, Attributes::empty());
     ev.register("Offset", offset_general as NativeFn, Attributes::empty());
+    ev.register("Head", head_general as NativeFn, Attributes::empty());
+    ev.register("Tail", tail_general as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
