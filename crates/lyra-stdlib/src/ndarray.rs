@@ -223,6 +223,52 @@ fn nd_matmul(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     pack(vec![m, n], out)
 }
 
+fn map_unary(shape: Vec<usize>, data: Vec<f64>, f: impl Fn(f64)->f64) -> Value {
+    let out: Vec<f64> = data.into_iter().map(|x| f(x)).collect();
+    pack(shape, out)
+}
+
+fn nd_pow(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NDPow[a, b] elementwise power with broadcasting (uses powf)
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args } }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    match (&a, &b) {
+        (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x.powf(y)).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, other) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x.powf(s)).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } }
+        (other, Value::PackedArray { shape, data }) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| s.powf(*x)).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } }
+        _ => { match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x.powf(y)), _ => Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } } }
+    }
+}
+
+fn nd_clip(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NDClip[a, min, max] scalar bounds
+    if args.len()!=3 { return Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args } };
+    let mn = match ev.eval(args[1].clone()) { v => match num_to_f64(&v) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args } } };
+    let mx = match ev.eval(args[2].clone()) { v => match num_to_f64(&v) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args } } };
+    map_unary(shape, data, |x| x.max(mn).min(mx))
+}
+
+fn nd_relu(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("NDRelu".into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDRelu".into())), args } };
+    map_unary(shape, data, |x| if x<0.0 { 0.0 } else { x })
+}
+
+fn nd_unary(ev: &mut Evaluator, args: Vec<Value>, f: fn(f64)->f64, name: &str) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol(name.into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol(name.into())), args } };
+    map_unary(shape, data, f)
+}
+
+fn nd_exp(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.exp(), "NDExp") }
+fn nd_sqrt(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.sqrt(), "NDSqrt") }
+fn nd_log(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.ln(), "NDLog") }
+fn nd_sin(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.sin(), "NDSin") }
+fn nd_cos(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.cos(), "NDCos") }
+fn nd_tanh(ev: &mut Evaluator, args: Vec<Value>) -> Value { nd_unary(ev, args, |x| x.tanh(), "NDTanh") }
+
 fn num_to_f64(v: &Value) -> Option<f64> {
     match v {
         Value::Integer(n) => Some(*n as f64),
@@ -495,6 +541,15 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDMul", nd_mul as NativeFn, Attributes::empty());
     ev.register("NDDiv", nd_div as NativeFn, Attributes::empty());
     ev.register("NDEltwise", nd_eltwise as NativeFn, Attributes::HOLD_ALL);
+    ev.register("NDPow", nd_pow as NativeFn, Attributes::empty());
+    ev.register("NDClip", nd_clip as NativeFn, Attributes::empty());
+    ev.register("NDRelu", nd_relu as NativeFn, Attributes::empty());
+    ev.register("NDExp", nd_exp as NativeFn, Attributes::empty());
+    ev.register("NDSqrt", nd_sqrt as NativeFn, Attributes::empty());
+    ev.register("NDLog", nd_log as NativeFn, Attributes::empty());
+    ev.register("NDSin", nd_sin as NativeFn, Attributes::empty());
+    ev.register("NDCos", nd_cos as NativeFn, Attributes::empty());
+    ev.register("NDTanh", nd_tanh as NativeFn, Attributes::empty());
 }
 
 fn call_unary_to_f64(ev: &mut Evaluator, f: &Value, x: f64) -> Option<f64> {

@@ -90,4 +90,20 @@ fn ndarray_sum_mean_argmax_matmul() {
     let halfsum = Value::PureFunction { params: None, body: Box::new(Value::Expr { head: Box::new(Value::Symbol("Divide".into())), args: vec![ Value::Expr { head: Box::new(Value::Symbol("Plus".into())), args: vec![Value::Slot(Some(1)), Value::Slot(Some(2))] }, Value::Integer(2) ] }) };
     let ew = ev.eval(Value::expr(Value::Symbol("NDEltwise".into()), vec![halfsum, a.clone(), a.clone()]));
     match ew { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert_eq!(data, vec![1.0,2.0,3.0,4.0,5.0,6.0]); }, other => panic!("unexpected NDEltwise: {}", lyra_core::pretty::format_value(&other)) }
+    // NDPow
+    let p2 = ev.eval(Value::expr(Value::Symbol("NDPow".into()), vec![a.clone(), Value::Integer(2)]));
+    match &p2 { Value::PackedArray { shape, data } => { assert_eq!(shape, &vec![2,3]); assert_eq!(data, &vec![1.0,4.0,9.0,16.0,25.0,36.0]); }, other => panic!("unexpected NDPow: {}", lyra_core::pretty::format_value(&other)) }
+    // NDClip and NDRelu
+    let mixed = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::Integer(-1), Value::Integer(0), Value::Integer(2), Value::Integer(5)]) ]));
+    let clipped = ev.eval(Value::expr(Value::Symbol("NDClip".into()), vec![mixed.clone(), Value::Integer(0), Value::Integer(3)]));
+    match clipped { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![4]); assert_eq!(data, vec![0.0,0.0,2.0,3.0]); }, other => panic!("unexpected NDClip: {}", lyra_core::pretty::format_value(&other)) }
+    let relu = ev.eval(Value::expr(Value::Symbol("NDRelu".into()), vec![mixed.clone()]));
+    match relu { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![4]); assert_eq!(data, vec![0.0,0.0,2.0,5.0]); }, other => panic!("unexpected NDRelu: {}", lyra_core::pretty::format_value(&other)) }
+    // NDExp/NDLog/NDSqrt simple sanity
+    let ones = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::Integer(1), Value::Integer(1)]) ]));
+    let _ex = ev.eval(Value::expr(Value::Symbol("NDExp".into()), vec![ones.clone()]));
+    let lg = ev.eval(Value::expr(Value::Symbol("NDLog".into()), vec![ones.clone()]));
+    match lg { Value::PackedArray { data, .. } => assert!(data.iter().all(|x| x.abs() < 1e-9)), _ => panic!() }
+    let sq = ev.eval(Value::expr(Value::Symbol("NDSqrt".into()), vec![p2.clone()]));
+    match sq { Value::PackedArray { data, .. } => assert!(data.iter().zip(vec![1.0,2.0,3.0,4.0,5.0,6.0]).all(|(a,b)| (a-b).abs()<1e-9)), _ => panic!() }
 }
