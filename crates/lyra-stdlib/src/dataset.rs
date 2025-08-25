@@ -652,6 +652,42 @@ fn value_to_coltype(v: &Value) -> ColType {
     }
 }
 
+// -------------- Column expr helpers --------------
+fn col_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("col".into())), args } }
+    let name_v = ev.eval(args[0].clone());
+    let name = match name_v { Value::String(s)|Value::Symbol(s) => s, _ => return Value::Expr { head: Box::new(Value::Symbol("col".into())), args: vec![name_v] } };
+    lyra_core::value::Value::pure_function(Some(vec!["row".into()]), lyra_core::value::Value::expr(
+        lyra_core::value::Value::Symbol("Part".into()),
+        vec![lyra_core::value::Value::Symbol("row".into()), lyra_core::value::Value::String(name)]
+    ))
+}
+
+// -------------- Cast / Coalesce --------------
+fn cast_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Cast".into())), args } }
+    let v = ev.eval(args[0].clone());
+    let ty_v = ev.eval(args[1].clone());
+    let ty = match ty_v { Value::String(s)|Value::Symbol(s)=> s.to_lowercase(), _ => return Value::Expr { head: Box::new(Value::Symbol("Cast".into())), args: vec![v, ty_v] } };
+    match (v, ty.as_str()) {
+        (Value::Symbol(s), _) if s=="Null" => Value::Symbol("Null".into()),
+        (Value::String(s), "boolean") => Value::Boolean(s.trim().eq_ignore_ascii_case("true")),
+        (Value::String(s), "integer") => s.trim().parse::<i64>().map(Value::Integer).unwrap_or(Value::Symbol("Null".into())),
+        (Value::String(s), "real") => s.trim().parse::<f64>().map(Value::Real).unwrap_or(Value::Symbol("Null".into())),
+        (Value::String(s), "string") => Value::String(s),
+        (Value::Integer(n), "real") => Value::Real(n as f64),
+        (Value::Real(f), "integer") => Value::Integer(f as i64),
+        (other, "string") => Value::String(lyra_core::pretty::format_value(&other)),
+        (other, _) => other,
+    }
+}
+
+fn coalesce_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Coalesce".into())), args } }
+    for a in args { let v = ev.eval(a); if !matches!(v, Value::Symbol(ref s) if s=="Null") { return v; } }
+    Value::Symbol("Null".into())
+}
+
 fn with_columns(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } }
     let subj = ev.eval(args[0].clone());
@@ -1016,6 +1052,9 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Head", head_general as NativeFn, Attributes::empty());
     ev.register("Tail", tail_general as NativeFn, Attributes::empty());
     ev.register("Describe", describe_general as NativeFn, Attributes::empty());
+    ev.register("col", col_fn as NativeFn, Attributes::empty());
+    ev.register("Cast", cast_fn as NativeFn, Attributes::empty());
+    ev.register("Coalesce", coalesce_fn as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
