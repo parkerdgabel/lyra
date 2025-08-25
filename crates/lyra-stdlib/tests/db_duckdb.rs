@@ -17,14 +17,14 @@ fn duckdb_join_and_list_tables() {
     stdlib::register_all(&mut ev);
     let conn = eval_str(&mut ev, "Connect[\"duckdb::memory:\"]");
     // Create tables
-    let _ = eval_str(&mut ev, &format!("Exec[{}, \"CREATE TABLE a(id INTEGER, x INTEGER); CREATE TABLE b(id INTEGER, y INTEGER); CREATE TABLE c(id INTEGER, v INTEGER)\"]", lyra_core::pretty::format_value(&conn)));
+    let _ = eval_str(&mut ev, &format!("Exec[{}, \"CREATE TABLE a(id INTEGER, x INTEGER); CREATE TABLE b(id INTEGER, y INTEGER, z INTEGER); CREATE TABLE c(id INTEGER, v INTEGER); CREATE TABLE d(id INTEGER, grp INTEGER, v INTEGER)\"]", lyra_core::pretty::format_value(&conn)));
     // Insert rows
     let rows_a = Value::List(vec![
         Value::assoc(vec![("id", Value::Integer(1)), ("x", Value::Integer(10))]),
         Value::assoc(vec![("id", Value::Integer(2)), ("x", Value::Integer(20))]),
     ]);
     let rows_b = Value::List(vec![
-        Value::assoc(vec![("id", Value::Integer(1)), ("y", Value::Integer(7))]),
+        Value::assoc(vec![("id", Value::Integer(1)), ("y", Value::Integer(7)), ("z", Value::Integer(100))]),
     ]);
     let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("a".into()), rows_a]));
     let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("b".into()), rows_b]));
@@ -45,7 +45,7 @@ fn duckdb_join_and_list_tables() {
     // Execute and verify row with id=1 present, and right projection alias "y_right"
     let mat = eval_str(&mut ev, &format!("Collect[{}]", lyra_core::pretty::format_value(&join_ds)));
     let txt = lyra_core::pretty::format_value(&mat);
-    assert!(txt.contains("\"id\" -> 1") && txt.contains("\"y_right\""));
+    assert!(txt.contains("\"id\" -> 1") && txt.contains("\"y_right\"") && txt.contains("\"z_right\""));
     // ListTables should include a and b
     let lt = eval_str(&mut ev, &format!("ListTables[{}]", lyra_core::pretty::format_value(&conn)));
     let lt_s = lyra_core::pretty::format_value(&lt).to_lowercase();
@@ -68,4 +68,17 @@ fn duckdb_join_and_list_tables() {
         lyra_core::pretty::format_value(&conn)));
     let do2s = lyra_core::pretty::format_value(&do2);
     assert!(do2s.contains("\"id\" -> 1") && do2s.contains("\"v\" -> 9"));
+
+    // Multi-key DistinctOn on d(id,grp,v)
+    let rows_d = Value::List(vec![
+        Value::assoc(vec![("id", Value::Integer(1)), ("grp", Value::Integer(1)), ("v", Value::Integer(4))]),
+        Value::assoc(vec![("id", Value::Integer(1)), ("grp", Value::Integer(1)), ("v", Value::Integer(6))]),
+        Value::assoc(vec![("id", Value::Integer(2)), ("grp", Value::Integer(2)), ("v", Value::Integer(8))]),
+    ]);
+    let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("d".into()), rows_d]));
+    let do_multi = eval_str(&mut ev, &format!(
+        "Collect[DistinctOn[Table[{}, \"d\"], {{\"id\", \"grp\"}}, <|OrderBy->{{\"v\"->\"asc\"}}, Keep->\"last\"|>]]",
+        lyra_core::pretty::format_value(&conn)));
+    let do_multi_s = lyra_core::pretty::format_value(&do_multi);
+    assert!(do_multi_s.contains("\"id\" -> 1") && do_multi_s.contains("\"grp\" -> 1") && do_multi_s.contains("\"v\" -> 6"));
 }
