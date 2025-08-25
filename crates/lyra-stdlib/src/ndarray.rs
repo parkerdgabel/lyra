@@ -344,4 +344,55 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDAsType", nd_as_type as NativeFn, Attributes::empty());
     ev.register("NDSlice", nd_slice as NativeFn, Attributes::empty());
     ev.register("NDPermuteDims", nd_permute_dims as NativeFn, Attributes::empty());
+    ev.register("NDMap", nd_map as NativeFn, Attributes::HOLD_ALL);
+    ev.register("NDReduce", nd_reduce as NativeFn, Attributes::HOLD_ALL);
+}
+
+fn call_unary_to_f64(ev: &mut Evaluator, f: &Value, x: f64) -> Option<f64> {
+    let res = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![Value::Real(x)] });
+    match res { Value::Integer(n)=>Some(n as f64), Value::Real(v)=>Some(v), Value::Rational{num,den}=> if den!=0 { Some((num as f64)/(den as f64)) } else { None }, Value::BigReal(s)=> s.parse::<f64>().ok(), _=>None }
+}
+
+fn call_binary_to_f64(ev: &mut Evaluator, f: &Value, a: f64, b: f64) -> Option<f64> {
+    let res = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![Value::Real(a), Value::Real(b)] });
+    match res { Value::Integer(n)=>Some(n as f64), Value::Real(v)=>Some(v), Value::Rational{num,den}=> if den!=0 { Some((num as f64)/(den as f64)) } else { None }, Value::BigReal(s)=> s.parse::<f64>().ok(), _=>None }
+}
+
+fn nd_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NDMap[a, f]
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("NDMap".into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None => return Value::Expr { head: Box::new(Value::Symbol("NDMap".into())), args } };
+    let f = args[1].clone();
+    let mut out: Vec<f64> = Vec::with_capacity(data.len());
+    for x in data { if let Some(y) = call_unary_to_f64(ev, &f, x) { out.push(y); } else { return Value::Expr { head: Box::new(Value::Symbol("NDMap".into())), args: vec![pack(shape, out), f] } } }
+    pack(shape, out)
+}
+
+fn nd_reduce(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NDReduce[a, f] or NDReduce[a, f, axis]
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } }
+    let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None => return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } };
+    let f = args[1].clone();
+    if args.len()==2 {
+        if data.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } }
+        let mut acc = data[0];
+        for &x in &data[1..] { if let Some(y) = call_binary_to_f64(ev, &f, acc, x) { acc = y; } else { return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } } }
+        return Value::Real(acc);
+    }
+    let axis = match ev.eval(args[2].clone()) { Value::Integer(n) => n as isize, _ => -1 };
+    if axis < 0 || (axis as usize) >= shape.len() { return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } }
+    let ax = axis as usize;
+    let st = strides(&shape);
+    let outer: usize = shape[..ax].iter().product();
+    let inner: usize = shape[ax+1..].iter().product();
+    let len = shape[ax];
+    let mut out = vec![0f64; outer*inner];
+    for o in 0..outer { for i in 0..inner {
+        let base0 = o*st[0] + 0*st[ax] + i;
+        let mut acc = data[base0];
+        for k in 1..len { let idx = o*st[0] + k*st[ax] + i; let x = data[idx]; if let Some(y) = call_binary_to_f64(ev, &f, acc, x) { acc = y; } else { return Value::Expr { head: Box::new(Value::Symbol("NDReduce".into())), args } } }
+        out[o*inner + i] = acc;
+    } }
+    let out_shape: Vec<usize> = shape.iter().enumerate().filter_map(|(i,&d)| if i==ax { None } else { Some(d) }).collect();
+    if out_shape.is_empty() { Value::Real(out[0]) } else { pack(out_shape, out) }
 }

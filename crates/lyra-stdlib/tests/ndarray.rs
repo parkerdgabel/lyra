@@ -68,4 +68,14 @@ fn ndarray_sum_mean_argmax_matmul() {
     let spec_all = Value::List(vec![Value::Symbol("All".into()), Value::List(vec![Value::Integer(2), Value::Integer(2)])]);
     let sl3 = ev.eval(Value::expr(Value::Symbol("NDSlice".into()), vec![a.clone(), spec_all]));
     match sl3 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,2]); assert_eq!(data, vec![2.0,3.0,5.0,6.0]); }, other => panic!("unexpected multi-axis slice: {}", lyra_core::pretty::format_value(&other)) }
+    // NDMap: double elements
+    let times2 = Value::PureFunction { params: None, body: Box::new(Value::Expr { head: Box::new(Value::Symbol("Times".into())), args: vec![Value::Slot(None), Value::Integer(2)] }) };
+    let m = ev.eval(Value::expr(Value::Symbol("NDMap".into()), vec![a.clone(), times2]));
+    match m { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert_eq!(data, vec![2.0,4.0,6.0,8.0,10.0,12.0]); }, other => panic!("unexpected map: {}", lyra_core::pretty::format_value(&other)) }
+    // NDReduce overall with Plus
+    let r = ev.eval(Value::expr(Value::Symbol("NDReduce".into()), vec![a.clone(), Value::Symbol("Plus".into())]));
+    assert_eq!(r, Value::Real(21.0));
+    // NDReduce across axis 1 with Max
+    let r2 = ev.eval(Value::expr(Value::Symbol("NDReduce".into()), vec![a.clone(), Value::Symbol("Max".into()), Value::Integer(1)]));
+    match r2 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2]); assert_eq!(data, vec![3.0,6.0]); }, other => panic!("unexpected reduce axis: {}", lyra_core::pretty::format_value(&other)) }
 }
