@@ -3,6 +3,7 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use crate::register_if;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
 
@@ -706,4 +707,32 @@ fn layernorm_layer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut params = opts;
     if !params.contains_key("Epsilon") { params.insert("Epsilon".into(), Value::Real(1e-5)); }
     layer_spec("LayerNorm", params)
+}
+
+
+pub fn register_nn_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "NetChain", net_chain as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetGraph", net_graph as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetInitialize", net_initialize as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetTrain", net_train as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetApply", net_apply as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetProperty", net_property as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetSummary", net_summary as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetEncoder", net_encoder as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NetDecoder", net_decoder as NativeFn, Attributes::empty());
+    register_if(ev, pred, "LinearLayer", linear_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ActivationLayer", activation_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DropoutLayer", dropout_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FlattenLayer", flatten_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SoftmaxLayer", softmax_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ConvolutionLayer", convolution_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PoolingLayer", pooling_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BatchNormLayer", batchnorm_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ReshapeLayer", reshape_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TransposeLayer", transpose_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ConcatLayer", concat_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AddLayer", add_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MulLayer", mul_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "EmbeddingLayer", embedding_layer as NativeFn, Attributes::empty());
+    register_if(ev, pred, "LayerNormLayer", layernorm_layer as NativeFn, Attributes::empty());
 }

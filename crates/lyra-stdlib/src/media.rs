@@ -8,6 +8,7 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 #[cfg(feature = "tools")] use crate::tool_spec;
 #[cfg(feature = "tools")] use crate::{schema_str};
 #[cfg(feature = "tools")] use std::collections::HashMap;
+use crate::register_if;
 
 pub fn register_media(ev: &mut Evaluator) {
     ev.register("MediaProbe", media_probe as NativeFn, Attributes::empty());
@@ -477,4 +478,15 @@ fn media_mux(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Ok(_) => failure("Media::ffmpeg", "Mux failed"),
         Err(e) => failure("Media::ffmpeg", &e.to_string())
     }
+}
+
+
+pub fn register_media_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "MediaProbe", media_probe as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaTranscode", media_transcode as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaThumbnail", media_thumbnail as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaConcat", media_concat as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaPipeline", media_pipeline as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaExtractAudio", media_extract_audio as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MediaMux", media_mux as NativeFn, Attributes::empty());
 }

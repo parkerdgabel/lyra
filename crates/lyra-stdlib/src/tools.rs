@@ -3,6 +3,7 @@ use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
+use crate::register_if;
 
 // Minimal in-memory tool registry storing self-describing specs as Assoc Values
 static TOOL_REG: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
@@ -953,4 +954,21 @@ fn tools_export_bundle(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::List(out)
+}
+
+
+pub fn register_tools_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsList", tools_list as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsCards", tools_cards as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsDescribe", tools_describe as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsSearch", tools_search as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsResolve", tools_resolve as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsInvoke", tools_invoke as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "ToolsDryRun", tools_dry_run as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "ToolsExportOpenAI", tools_export_openai as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsExportBundle", tools_export_bundle as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ToolsSetCapabilities", tools_set_capabilities as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "ToolsGetCapabilities", tools_get_capabilities as NativeFn, Attributes::empty());
 }

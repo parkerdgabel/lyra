@@ -3,6 +3,7 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use crate::register_if;
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
 
@@ -719,4 +720,19 @@ fn ml_tune(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         _ => {}
     }
     Value::assoc(vec![("model", best_model), ("report", Value::List(report))])
+}
+
+
+pub fn register_ml_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Classify", classify as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Predict", predict as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Cluster", cluster as NativeFn, Attributes::empty());
+    register_if(ev, pred, "FeatureExtract", feature_extract as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DimensionReduce", dimension_reduce as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MLApply", ml_apply as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MLProperty", ml_property as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ClassifyMeasurements", classify_measurements as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PredictMeasurements", predict_measurements as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MLCrossValidate", ml_cross_validate as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MLTune", ml_tune as NativeFn, Attributes::empty());
 }

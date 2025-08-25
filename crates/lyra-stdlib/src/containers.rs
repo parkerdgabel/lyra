@@ -3,6 +3,7 @@ use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
+use crate::register_if;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -1102,4 +1103,52 @@ fn get_rt_dsn(rt_id: i64) -> String { let reg = rt_reg().lock().unwrap(); reg.ge
         });
         match res { Ok(data) => Value::String(base64::engine::general_purpose::STANDARD.encode(&data)), Err(_) => Value::String(String::new()) }
     }
+}
+
+
+pub fn register_containers_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "RuntimeInfo", runtime_info as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RuntimeCapabilities", runtime_capabilities as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PingContainers", ping_containers as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListContainers", list_containers as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DescribeContainers", describe_containers as NativeFn, Attributes::empty());
+    register_if(ev, pred, "InspectContainer", inspect_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StartContainer", start_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StopContainer", stop_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RestartContainer", restart_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PauseContainer", pause_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UnpauseContainer", unpause_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveContainer", remove_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "WaitContainer", wait_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Logs", containers_logs as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExecInContainer", exec_in_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CreateContainer", create_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RunContainer", run_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ConnectContainers", connect_containers as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DisconnectContainers", disconnect_containers as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListNetworks", list_networks as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CreateNetwork", create_network as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveNetwork", remove_network as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListVolumes", list_volumes as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CreateVolume", create_volume as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveVolume", remove_volume as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CopyToContainer", copy_to_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CopyFromContainer", copy_from_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SearchImages", search_images as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListImages", list_images as NativeFn, Attributes::empty());
+    register_if(ev, pred, "InspectImage", inspect_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PullImage", pull_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PushImage", push_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SaveImage", save_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "LoadImage", load_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveImage", remove_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PruneImages", prune_images as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ImageHistory", image_history as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExportImages", export_images as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TagImage", tag_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AddRegistryAuth", add_registry_auth as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListRegistryAuth", list_registry_auth as NativeFn, Attributes::empty());
+    register_if(ev, pred, "InspectRegistryImage", inspect_registry_image as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Events", containers_events as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Stats", containers_stats as NativeFn, Attributes::empty());
 }

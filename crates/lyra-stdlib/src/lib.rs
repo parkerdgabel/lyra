@@ -123,7 +123,36 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "core")] lyra_runtime::eval::register_core(ev);
     lyra_runtime::eval::register_introspection(ev);
     let predicate = |n: &str| names.contains(n);
+
     #[cfg(feature = "string")] crate::string::register_string_filtered(ev, &predicate);
+    #[cfg(feature = "math")] crate::math::register_math_filtered(ev, &predicate);
+    #[cfg(feature = "algebra")] crate::algebra::register_algebra_filtered(ev, &predicate);
+    #[cfg(feature = "list")] crate::list::register_list_filtered(ev, &predicate);
+    #[cfg(feature = "tools")] crate::tools::register_tools_filtered(ev, &predicate);
+    #[cfg(feature = "assoc")] crate::assoc::register_assoc_filtered(ev, &predicate);
+    #[cfg(feature = "logic")] crate::logic::register_logic_filtered(ev, &predicate);
+    #[cfg(feature = "schema")] crate::schema::register_schema_filtered(ev, &predicate);
+    #[cfg(feature = "explain")] crate::explain::register_explain_filtered(ev, &predicate);
+    #[cfg(feature = "io")] crate::io::register_io_filtered(ev, &predicate);
+    #[cfg(feature = "net")] crate::net::register_net_filtered(ev, &predicate);
+    #[cfg(feature = "dataset")] crate::dataset::register_dataset_filtered(ev, &predicate);
+    #[cfg(feature = "db")] crate::db::register_db_filtered(ev, &predicate);
+    #[cfg(feature = "containers")] crate::containers::register_containers_filtered(ev, &predicate);
+    #[cfg(feature = "graphs")] crate::graphs::register_graphs_filtered(ev, &predicate);
+    #[cfg(feature = "crypto")] crate::crypto::register_crypto_filtered(ev, &predicate);
+    #[cfg(feature = "image")] crate::image::register_image_filtered(ev, &predicate);
+    #[cfg(feature = "audio")] crate::audio::register_audio_filtered(ev, &predicate);
+    #[cfg(feature = "media")] crate::media::register_media_filtered(ev, &predicate);
+    #[cfg(feature = "text")] crate::text::register_text_filtered(ev, &predicate);
+    #[cfg(feature = "text_fuzzy")] crate::text_fuzzy::register_text_fuzzy_filtered(ev, &predicate);
+    #[cfg(feature = "text_index")] crate::text_index::register_text_index_filtered(ev, &predicate);
+    #[cfg(feature = "collections")] crate::collections::register_collections_filtered(ev, &predicate);
+    #[cfg(feature = "ndarray")] crate::ndarray::register_ndarray_filtered(ev, &predicate);
+    #[cfg(feature = "ml")] crate::ml::register_ml_filtered(ev, &predicate);
+    #[cfg(feature = "nn")] crate::nn::register_nn_filtered(ev, &predicate);
+    #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
+    #[cfg(feature = "testing")] crate::testing::register_testing_filtered(ev, &predicate);
+
     #[cfg(feature = "math")] crate::math::register_math_filtered(ev, &predicate);
     #[cfg(feature = "list")] crate::list::register_list_filtered(ev, &predicate);
     #[cfg(feature = "assoc")] crate::assoc::register_assoc_filtered(ev, &predicate);
