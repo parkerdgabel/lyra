@@ -266,6 +266,99 @@ fn inspect_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
+fn remove_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("RemoveImage".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker {
+                let image = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> lyra_core::pretty::format_value(&other) };
+                let opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+                return containers_docker::docker_remove_image(&get_rt_dsn(rt_id), &image, opts);
+            }
+        }
+    }
+    Value::Boolean(true)
+}
+
+fn prune_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<1 { return Value::Expr { head: Box::new(Value::Symbol("PruneImages".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker {
+                let opts = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(HashMap::new()) };
+                return containers_docker::docker_prune_images(&get_rt_dsn(rt_id), opts);
+            }
+        }
+    }
+    Value::Assoc(HashMap::new())
+}
+
+fn search_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("SearchImages".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker {
+                let term = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> lyra_core::pretty::format_value(&other) };
+                let opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+                return containers_docker::docker_search_images(&get_rt_dsn(rt_id), term, opts);
+            }
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] }
+}
+
+fn image_history(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ImageHistory".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { 
+                let image = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> lyra_core::pretty::format_value(&other) };
+                return containers_docker::docker_image_history(&get_rt_dsn(rt_id), &image);
+            }
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] }
+}
+
+fn inspect_registry_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("InspectRegistryImage".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { 
+                let image = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> lyra_core::pretty::format_value(&other) };
+                let auth = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+                return containers_docker::docker_inspect_registry_image(&get_rt_dsn(rt_id), &image, auth);
+            }
+        }
+    }
+    Value::Assoc(HashMap::new())
+}
+
+fn export_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ExportImages".into())), args } }
+    #[cfg(feature = "containers_docker")]
+    {
+        if let Some(rt_id) = get_runtime(&args[0]) {
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { 
+                let images: Vec<String> = match ev.eval(args[1].clone()) { Value::List(xs)=> xs.into_iter().map(|v| match v { Value::String(s)|Value::Symbol(s)=>s, other=> lyra_core::pretty::format_value(&other) }).collect(), other=> vec![lyra_core::pretty::format_value(&other)] };
+                return containers_docker::docker_export_images(&get_rt_dsn(rt_id), &images);
+            }
+        }
+    }
+    Value::String(String::new())
+}
+
 // ---------- Containers ----------
 fn run_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("RunContainer".into())), args } }
@@ -530,6 +623,14 @@ pub fn register_containers(ev: &mut Evaluator) {
     // Explain / Describe
     ev.register("ExplainContainers", explain_containers as NativeFn, Attributes::empty());
     ev.register("DescribeContainers", describe_containers as NativeFn, Attributes::empty());
+
+    // Image maintenance
+    ev.register("RemoveImage", remove_image as NativeFn, Attributes::empty());
+    ev.register("PruneImages", prune_images as NativeFn, Attributes::empty());
+    ev.register("SearchImages", search_images as NativeFn, Attributes::empty());
+    ev.register("ImageHistory", image_history as NativeFn, Attributes::empty());
+    ev.register("InspectRegistryImage", inspect_registry_image as NativeFn, Attributes::empty());
+    ev.register("ExportImages", export_images as NativeFn, Attributes::empty());
 }
 
 // Helpers to access runtime info
@@ -859,5 +960,144 @@ fn get_rt_dsn(rt_id: i64) -> String { let reg = rt_reg().lock().unwrap(); reg.ge
             Ok::<(), ()>(())
         });
         Value::Boolean(res.is_ok())
+    }
+
+    pub fn docker_remove_image(dsn: &str, image: &str, opts: Value) -> Value {
+        use bollard::image::RemoveImageOptions;
+        let docker = docker_client(dsn);
+        let (force, noprune, creds) = match opts {
+            Value::Assoc(m) => {
+                let force = m.get("Force").and_then(|v| match v { Value::Boolean(b)=>Some(*b), _=>None }).unwrap_or(false);
+                let noprune = m.get("NoPrune").and_then(|v| match v { Value::Boolean(b)=>Some(*b), _=>None }).unwrap_or(false);
+                let username = m.get("Username").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+                let password = m.get("Password").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+                let serveraddress = m.get("Registry").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+                let creds = if username.is_some() || password.is_some() || serveraddress.is_some() { Some(DockerCredentials { username, password, serveraddress, ..Default::default() }) } else { None };
+                (force, noprune, creds)
+            }
+            _ => (false, false, None)
+        };
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::Boolean(false) } let rt = rt.unwrap();
+        let res = rt.block_on(async move { docker.remove_image(image, Some(RemoveImageOptions { force, noprune }), creds).await });
+        Value::Boolean(res.is_ok())
+    }
+
+    pub fn docker_prune_images(dsn: &str, opts: Value) -> Value {
+        use bollard::image::PruneImagesOptions;
+        let docker = docker_client(dsn);
+        let filters: std::collections::HashMap<String, Vec<String>> = match opts {
+            Value::Assoc(m) => {
+                // pass through the provided filters if caller specifies
+                if let Some(Value::Assoc(fm)) = m.get("Filters") {
+                    fm.iter().map(|(k,v)| (k.clone(), match v { Value::List(xs)=> xs.iter().map(|x| match x { Value::String(s)|Value::Symbol(s)=> s.clone(), other=> lyra_core::pretty::format_value(other) }).collect(), other=> vec![lyra_core::pretty::format_value(other)] })).collect()
+                } else { std::collections::HashMap::new() }
+            }
+            _ => std::collections::HashMap::new()
+        };
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::Assoc(HashMap::new()) } let rt = rt.unwrap();
+        let res = rt.block_on(async move { docker.prune_images::<String>(Some(PruneImagesOptions { filters })).await });
+        match res { Ok(resp) => {
+            let mut out = HashMap::new();
+            let reclaimed = resp.space_reclaimed.unwrap_or(0);
+            out.insert("space_reclaimed".into(), Value::Integer(reclaimed as i64));
+            if let Some(deleted) = resp.images_deleted {
+                let rows: Vec<Value> = deleted.into_iter().map(|d| {
+                    let mut m = HashMap::new();
+                    if let Some(u) = d.untagged { m.insert("untagged".into(), Value::String(u)); }
+                    if let Some(u) = d.deleted { m.insert("deleted".into(), Value::String(u)); }
+                    Value::Assoc(m)
+                }).collect();
+                out.insert("deleted".into(), Value::List(rows));
+            }
+            Value::Assoc(out)
+        }, Err(_) => Value::Assoc(HashMap::new()) }
+    }
+
+    pub fn docker_search_images(dsn: &str, term: String, opts: Value) -> Value {
+        use bollard::image::SearchImagesOptions;
+        let docker = docker_client(dsn);
+        let (limit, filters) = match opts {
+            Value::Assoc(m) => {
+                let limit = m.get("Limit").and_then(|v| match v { Value::Integer(n)=> Some(*n as u64), _=> None });
+                let filters = if let Some(Value::Assoc(fm)) = m.get("Filters") { fm.iter().map(|(k,v)| (k.clone(), match v { Value::List(xs)=> xs.iter().map(|x| match x { Value::String(s)|Value::Symbol(s)=> s.clone(), other=> lyra_core::pretty::format_value(other) }).collect(), other=> vec![lyra_core::pretty::format_value(other)] })).collect() } else { std::collections::HashMap::new() };
+                (limit, filters)
+            }
+            _ => (None, std::collections::HashMap::new())
+        };
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] } } let rt = rt.unwrap();
+        let res = rt.block_on(async move { docker.search_images(SearchImagesOptions { term, limit, filters }).await });
+        match res { Ok(items) => {
+            let rows: Vec<Value> = items.into_iter().map(|it| {
+                let mut m = HashMap::new();
+                if let Some(n) = it.name { m.insert("name".into(), Value::String(n)); }
+                if let Some(d) = it.description { m.insert("description".into(), Value::String(d)); }
+                if let Some(s) = it.star_count { m.insert("stars".into(), Value::Integer(s as i64)); }
+                if let Some(o) = it.is_official { m.insert("official".into(), Value::Boolean(o)); }
+                if let Some(a) = it.is_automated { m.insert("automated".into(), Value::Boolean(a)); }
+                Value::Assoc(m)
+            }).collect();
+            Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }
+        }, Err(_) => Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] } }
+    }
+
+    pub fn docker_image_history(dsn: &str, image: &str) -> Value {
+        let docker = docker_client(dsn);
+        let name = image.to_string();
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] } } let rt = rt.unwrap();
+        let res = rt.block_on(async move { docker.image_history(&name).await });
+        match res { Ok(items) => {
+            let rows: Vec<Value> = items.into_iter().map(|h| {
+                let mut m = HashMap::new();
+                m.insert("id".into(), Value::String(h.id));
+                m.insert("created".into(), Value::Integer(h.created as i64));
+                m.insert("size".into(), Value::Integer(h.size as i64));
+                m.insert("created_by".into(), Value::String(h.created_by));
+                m.insert("tags".into(), Value::List(h.tags.into_iter().map(Value::String).collect()));
+                m.insert("comment".into(), Value::String(h.comment));
+                Value::Assoc(m)
+            }).collect();
+            Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }
+        }, Err(_) => Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(Vec::new())] } }
+    }
+
+    pub fn docker_inspect_registry_image(dsn: &str, image: &str, auth: Value) -> Value {
+        let docker = docker_client(dsn);
+        let creds = match auth { Value::Assoc(m) => {
+            let username = m.get("Username").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+            let password = m.get("Password").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+            let serveraddress = m.get("Registry").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+            Some(DockerCredentials { username, password, serveraddress, ..Default::default() })
+        }, _ => None };
+        let name = image.to_string();
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::Assoc(HashMap::new()) } let rt = rt.unwrap();
+        let res = rt.block_on(async move { docker.inspect_registry_image(&name, creds).await });
+        match res { Ok(info) => {
+            let mut m = HashMap::new();
+            if let Some(d) = info.descriptor.digest { m.insert("digest".into(), Value::String(d)); }
+            {
+                let rows: Vec<Value> = info.platforms.into_iter().map(|p| {
+                    let mut mm = HashMap::new();
+                    if let Some(os) = p.os { mm.insert("os".into(), Value::String(os)); }
+                    if let Some(arch) = p.architecture { mm.insert("arch".into(), Value::String(arch)); }
+                    Value::Assoc(mm)
+                }).collect();
+                m.insert("platforms".into(), Value::List(rows));
+            }
+            Value::Assoc(m)
+        }, Err(_) => Value::Assoc(HashMap::new()) }
+    }
+
+    pub fn docker_export_images(dsn: &str, images: &[String]) -> Value {
+        let docker = docker_client(dsn);
+        let names: Vec<String> = images.iter().cloned().collect();
+        let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        let rt = tokio::runtime::Runtime::new(); if rt.is_err() { return Value::String(String::new()) } let rt = rt.unwrap();
+        let res = rt.block_on(async move {
+            let mut stream = docker.export_images(&name_refs);
+            let mut bytes: Vec<u8> = Vec::new();
+            while let Some(chunk) = stream.next().await { let b = chunk.map_err(|_| ())?; bytes.extend_from_slice(&b); }
+            Ok::<Vec<u8>, ()>(bytes)
+        });
+        match res { Ok(data) => Value::String(base64::engine::general_purpose::STANDARD.encode(&data)), Err(_) => Value::String(String::new()) }
     }
 }
