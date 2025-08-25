@@ -3,6 +3,8 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -58,6 +60,50 @@ pub fn register_nn(ev: &mut Evaluator) {
     ev.register("MulLayer", mul_layer as NativeFn, Attributes::empty());
     ev.register("EmbeddingLayer", embedding_layer as NativeFn, Attributes::empty());
     ev.register("LayerNormLayer", layernorm_layer as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("NetChain", summary: "Construct a sequential network from layers", params: ["layers","opts"], tags: ["nn","net"], examples: [
+            Value::Assoc(HashMap::from([
+                ("args".into(), Value::Assoc(HashMap::from([
+                    ("layers".into(), Value::List(vec![
+                        Value::Expr{ head: Box::new(Value::Symbol("LinearLayer".into())), args: vec![Value::Assoc(HashMap::from([(String::from("Output"), Value::Integer(4))]))] },
+                        Value::Expr{ head: Box::new(Value::Symbol("ActivationLayer".into())), args: vec![Value::String("Relu".into())] }
+                    ]))
+                ])))
+            ]))
+        ]),
+        tool_spec!("NetInitialize", summary: "Initialize network parameters", params: ["net","opts"], tags: ["nn","net"]),
+        tool_spec!("NetTrain", summary: "Train network on data", params: ["net","data","opts"], tags: ["nn","train"]),
+        tool_spec!("NetApply", summary: "Apply network to input", params: ["net","x","opts"], tags: ["nn","inference"], examples: [
+            Value::Assoc(HashMap::from([
+                ("args".into(), Value::Assoc(HashMap::from([
+                    ("net".into(), Value::Assoc(HashMap::from([(String::from("__type"), Value::String(String::from("Net")))]))),
+                    ("x".into(), Value::List(vec![Value::Real(0.1), Value::Real(0.2)]))
+                ])))
+            ]))
+        ]),
+        tool_spec!("NetSummary", summary: "Summarize network structure", params: ["net"], tags: ["nn","introspect"]),
+        tool_spec!("NetProperty", summary: "Inspect network properties", params: ["net","prop"], tags: ["nn","introspect"]),
+        tool_spec!("NetEncoder", summary: "Get network input encoder", params: ["net"], tags: ["nn","encode"]),
+        tool_spec!("NetDecoder", summary: "Get network output decoder", params: ["net"], tags: ["nn","decode"]),
+        // core layers as tool entries for discoverability
+        tool_spec!("LinearLayer", summary: "Linear (fully-connected) layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("ActivationLayer", summary: "Activation layer (Relu/Tanh/Sigmoid)", params: ["kind","opts"], tags: ["nn","layer"]),
+        tool_spec!("DropoutLayer", summary: "Dropout probability p", params: ["p"], tags: ["nn","layer"]),
+        tool_spec!("FlattenLayer", summary: "Flatten to 1D", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("SoftmaxLayer", summary: "Softmax over last dimension", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("ConvolutionLayer", summary: "2D convolution layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("PoolingLayer", summary: "Pooling layer (Max/Avg)", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("BatchNormLayer", summary: "Batch normalization layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("ReshapeLayer", summary: "Reshape to given shape", params: ["shape"], tags: ["nn","layer"]),
+        tool_spec!("TransposeLayer", summary: "Transpose dimensions", params: ["perm"], tags: ["nn","layer"]),
+        tool_spec!("ConcatLayer", summary: "Concatenate along axis", params: ["axis"], tags: ["nn","layer"]),
+        tool_spec!("AddLayer", summary: "Elementwise add layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("MulLayer", summary: "Elementwise multiply layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("EmbeddingLayer", summary: "Embedding lookup layer", params: ["opts"], tags: ["nn","layer"]),
+        tool_spec!("LayerNormLayer", summary: "Layer normalization layer", params: ["opts"], tags: ["nn","layer"]),
+    ]);
 }
 
 // --------- helpers ---------

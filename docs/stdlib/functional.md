@@ -34,3 +34,23 @@ Notes
 - These forms are eager on their data arguments but respect Lyra’s normal evaluation for function arguments.
 - FixedPoint comparisons are structural equality; customize behavior by pre/post-processing your state as needed.
 
+Operators
+- `/@` (Map): `f /@ expr` is `Map[f, expr]`.
+  - Example: `(#*#)& /@ {1,2,3}` -> `{1,4,9}`.
+- `@@` (Apply): `f @@ expr` is `Apply[f, expr]`.
+  - Example: `Plus @@ {1,2,3}` -> `6` (spreads the list as arguments to `Plus`).
+- `@@@` (MapApply level 1): `f @@@ expr` is `Apply[f, expr, 1]`.
+  - Example: `Plus @@@ {{1,2},{3,4}}` -> `{3,7}` (applies `Plus @@` to each element of the outer list).
+
+SetDelayed (:=)
+- Define delayed values and function rules that evaluate the right-hand side at use time.
+  - Symbol (OwnValue): `y := Plus[2,3]; y` -> `5`.
+  - DownValue (function): `f[x_] := x*x; f[5]` -> `25`.
+  - SubValue (curried heads): `(f[a_])[b_] := a + b; f[2][3]` -> `5`.
+  
+Details
+- `SetDelayed[lhs, rhs]` stores `rhs` unevaluated as a rule on the appropriate value store:
+  - `x := rhs` -> OwnValues on `x` with rule `x -> rhs`.
+  - `f[pat...] := rhs` -> DownValues on `f` with rule `f[pat...] -> rhs`.
+  - `(f[...])[...] := rhs` -> SubValues on `f` with the full compound `lhs`.
+- Rules fire during evaluation; the rule’s right-hand side is evaluated with the matched bindings and current environment.

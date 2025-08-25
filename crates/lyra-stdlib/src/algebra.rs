@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 
 pub fn register_algebra(ev: &mut Evaluator) {
     ev.register("Simplify", simplify as NativeFn, Attributes::empty());
@@ -849,4 +850,19 @@ fn is_perfect_square_i64(n: i64) -> Option<i64> {
     if n < 0 { return None; }
     let r = (n as f64).sqrt().round() as i64;
     if r*r == n { Some(r) } else { None }
+}
+
+
+pub fn register_algebra_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "Simplify", simplify as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Expand", expand as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExpandAll", expand_all as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CollectTerms", collect as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CollectTermsBy", collect_by as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Factor", factor as NativeFn, Attributes::empty());
+    register_if(ev, pred, "D", diff as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CancelRational", cancel as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Apart", apart as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Solve", solve as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Roots", roots as NativeFn, Attributes::empty());
 }

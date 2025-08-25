@@ -3,6 +3,8 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "tools")] use crate::tools::add_specs;
+#[cfg(feature = "tools")] use crate::tool_spec;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -69,6 +71,28 @@ pub fn register_ml(ev: &mut Evaluator) {
     // CV / Tuning
     ev.register("MLCrossValidate", ml_cross_validate as NativeFn, Attributes::empty());
     ev.register("MLTune", ml_tune as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("Classify", summary: "Train a classifier (baseline/logistic)", params: ["data","opts"], tags: ["ml","classification"]),
+        tool_spec!("Predict", summary: "Train a regressor (baseline/linear)", params: ["data","opts"], tags: ["ml","regression"]),
+        tool_spec!("Cluster", summary: "Cluster points (prototype)", params: ["data","opts"], tags: ["ml","clustering"]),
+        tool_spec!("FeatureExtract", summary: "Learn preprocessing (impute/encode/standardize)", params: ["data","opts"], tags: ["ml","preprocess"]),
+        tool_spec!("DimensionReduce", summary: "Reduce dimensionality (PCA-like)", params: ["data","opts"], tags: ["ml","preprocess"]),
+        tool_spec!("MLApply", summary: "Apply a trained model to input", params: ["model","x","opts"], tags: ["ml","inference"], examples: [
+            Value::Assoc(HashMap::from([
+                ("args".into(), Value::Assoc(HashMap::from([
+                    ("model".into(), Value::Assoc(HashMap::from([(String::from("__type"), Value::String(String::from("MLModel")))]))),
+                    ("x".into(), Value::Assoc(HashMap::from([(String::from("x"), Value::Integer(1))])))
+                ])))
+            ]))
+        ]),
+        tool_spec!("MLProperty", summary: "Inspect trained model properties", params: ["model","prop"], tags: ["ml","introspect"]),
+        tool_spec!("ClassifyMeasurements", summary: "Evaluate classifier metrics", params: ["model","data","opts"], tags: ["ml","metrics"]),
+        tool_spec!("PredictMeasurements", summary: "Evaluate regressor metrics", params: ["model","data","opts"], tags: ["ml","metrics"]),
+        tool_spec!("MLCrossValidate", summary: "Cross-validate with simple split", params: ["data","opts"], tags: ["ml","cv"]),
+        tool_spec!("MLTune", summary: "Parameter sweep with basic scoring", params: ["data","opts"], tags: ["ml","tune"]),
+    ]);
 }
 
 // ---------- Utilities ----------

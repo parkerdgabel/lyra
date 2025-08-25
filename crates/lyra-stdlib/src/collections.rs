@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 use std::collections::{HashMap, VecDeque, HashSet};
 use std::sync::{OnceLock, Mutex};
 
@@ -487,4 +488,50 @@ pub fn register_collections(ev: &mut Evaluator) {
     ev.register("PQPeek", pq_peek as NativeFn, Attributes::empty());
     ev.register("PQSize", pq_size as NativeFn, Attributes::empty());
     ev.register("PQEmptyQ", pq_empty_q as NativeFn, Attributes::empty());
+}
+
+
+pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "SetCreate", set_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetFromList", set_from_list as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetToList", set_to_list as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetInsert", set_insert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetRemove", set_remove as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetMemberQ", set_member_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetSize", set_size as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetEmptyQ", set_empty_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetUnion", set_union as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetIntersection", set_intersection as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetDifference", set_difference as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetSubsetQ", set_subset_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetEqualQ", set_equal_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListUnion", list_union as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListIntersection", list_intersection as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListDifference", list_difference as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagCreate", bag_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagAdd", bag_add as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagRemove", bag_remove as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagCount", bag_count as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagSize", bag_size as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagUnion", bag_union as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagIntersection", bag_intersection as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagDifference", bag_difference as NativeFn, Attributes::empty());
+    register_if(ev, pred, "QueueCreate", queue_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Enqueue", enqueue as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Dequeue", dequeue as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Peek", queue_peek as NativeFn, Attributes::empty());
+    register_if(ev, pred, "QueueSize", queue_size as NativeFn, Attributes::empty());
+    register_if(ev, pred, "QueueEmptyQ", queue_empty_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StackCreate", stack_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Push", push as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Pop", pop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Top", top as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StackSize", stack_size as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StackEmptyQ", stack_empty_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQCreate", pq_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQInsert", pq_insert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQPop", pq_pop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQPeek", pq_peek as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQSize", pq_size as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PQEmptyQ", pq_empty_q as NativeFn, Attributes::empty());
 }

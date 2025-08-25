@@ -281,24 +281,353 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
             specs.push(m);
         }
     };
-    add("HtmlEscape", "Escape HTML special characters.", vec!["s"], vec!["string","html","escape"]);
-    add("HtmlUnescape", "Unescape HTML entities.", vec!["s"], vec!["string","html","unescape"]);
-    add("UrlEncode", "Percent-encode string for URLs.", vec!["s"], vec!["string","url","encode"]);
-    add("UrlDecode", "Decode percent-encoded URL string.", vec!["s"], vec!["string","url","decode"]);
-    add("UrlFormEncode", "Form-url-encode string.", vec!["s"], vec!["string","form","encode"]);
-    add("UrlFormDecode", "Form-url-decode string.", vec!["s"], vec!["string","form","decode"]);
-    add("JsonEscape", "Escape string for JSON.", vec!["s"], vec!["string","json","escape"]);
-    add("JsonUnescape", "Unescape JSON string.", vec!["s"], vec!["string","json","unescape"]);
-    add("Slugify", "Convert text to lowercase URL slug.", vec!["s"], vec!["string","slug"]);
-    add("StringTruncate", "Truncate to max length with suffix.", vec!["s","max","suffix"], vec!["string","truncate"]);
-    add("CamelCase", "Convert to lower camelCase.", vec!["s"], vec!["string","case"]);
-    add("SnakeCase", "Convert to snake_case.", vec!["s"], vec!["string","case"]);
-    add("KebabCase", "Convert to kebab-case.", vec!["s"], vec!["string","case"]);
-    add("StringFormat", "Positional format using {0},{1}.", vec!["template","args"], vec!["string","format"]);
-    add("StringFormatMap", "Named format using {key}.", vec!["template","map"], vec!["string","format"]);
-    add("StringInterpolate", "Interpolate expressions inside braces.", vec!["s"], vec!["string","template"]);
-    add("StringInterpolateWith", "Interpolate using provided variables.", vec!["s","vars"], vec!["string","template"]);
-    add("TemplateRender", "Render Mustache-like template.", vec!["template","data","opts"], vec!["string","template"]);
+    // (string helpers now have detailed specs later in this function)
+    // Core string functions (generic defaults)
+    // (moved to detailed specs below)
+    // Tightened schemas with examples for core string functions
+    // Note: placed after generic adds to avoid borrow conflicts with the `add` closure above.
+    if names.contains("StringLength") { specs.push(tool_spec!(
+        "StringLength", summary: "Length of string (Unicode scalar count)", params: ["s"], tags: ["string"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_int!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hé".into())) ]))), ("result".into(), Value::Integer(2))]))
+        ]
+    )); }
+    if names.contains("ToUpper") { specs.push(tool_spec!(
+        "ToUpper", summary: "Uppercase string", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hi".into())) ]))), ("result".into(), Value::String("HI".into()))]))
+        ]
+    )); }
+    if names.contains("ToLower") { specs.push(tool_spec!(
+        "ToLower", summary: "Lowercase string", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hi".into())) ]))), ("result".into(), Value::String("hi".into()))]))
+        ]
+    )); }
+    if names.contains("StringJoin") { specs.push(tool_spec!(
+        "StringJoin", summary: "Concatenate list of parts", params: ["parts"], tags: ["string","join"],
+        input_schema: schema_object_value(vec![ ("parts".into(), schema_arr!(schema_str!())) ], vec!["parts".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "parts".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])) ]))), ("result".into(), Value::String("ab".into()))]))
+        ]
+    )); }
+    if names.contains("StringJoinWith") { specs.push(tool_spec!(
+        "StringJoinWith", summary: "Join list with separator", params: ["sep","parts"], tags: ["string","join"],
+        input_schema: schema_object_value(vec![ ("sep".into(), schema_str!()), ("parts".into(), schema_arr!(schema_str!())) ], vec!["sep".into(), "parts".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "sep".into(), Value::String(",".into())), ( "parts".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])) ]))), ("result".into(), Value::String("a,b".into()))]))
+        ]
+    )); }
+    if names.contains("StringTrim") { specs.push(tool_spec!(
+        "StringTrim", summary: "Trim whitespace at both ends", params: ["s"], tags: ["string","trim"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("  hi  ".into())) ]))), ("result".into(), Value::String("hi".into()))]))
+        ]
+    )); }
+    if names.contains("StringTrimLeft") { specs.push(tool_spec!(
+        "StringTrimLeft", summary: "Trim leading whitespace", params: ["s"], tags: ["string","trim"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("  hi".into())) ]))), ("result".into(), Value::String("hi".into()))]))
+        ]
+    )); }
+    if names.contains("StringTrimRight") { specs.push(tool_spec!(
+        "StringTrimRight", summary: "Trim trailing whitespace", params: ["s"], tags: ["string","trim"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hi  ".into())) ]))), ("result".into(), Value::String("hi".into()))]))
+        ]
+    )); }
+    if names.contains("StringTrimPrefix") { specs.push(tool_spec!(
+        "StringTrimPrefix", summary: "Drop prefix if present", params: ["s","prefix"], tags: ["string","trim"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("prefix".into(), schema_str!()) ], vec!["s".into(), "prefix".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("foobar".into())), ("prefix".into(), Value::String("foo".into())) ]))), ("result".into(), Value::String("bar".into()))]))
+        ]
+    )); }
+    if names.contains("StringTrimSuffix") { specs.push(tool_spec!(
+        "StringTrimSuffix", summary: "Drop suffix if present", params: ["s","suffix"], tags: ["string","trim"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("suffix".into(), schema_str!()) ], vec!["s".into(), "suffix".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("foobar".into())), ("suffix".into(), Value::String("bar".into())) ]))), ("result".into(), Value::String("foo".into()))]))
+        ]
+    )); }
+    if names.contains("StringContains") { specs.push(tool_spec!(
+        "StringContains", summary: "Substring containment test", params: ["s","substr"], tags: ["string","search"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("substr".into(), schema_str!()) ], vec!["s".into(), "substr".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello".into())), ("substr".into(), Value::String("ell".into())) ]))), ("result".into(), Value::Boolean(true))]))
+        ]
+    )); }
+    if names.contains("StringSplit") { specs.push(tool_spec!(
+        "StringSplit", summary: "Split string by delimiter", params: ["s","delim"], tags: ["string","split"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("delim".into(), schema_str!()) ], vec!["s".into(), "delim".into()]), output_schema: schema_arr!(schema_str!()), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a,b".into())), ("delim".into(), Value::String(",".into())) ]))), ("result".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())]))]))
+        ]
+    )); }
+    if names.contains("SplitLines") { specs.push(tool_spec!(
+        "SplitLines", summary: "Split into lines", params: ["s"], tags: ["string","split"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_arr!(schema_str!()), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a\nb".into())) ]))), ("result".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())]))]))
+        ]
+    )); }
+    if names.contains("JoinLines") { specs.push(tool_spec!(
+        "JoinLines", summary: "Join lines with newline", params: ["lines"], tags: ["string","join"],
+        input_schema: schema_object_value(vec![ ("lines".into(), schema_arr!(schema_str!())) ], vec!["lines".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "lines".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])) ]))), ("result".into(), Value::String("a\nb".into()))]))
+        ]
+    )); }
+    if names.contains("StartsWith") { specs.push(tool_spec!(
+        "StartsWith", summary: "Prefix test", params: ["s","prefix"], tags: ["string","search"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("prefix".into(), schema_str!()) ], vec!["s".into(), "prefix".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello".into())), ("prefix".into(), Value::String("he".into())) ]))), ("result".into(), Value::Boolean(true))]))
+        ]
+    )); }
+    if names.contains("EndsWith") { specs.push(tool_spec!(
+        "EndsWith", summary: "Suffix test", params: ["s","suffix"], tags: ["string","search"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("suffix".into(), schema_str!()) ], vec!["s".into(), "suffix".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello".into())), ("suffix".into(), Value::String("lo".into())) ]))), ("result".into(), Value::Boolean(true))]))
+        ]
+    )); }
+    if names.contains("StringReplace") { specs.push(tool_spec!(
+        "StringReplace", summary: "Replace all occurrences", params: ["s","from","to"], tags: ["string","replace"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("from".into(), schema_str!()), ("to".into(), schema_str!()) ], vec!["s".into(), "from".into(), "to".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a-b-a".into())), ("from".into(), Value::String("a".into())), ("to".into(), Value::String("x".into())) ]))), ("result".into(), Value::String("x-b-x".into()))]))
+        ]
+    )); }
+    if names.contains("StringReplaceFirst") { specs.push(tool_spec!(
+        "StringReplaceFirst", summary: "Replace first occurrence", params: ["s","from","to"], tags: ["string","replace"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("from".into(), schema_str!()), ("to".into(), schema_str!()) ], vec!["s".into(), "from".into(), "to".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a-b-a".into())), ("from".into(), Value::String("a".into())), ("to".into(), Value::String("x".into())) ]))), ("result".into(), Value::String("x-b-a".into()))]))
+        ]
+    )); }
+    if names.contains("StringReverse") { specs.push(tool_spec!(
+        "StringReverse", summary: "Reverse string", params: ["s"], tags: ["string"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abc".into())) ]))), ("result".into(), Value::String("cba".into())) ]))
+        ]
+    )); }
+    if names.contains("StringPadLeft") { specs.push(tool_spec!(
+        "StringPadLeft", summary: "Pad on the left to width", params: ["s","width","ch?"], tags: ["string","pad"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("width".into(), schema_int!()), ("ch?".into(), schema_str!()) ], vec!["s".into(), "width".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("x".into())), ("width".into(), Value::Integer(3)), ("ch?".into(), Value::String("0".into())) ]))), ("result".into(), Value::String("00x".into())) ]))
+        ]
+    )); }
+    if names.contains("StringPadRight") { specs.push(tool_spec!(
+        "StringPadRight", summary: "Pad on the right to width", params: ["s","width","ch?"], tags: ["string","pad"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("width".into(), schema_int!()), ("ch?".into(), schema_str!()) ], vec!["s".into(), "width".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("x".into())), ("width".into(), Value::Integer(3)), ("ch?".into(), Value::String(".".into())) ]))), ("result".into(), Value::String("x..".into())) ]))
+        ]
+    )); }
+    if names.contains("StringSlice") { specs.push(tool_spec!(
+        "StringSlice", summary: "Substring by start and optional length (0-based, UTF-8 chars)", params: ["s","start","len?"], tags: ["string","slice"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("start".into(), schema_int!()), ("len?".into(), schema_int!()) ], vec!["s".into(), "start".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abcdef".into())), ("start".into(), Value::Integer(1)), ("len?".into(), Value::Integer(3)) ]))), ("result".into(), Value::String("bcd".into())) ]))
+        ]
+    )); }
+    if names.contains("IndexOf") { specs.push(tool_spec!(
+        "IndexOf", summary: "Index of substring (0-based, -1 if not found)", params: ["s","substr","from?"], tags: ["string","search"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("substr".into(), schema_str!()), ("from?".into(), schema_int!()) ], vec!["s".into(), "substr".into()]), output_schema: schema_int!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("banana".into())), ("substr".into(), Value::String("na".into())) ]))), ("result".into(), Value::Integer(2)) ]))
+        ]
+    )); }
+    if names.contains("LastIndexOf") { specs.push(tool_spec!(
+        "LastIndexOf", summary: "Last index of substring (0-based, -1 if not found)", params: ["s","substr","from?"], tags: ["string","search"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("substr".into(), schema_str!()), ("from?".into(), schema_int!()) ], vec!["s".into(), "substr".into()]), output_schema: schema_int!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("banana".into())), ("substr".into(), Value::String("na".into())) ]))), ("result".into(), Value::Integer(4)) ]))
+        ]
+    )); }
+    if names.contains("StringRepeat") { specs.push(tool_spec!(
+        "StringRepeat", summary: "Repeat string n times", params: ["s","n"], tags: ["string"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("n".into(), schema_int!()) ], vec!["s".into(), "n".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("ab".into())), ("n".into(), Value::Integer(3)) ]))), ("result".into(), Value::String("ababab".into())) ]))
+        ]
+    )); }
+    if names.contains("IsBlank") { specs.push(tool_spec!(
+        "IsBlank", summary: "True if string is empty or whitespace", params: ["s"], tags: ["string","predicate"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("  ".into())) ]))), ("result".into(), Value::Boolean(true)) ]))
+        ]
+    )); }
+    if names.contains("Capitalize") { specs.push(tool_spec!(
+        "Capitalize", summary: "Capitalize first character; rest lowercased", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hELLO".into())) ]))), ("result".into(), Value::String("Hello".into())) ]))
+        ]
+    )); }
+    if names.contains("TitleCase") { specs.push(tool_spec!(
+        "TitleCase", summary: "Capitalize words; lowercase others", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello world".into())) ]))), ("result".into(), Value::String("Hello World".into())) ]))
+        ]
+    )); }
+    if names.contains("EqualsIgnoreCase") { specs.push(tool_spec!(
+        "EqualsIgnoreCase", summary: "Case-insensitive string equality", params: ["a","b"], tags: ["string","compare"],
+        input_schema: schema_object_value(vec![ ("a".into(), schema_str!()), ("b".into(), schema_str!()) ], vec!["a".into(), "b".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "a".into(), Value::String("Hello".into())), ("b".into(), Value::String("hello".into())) ]))), ("result".into(), Value::Boolean(true)) ]))
+        ]
+    )); }
+    if names.contains("StringChars") { specs.push(tool_spec!(
+        "StringChars", summary: "Split into Unicode scalar chars", params: ["s"], tags: ["string"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_arr!(schema_str!()), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hé".into())) ]))), ("result".into(), Value::List(vec![Value::String("h".into()), Value::String("é".into())])) ]))
+        ]
+    )); }
+    if names.contains("StringFromChars") { specs.push(tool_spec!(
+        "StringFromChars", summary: "Join Unicode scalar chars", params: ["chars"], tags: ["string"],
+        input_schema: schema_object_value(vec![ ("chars".into(), schema_arr!(schema_str!())) ], vec!["chars".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "chars".into(), Value::List(vec![Value::String("h".into()), Value::String("é".into())])) ]))), ("result".into(), Value::String("hé".into())) ]))
+        ]
+    )); }
+    // Regex helpers
+    if names.contains("RegexMatch") { specs.push(tool_spec!(
+        "RegexMatch", summary: "Regex match predicate", params: ["s","pattern"], tags: ["string","regex"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()) ], vec!["s".into(), "pattern".into()]), output_schema: schema_bool!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abc123".into())), ("pattern".into(), Value::String("[a-z]+\\d+".into())) ]))), ("result".into(), Value::Boolean(true)) ]))
+        ]
+    )); }
+    if names.contains("RegexFind") { specs.push(tool_spec!(
+        "RegexFind", summary: "Find first regex match", params: ["s","pattern"], tags: ["string","regex"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()) ], vec!["s".into(), "pattern".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abc123".into())), ("pattern".into(), Value::String("\\d+".into())) ]))), ("result".into(), Value::String("123".into())) ]))
+        ]
+    )); }
+    if names.contains("RegexFindAll") { specs.push(tool_spec!(
+        "RegexFindAll", summary: "Find all regex matches", params: ["s","pattern"], tags: ["string","regex"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()) ], vec!["s".into(), "pattern".into()]), output_schema: schema_arr!(schema_str!()), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a1 b22 c333".into())), ("pattern".into(), Value::String("\\d+".into())) ]))), ("result".into(), Value::List(vec![Value::String("1".into()), Value::String("22".into()), Value::String("333".into())])) ]))
+        ]
+    )); }
+    if names.contains("RegexReplace") { specs.push(tool_spec!(
+        "RegexReplace", summary: "Replace by regex pattern", params: ["s","pattern","repl"], tags: ["string","regex"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()), ("repl".into(), schema_str!()) ], vec!["s".into(), "pattern".into(), "repl".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a1 b2".into())), ("pattern".into(), Value::String("\\d".into())), ("repl".into(), Value::String("#".into())) ]))), ("result".into(), Value::String("a# b#".into())) ]))
+        ]
+    )); }
+    // Formatting and interpolation
+    if names.contains("StringFormat") { specs.push(tool_spec!(
+        "StringFormat", summary: "Positional format using {0},{1}", params: ["template","args"], tags: ["string","format"],
+        input_schema: schema_object_value(vec![ ("template".into(), schema_str!()), ("args".into(), schema_arr!(Value::Assoc(HashMap::new()))) ], vec!["template".into(), "args".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "template".into(), Value::String("Hello {0}".into())), ("args".into(), Value::List(vec![Value::String("Lyra".into())])) ]))), ("result".into(), Value::String("Hello Lyra".into())) ]))
+        ]
+    )); }
+    if names.contains("StringFormatMap") { specs.push(tool_spec!(
+        "StringFormatMap", summary: "Named format using {key}", params: ["template","map"], tags: ["string","format"],
+        input_schema: schema_object_value(vec![ ("template".into(), schema_str!()), ("map".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("object")))]))) ], vec!["template".into(), "map".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "template".into(), Value::String("Hello {name}".into())), ("map".into(), Value::Assoc(HashMap::from([(String::from("name"), Value::String(String::from("Lyra")))]))) ]))), ("result".into(), Value::String("Hello Lyra".into())) ]))
+        ]
+    )); }
+    if names.contains("StringInterpolate") { specs.push(tool_spec!(
+        "StringInterpolate", summary: "Evaluate expressions inside braces", params: ["s"], tags: ["string","template"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("2+2={Plus[2,2]}".into())) ]))), ("result".into(), Value::String("2+2=4".into())) ]))
+        ]
+    )); }
+    if names.contains("StringInterpolateWith") { specs.push(tool_spec!(
+        "StringInterpolateWith", summary: "Interpolate using provided variables", params: ["s","vars"], tags: ["string","template"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("vars".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("object")))]))) ], vec!["s".into(), "vars".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hello {name}".into())), ("vars".into(), Value::Assoc(HashMap::from([(String::from("name"), Value::String(String::from("Lyra")))]))) ]))), ("result".into(), Value::String("Hello Lyra".into())) ]))
+        ]
+    )); }
+    if names.contains("TemplateRender") { specs.push(tool_spec!(
+        "TemplateRender", summary: "Render Mustache-like template", params: ["template","data","opts?"], tags: ["string","template"],
+        input_schema: schema_object_value(vec![ ("template".into(), schema_str!()), ("data".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("object")))]))), ("opts?".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("object")))]))) ], vec!["template".into(), "data".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([
+                ("template".into(), Value::String("Hello {{name}}".into())), ("data".into(), Value::Assoc(HashMap::from([(String::from("name"), Value::String(String::from("Lyra")))])))
+            ]))), ("result".into(), Value::String("Hello Lyra".into())) ]))
+        ]
+    )); }
+    // Encoders/decoders and transforms
+    if names.contains("HtmlEscape") { specs.push(tool_spec!(
+        "HtmlEscape", summary: "Escape HTML special characters.", params: ["s"], tags: ["string","html","escape"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a<b".into())) ]))), ("result".into(), Value::String("a&lt;b".into())) ]))
+        ]
+    )); }
+    if names.contains("HtmlUnescape") { specs.push(tool_spec!(
+        "HtmlUnescape", summary: "Unescape HTML entities.", params: ["s"], tags: ["string","html","unescape"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a&amp;b".into())) ]))), ("result".into(), Value::String("a&b".into())) ]))
+        ]
+    )); }
+    if names.contains("UrlEncode") { specs.push(tool_spec!(
+        "UrlEncode", summary: "Percent-encode string for URLs", params: ["s"], tags: ["string","url","encode"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello world".into())) ]))), ("result".into(), Value::String("hello%20world".into())) ]))
+        ]
+    )); }
+    if names.contains("UrlDecode") { specs.push(tool_spec!(
+        "UrlDecode", summary: "Decode percent-encoded URL string", params: ["s"], tags: ["string","url","decode"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hello%20world".into())) ]))), ("result".into(), Value::String("hello world".into())) ]))
+        ]
+    )); }
+    if names.contains("UrlFormEncode") { specs.push(tool_spec!(
+        "UrlFormEncode", summary: "Form-url-encode string", params: ["s"], tags: ["string","form","encode"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a b".into())) ]))), ("result".into(), Value::String("a+b".into())) ]))
+        ]
+    )); }
+    if names.contains("UrlFormDecode") { specs.push(tool_spec!(
+        "UrlFormDecode", summary: "Form-url-decode string", params: ["s"], tags: ["string","form","decode"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a+b".into())) ]))), ("result".into(), Value::String("a b".into())) ]))
+        ]
+    )); }
+    if names.contains("JsonEscape") { specs.push(tool_spec!(
+        "JsonEscape", summary: "Escape string for JSON", params: ["s"], tags: ["string","json","escape"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a\n".into())) ]))), ("result".into(), Value::String("a\\n".into())) ]))
+        ]
+    )); }
+    if names.contains("JsonUnescape") { specs.push(tool_spec!(
+        "JsonUnescape", summary: "Unescape JSON string", params: ["s"], tags: ["string","json","unescape"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a\\n".into())) ]))), ("result".into(), Value::String("a\n".into())) ]))
+        ]
+    )); }
+    if names.contains("Slugify") { specs.push(tool_spec!(
+        "Slugify", summary: "Convert text to lowercase URL slug", params: ["s"], tags: ["string","slug"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hello, World!".into())) ]))), ("result".into(), Value::String("hello-world".into())) ]))
+        ]
+    )); }
+    if names.contains("StringTruncate") { specs.push(tool_spec!(
+        "StringTruncate", summary: "Truncate to max length with suffix", params: ["s","max","suffix?"], tags: ["string","truncate"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("max".into(), schema_int!()), ("suffix?".into(), schema_str!()) ], vec!["s".into(), "max".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abcdef".into())), ("max".into(), Value::Integer(4)), ("suffix?".into(), Value::String("…".into())) ]))), ("result".into(), Value::String("abc…".into())) ]))
+        ]
+    )); }
+    if names.contains("CamelCase") { specs.push(tool_spec!(
+        "CamelCase", summary: "Convert to lower camelCase", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hello world".into())) ]))), ("result".into(), Value::String("helloWorld".into())) ]))
+        ]
+    )); }
+    if names.contains("SnakeCase") { specs.push(tool_spec!(
+        "SnakeCase", summary: "Convert to snake_case", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hello world".into())) ]))), ("result".into(), Value::String("hello_world".into())) ]))
+        ]
+    )); }
+    if names.contains("KebabCase") { specs.push(tool_spec!(
+        "KebabCase", summary: "Convert to kebab-case", params: ["s"], tags: ["string","case"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("Hello world".into())) ]))), ("result".into(), Value::String("hello-world".into())) ]))
+        ]
+    )); }
+    // Dates
+    if names.contains("ParseDate") { specs.push(tool_spec!(
+        "ParseDate", summary: "Parse date/time to Unix seconds", params: ["s","format?"], tags: ["string","date"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("format?".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_int!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([ ("s".into(), Value::String("2024-08-01 12:00:00".into())) ]))), ("result".into(), Value::Integer(1722513600)) ]))
+        ]
+    )); }
+    if names.contains("FormatDate") { specs.push(tool_spec!(
+        "FormatDate", summary: "Format Unix seconds to string", params: ["ts","format?"], tags: ["string","date"],
+        input_schema: schema_object_value(vec![ ("ts".into(), schema_int!()), ("format?".into(), schema_str!()) ], vec!["ts".into()]), output_schema: schema_str!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([ ("ts".into(), Value::Integer(0)) ]))), ("result".into(), Value::String("1970-01-01 00:00:00".into())) ]))
+        ]
+    )); }
+    if names.contains("DateDiff") { specs.push(tool_spec!(
+        "DateDiff", summary: "Difference between two dates or timestamps", params: ["a","b","unit?"], tags: ["string","date"],
+        input_schema: schema_object_value(vec![ ("a".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("string")))]))), ("b".into(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("string")))]))), ("unit?".into(), schema_str!()) ], vec!["a".into(), "b".into()]), output_schema: schema_num!(), examples: [
+            Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([ ("a".into(), Value::String("2024-08-02".into())), ("b".into(), Value::String("2024-08-01".into())), ("unit?".into(), Value::String("days".into())) ]))), ("result".into(), Value::Integer(1)) ]))
+        ]
+    )); }
     specs
 }
 
@@ -594,8 +923,34 @@ fn tools_export_openai(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ToolsExportBundle[] -> all registered specs as a list (machine-cachable)
-fn tools_export_bundle(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn tools_export_bundle(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsExportBundle".into())), args } }
-    let reg = tool_reg().lock().unwrap();
-    Value::List(reg.values().cloned().collect())
+    // Merge registered specs, stdlib defaults, and builtin fallback cards (like ToolsList)
+    let mut out: Vec<Value> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Explicitly registered specs
+    {
+        let reg = tool_reg().lock().unwrap();
+        for (id, spec) in reg.iter() {
+            out.push(spec.clone());
+            seen.insert(id.clone());
+        }
+    }
+    // Stdlib default specs for present functions
+    for spec in stdlib_default_specs(ev) {
+        if let Value::Assoc(m) = &spec {
+            if let Some(id) = get_str(m, "id").or_else(|| get_str(m, "name")) {
+                if !seen.contains(&id) { out.push(spec); seen.insert(id); }
+            }
+        }
+    }
+    // Fallback builtin cards
+    for card in builtin_cards(ev) {
+        if let Value::Assoc(m) = &card {
+            if let Some(id) = get_str(m, "id").or_else(|| get_str(m, "name")) {
+                if !seen.contains(&id) { out.push(card); seen.insert(id); }
+            }
+        }
+    }
+    Value::List(out)
 }

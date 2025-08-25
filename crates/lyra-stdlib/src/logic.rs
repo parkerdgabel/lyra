@@ -1,6 +1,7 @@
 use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
+use crate::register_if;
 #[cfg(feature = "tools")] use crate::tools::{add_specs, schema_object_value};
 #[cfg(feature = "tools")] use crate::tool_spec;
 
@@ -35,6 +36,23 @@ pub fn register_logic(ev: &mut Evaluator) {
         tool_spec!("EvenQ", summary: "Is integer even?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
         tool_spec!("OddQ", summary: "Is integer odd?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
     ]);
+}
+
+pub fn register_logic_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+    register_if(ev, pred, "If", if_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "When", when_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Unless", unless_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Switch", switch_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Equal", equal as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Less", less as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Greater", greater as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "GreaterEqual", greater_equal as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "And", and_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Or", or_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Not", not_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "EvenQ", even_q as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "OddQ", odd_q as NativeFn, Attributes::LISTABLE);
 }
 
 fn equal(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::Boolean(args.windows(2).all(|w| w[0]==w[1])) }

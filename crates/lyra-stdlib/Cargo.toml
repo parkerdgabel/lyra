@@ -42,7 +42,7 @@ hound = { version = "3", optional = true }
 symphonia = { version = "0.5", optional = true, default-features = false, features = ["aac","mp3","flac","vorbis","isomp4","ogg","wav","pcm"] }
 
 [features]
-default = ["core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text", "collections", "ndarray"]
+default = ["core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text", "collections", "ndarray", "ml", "nn", "functional"]
 core = []
 string = []
 math = []
@@ -97,6 +97,9 @@ text_fuzzy = ["dep:fuzzy-matcher"]
 text_index = ["dep:rusqlite"]
 collections = []
 ndarray = []
+ml = []
+nn = []
+functional = []
 
 # Internal feature wiring for optional crates
 text_glob = ["dep:ignore"]

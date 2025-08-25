@@ -65,6 +65,13 @@ impl Parser {
         if self.peekc()==Some('&') {
             self.nextc();
             v = Value::pure_function(None, v);
+            // Allow immediate map operator with pure function: (#... )& /@ rhs
+            self.skip_ws();
+            if self.starts_with("/@") {
+                self.pos += 2; self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                v = Value::expr(Value::Symbol("Map".into()), vec![v, rhs]);
+            }
         }
         Ok(v)
     }
@@ -194,6 +201,29 @@ impl Parser {
         let mut base = self.parse_call_or_atom()?;
         loop {
             self.skip_ws();
+            // Apply and MapApply: f @@ x  => Apply[f, x];  f @@@ x => Apply[f, x, 1]
+            if self.starts_with("@@@") {
+                self.pos += 3; // consume @@@
+                self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(Value::Symbol("Apply".into()), vec![base, rhs, Value::Integer(1)]);
+                continue;
+            }
+            if self.starts_with("@@") {
+                self.pos += 2; // consume @@
+                self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(Value::Symbol("Apply".into()), vec![base, rhs]);
+                continue;
+            }
+            // Map operator: f /@ x  ==> Map[f, x]
+            if self.starts_with("/@") {
+                self.pos += 2; // consume /@
+                self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(Value::Symbol("Map".into()), vec![base, rhs]);
+                continue;
+            }
             // ReplaceAll and ReplaceRepeated operators: expr /. rules, expr //. rules
             if self.starts_with("//.") {
                 self.pos += 3; // consume //.
@@ -294,12 +324,18 @@ impl Parser {
     }
 
     fn parse_call_or_atom(&mut self) -> ParseResult<Value> {
-        // Assignment: symbol = expr
+        // Assignment: symbol = expr or SetDelayed: lhs := rhs
         self.skip_ws();
         if is_ident_start(self.peekc().unwrap_or('\0')) {
             let save = self.pos;
             if let Value::Symbol(name) = self.parse_symbol()? {
                 self.skip_ws();
+                if self.starts_with(":=") {
+                    // SetDelayed for simple symbol lhs
+                    self.pos += 2; self.skip_ws();
+                    let rhs = self.expr()?;
+                    return Ok(Value::expr(Value::Symbol("SetDelayed".into()), vec![Value::Symbol(name), rhs]));
+                }
                 if self.peekc()==Some('=') { self.nextc(); self.skip_ws(); let rhs = self.expr()?; return Ok(Value::expr(Value::Symbol("Set".into()), vec![Value::Symbol(name), rhs])); }
             }
             // rewind if not assignment
@@ -309,6 +345,13 @@ impl Parser {
         let mut base = self.atom()?;
         loop {
             self.skip_ws();
+            // SetDelayed for general lhs: base := rhs
+            if self.starts_with(":=") {
+                self.pos += 2; self.skip_ws();
+                let rhs = self.expr()?;
+                base = Value::expr(Value::Symbol("SetDelayed".into()), vec![base, rhs]);
+                continue;
+            }
             // Head Alternatives: f | g [args] => Alternative[f, g][args]
             if !(self.starts_with("|>") || self.starts_with("||")) && self.peekc()==Some('|') {
                 // Only treat as head-alternative if we have not yet consumed args
@@ -370,6 +413,19 @@ impl Parser {
                 }
                 if self.nextc()!=Some(']') { return Err(LyraError::Parse("expected ']'".into())); }
                 base = Value::expr(base, args);
+                continue;
+            }
+            // Apply and MapApply when appearing in tight operator position within call-or-atom chain
+            if self.starts_with("@@@") {
+                self.pos += 3; self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(Value::Symbol("Apply".into()), vec![base, rhs, Value::Integer(1)]);
+                continue;
+            }
+            if self.starts_with("@@") {
+                self.pos += 2; self.skip_ws();
+                let rhs = self.parse_call_or_atom()?;
+                base = Value::expr(Value::Symbol("Apply".into()), vec![base, rhs]);
                 continue;
             }
             // Prefix function application: f @ x  ==> f[x]

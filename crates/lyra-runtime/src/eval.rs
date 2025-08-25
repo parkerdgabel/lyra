@@ -537,6 +537,7 @@ pub fn evaluate(v: Value) -> Value { Evaluator::new().eval(v) }
 #[cfg(feature = "core")]
 pub fn register_core(ev: &mut Evaluator) {
     ev.register("Set", set_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("SetDelayed", set_delayed_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Replace", replace as NativeFn, Attributes::HOLD_ALL);
     ev.register("ReplaceAll", replace_all_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1908,4 +1909,36 @@ fn with_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         result
     } else { Value::Expr { head: Box::new(Value::Symbol("With".into())), args } }
+}
+fn set_delayed_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args } }
+    let lhs = args[0].clone();
+    let rhs = args[1].clone();
+    // Classify lhs: Own (Symbol), Down (Symbol[...] ), Sub ((Symbol[...])[...])
+    match lhs.clone() {
+        Value::Symbol(s) => {
+            // OwnValues[s, { s -> rhs }]
+            let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![Value::Symbol(s.clone()), rhs] };
+            return set_ownvalues_fn(ev, vec![Value::Symbol(s), Value::List(vec![rule])]);
+        }
+        Value::Expr { head, .. } => {
+            match *head {
+                Value::Symbol(ref s) => {
+                    // DownValues[s, { lhs -> rhs }]
+                    let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![lhs, rhs] };
+                    return set_downvalues_fn(ev, vec![Value::Symbol(s.clone()), Value::List(vec![rule])]);
+                }
+                Value::Expr { head: inner_head, .. } => {
+                    if let Value::Symbol(s) = *inner_head {
+                        // SubValues[s, { lhs -> rhs }]
+                        let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![lhs, rhs] };
+                        return set_subvalues_fn(ev, vec![Value::Symbol(s), Value::List(vec![rule])]);
+                    }
+                    Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args }
+                }
+                _ => Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args },
+    }
 }
