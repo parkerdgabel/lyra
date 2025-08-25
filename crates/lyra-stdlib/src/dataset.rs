@@ -18,6 +18,8 @@ enum Plan {
     GroupBy { input: Box<Plan>, keys: Vec<String> },
     Agg { input: Box<Plan>, aggs: HashMap<String, Value> }, // aggs: outCol -> AggExpr
     Join { left: Box<Plan>, right: Box<Plan>, on: Vec<String>, how: String },
+    Sort { input: Box<Plan>, by: Vec<(String, bool)> }, // (col, asc)
+    Distinct { input: Box<Plan>, cols: Option<Vec<String>> },
 }
 
 #[derive(Clone)]
@@ -164,6 +166,44 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                     } else if how=="left" {
                         out.push(Value::Assoc(lm));
                     }
+                }
+            }
+            out
+        }
+        Plan::Sort { input, by } => {
+            let mut rows = eval_plan(ev, input);
+            rows.sort_by(|a, b| {
+                let (ma, mb) = match (a, b) { (Value::Assoc(ma), Value::Assoc(mb)) => (ma, mb), _ => return std::cmp::Ordering::Equal };
+                for (col, asc) in by.iter() {
+                    let va = ma.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                    let vb = mb.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                    let ka = lyra_runtime::eval::value_order_key(&va);
+                    let kb = lyra_runtime::eval::value_order_key(&vb);
+                    let ord = ka.cmp(&kb);
+                    if ord != std::cmp::Ordering::Equal {
+                        return if *asc { ord } else { ord.reverse() };
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+            rows
+        }
+        Plan::Distinct { input, cols } => {
+            use std::collections::HashSet;
+            let rows = eval_plan(ev, input);
+            let mut seen: HashSet<String> = HashSet::new();
+            let mut out: Vec<Value> = Vec::new();
+            for r in rows.into_iter() {
+                if let Value::Assoc(m) = &r {
+                    let key = if let Some(cols) = cols {
+                        cols.iter().map(|c| m.get(c).map(|v| lyra_core::pretty::format_value(v)).unwrap_or_default()).collect::<Vec<_>>().join("\u{1f}")
+                    } else {
+                        lyra_core::pretty::format_value(&r)
+                    };
+                    if seen.insert(key) { out.push(r); }
+                } else {
+                    let key = lyra_core::pretty::format_value(&r);
+                    if seen.insert(key) { out.push(r); }
                 }
             }
             out
@@ -330,6 +370,8 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::GroupBy { input, keys } => { out.push_str(&format!("{}GroupBy {:?}\n", pad, keys)); pp(input, indent+2, out); }
             Plan::Agg { input, aggs } => { out.push_str(&format!("{}Agg {:?}\n", pad, aggs.keys().collect::<Vec<_>>())); pp(input, indent+2, out); }
             Plan::Join { left, right, on, how } => { out.push_str(&format!("{}Join how={} on={:?}\n", pad, how, on)); pp(left, indent+2, out); pp(right, indent+2, out); }
+            Plan::Sort { input, by } => { out.push_str(&format!("{}Sort {:?}\n", pad, by)); pp(input, indent+2, out); }
+            Plan::Distinct { input, cols } => { out.push_str(&format!("{}Distinct {:?}\n", pad, cols)); pp(input, indent+2, out); }
         }
     }
     let mut s = String::new();
@@ -464,6 +506,60 @@ fn join_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ds_handle(new_id)
 }
 
+fn parse_sort_spec(spec: &Value) -> Option<Vec<(String, bool)>> {
+    match spec {
+        Value::List(vs) => {
+            let cols: Vec<(String, bool)> = vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some((s.clone(), true)), _=>None }).collect();
+            if cols.is_empty() { None } else { Some(cols) }
+        }
+        Value::Assoc(m) => {
+            let mut out: Vec<(String, bool)> = Vec::new();
+            for (col, dir) in m.iter() {
+                let asc = match dir { Value::String(s)|Value::Symbol(s) => s.to_lowercase() != "desc", _ => true };
+                out.push((col.clone(), asc));
+            }
+            if out.is_empty() { None } else { Some(out) }
+        }
+        Value::String(s) | Value::Symbol(s) => Some(vec![(s.clone(), true)]),
+        _ => None,
+    }
+}
+
+fn sort_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } }
+    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+    let spec = ev.eval(args[1].clone());
+    let by = match parse_sort_spec(&spec) { Some(b)=>b, None => return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+    let mut reg = ds_reg().lock().unwrap();
+    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+    let new_id = next_ds_id();
+    reg.insert(new_id, DatasetState { plan: Plan::Sort { input: Box::new(st.plan), by } });
+    ds_handle(new_id)
+}
+
+fn distinct_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Distinct[ds] or Distinct[ds, cols]
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } }
+    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } };
+    let cols: Option<Vec<String>> = if args.len()>=2 {
+        match ev.eval(args[1].clone()) {
+            Value::List(vs) => Some(vs.into_iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).collect()),
+            _ => None,
+        }
+    } else { None };
+    let mut reg = ds_reg().lock().unwrap();
+    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } };
+    let new_id = next_ds_id();
+    reg.insert(new_id, DatasetState { plan: Plan::Distinct { input: Box::new(st.plan), cols } });
+    ds_handle(new_id)
+}
+
+fn rename_cols(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("RenameCols".into())), args } }
+    // Delegate to Select with mapping for consistency
+    select_general(ev, args)
+}
+
 pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
     ev.register("Collect", collect_ds as NativeFn, Attributes::empty());
@@ -482,6 +578,9 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
     ev.register("Agg", agg as NativeFn, Attributes::empty());
     ev.register("Join", join_ds as NativeFn, Attributes::empty());
+    ev.register("Sort", sort_ds as NativeFn, Attributes::empty());
+    ev.register("Distinct", distinct_ds as NativeFn, Attributes::empty());
+    ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
