@@ -231,9 +231,10 @@ fn nd_slice(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let (shape, data) = match as_packed(ev, args[0].clone()) { Some(x)=>x, None=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
     let ndim = shape.len();
     if args.len()==2 {
+        let spec_v = ev.eval(args[1].clone());
         // 1D form: list {start,len}
-        match ev.eval(args[1].clone()) {
-            Value::List(xs) if xs.len()==2 && ndim==1 => {
+        if let Value::List(xs) = &spec_v {
+            if xs.len()==2 && ndim==1 {
                 let start = match xs[0] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
                 let len = match xs[1] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
                 if start < 1 || len < 0 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
@@ -243,7 +244,64 @@ fn nd_slice(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let out = data[s0..s0+l].to_vec();
                 return pack(vec![l], out);
             }
-            _ => {}
+        }
+        // Multi-axis spec: list of per-axis specs
+        if let Value::List(specs) = spec_v {
+            if specs.len()!=ndim { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+            enum AxSpec { All, Index(usize), Range(usize, usize) }
+            let mut parsed: Vec<AxSpec> = Vec::with_capacity(ndim);
+            for (i, sp) in specs.iter().enumerate() {
+                match sp {
+                    Value::Symbol(s) if s=="All" => parsed.push(AxSpec::All),
+                    Value::Integer(n) => {
+                        if *n < 1 || (*n as usize) > shape[i] { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+                        parsed.push(AxSpec::Index((*n as usize)-1));
+                    }
+                    Value::List(xs) if xs.len()==2 => {
+                        let start = match xs[0] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+                        let len = match xs[1] { Value::Integer(n)=>n, _=> return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } };
+                        if start < 1 || len < 0 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+                        let s0 = (start as usize).saturating_sub(1);
+                        let l = len as usize;
+                        if s0 + l > shape[i] { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }
+                        parsed.push(AxSpec::Range(s0, l));
+                    }
+                    _ => return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args },
+                }
+            }
+            // Compute output shape
+            let mut out_shape: Vec<usize> = Vec::new();
+            for sp in &parsed { match sp { AxSpec::All => out_shape.push(0), AxSpec::Range(_, l) => out_shape.push(*l), AxSpec::Index(_) => {} } }
+            // Fill 'All' dims from input shape
+            let mut out_dims: Vec<usize> = Vec::new();
+            for (i, sp) in parsed.iter().enumerate() { match sp { AxSpec::All => out_dims.push(shape[i]), AxSpec::Range(_, l) => out_dims.push(*l), AxSpec::Index(_) => {} } }
+            // out_dims is the actual out shape
+            let out_shape = out_dims;
+            let out_total: usize = if out_shape.is_empty() { 1 } else { out_shape.iter().product() };
+            // Precompute tail products for decoding out coords
+            let mut tails: Vec<usize> = vec![1; out_shape.len()];
+            for i in 0..out_shape.len() { tails[i] = out_shape[i+1..].iter().product::<usize>().max(1); }
+            let in_strides = strides(&shape);
+            let mut out_data: Vec<f64> = Vec::with_capacity(out_total);
+            for lin in 0..out_total {
+                // build out coords
+                let mut rem = lin;
+                let mut out_coords = vec![0usize; out_shape.len()];
+                for i in 0..out_shape.len() { let denom = tails[i]; let c = rem / denom; rem %= denom; out_coords[i] = c; }
+                // map to in coords
+                let mut in_coords = vec![0usize; ndim];
+                let mut oi = 0usize;
+                for (ax, sp) in parsed.iter().enumerate() {
+                    match sp {
+                        AxSpec::All => { in_coords[ax] = out_coords[oi]; oi += 1; }
+                        AxSpec::Range(s0, _l) => { in_coords[ax] = s0 + out_coords[oi]; oi += 1; }
+                        AxSpec::Index(idx) => { in_coords[ax] = *idx; }
+                    }
+                }
+                let off = idx_of(&in_coords, &in_strides);
+                out_data.push(data[off]);
+            }
+            return if out_shape.is_empty() { Value::Real(out_data[0]) } else { pack(out_shape, out_data) };
         }
     }
     if args.len()!=4 { return Value::Expr { head: Box::new(Value::Symbol("NDSlice".into())), args } }

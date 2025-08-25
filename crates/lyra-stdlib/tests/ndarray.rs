@@ -60,4 +60,12 @@ fn ndarray_sum_mean_argmax_matmul() {
     let v = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::Integer(10), Value::Integer(20), Value::Integer(30), Value::Integer(40)]) ]));
     let sl1 = ev.eval(Value::expr(Value::Symbol("NDSlice".into()), vec![v.clone(), Value::List(vec![Value::Integer(2), Value::Integer(2)])]));
     match sl1 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2]); assert_eq!(data, vec![20.0, 30.0]); }, other => panic!("unexpected 1D slice: {}", lyra_core::pretty::format_value(&other)) }
+    // Multi-axis spec: {row index=2, col range {2,1}} => 1D [5]
+    let spec = Value::List(vec![Value::Integer(2), Value::List(vec![Value::Integer(2), Value::Integer(1)])]);
+    let sl2 = ev.eval(Value::expr(Value::Symbol("NDSlice".into()), vec![a.clone(), spec]));
+    match sl2 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![1]); assert_eq!(data, vec![5.0]); }, other => panic!("unexpected multi-axis scalar-ish slice: {}", lyra_core::pretty::format_value(&other)) }
+    // With All symbol on rows, same as axis slice above
+    let spec_all = Value::List(vec![Value::Symbol("All".into()), Value::List(vec![Value::Integer(2), Value::Integer(2)])]);
+    let sl3 = ev.eval(Value::expr(Value::Symbol("NDSlice".into()), vec![a.clone(), spec_all]));
+    match sl3 { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,2]); assert_eq!(data, vec![2.0,3.0,5.0,6.0]); }, other => panic!("unexpected multi-axis slice: {}", lyra_core::pretty::format_value(&other)) }
 }
