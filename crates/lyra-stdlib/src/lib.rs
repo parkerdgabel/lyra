@@ -27,6 +27,7 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "text_fuzzy")] pub mod text_fuzzy;
 #[cfg(feature = "text_index")] pub mod text_index;
 #[cfg(feature = "collections")] pub mod collections;
+#[cfg(feature = "ndarray")] pub mod ndarray;
 mod dispatch;
 
 pub fn register_all(ev: &mut Evaluator) {
@@ -58,6 +59,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "text_fuzzy")] text_fuzzy::register_text_fuzzy(ev);
     #[cfg(feature = "text_index")] text_index::register_text_index(ev);
     #[cfg(feature = "collections")] collections::register_collections(ev);
+    #[cfg(feature = "ndarray")] ndarray::register_ndarray(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
     // Register dispatchers last to resolve name conflicts (Join, etc.)
     dispatch::register_dispatch(ev);
