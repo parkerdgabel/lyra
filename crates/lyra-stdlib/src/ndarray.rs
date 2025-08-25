@@ -235,9 +235,26 @@ fn nd_pow(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let b = ev.eval(args[1].clone());
     match (&a, &b) {
         (Value::PackedArray { shape: sa, data: da }, Value::PackedArray { shape: sb, data: db }) => broadcast_binop_arrays(sa, da, sb, db, |x,y| x.powf(y)).unwrap_or(Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] }),
+        (Value::PackedArray { shape, data }, Value::Integer(k)) => {
+            let kk = *k;
+            if kk >= 0 { return pack(shape.clone(), data.iter().map(|x| x.powi(kk as i32)).collect()); }
+            let p = (-kk) as i32;
+            return pack(shape.clone(), data.iter().map(|x| (1.0_f64)/(x.powi(p))).collect());
+        }
         (Value::PackedArray { shape, data }, other) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| x.powf(s)).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } }
+        (Value::Integer(base_k), Value::PackedArray { shape, data }) => {
+            let bk = *base_k as f64; return pack(shape.clone(), data.iter().map(|x| bk.powf(*x)).collect());
+        }
         (other, Value::PackedArray { shape, data }) => { if let Some(s)=num_to_f64(other) { return pack(shape.clone(), data.iter().map(|x| s.powf(*x)).collect()); } Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } }
-        _ => { match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x.powf(y)), _ => Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } } }
+        _ => {
+            // scalar^scalar
+            match (&a, &b) {
+                (Value::Integer(x), Value::Integer(y)) => {
+                    if *y >= 0 { Value::Integer(x.pow(*y as u32)) } else { Value::Real((*x as f64).powf(*y as f64)) }
+                }
+                _ => match (num_to_f64(&a), num_to_f64(&b)) { (Some(x), Some(y)) => Value::Real(x.powf(y)), _ => Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a,b] } }
+            }
+        }
     }
 }
 

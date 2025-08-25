@@ -93,6 +93,9 @@ fn ndarray_sum_mean_argmax_matmul() {
     // NDPow
     let p2 = ev.eval(Value::expr(Value::Symbol("NDPow".into()), vec![a.clone(), Value::Integer(2)]));
     match &p2 { Value::PackedArray { shape, data } => { assert_eq!(shape, &vec![2,3]); assert_eq!(data, &vec![1.0,4.0,9.0,16.0,25.0,36.0]); }, other => panic!("unexpected NDPow: {}", lyra_core::pretty::format_value(&other)) }
+    // pow with negative exponent (scalar)
+    let inv = ev.eval(Value::expr(Value::Symbol("NDPow".into()), vec![a.clone(), Value::Integer(-1)]));
+    match inv { Value::PackedArray { shape, data } => { assert_eq!(shape, vec![2,3]); assert!((data[0] - 1.0).abs() < 1e-9 && (data[1] - 0.5).abs() < 1e-9); }, _ => panic!("unexpected NDPow negative") }
     // NDClip and NDRelu
     let mixed = ev.eval(Value::expr(Value::Symbol("NDArray".into()), vec![ Value::List(vec![Value::Integer(-1), Value::Integer(0), Value::Integer(2), Value::Integer(5)]) ]));
     let clipped = ev.eval(Value::expr(Value::Symbol("NDClip".into()), vec![mixed.clone(), Value::Integer(0), Value::Integer(3)]));
