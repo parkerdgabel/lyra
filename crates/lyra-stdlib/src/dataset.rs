@@ -20,6 +20,7 @@ enum Plan {
     Join { left: Box<Plan>, right: Box<Plan>, on: Vec<String>, how: String },
     Sort { input: Box<Plan>, by: Vec<(String, bool)> }, // (col, asc)
     Distinct { input: Box<Plan>, cols: Option<Vec<String>> },
+    Union { inputs: Vec<Plan>, by_columns: bool },
 }
 
 #[derive(Clone)]
@@ -208,6 +209,33 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
             }
             out
         }
+        Plan::Union { inputs, by_columns } => {
+            let mut out: Vec<Value> = Vec::new();
+            if *by_columns {
+                // collect union of columns across datasets; align rows
+                use std::collections::BTreeSet;
+                let mut all_cols: BTreeSet<String> = BTreeSet::new();
+                let rows_sets: Vec<Vec<Value>> = inputs.iter().map(|p| eval_plan(ev, p)).collect();
+                for rows in &rows_sets {
+                    for r in rows {
+                        if let Value::Assoc(m) = r { for k in m.keys() { all_cols.insert(k.clone()); } }
+                    }
+                }
+                let cols: Vec<String> = all_cols.into_iter().collect();
+                for rows in rows_sets.into_iter() {
+                    for r in rows {
+                        if let Value::Assoc(m) = r {
+                            let mut mm = HashMap::new();
+                            for c in &cols { mm.insert(c.clone(), m.get(c).cloned().unwrap_or(Value::Symbol("Null".into()))); }
+                            out.push(Value::Assoc(mm));
+                        } else { out.push(r); }
+                    }
+                }
+            } else {
+                for p in inputs { out.extend(eval_plan(ev, &p).into_iter()); }
+            }
+            out
+        }
     }
 }
 
@@ -372,6 +400,7 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Plan::Join { left, right, on, how } => { out.push_str(&format!("{}Join how={} on={:?}\n", pad, how, on)); pp(left, indent+2, out); pp(right, indent+2, out); }
             Plan::Sort { input, by } => { out.push_str(&format!("{}Sort {:?}\n", pad, by)); pp(input, indent+2, out); }
             Plan::Distinct { input, cols } => { out.push_str(&format!("{}Distinct {:?}\n", pad, cols)); pp(input, indent+2, out); }
+            Plan::Union { inputs, by_columns } => { out.push_str(&format!("{}Union by_columns={} inputs={}\n", pad, by_columns, inputs.len())); for p in inputs { pp(p, indent+2, out); } }
         }
     }
     let mut s = String::new();
@@ -453,17 +482,41 @@ fn read_jsonl_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn with_columns(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } }
-    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } };
+    let subj = ev.eval(args[0].clone());
     let defs_v = ev.eval(args[1].clone());
-    let defs: HashMap<String, Value> = match defs_v {
-        Value::Assoc(m) => m,
-        _ => return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args },
-    };
-    let mut reg = ds_reg().lock().unwrap();
-    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } };
-    let new_id = next_ds_id();
-    reg.insert(new_id, DatasetState { plan: Plan::WithColumns { input: Box::new(st.plan), defs } });
-    ds_handle(new_id)
+    let defs: HashMap<String, Value> = match defs_v { Value::Assoc(m) => m, _ => return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } };
+    if let Some(id) = get_ds(&subj) {
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::WithColumns { input: Box::new(st.plan), defs } });
+        return ds_handle(new_id);
+    }
+    // Assoc: compute fields with expr[row]
+    if let Value::Assoc(mut m) = subj.clone() {
+        for (k, expr) in defs.iter() {
+            let val = ev.eval(Value::Expr { head: Box::new(expr.clone()), args: vec![Value::Assoc(m.clone())] });
+            m.insert(k.clone(), val);
+        }
+        return Value::Assoc(m);
+    }
+    // List of Assoc
+    if let Value::List(items) = subj {
+        if items.iter().all(|r| matches!(r, Value::Assoc(_))) {
+            let mut out: Vec<Value> = Vec::with_capacity(items.len());
+            for r in items.into_iter() {
+                if let Value::Assoc(mut m) = r {
+                    for (k, expr) in defs.iter() {
+                        let val = ev.eval(Value::Expr { head: Box::new(expr.clone()), args: vec![Value::Assoc(m.clone())] });
+                        m.insert(k.clone(), val);
+                    }
+                    out.push(Value::Assoc(m));
+                }
+            }
+            return Value::List(out);
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("WithColumns".into())), args }
 }
 
 fn group_by(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -526,32 +579,160 @@ fn parse_sort_spec(spec: &Value) -> Option<Vec<(String, bool)>> {
 }
 
 fn sort_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Sort[list] by value or Sort[listOfAssoc, spec] or Sort[ds, spec]
+    if args.len()==1 {
+        let subj = ev.eval(args[0].clone());
+        return match subj {
+            Value::List(mut items) => { items.sort_by(|a,b| lyra_runtime::eval::value_order_key(a).cmp(&lyra_runtime::eval::value_order_key(b))); Value::List(items) }
+            other => Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args: vec![other] },
+        };
+    }
     if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } }
-    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+    let subj = ev.eval(args[0].clone());
+    // Dataset path
+    if let Some(id) = get_ds(&subj) {
+        let spec = ev.eval(args[1].clone());
+        let by = match parse_sort_spec(&spec) { Some(b)=>b, None => return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::Sort { input: Box::new(st.plan), by } });
+        return ds_handle(new_id);
+    }
+    // List-of-assoc path
     let spec = ev.eval(args[1].clone());
-    let by = match parse_sort_spec(&spec) { Some(b)=>b, None => return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
-    let mut reg = ds_reg().lock().unwrap();
-    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } };
-    let new_id = next_ds_id();
-    reg.insert(new_id, DatasetState { plan: Plan::Sort { input: Box::new(st.plan), by } });
-    ds_handle(new_id)
+    if let Value::List(mut rows) = subj {
+        if rows.iter().all(|r| matches!(r, Value::Assoc(_))) {
+            if let Some(by) = parse_sort_spec(&spec) {
+                rows.sort_by(|a,b| {
+                    let (ma, mb) = match (a,b) { (Value::Assoc(ma), Value::Assoc(mb)) => (ma, mb), _ => return std::cmp::Ordering::Equal };
+                    for (col, asc) in by.iter() {
+                        let va = ma.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                        let vb = mb.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                        let ka = lyra_runtime::eval::value_order_key(&va);
+                        let kb = lyra_runtime::eval::value_order_key(&vb);
+                        let ord = ka.cmp(&kb);
+                        if ord != std::cmp::Ordering::Equal { return if *asc { ord } else { ord.reverse() }; }
+                    }
+                    std::cmp::Ordering::Equal
+                });
+                return Value::List(rows);
+            }
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args }
 }
 
 fn distinct_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // Distinct[ds] or Distinct[ds, cols]
+    // Distinct generalized: datasets and lists (optionally by keys for list-of-assoc)
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } }
-    let id = match get_ds(&ev.eval(args[0].clone())) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } };
-    let cols: Option<Vec<String>> = if args.len()>=2 {
-        match ev.eval(args[1].clone()) {
-            Value::List(vs) => Some(vs.into_iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).collect()),
-            _ => None,
+    let subj = ev.eval(args[0].clone());
+    if let Some(id) = get_ds(&subj) {
+        let cols: Option<Vec<String>> = if args.len()>=2 {
+            match ev.eval(args[1].clone()) { Value::List(vs) => Some(vs.into_iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).collect()), _ => None }
+        } else { None };
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::Distinct { input: Box::new(st.plan), cols } });
+        return ds_handle(new_id);
+    }
+    if let Value::List(items) = subj {
+        use std::collections::HashSet;
+        if args.len()>=2 {
+            if let Value::List(cols_v) = ev.eval(args[1].clone()) {
+                let cols: Vec<String> = cols_v.into_iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).collect();
+                let mut seen: HashSet<String> = HashSet::new();
+                let mut out: Vec<Value> = Vec::new();
+                for r in items.into_iter() {
+                    if let Value::Assoc(m) = &r {
+                        let key = cols.iter().map(|c| m.get(c).map(|v| lyra_core::pretty::format_value(v)).unwrap_or_default()).collect::<Vec<_>>().join("\u{1f}");
+                        if seen.insert(key) { out.push(r); }
+                    }
+                }
+                return Value::List(out);
+            }
         }
-    } else { None };
-    let mut reg = ds_reg().lock().unwrap();
-    let st = match reg.get(&id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } };
-    let new_id = next_ds_id();
-    reg.insert(new_id, DatasetState { plan: Plan::Distinct { input: Box::new(st.plan), cols } });
-    ds_handle(new_id)
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut out: Vec<Value> = Vec::new();
+        for v in items.into_iter() { let k = lyra_core::pretty::format_value(&v); if seen.insert(k) { out.push(v); } }
+        return Value::List(out);
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args }
+}
+
+fn union_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Union[ds1, ds2, ...] or Union[{...}, <|By->"columns"|>] or lists of assocs
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Union".into())), args } }
+    let (vals, by_columns) = if args.len()>=2 && matches!(ev.eval(args[args.len()-1].clone()), Value::Assoc(_)) {
+        let opts = ev.eval(args[args.len()-1].clone());
+        let byc = if let Value::Assoc(m) = opts { if let Some(Value::String(s))|Some(Value::Symbol(s)) = m.get("By") { s=="columns" } else { true } } else { true };
+        (args[..args.len()-1].to_vec(), byc)
+    } else { (args.clone(), true) };
+    let vs: Vec<Value> = if vals.len()==1 { match ev.eval(vals[0].clone()) { Value::List(v) => v, x => vec![x] } } else { vals.into_iter().map(|v| ev.eval(v)).collect() };
+    let mut ds_ids: Vec<i64> = Vec::new();
+    let mut row_sets: Vec<Vec<Value>> = Vec::new();
+    let mut all_datasets = true;
+    let mut all_rows = true;
+    for v in vs {
+        if let Some(id) = get_ds(&v) { ds_ids.push(id); all_rows=false; }
+        else if let Value::List(rows) = v { row_sets.push(rows); all_datasets=false; }
+        else { all_datasets=false; all_rows=false; }
+    }
+    if all_datasets {
+        let reg = ds_reg().lock().unwrap();
+        let mut inputs: Vec<Plan> = Vec::new();
+        for id in ds_ids { if let Some(st) = reg.get(&id) { inputs.push(st.plan.clone()); } }
+        drop(reg);
+        let mut reg2 = ds_reg().lock().unwrap();
+        let new_id = next_ds_id();
+        reg2.insert(new_id, DatasetState { plan: Plan::Union { inputs, by_columns } });
+        return ds_handle(new_id);
+    }
+    if all_rows && !row_sets.is_empty() {
+        if by_columns {
+            use std::collections::BTreeSet;
+            let mut all_cols: BTreeSet<String> = BTreeSet::new();
+            for rows in &row_sets { for r in rows { if let Value::Assoc(m)=r { for k in m.keys() { all_cols.insert(k.clone()); } } } }
+            let cols: Vec<String> = all_cols.into_iter().collect();
+            let mut out: Vec<Value> = Vec::new();
+            for rows in row_sets.into_iter() {
+                for r in rows {
+                    if let Value::Assoc(m) = r {
+                        let mut mm = HashMap::new();
+                        for c in &cols { mm.insert(c.clone(), m.get(c).cloned().unwrap_or(Value::Symbol("Null".into()))); }
+                        out.push(Value::Assoc(mm));
+                    }
+                }
+            }
+            return Value::List(out);
+        } else {
+            let mut out: Vec<Value> = Vec::new();
+            for rows in row_sets.into_iter() { out.extend(rows.into_iter()); }
+            return Value::List(out);
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Union".into())), args }
+}
+
+fn concat_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Concat[dsList] or Concat[listOfLists]
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Concat".into())), args } }
+    let v = ev.eval(args[0].clone());
+    match v {
+        Value::List(items) => {
+            if items.iter().all(|it| get_ds(it).is_some()) {
+                return union_general(ev, vec![Value::List(items), Value::Assoc(HashMap::from([(String::from("By"), Value::String(String::from("columns")))]))]);
+            }
+            if items.iter().all(|it| matches!(it, Value::List(_))) {
+                let mut out: Vec<Value> = Vec::new();
+                for it in items { if let Value::List(xs) = it { out.extend(xs); } }
+                return Value::List(out);
+            }
+            Value::Expr { head: Box::new(Value::Symbol("Concat".into())), args: vec![Value::List(items)] }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Concat".into())), args: vec![v] },
+    }
 }
 
 fn rename_cols(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -581,6 +762,8 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Sort", sort_ds as NativeFn, Attributes::empty());
     ev.register("Distinct", distinct_ds as NativeFn, Attributes::empty());
     ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
+    ev.register("Union", union_general as NativeFn, Attributes::empty());
+    ev.register("Concat", concat_general as NativeFn, Attributes::empty());
 }
 
 fn select_general(ev: &mut Evaluator, args: Vec<Value>) -> Value {
