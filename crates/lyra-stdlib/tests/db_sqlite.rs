@@ -30,15 +30,24 @@ fn sqlite_roundtrip_and_explain() {
     let ex = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&q)));
     let s = lyra_core::pretty::format_value(&ex);
     assert!(s.contains("WHERE (v > 6)"));
-    // GroupBy/Agg pushdown
-    let g = eval_str(&mut ev, &format!("Agg[GroupBy[Table[{}, \"t\"], {{\"id\"}}], <| \"cnt\"->Count[] |> ]", lyra_core::pretty::format_value(&conn)));
+    // GroupBy/Agg pushdown with multiple aggs
+    let g = eval_str(&mut ev, &format!("Agg[GroupBy[Table[{}, \"t\"], {{\"id\"}}], <| \"cnt\"->Count[], \"sumv\"->Sum[col[\"v\"]], \"avgv\"->Avg[col[\"v\"]], \"minv\"->Min[col[\"v\"]], \"maxv\"->Max[col[\"v\"]] |> ]", lyra_core::pretty::format_value(&conn)));
     let ex2 = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&g)));
     let s2 = lyra_core::pretty::format_value(&ex2);
     assert!(s2.contains("COUNT(*) AS cnt"));
+    assert!(s2.contains("SUM(v) AS sumv"));
+    assert!(s2.contains("AVG(v) AS avgv"));
+    assert!(s2.contains("MIN(v) AS minv"));
+    assert!(s2.contains("MAX(v) AS maxv"));
     assert!(s2.contains("GROUP BY id"));
     // Execute and check results
     let res = eval_str(&mut ev, &format!("Collect[{}]", lyra_core::pretty::format_value(&g)));
     let txt = lyra_core::pretty::format_value(&res);
     assert!(txt.contains("\"id\" -> 1") && txt.contains("\"cnt\" -> 2"));
-}
 
+    // Distinct on subset (keys)
+    let d = eval_str(&mut ev, &format!("Distinct[Table[{}, \"t\"], {{\"id\"}}]", lyra_core::pretty::format_value(&conn)));
+    let d_ex = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&d)));
+    let d_s = lyra_core::pretty::format_value(&d_ex);
+    assert!(d_s.to_lowercase().contains("select distinct id from"));
+}

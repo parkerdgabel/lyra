@@ -218,21 +218,21 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
             acc
         }
         Plan::Join { left, right, on, how } => {
-            // Support only simple joins of two DbTables without prior transforms
-            fn table_name_only(p: &Plan) -> Option<String> {
-                match p { Plan::DbTable { name, .. } => Some(name.clone()), _ => None }
+            // Try to fold both sides to SQL subqueries
+            let lsb = fold_sql(left, SqlBuild::default());
+            let rsb = fold_sql(right, SqlBuild::default());
+            if lsb.client_side.is_empty() && rsb.client_side.is_empty() {
+                if let (Some(lsql), Some(rsql)) = (build_sql_string(&lsb), build_sql_string(&rsb)) {
+                    let hows = if how=="left" { "LEFT JOIN" } else { "INNER JOIN" };
+                    let using = if !on.is_empty() { format!("USING ({})", on.join(", ")) } else { String::from("ON 1=1") };
+                    acc.table = Some(format!("({}) AS l {} ({}) AS r {}", lsql, hows, rsql, using));
+                    acc.pushed.push(format!("Join({})", how));
+                    return acc;
+                }
             }
-            if let (Some(lt), Some(rt)) = (table_name_only(left), table_name_only(right)) {
-                let hows = if how=="left" { "LEFT JOIN" } else { "INNER JOIN" };
-                let using = format!("USING ({})", on.join(", "));
-                acc.table = Some(format!("{} {} {} {}", lt, hows, rt, using));
-                acc.pushed.push(format!("Join({})", how));
-                acc
-            } else {
-                acc = fold_sql(left, acc);
-                acc.client_side.push("Join".into());
-                acc
-            }
+            acc = fold_sql(left, acc);
+            acc.client_side.push("Join".into());
+            acc
         }
         Plan::Sort { input, by } => {
             acc = fold_sql(input, acc);

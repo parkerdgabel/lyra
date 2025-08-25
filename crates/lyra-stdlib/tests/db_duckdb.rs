@@ -28,8 +28,10 @@ fn duckdb_join_and_list_tables() {
     ]);
     let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("a".into()), rows_a]));
     let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("b".into()), rows_b]));
-    // Join pushdown
-    let join_ds = eval_str(&mut ev, &format!("Join[Table[{}, \"a\"], Table[{}, \"b\"], {{\"id\"}}, <|How->\"inner\"|>]", lyra_core::pretty::format_value(&conn), lyra_core::pretty::format_value(&conn)));
+    // Join pushdown with filters on each side
+    let la = eval_str(&mut ev, &format!("FilterRows[(row)=>Greater[Part[row,\"x\"], 5], Table[{}, \"a\"]]", lyra_core::pretty::format_value(&conn)));
+    let lb = eval_str(&mut ev, &format!("FilterRows[(row)=>GreaterEqual[Part[row,\"y\"], 7], Table[{}, \"b\"]]", lyra_core::pretty::format_value(&conn)));
+    let join_ds = eval_str(&mut ev, &format!("Join[{}, {}, {{\"id\"}}, <|How->\"inner\"|>]", lyra_core::pretty::format_value(&la), lyra_core::pretty::format_value(&lb)));
     let ex = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&join_ds)));
     let s = lyra_core::pretty::format_value(&ex);
     assert!(s.to_lowercase().contains("join"));
@@ -41,5 +43,10 @@ fn duckdb_join_and_list_tables() {
     let lt = eval_str(&mut ev, &format!("ListTables[{}]", lyra_core::pretty::format_value(&conn)));
     let lt_s = lyra_core::pretty::format_value(&lt).to_lowercase();
     assert!(lt_s.contains("a") && lt_s.contains("b"));
-}
 
+    // Distinct with keys
+    let d = eval_str(&mut ev, &format!("Distinct[Table[{}, \"a\"], {{\"id\"}}]", lyra_core::pretty::format_value(&conn)));
+    let exd = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&d)));
+    let sdx = lyra_core::pretty::format_value(&exd).to_lowercase();
+    assert!(sdx.contains("select distinct id from"));
+}

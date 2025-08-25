@@ -200,7 +200,12 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
             if sql.trim().to_ascii_lowercase().starts_with("select ") {
-                let sql = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
+                if let Some(pm) = &params_map {
+                    match fetch_duckdb_rows_prepared(&st.dsn, &sql, pm) {
+                        Ok(rows) => return ev.eval(Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }),
+                        Err(_) => {}
+                    }
+                }
                 match fetch_duckdb_rows(&st.dsn, &sql) {
                     Ok(rows) => return ev.eval(Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }),
                     Err(_) => {}
@@ -589,8 +594,8 @@ fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
             if let Some(c) = st.duckdb_conn.as_ref() {
-                let sql = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
-                let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok)
+                let sql2 = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
+                let ok = c.lock().unwrap().execute_batch(&sql2).is_ok(); Value::Boolean(ok)
             } else { Value::Boolean(false) }
         }
     }
@@ -776,4 +781,11 @@ fn fetch_duckdb_rows(dsn: &str, sql: &str) -> duckdb::Result<Vec<Value>> {
         out.push(Value::Assoc(m));
     }
     Ok(out)
+}
+
+#[cfg(feature = "db_duckdb")]
+fn fetch_duckdb_rows_prepared(dsn: &str, sql: &str, params: &HashMap<String, Value>) -> duckdb::Result<Vec<Value>> {
+    // Placeholder: use literal substitution for now; future: true bound params when API stabilizes
+    let sql2 = substitute_params(sql, params);
+    fetch_duckdb_rows(dsn, &sql2)
 }
