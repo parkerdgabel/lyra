@@ -181,7 +181,7 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
             if !acc.group_by.is_empty() {
                 for g in &acc.group_by { sels.push((ident(g), None)); }
             }
-            // Render supported aggregates: Count[], Sum[col]
+            // Render supported aggregates: Count[], Sum[col], Avg/Mean[col], Min[col], Max[col]
             for (alias, spec) in aggs.iter() {
                 if let Value::Expr { head, args } = spec {
                     if let Value::Symbol(fname) = &**head {
@@ -194,6 +194,17 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
                                 if let Some(arg0) = args.get(0) {
                                     if let Some(csql) = col_expr_to_sql(arg0) { sels.push((format!("SUM({})", csql), Some(alias.clone()))); continue; }
                                 }
+                            }
+                            "Avg" | "Mean" => {
+                                if let Some(arg0) = args.get(0) {
+                                    if let Some(csql) = col_expr_to_sql(arg0) { sels.push((format!("AVG({})", csql), Some(alias.clone()))); continue; }
+                                }
+                            }
+                            "Min" => {
+                                if let Some(arg0) = args.get(0) { if let Some(csql) = col_expr_to_sql(arg0) { sels.push((format!("MIN({})", csql), Some(alias.clone()))); continue; } }
+                            }
+                            "Max" => {
+                                if let Some(arg0) = args.get(0) { if let Some(csql) = col_expr_to_sql(arg0) { sels.push((format!("MAX({})", csql), Some(alias.clone()))); continue; } }
                             }
                             _ => {}
                         }
@@ -231,7 +242,15 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
         }
         Plan::Distinct { input, cols } => {
             acc = fold_sql(input, acc);
-            if cols.is_none() { acc.distinct = true; acc.pushed.push("Distinct".into()); } else { acc.client_side.push("Distinct(cols)".into()); }
+            if let Some(keys) = cols {
+                // Distinct on subset: project to keys and apply DISTINCT
+                let sels: Vec<(String, Option<String>)> = keys.iter().map(|k| (ident(k), None)).collect();
+                acc.select = Some(sels);
+                acc.distinct = true;
+                acc.pushed.push("Distinct(keys)".into());
+            } else {
+                acc.distinct = true; acc.pushed.push("Distinct".into());
+            }
             acc
         }
         Plan::Union { inputs: _, by_columns: _ } => { acc.client_side.push("Union".into()); acc }

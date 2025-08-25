@@ -165,7 +165,7 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } }
     let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };
     let mut sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args: vec![args[0].clone(), other] } };
-    if args.len()>=3 { if let Value::Assoc(m) = ev.eval(args[2].clone()) { sql = substitute_params(&sql, &m); } }
+    let params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
     // For Mock connector, support a trivial form: "SELECT * FROM table" only
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };
@@ -185,6 +185,12 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
             // Only support SELECT queries for now; detect by leading keyword
             if sql.trim().to_ascii_lowercase().starts_with("select ") {
+                if let Some(pm) = &params_map {
+                    match fetch_sqlite_rows_prepared(&st.dsn, &sql, pm) {
+                        Ok(rows) => return ev.eval(Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }),
+                        Err(_) => {}
+                    }
+                }
                 match fetch_sqlite_rows(&st.dsn, &sql) {
                     Ok(rows) => return ev.eval(Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }),
                     Err(_) => {}
@@ -194,6 +200,7 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
             if sql.trim().to_ascii_lowercase().starts_with("select ") {
+                let sql = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
                 match fetch_duckdb_rows(&st.dsn, &sql) {
                     Ok(rows) => return ev.eval(Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![Value::List(rows)] }),
                     Err(_) => {}
@@ -564,17 +571,27 @@ fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } }
     let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
     let mut sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args: vec![args[0].clone(), other] } };
-    if args.len()>=3 { if let Value::Assoc(m) = ev.eval(args[2].clone()) { sql = substitute_params(&sql, &m); } }
+    let params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args } };
     drop(reg);
     match st.kind {
         ConnectorKind::Mock => Value::Boolean(true),
         #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
-            if let Some(c) = st.sqlite_conn.as_ref() { let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok) } else { Value::Boolean(false) }
+            if let Some(c) = st.sqlite_conn.as_ref() {
+                if let Some(pm) = &params_map {
+                    let ok = exec_sqlite_prepared_conn(&mut *c.lock().unwrap(), &sql, pm).is_ok();
+                    Value::Boolean(ok)
+                } else {
+                    let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok)
+                }
+            } else { Value::Boolean(false) }
         }
         #[cfg(feature = "db_duckdb")] ConnectorKind::DuckDb => {
-            if let Some(c) = st.duckdb_conn.as_ref() { let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok) } else { Value::Boolean(false) }
+            if let Some(c) = st.duckdb_conn.as_ref() {
+                let sql = if let Some(pm) = &params_map { substitute_params(&sql, pm) } else { sql };
+                let ok = c.lock().unwrap().execute_batch(&sql).is_ok(); Value::Boolean(ok)
+            } else { Value::Boolean(false) }
         }
     }
 }
@@ -629,6 +646,80 @@ fn fetch_sqlite_rows(dsn: &str, sql: &str) -> rusqlite::Result<Vec<Value>> {
         out.push(Value::Assoc(m));
     }
     Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn to_sqlite_value(v: &Value) -> rusqlite::types::Value {
+    use rusqlite::types::Value as SV;
+    match v {
+        Value::Symbol(s) if s=="Null" => SV::Null,
+        Value::Integer(n) => SV::Integer(*n),
+        Value::Real(f) => SV::Real(*f),
+        Value::Boolean(b) => SV::Integer(if *b {1} else {0}),
+        Value::String(s) => SV::Text(s.clone()),
+        _ => SV::Text(lyra_core::pretty::format_value(v)),
+    }
+}
+
+#[cfg(feature = "db_sqlite")]
+fn prepare_sql_and_params(sql: &str, params: &HashMap<String, Value>) -> (String, Vec<rusqlite::types::Value>) {
+    let mut out = String::with_capacity(sql.len()+16);
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    let mut vals: Vec<rusqlite::types::Value> = Vec::new();
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i+1; let mut j = start;
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j]==b'_') { j += 1; }
+            if j > start {
+                let key = &sql[start..j];
+                if let Some(v) = params.get(key) {
+                    out.push('?');
+                    vals.push(to_sqlite_value(v));
+                    i = j; continue;
+                }
+            }
+        }
+        out.push(bytes[i] as char); i += 1;
+    }
+    (out, vals)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn fetch_sqlite_rows_prepared(dsn: &str, sql: &str, params: &HashMap<String, Value>) -> rusqlite::Result<Vec<Value>> {
+    use rusqlite::params_from_iter;
+    let conn = sqlite_open(dsn)?;
+    let (sql2, vals) = prepare_sql_and_params(sql, params);
+    let mut stmt = conn.prepare(&sql2)?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count).map(|i| stmt.column_name(i).unwrap_or("").to_string()).collect();
+    let mut rows = stmt.query(params_from_iter(vals))?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut m: HashMap<String, Value> = HashMap::new();
+        for i in 0..col_count {
+            let key = col_names.get(i).cloned().unwrap_or_else(|| format!("col{}", i+1));
+            let v = match row.get_ref(i)? {
+                rusqlite::types::ValueRef::Null => Value::Symbol("Null".into()),
+                rusqlite::types::ValueRef::Integer(n) => Value::Integer(n),
+                rusqlite::types::ValueRef::Real(f) => Value::Real(f),
+                rusqlite::types::ValueRef::Text(t) => Value::String(String::from_utf8_lossy(t).to_string()),
+                rusqlite::types::ValueRef::Blob(b) => Value::String(base64::engine::general_purpose::STANDARD.encode(b)),
+            };
+            m.insert(key, v);
+        }
+        out.push(Value::Assoc(m));
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn exec_sqlite_prepared_conn(conn: &mut rusqlite::Connection, sql: &str, params: &HashMap<String, Value>) -> rusqlite::Result<()> {
+    use rusqlite::params_from_iter;
+    let (sql2, vals) = prepare_sql_and_params(sql, params);
+    let mut stmt = conn.prepare(&sql2)?;
+    let _ = stmt.execute(params_from_iter(vals))?;
+    Ok(())
 }
 
 // ---------- DuckDB helpers (feature-gated) ----------
