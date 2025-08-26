@@ -4,7 +4,7 @@
 *)
 
 tmp := "target/tmp/env";
-_ := Run["mkdir", "-p", tmp];
+MakeDirectory[tmp, <|"Parents"->True|>];
 dotenv := PathJoin[{tmp, ".env"}];
 WriteFile[dotenv, "FOO=bar\nHOME_ALIAS=${HOME}\n"];
 

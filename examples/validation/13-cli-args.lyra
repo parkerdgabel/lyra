@@ -8,5 +8,6 @@ args := ArgsParse[{"--name", "--count"}];
 args;                                         (* show parsed assoc: <|Options->..., Flags->..., Rest->...|> *)
 
 name := Lookup[Part[args, "Options"], "name"];  (* string or Null *)
+name2 := If[name == Null, "World", name];
 greet := (n_) => StringJoin[{"Hello, ", n, "!"}];
-greet[name];
+greet[name2];

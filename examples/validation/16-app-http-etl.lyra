@@ -3,15 +3,15 @@
   Requires network. Writes output under target/tmp.
 *)
 
-tmp := "target/tmp/etl"; _ := Run["mkdir", "-p", tmp];
+tmp := "target/tmp/etl"; MakeDirectory[tmp, <|"Parents"->True|>];
 url := "https://httpbin.org/json";
 
-raw := HttpDownloadCached[url, <|"Ttl"->60|>];
-data := JsonParse[raw];
+resp := HttpGet[url];
+data := Part[resp, "json"];  (* httpbin returns JSON; no branch needed *)
 
 (* Project some fields if present; defensive Map *)
-items := Lookup[data, "slideshow"] // Lookup[#, "slides"] &;
-rows := Map[(<|"title"->Lookup[#, "title"], "type"->Lookup[#, "type"]|>)&, items];
+slides := Lookup[Lookup[data, "slideshow"], "slides"];
+rows := Map[(<|"title"->Lookup[#, "title"], "type"->Lookup[#, "type"]|>)&, slides];
 csv := RenderCSV[rows];
 out := PathJoin[{tmp, "slides.csv"}]; WriteCSV[out, rows];
 out;

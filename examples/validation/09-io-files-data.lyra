@@ -12,5 +12,9 @@ ReadFile[path];                         (* => "hello lyra" *)
 
 (* JSON/YAML/TOML parse/stringify *)
 JsonStringify[<|a->1, b->2|>];
-YamlParse["a: 1\nb: 2\n"];           (* => <|a->1, b->2|> *)
-TomlParse["[x]\ny=1\n"];               (* => <|x-><|y->1|>|> *)
+YamlParse["a: 1
+b: 2
+"];           (* => <|a->1, b->2|> *)
+TomlParse["[x]
+y=1
+"];               (* => <|x-><|y->1|>|> *)

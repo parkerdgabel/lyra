@@ -4,8 +4,9 @@
 *)
 
 tmp := "target/tmp/fs";
-_ := Run["rm", "-rf", tmp];
-_ := Run["mkdir", "-p", PathJoin[{tmp, "sub"}]];
+_ := Remove[tmp, <|"Recursive"->True|>];
+MakeDirectory[tmp, <|"Parents"->True|>];
+MakeDirectory[PathJoin[{tmp, "sub"}], <|"Parents"->True|>];
 WriteFile[PathJoin[{tmp, "a.txt"}], "A"];
 WriteFile[PathJoin[{tmp, "sub", "b.log"}], "B"];
 

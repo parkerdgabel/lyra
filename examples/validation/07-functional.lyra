@@ -13,5 +13,5 @@ Nest[(#*2)&, 3, 4];                      (* => 48 *)
 (* Compose pipelines *)
 Through[{ToUpper, (StringJoin[{"X", #}])&}, "ab"];  (* => {"AB", "Xab"} *)
 
-(* Try/Catch/Finally style *)
-Try[1/0, "oops"];                        (* => "oops" *)
+(* Try with explicit Throw to demonstrate handler *)
+Try[Throw["boom"], "oops"];              (* => "oops" *)

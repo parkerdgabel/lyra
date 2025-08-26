@@ -3,10 +3,10 @@
 *)
 
 (* Slot-based pure function *)
-(# + 1) & [41];        (* => 42 *)
+f := (# + 1) &; f[41];        (* => 42 *)
 
 (* Multi-slot function *)
-(#1 * #2 + 1) & [6,7]; (* => 43 *)
+g := (#1 * #2 + 1) &; g[6,7]; (* => 43 *)
 
 (* Named-parameter lambda *)
 (x)=>x+2;              (* prints a PureFunction *)
@@ -17,4 +17,3 @@
 
 (* Map with pure function shortcut: (#*2)& /@ list *)
 (#*2)& /@ {1,2,3};     (* => {2,4,6} *)
-
