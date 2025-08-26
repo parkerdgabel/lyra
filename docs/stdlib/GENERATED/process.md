@@ -6,7 +6,7 @@
 | `Pipe` | `Pipe[cmds]` | Compose processes via pipes |
 | `Popen` | `Popen[cmd, args?, opts?]` | Spawn process and return handle |
 | `Run` | `Run[cmd, args?, opts?]` | Run a process and capture output |
-| `RunContainer` | `RunContainer[]` |  |
+| `RunContainer` | `RunContainer[spec, opts?]` | Run a container image; returns id or result. |
 | `RuntimeCapabilities` | `RuntimeCapabilities[]` | Supported features and APIs |
 | `RuntimeInfo` | `RuntimeInfo[]` | Runtime version and info |
 | `Which` | `Which[cmd]` | Resolve command path from PATH |

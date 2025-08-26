@@ -16,7 +16,7 @@
 | `Select` | `Select[ds, cols]` | Select/compute columns |
 | `SelectCols` | `SelectCols[ds, cols]` | Select subset of columns by name |
 | `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
-| `UnionByPosition` | `UnionByPosition[]` |  |
+| `UnionByPosition` | `UnionByPosition[ds1, ds2, …]` | Union datasets by column position. |
 
 ## `Agg`
 

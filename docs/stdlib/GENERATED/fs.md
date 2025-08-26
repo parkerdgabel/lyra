@@ -24,7 +24,7 @@
 | `RemoveVolume` | `RemoveVolume[name]` | Remove volume |
 | `TempDir` | `TempDir[]` | Create a unique temporary directory |
 | `TempFile` | `TempFile[]` | Create a unique temporary file |
-| `TemplateRender` | `TemplateRender[]` |  |
+| `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 | `WatchDirectory` | `WatchDirectory[path, handler, opts?]` | Watch directory and stream events (held) |
 | `WriteBytes` | `WriteBytes[path, bytes]` | Write bytes to file |
 | `WriteDataset` | `WriteDataset[conn, table, dataset, opts?]` | Write a Dataset into a table |
@@ -58,6 +58,13 @@
 - Examples:
   - `ds := ReadCSVDataset["people.csv"]`
   - `Head[ds, 3]  ==> {{...},{...},{...}}`
+
+## `TemplateRender`
+
+- Usage: `TemplateRender[template, data, opts?]`
+- Summary: Render Mustache-like template with assoc data.
+- Examples:
+  - `TemplateRender["Hello {{name}}!", <|"name"->"Lyra"|>]  ==> "Hello Lyra!"`
 
 ## `WriteBytes`
 

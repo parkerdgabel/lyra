@@ -31,25 +31,25 @@
 | `StringTrimRight` | `StringTrimRight[s]` | Trim from right |
 | `StringTrimSuffix` | `StringTrimSuffix[s, suffix]` | Remove suffix if present |
 | `StringTruncate` | `StringTruncate[s, len, ellipsis?]` | Truncate string to length |
-| `ToDegrees` | `ToDegrees[]` |  |
+| `ToDegrees` | `ToDegrees[x]` | Convert radians to degrees (Listable) |
 | `ToLower` | `ToLower[s]` | Lowercase string. |
-| `ToRadians` | `ToRadians[]` |  |
+| `ToRadians` | `ToRadians[x]` | Convert degrees to radians (Listable) |
 | `ToUpper` | `ToUpper[s]` | Uppercase string. |
-| `ToolsCacheClear` | `ToolsCacheClear[]` |  |
-| `ToolsCards` | `ToolsCards[]` |  |
-| `ToolsDescribe` | `ToolsDescribe[]` |  |
-| `ToolsDryRun` | `ToolsDryRun[]` |  |
-| `ToolsExportBundle` | `ToolsExportBundle[]` |  |
-| `ToolsExportOpenAI` | `ToolsExportOpenAI[]` |  |
-| `ToolsGetCapabilities` | `ToolsGetCapabilities[]` |  |
-| `ToolsInvoke` | `ToolsInvoke[]` |  |
-| `ToolsList` | `ToolsList[]` |  |
-| `ToolsRegister` | `ToolsRegister[]` |  |
-| `ToolsResolve` | `ToolsResolve[]` |  |
-| `ToolsSearch` | `ToolsSearch[]` |  |
-| `ToolsSetCapabilities` | `ToolsSetCapabilities[]` |  |
-| `ToolsUnregister` | `ToolsUnregister[]` |  |
-| `Top` | `Top[]` |  |
+| `ToolsCacheClear` | `ToolsCacheClear[]` | Clear tool registry caches. |
+| `ToolsCards` | `ToolsCards[cursor?, limit?]` | Paginate tool cards for external UIs. |
+| `ToolsDescribe` | `ToolsDescribe[id|name]` | Describe a tool by id or name. |
+| `ToolsDryRun` | `ToolsDryRun[id|name, args]` | Validate a tool call and return normalized args and estimates. |
+| `ToolsExportBundle` | `ToolsExportBundle[]` | Export all registered tool specs. |
+| `ToolsExportOpenAI` | `ToolsExportOpenAI[]` | Export tools as OpenAI functions format. |
+| `ToolsGetCapabilities` | `ToolsGetCapabilities[]` | Get current capabilities list. |
+| `ToolsInvoke` | `ToolsInvoke[id|name, args?]` | Invoke a tool with an args assoc. |
+| `ToolsList` | `ToolsList[]` | List available tools as cards. |
+| `ToolsRegister` | `ToolsRegister[spec|list]` | Register one or more tool specs. |
+| `ToolsResolve` | `ToolsResolve[pattern, topK?]` | Resolve tools matching a pattern. |
+| `ToolsSearch` | `ToolsSearch[query, topK?]` | Search tools by name/summary. |
+| `ToolsSetCapabilities` | `ToolsSetCapabilities[caps]` | Set allowed capabilities (e.g., net, fs). |
+| `ToolsUnregister` | `ToolsUnregister[id|name]` | Unregister a tool by id or name. |
+| `Top` | `Top[list, k, opts?]` | Take top-k items (optionally by key). |
 | `TopologicalSort` | `TopologicalSort[graph]` | Topologically sort DAG nodes |
 | `Touch` | `Touch[path]` | Create file if missing (update mtime) |
 
@@ -138,6 +138,13 @@
 - Examples:
   - `StringTrim["  hi  "]  ==> "hi"`
 
+## `ToDegrees`
+
+- Usage: `ToDegrees[x]`
+- Summary: Convert radians to degrees (Listable)
+- Examples:
+  - `ToDegrees[Pi]  ==> 180`
+
 ## `ToLower`
 
 - Usage: `ToLower[s]`
@@ -145,9 +152,31 @@
 - Examples:
   - `ToLower["Hello"]  ==> "hello"`
 
+## `ToRadians`
+
+- Usage: `ToRadians[x]`
+- Summary: Convert degrees to radians (Listable)
+- Examples:
+  - `ToRadians[180]  ==> 3.14159...`
+
 ## `ToUpper`
 
 - Usage: `ToUpper[s]`
 - Summary: Uppercase string.
 - Examples:
   - `ToUpper["hi"]  ==> "HI"`
+
+## `ToolsInvoke`
+
+- Usage: `ToolsInvoke[id|name, args?]`
+- Summary: Invoke a tool with an args assoc.
+- Examples:
+  - `ToolsInvoke["Hello", <|"name"->"Lyra"|>]  ==> "Hello, Lyra"`
+
+## `ToolsRegister`
+
+- Usage: `ToolsRegister[spec|list]`
+- Summary: Register one or more tool specs.
+- Examples:
+  - `ToolsRegister[<|"id"->"Hello", "summary"->"Say hi", "params"->{"name"}|>]  ==> <|...|>`
+  - `ToolsList[]  ==> {...}`

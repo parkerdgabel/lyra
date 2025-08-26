@@ -123,6 +123,16 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples("FixedPoint", &["FixedPoint[Cos, 1.0]  ==> 0.739... "]);
     ev.set_doc_examples("Identity", &["Identity[42]  ==> 42"]);
     ev.set_doc_examples("TryOr", &["TryOr[1/0, \"fallback\"]  ==> \"fallback\""]);
+    // Core extras
+    ev.set_doc("ReplaceRepeated", "Repeatedly apply rules until fixed point (held)", &["expr", "rules"]);
+    ev.set_doc("SetDownValues", "Attach DownValues to a symbol (held)", &["symbol", "defs"]);
+    ev.set_doc("GetDownValues", "Return DownValues for a symbol", &["symbol"]);
+    ev.set_doc("SetUpValues", "Attach UpValues to a symbol (held)", &["symbol", "defs"]);
+    ev.set_doc("GetUpValues", "Return UpValues for a symbol", &["symbol"]);
+    ev.set_doc("SetOwnValues", "Attach OwnValues to a symbol (held)", &["symbol", "defs"]);
+    ev.set_doc("GetOwnValues", "Return OwnValues for a symbol", &["symbol"]);
+    ev.set_doc("SetSubValues", "Attach SubValues to a symbol (held)", &["symbol", "defs"]);
+    ev.set_doc("GetSubValues", "Return SubValues for a symbol", &["symbol"]);
 
     // Assoc
     ev.set_doc("AssocGet", "Get value by key with optional default", &["assoc", "key", "default?"]);
@@ -185,6 +195,8 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("MapAsync", "Map to Futures over list", &["f", "list"]);
     ev.set_doc("Gather", "Await Futures in same structure", &["futures"]);
     ev.set_doc("Cancel", "Request cooperative cancellation", &["future"]);
+    ev.set_doc("BusyWait", "Block for n milliseconds (testing only)", &["ms"]);
+    ev.set_doc("Fail", "Construct a failure value (optionally with message)", &["message?"]);
     ev.set_doc("Scope", "Run body with resource limits (held)", &["opts", "body"]);
     ev.set_doc("StartScope", "Start a managed scope (held)", &["opts", "body"]);
     ev.set_doc("InScope", "Run body inside a scope (held)", &["scope", "body"]);
@@ -813,6 +825,31 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("KebabCase", &["KebabCase[\"HelloWorld\"]  ==> \"hello-world\""]);
     ev.set_doc_examples("Slugify", &["Slugify[\"Hello, World!\"]  ==> \"hello-world\""]);
     ev.set_doc_examples("TitleCase", &["TitleCase[\"hello world\"]  ==> \"Hello World\""]);
+    // Additional string/search helpers
+    ev.set_doc("StartsWith", "True if string starts with prefix", &["s", "prefix"]);
+    ev.set_doc("EndsWith", "True if string ends with suffix", &["s", "suffix"]);
+    ev.set_doc("IndexOf", "Index of substring (0-based; -1 if not found)", &["s", "substr", "from?"]);
+    ev.set_doc(
+        "LastIndexOf",
+        "Last index of substring (0-based; -1 if not found)",
+        &["s", "substr", "from?"],
+    );
+    ev.set_doc("IsBlank", "True if string is empty or whitespace", &["s"]);
+    ev.set_doc("TemplateRender", "Render Mustache-like template with assoc data.", &["template", "data", "opts?"]);
+    ev.set_doc_examples("StartsWith", &["StartsWith[\"foobar\", \"foo\"]  ==> True"]);
+    ev.set_doc_examples("EndsWith", &["EndsWith[\"foobar\", \"bar\"]  ==> True"]);
+    ev.set_doc_examples("IndexOf", &["IndexOf[\"banana\", \"na\"]  ==> 2", "IndexOf[\"banana\", \"x\"]  ==> -1"]);
+    ev.set_doc_examples("LastIndexOf", &["LastIndexOf[\"banana\", \"na\"]  ==> 4"]);
+    ev.set_doc_examples(
+        "IsBlank",
+        &["IsBlank[\"   \"]  ==> True", "IsBlank[\"a\"]  ==> False"],
+    );
+    ev.set_doc_examples(
+        "TemplateRender",
+        &[
+            "TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"",
+        ],
+    );
 
     // Regex utilities
     ev.set_doc("RegexIsMatch", "Test if regex matches string", &["s", "pattern"]);
@@ -837,6 +874,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Tan", "Tangent (radians)", &["x"]);
     ev.set_doc("Exp", "Natural exponential e^x", &["x"]);
     ev.set_doc("Sqrt", "Square root", &["x"]);
+    ev.set_doc("ToDegrees", "Convert radians to degrees (Listable)", &["x"]);
+    ev.set_doc("ToRadians", "Convert degrees to radians (Listable)", &["x"]);
+    ev.set_doc_examples("ToDegrees", &["ToDegrees[Pi]  ==> 180"]);
+    ev.set_doc_examples("ToRadians", &["ToRadians[180]  ==> 3.14159..."]);
     ev.set_doc("Log", "Natural logarithm", &["x"]);
     ev.set_doc("Signum", "Sign of number (-1,0,1)", &["x"]);
     ev.set_doc("Mod", "Modulo remainder ((a mod n) >= 0)", &["a", "n"]);
@@ -930,6 +971,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("NonNegativeQ", "Is number >= 0?", &["x"]);
     ev.set_doc("NonPositiveQ", "Is number <= 0?", &["x"]);
     ev.set_doc("NonEmptyQ", "Is list/string/assoc non-empty?", &["x"]);
+    ev.set_doc("EmptyQ", "Is list/string/assoc empty?", &["x"]);
 
     // Counting
     ev.set_doc("Count", "Count elements equal to value or matching predicate", &["list", "value|pred"]);
@@ -945,18 +987,265 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Prompt", "Prompt user for input (TTY)", &["text", "opts?"]);
     ev.set_doc("Confirm", "Ask yes/no question (TTY)", &["text", "opts?"]);
     ev.set_doc("PasswordPrompt", "Prompt for password without echo", &["text", "opts?"]);
+    ev.set_doc("ProgressBar", "Create a progress bar; returns id.", &["total"]);
+    ev.set_doc("ProgressAdvance", "Advance progress bar by n (default 1).", &["id", "n?"]);
+    ev.set_doc("ProgressFinish", "Finish and remove a progress bar.", &["id"]);
     ev.set_doc_examples("Confirm", &["Confirm[\"Proceed?\"]  ==> True|False"]);
+    ev.set_doc_examples(
+        "ProgressBar",
+        &[
+            "pb := ProgressBar[100]",
+            "ProgressAdvance[pb, 10]  ==> True",
+            "ProgressFinish[pb]  ==> True",
+        ],
+    );
 
     // JSON/HTML utils
     ev.set_doc("JsonEscape", "Escape string for JSON", &["s"]);
     ev.set_doc("JsonUnescape", "Unescape JSON-escaped string", &["s"]);
     ev.set_doc("HtmlEscape", "Escape string for HTML", &["s"]);
     ev.set_doc("HtmlUnescape", "Unescape HTML-escaped string", &["s"]);
+    ev.set_doc("DotenvLoad", "Load .env variables into process env.", &["path?", "opts?"]);
+    ev.set_doc("ConfigFind", "Search upwards for config files (e.g., .env, lyra.toml).", &["names?", "startDir?"]);
+    ev.set_doc("EnvExpand", "Expand $VAR or %VAR% style environment variables in text.", &["text", "opts?"]);
+    ev.set_doc_examples("DotenvLoad", &["DotenvLoad[]  ==> <|\"path\"->\".../.env\", \"loaded\"->n|>"]);
+    ev.set_doc_examples(
+        "ConfigFind",
+        &[
+            "ConfigFind[\"lyra.toml\"]  ==> <|\"path\"->\".../lyra.toml\"|>",
+        ],
+    );
+    ev.set_doc_examples(
+        "EnvExpand",
+        &[
+            "EnvExpand[\"Hello $USER\"]  ==> \"Hello alice\"",
+            "EnvExpand[\"%HOME%\\tmp\", <|\"Style\"->\"windows\"|>]  ==> \"/home/alice/tmp\"",
+        ],
+    );
 
     // HTTP helpers (server)
-    ev.set_doc("Cors", "CORS middleware builder", &["opts"]);
-    ev.set_doc("CorsApply", "Apply CORS to request/response", &["cors", "req"]);
+    ev.set_doc("Cors", "Build CORS middleware (wraps handler).", &["opts", "handler"]);
+    ev.set_doc(
+        "CorsApply",
+        "Apply CORS preflight/headers using options and handler.",
+        &["opts", "handler", "req"],
+    );
+    ev.set_doc_examples(
+        "Cors",
+        &[
+            "srv := HttpServe[Cors[<|\"AllowOrigin\"->\"*\"|>, (req)=>RespondText[\"ok\"]], <|\"Port\"->0|>]",
+            "HttpServerStop[srv]",
+        ],
+    );
+    ev.set_doc_examples(
+        "CorsApply",
+        &[
+            "CorsApply[<|\"AllowOrigin\"->\"*\", \"AllowMethods\"->\"GET\"|>, (r)=>RespondText[\"ok\"], <|\"method\"->\"OPTIONS\", \"headers\"-><||>|>]  ==> <|\"status\"->204, ...|>",
+        ],
+    );
+    ev.set_doc("AuthJwt", "JWT auth middleware; verifies Bearer token and injects claims.", &["opts", "handler"]);
+    ev.set_doc(
+        "AuthJwtApply",
+        "Verify JWT on request and call handler or return 401.",
+        &["opts", "handler", "req"],
+    );
+    ev.set_doc_examples(
+        "AuthJwtApply",
+        &[
+            "AuthJwtApply[<|\"Secret\"->\"s\"|>, (r)=>RespondText[\"ok\"], <||>]  ==> <|\"status\"->401, ...|>",
+            "tok := JwtSign[<|\"sub\"->\"u1\"|>, \"s\", <|\"Alg\"->\"HS256\"|>]",
+            "req := <|\"headers\"-><|\"Authorization\"->StringJoin[{\"Bearer \", tok}]|>|>",
+            "AuthJwtApply[<|\"Secret\"->\"s\"|>, (r)=>RespondText[\"ok\"], req]  ==> <|\"status\"->200, ...|>",
+        ],
+    );
     ev.set_doc("OpenApiGenerate", "Generate OpenAPI from routes", &["routes", "opts?"]);
+
+    // Tracing
+    ev.set_doc("Span", "Start a trace span and return its id.", &["name", "opts?"]);
+    ev.set_doc("SpanEnd", "End the last span or the given span id.", &["id?"]);
+    ev.set_doc("TraceGet", "Return collected spans as a list of assoc.", &[]);
+    ev.set_doc("TraceExport", "Export spans to a file (json).", &["format", "opts?"]);
+    ev.set_doc_examples(
+        "Span",
+        &[
+            "id := Span[\"work\", <|\"Attrs\"-><|\"module\"->\"demo\"|>|>]",
+            "SpanEnd[id]  ==> True",
+            "TraceGet[]  ==> {<|\"Name\"->\"work\", ...|>, ...}",
+        ],
+    );
+    ev.set_doc_examples(
+        "TraceExport",
+        &[
+            "Span[\"build\"]; SpanEnd[]; TraceExport[\"json\", <|\"Path\"->\"/tmp/spans.json\"|>]  ==> True",
+        ],
+    );
+
+    // Text searching utilities
+    ev.set_doc("TextFind", "Find regex matches across files or text.", &["input", "pattern", "opts?"]);
+    ev.set_doc("TextCount", "Count regex matches per file and total.", &["input", "pattern", "opts?"]);
+    ev.set_doc(
+        "TextFilesWithMatch",
+        "List files that contain the pattern.",
+        &["input", "pattern", "opts?"],
+    );
+    ev.set_doc(
+        "TextLines",
+        "Return matching lines with positions for a pattern.",
+        &["input", "pattern", "opts?"],
+    );
+    ev.set_doc(
+        "TextReplace",
+        "Replace pattern across files; supports dry-run and backups.",
+        &["input", "pattern", "replacement", "opts?"],
+    );
+    ev.set_doc(
+        "TextDetectEncoding",
+        "Detect likely text encoding for files.",
+        &["input"],
+    );
+    ev.set_doc(
+        "TextSearch",
+        "Search text via regex, fuzzy, or index engine.",
+        &["input", "query", "opts?"],
+    );
+    ev.set_doc_examples(
+        "TextFind",
+        &["TextFind[\"hello world\", \"\\w+\"]  ==> <|\"matches\"->...|>"]);
+    ev.set_doc_examples(
+        "TextCount",
+        &["TextCount[\"a b a\", \"a\"]  ==> <|\"total\"->2, ...|>"]);
+    ev.set_doc_examples(
+        "TextFilesWithMatch",
+        &["TextFilesWithMatch[\"src\", \"TODO\"]  ==> <|\"files\"->{...}|>"]);
+    ev.set_doc_examples(
+        "TextLines",
+        &["TextLines[\"a\nTODO b\", \"TODO\"]  ==> <|\"lines\"->{<|\"lineNumber\"->2,...|>}|>"]);
+    ev.set_doc_examples(
+        "TextReplace",
+        &["TextReplace[\"src\", \"foo\", \"bar\", <|\"dryRun\"->True|>]  ==> <|...|>"]);
+    ev.set_doc_examples(
+        "TextDetectEncoding",
+        &["TextDetectEncoding[{\"file1.txt\"}]  ==> <|\"files\"->{<|\"file\"->..., \"encoding\"->...|>}|>"]);
+    ev.set_doc_examples(
+        "TextSearch",
+        &["TextSearch[\"hello\", \"hell\"]  ==> <|\"engine\"->\"fuzzy\", ...|>"]);
+
+    // UUIDs
+    ev.set_doc("UuidV4", "Generate a random UUID v4 string.", &[]);
+    ev.set_doc("UuidV7", "Generate a time-ordered UUID v7 string.", &[]);
+    ev.set_doc_examples("UuidV4", &["UuidV4[]  ==> \"xxxxxxxx-xxxx-4xxx-...\""]);
+    ev.set_doc_examples("UuidV7", &["UuidV7[]  ==> \"xxxxxxxx-xxxx-7xxx-...\""]);
+
+    // Part/Span helpers and packed arrays
+    ev.set_doc("Span", "Start a trace span and return its id.", &["name", "opts?"]);
+    ev.set_doc("SpanEnd", "End the last span or the given span id.", &["id?"]);
+    ev.set_doc("PackedArray", "Create a packed numeric array.", &["list", "opts?"]);
+    ev.set_doc("PackedToList", "Convert a packed array back to nested lists.", &["packed"]);
+    ev.set_doc("PackedShape", "Return the shape of a packed array.", &["packed"]);
+    ev.set_doc_examples("PackedShape", &["PackedShape[PackedArray[{{1,2},{3,4}}]]  ==> {2,2}"]);
+
+    // Tools registry (agent tools)
+    ev.set_doc("ToolsRegister", "Register one or more tool specs.", &["spec|list"]);
+    ev.set_doc("ToolsUnregister", "Unregister a tool by id or name.", &["id|name"]);
+    ev.set_doc("ToolsList", "List available tools as cards.", &[]);
+    ev.set_doc("ToolsCards", "Paginate tool cards for external UIs.", &["cursor?", "limit?"]);
+    ev.set_doc("ToolsDescribe", "Describe a tool by id or name.", &["id|name"]);
+    ev.set_doc("ToolsSearch", "Search tools by name/summary.", &["query", "topK?"]);
+    ev.set_doc("ToolsResolve", "Resolve tools matching a pattern.", &["pattern", "topK?"]);
+    ev.set_doc("ToolsInvoke", "Invoke a tool with an args assoc.", &["id|name", "args?"]);
+    ev.set_doc("ToolsExportOpenAI", "Export tools as OpenAI functions format.", &[]);
+    ev.set_doc("ToolsExportBundle", "Export all registered tool specs.", &[]);
+    ev.set_doc("ToolsSetCapabilities", "Set allowed capabilities (e.g., net, fs).", &["caps"]);
+    ev.set_doc("ToolsGetCapabilities", "Get current capabilities list.", &[]);
+    ev.set_doc("ToolsCacheClear", "Clear tool registry caches.", &[]);
+    ev.set_doc("ToolsDryRun", "Validate a tool call and return normalized args and estimates.", &["id|name", "args"]);
+    ev.set_doc("IdempotencyKey", "Generate a unique idempotency key.", &[]);
+    ev.set_doc_examples(
+        "ToolsRegister",
+        &[
+            "ToolsRegister[<|\"id\"->\"Hello\", \"summary\"->\"Say hi\", \"params\"->{\"name\"}|>]  ==> <|...|>",
+            "ToolsList[]  ==> {...}",
+        ],
+    );
+    ev.set_doc_examples(
+        "ToolsInvoke",
+        &[
+            "ToolsInvoke[\"Hello\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello, Lyra\"",
+        ],
+    );
+
+    // Policy
+    ev.set_doc("WithPolicy", "Evaluate body with temporary tool capabilities.", &["opts", "body"]);
+    ev.set_doc_examples(
+        "WithPolicy",
+        &[
+            "WithPolicy[<|\"Capabilities\"->{\"net\"}|>, HttpGet[\"https://example.com\"]]",
+        ],
+    );
+
+    // Paths / env helpers
+    ev.set_doc("XdgDirs", "Return XDG base directories (data, cache, config).", &[]);
+    ev.set_doc("ResolveRelative", "Resolve a path relative to current file/module.", &["path"]);
+
+    // Models / ML / NN
+    ev.set_doc("Model", "Construct a model handle by id or spec.", &["id|spec"]);
+    ev.set_doc("ModelsList", "List available model providers/ids.", &[]);
+    ev.set_doc("NetGraph", "Construct a simple network graph from layers and edges.", &["nodes", "edges", "opts?"]);
+    ev.set_doc("Chat", "Chat completion with messages; supports tools and streaming.", &["model?", "opts"]);
+    ev.set_doc("Complete", "Text completion from prompt or options.", &["model?", "opts|prompt"]);
+    ev.set_doc("Embed", "Compute embeddings for text using a provider.", &["opts"]);
+    ev.set_doc("HybridSearch", "Combine keyword and vector search for retrieval.", &["store", "query", "opts?"]);
+    // Metrics
+    ev.set_doc("Metrics", "Return counters for tools/models/tokens/cost.", &[]);
+    ev.set_doc("MetricsReset", "Reset metrics counters to zero.", &[]);
+    ev.set_doc("CostAdd", "Add delta to accumulated USD cost; returns total.", &["amount"]);
+    ev.set_doc("CostSoFar", "Return accumulated USD cost.", &[]);
+    // RAG
+    ev.set_doc("RAGChunk", "Split text into overlapping chunks for indexing.", &["text", "opts?"]);
+    ev.set_doc("RAGIndex", "Embed and upsert documents into a vector store.", &["store", "docs", "opts?"]);
+    ev.set_doc("RAGRetrieve", "Retrieve similar chunks for a query.", &["store", "query", "opts?"]);
+    ev.set_doc("RAGAssembleContext", "Assemble a context string from matches.", &["matches", "opts?"]);
+    ev.set_doc("RAGAnswer", "Answer a question using retrieved context and a model.", &["store", "query", "opts?"]);
+    ev.set_doc("Cite", "Format citations from retrieval matches or answers.", &["matchesOrAnswer", "opts?"]);
+    ev.set_doc("Citations", "Normalize citations from matches or answer.", &["matchesOrAnswer"]);
+
+    // Collections and datasets
+    ev.set_doc("Top", "Take top-k items (optionally by key).", &["list", "k", "opts?"]);
+    ev.set_doc("UnionByPosition", "Union datasets by column position.", &["ds1", "ds2", "…"]);
+    ev.set_doc("col", "Column accessor helper for Dataset expressions.", &["name"]);
+    ev.set_doc("__DatasetFromDbTable", "Internal: create Dataset from DB table.", &["conn", "table"]);
+    ev.set_doc("__SQLToRows", "Internal: run SQL and return rows.", &["conn", "sql", "params?"]);
+    ev.set_doc("Cast", "Cast a value to a target type (string, integer, real, boolean).", &["value", "type"]);
+
+    // Math extras
+    ev.set_doc("Trunc", "Truncate toward zero (Listable).", &["x"]);
+    ev.set_doc("NthRoot", "Principal nth root of a number.", &["x", "n"]);
+    // Algebra
+    ev.set_doc("Simplify", "Simplify algebraic expression.", &["expr"]);
+    ev.set_doc("Expand", "Distribute products over sums once.", &["expr"]);
+    ev.set_doc("ExpandAll", "Fully expand products over sums.", &["expr"]);
+    ev.set_doc("CollectTerms", "Collect like terms in a sum.", &["expr"]);
+    ev.set_doc("CollectTermsBy", "Collect terms by function or key.", &["expr", "by"]);
+    ev.set_doc("Factor", "Factor a polynomial expression.", &["expr"]);
+    ev.set_doc("D", "Differentiate expression w.r.t. variable.", &["expr", "var"]);
+    ev.set_doc("Apart", "Partial fraction decomposition.", &["expr", "var?"]);
+    ev.set_doc("Solve", "Solve equations for variables.", &["eqns", "vars?"]);
+    ev.set_doc("Roots", "Polynomial roots for univariate polynomial.", &["poly", "var?"]);
+    ev.set_doc("CancelRational", "Cancel common factors in a rational expression.", &["expr"]);
+
+    // Memory/session
+    ev.set_doc("Remember", "Append item to named session buffer.", &["session", "item"]);
+    ev.set_doc("Recall", "Return recent items from session (with optional query).", &["session", "query?", "opts?"]);
+    ev.set_doc("SessionClear", "Clear a named session buffer.", &["session"]);
+
+    // Containers
+    ev.set_doc("PingContainers", "Check if container engine is reachable.", &[]);
+    ev.set_doc("RunContainer", "Run a container image; returns id or result.", &["spec", "opts?"]);
+    ev.set_doc("ImageHistory", "Show history/metadata for an image.", &["ref"]);
+
+    // Module and project helpers
+    ev.set_doc("ModuleInfo", "Information about the current module (path, package).", &[]);
+    ev.set_doc("Exported", "Mark symbols as exported from current module.", &["symbols"]);
 
     // ---------------- Git ----------------
     ev.set_doc("GitVersion", "Get git client version string", &[]);
@@ -978,6 +1267,28 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("GitPush", "Push to remote", &["opts?"]);
     ev.set_doc("GitEnsureRepo", "Ensure Cwd is a git repo (init if needed)", &["opts?"]);
     ev.set_doc("GitStatusSummary", "Summarize status counts and branch", &["opts?"]);
+    // Dev / formatting / linting / release helpers
+    ev.set_doc("FormatLyraText", "Format Lyra source text (pretty printer).", &["text"]);
+    ev.set_doc("FormatLyraFile", "Format a Lyra source file in place.", &["path"]);
+    ev.set_doc("FormatLyra", "Format Lyra from text or file path.", &["x"]);
+    ev.set_doc("LintLyraText", "Lint Lyra source text; returns diagnostics.", &["text"]);
+    ev.set_doc("LintLyraFile", "Lint a Lyra source file; returns diagnostics.", &["path"]);
+    ev.set_doc("LintLyra", "Lint Lyra from text or file path.", &["x"]);
+    ev.set_doc("ConfigLoad", "Load project config and environment.", &["opts?"]);
+    ev.set_doc("SecretsGet", "Get secret by key from provider (Env or File).", &["key", "provider"]);
+    ev.set_doc("VersionBump", "Bump semver in files: major/minor/patch.", &["level", "paths"]);
+    ev.set_doc("ChangelogGenerate", "Generate CHANGELOG entries from git log.", &["range?"]);
+    ev.set_doc("ReleaseTag", "Create annotated git tag (and optionally push).", &["version", "opts?"]);
+
+    // BDD helpers
+    ev.set_doc("Describe", "Define a test suite (held).", &["name", "items", "opts?"]);
+    ev.set_doc("It", "Define a test case (held).", &["name", "body", "opts?"]);
+    ev.set_doc_examples(
+        "Describe",
+        &[
+            "Describe[\"Math\", {It[\"adds\", 1+1==2]}]  ==> <|\"type\"->\"suite\"|>",
+        ],
+    );
     ev.set_doc("GitSmartCommit", "Stage + conventional commit (auto msg option)", &["opts?"]);
     ev.set_doc("GitCreateFeatureBranch", "Create and switch to a feature branch", &["opts?"]);
     ev.set_doc("GitSyncUpstream", "Fetch, rebase (or merge), and push upstream", &["opts?"]);

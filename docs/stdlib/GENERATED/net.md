@@ -2,11 +2,11 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `AuthJwt` | `AuthJwt[]` |  |
-| `AuthJwtApply` | `AuthJwtApply[]` |  |
+| `AuthJwt` | `AuthJwt[opts, handler]` | JWT auth middleware; verifies Bearer token and injects claims. |
+| `AuthJwtApply` | `AuthJwtApply[opts, handler, req]` | Verify JWT on request and call handler or return 401. |
 | `CookiesHeader` | `CookiesHeader[cookies]` | Build a Cookie header string from an assoc |
-| `Cors` | `Cors[opts]` | CORS middleware builder |
-| `CorsApply` | `CorsApply[cors, req]` | Apply CORS to request/response |
+| `Cors` | `Cors[opts, handler]` | Build CORS middleware (wraps handler). |
+| `CorsApply` | `CorsApply[opts, handler, req]` | Apply CORS preflight/headers using options and handler. |
 | `GetResponseCookies` | `GetResponseCookies[response]` | Parse Set-Cookie headers from a response map |
 | `HttpDelete` | `HttpDelete[url, opts]` | HTTP DELETE request (http/https) |
 | `HttpDownloadCached` | `HttpDownloadCached[url, path, opts?]` | Download a URL to a file with ETag/TTL caching; returns path and bytes written. |
@@ -35,6 +35,31 @@
 | `RespondNoContent` | `RespondNoContent[opts]` | Build an empty 204/205/304 response |
 | `RespondRedirect` | `RespondRedirect[location, opts]` | Build a redirect response (Location header) |
 | `RespondText` | `RespondText[text, opts]` | Build a text response for HttpServe |
+
+## `AuthJwtApply`
+
+- Usage: `AuthJwtApply[opts, handler, req]`
+- Summary: Verify JWT on request and call handler or return 401.
+- Examples:
+  - `AuthJwtApply[<|"Secret"->"s"|>, (r)=>RespondText["ok"], <||>]  ==> <|"status"->401, ...|>`
+  - `tok := JwtSign[<|"sub"->"u1"|>, "s", <|"Alg"->"HS256"|>]`
+  - `req := <|"headers"-><|"Authorization"->StringJoin[{"Bearer ", tok}]|>|>`
+  - `AuthJwtApply[<|"Secret"->"s"|>, (r)=>RespondText["ok"], req]  ==> <|"status"->200, ...|>`
+
+## `Cors`
+
+- Usage: `Cors[opts, handler]`
+- Summary: Build CORS middleware (wraps handler).
+- Examples:
+  - `srv := HttpServe[Cors[<|"AllowOrigin"->"*"|>, (req)=>RespondText["ok"]], <|"Port"->0|>]`
+  - `HttpServerStop[srv]`
+
+## `CorsApply`
+
+- Usage: `CorsApply[opts, handler, req]`
+- Summary: Apply CORS preflight/headers using options and handler.
+- Examples:
+  - `CorsApply[<|"AllowOrigin"->"*", "AllowMethods"->"GET"|>, (r)=>RespondText["ok"], <|"method"->"OPTIONS", "headers"-><||>|>]  ==> <|"status"->204, ...|>`
 
 ## `HttpDownloadCached`
 

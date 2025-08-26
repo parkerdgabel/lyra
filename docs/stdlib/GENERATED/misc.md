@@ -18,7 +18,7 @@
 | `AlignRight` | `AlignRight[text, width, pad?]` | Pad left to width |
 | `AnsiEnabled` | `AnsiEnabled[]` | Are ANSI colors enabled? |
 | `AnsiStyle` | `AnsiStyle[text, opts?]` | Style text with ANSI codes |
-| `Apart` | `Apart[]` |  |
+| `Apart` | `Apart[expr, var?]` | Partial fraction decomposition. |
 | `Apply` | `Apply[f, list]` | Apply head to list elements: Apply[f, {…}] |
 | `ArgsParse` | `ArgsParse[list]` | Parse CLI-like args to assoc |
 | `Ask` | `Ask[actor, msg]` | Request/response with actor (held) |
@@ -39,22 +39,22 @@
 | `BoxText` | `BoxText[text, opts?]` | Draw a box around text |
 | `BuildImage` | `BuildImage[context, opts?]` | Build image from context |
 | `BuildPackage` | `BuildPackage[path?, opts?]` | Build a package (requires lyra-pm) |
-| `BusyWait` | `BusyWait[]` |  |
+| `BusyWait` | `BusyWait[ms]` | Block for n milliseconds (testing only) |
 | `CamelCase` | `CamelCase[s]` | Convert to camelCase |
 | `Cancel` | `Cancel[future]` | Request cooperative cancellation |
-| `CancelRational` | `CancelRational[]` |  |
+| `CancelRational` | `CancelRational[expr]` | Cancel common factors in a rational expression. |
 | `CancelSchedule` | `CancelSchedule[token]` | Cancel scheduled task |
 | `CancelScope` | `CancelScope[scope]` | Cancel running scope |
 | `CancelWatch` | `CancelWatch[token]` | Cancel a directory watch |
 | `Capitalize` | `Capitalize[s]` | Capitalize first letter |
-| `Cast` | `Cast[]` |  |
+| `Cast` | `Cast[value, type]` | Cast a value to a target type (string, integer, real, boolean). |
 | `Catch` | `Catch[body]` | Catch a thrown value (held) |
 | `Ceiling` | `Ceiling[x]` | Smallest integer >= x |
-| `ChangelogGenerate` | `ChangelogGenerate[]` |  |
+| `ChangelogGenerate` | `ChangelogGenerate[range?]` | Generate CHANGELOG entries from git log. |
 | `Chart` | `Chart[spec, opts]` | Render a chart from a spec |
-| `Chat` | `Chat[]` |  |
-| `Citations` | `Citations[]` |  |
-| `Cite` | `Cite[]` |  |
+| `Chat` | `Chat[model?, opts]` | Chat completion with messages; supports tools and streaming. |
+| `Citations` | `Citations[matchesOrAnswer]` | Normalize citations from matches or answer. |
+| `Cite` | `Cite[matchesOrAnswer, opts?]` | Format citations from retrieval matches or answers. |
 | `Classify` | `Classify[data, opts]` | Train a classifier (baseline/logistic) |
 | `ClassifyMeasurements` | `ClassifyMeasurements[model, data, opts]` | Evaluate classifier metrics |
 | `Clip` | `Clip[x, min, max]` | Clamp value to [min,max] |
@@ -64,36 +64,36 @@
 | `Cluster` | `Cluster[data, opts]` | Cluster points (prototype) |
 | `Coalesce` | `Coalesce[values…]` | First non-null value |
 | `Collect` | `Collect[ds, limit?, opts?]` | Materialize dataset rows as a list |
-| `CollectTerms` | `CollectTerms[]` |  |
-| `CollectTermsBy` | `CollectTermsBy[]` |  |
+| `CollectTerms` | `CollectTerms[expr]` | Collect like terms in a sum. |
+| `CollectTermsBy` | `CollectTermsBy[expr, by]` | Collect terms by function or key. |
 | `Columnize` | `Columnize[lines, opts?]` | Align lines in columns |
 | `Columns` | `Columns[ds]` | List column names for a dataset |
-| `Complete` | `Complete[]` |  |
+| `Complete` | `Complete[model?, opts|prompt]` | Text completion from prompt or options. |
 | `Compose` | `Compose[f, g, …]` | Compose functions left-to-right |
-| `ConfigFind` | `ConfigFind[]` |  |
-| `ConfigLoad` | `ConfigLoad[]` |  |
+| `ConfigFind` | `ConfigFind[names?, startDir?]` | Search upwards for config files (e.g., .env, lyra.toml). |
+| `ConfigLoad` | `ConfigLoad[opts?]` | Load project config and environment. |
 | `Confirm` | `Confirm[text, opts?]` | Ask yes/no question (TTY) |
 | `ConstantFunction` | `ConstantFunction[c]` | Constant function returning c |
 | `ContainersClose` | `ContainersClose[]` | Close open fetch handles |
 | `ContainersFetch` | `ContainersFetch[paths, opts?]` | Fetch external resources for build |
 | `ConvolutionLayer` | `ConvolutionLayer[opts]` | 2D convolution layer |
 | `Cos` | `Cos[x]` | Cosine (radians) |
-| `CostAdd` | `CostAdd[]` |  |
-| `CostSoFar` | `CostSoFar[]` |  |
+| `CostAdd` | `CostAdd[amount]` | Add delta to accumulated USD cost; returns total. |
+| `CostSoFar` | `CostSoFar[]` | Return accumulated USD cost. |
 | `Count` | `Count[list, value|pred]` | Count elements equal to value or matching predicate |
 | `CreateContainer` | `CreateContainer[image, opts?]` | Create a container |
 | `CreateNetwork` | `CreateNetwork[opts?]` | Create network |
 | `CreateVolume` | `CreateVolume[opts?]` | Create volume |
 | `Cron` | `Cron[expr, body]` | Schedule with cron expression (held) |
 | `CurrentModule` | `CurrentModule[]` | Current module path/name |
-| `D` | `D[]` |  |
+| `D` | `D[expr, var]` | Differentiate expression w.r.t. variable. |
 | `DateDiff` | `DateDiff[a, b]` | Difference between two DateTime in ms |
 | `DateFormat` | `DateFormat[dt, fmt?]` | Format DateTime or epochMs to string |
 | `DateParse` | `DateParse[s]` | Parse date/time string to epochMs |
 | `DateTime` | `DateTime[spec]` | Build/parse DateTime assoc (UTC) |
 | `DegreeCentrality` | `DegreeCentrality[graph]` | Per-node degree centrality |
 | `Dequeue` | `Dequeue[queue]` | Dequeue value |
-| `Describe` | `Describe[]` |  |
+| `Describe` | `Describe[name, items, opts?]` | Define a test suite (held). |
 | `DescribeBuiltins` | `DescribeBuiltins[]` | List builtins with attributes (and docs when available). |
 | `DescribeContainers` | `DescribeContainers[]` | Describe available container APIs |
 | `DiffDuration` | `DiffDuration[a, b]` | Difference between DateTimes |
@@ -103,34 +103,34 @@
 | `DivMod` | `DivMod[a, n]` | Quotient and remainder |
 | `Divide` | `Divide[a, b]` | Divide two numbers. |
 | `Documentation` | `Documentation[name]` | Documentation card for a builtin. |
-| `DotenvLoad` | `DotenvLoad[]` |  |
+| `DotenvLoad` | `DotenvLoad[path?, opts?]` | Load .env variables into process env. |
 | `DropGraph` | `DropGraph[graph]` | Drop a graph handle |
 | `DropoutLayer` | `DropoutLayer[p]` | Dropout probability p |
 | `Duration` | `Duration[spec]` | Build Duration assoc from ms or fields |
 | `DurationParse` | `DurationParse[s]` | Parse human duration (e.g., 1h30m) |
-| `Embed` | `Embed[]` |  |
+| `Embed` | `Embed[opts]` | Compute embeddings for text using a provider. |
 | `EmbeddingLayer` | `EmbeddingLayer[opts]` | Embedding lookup layer |
-| `EmptyQ` | `EmptyQ[]` |  |
+| `EmptyQ` | `EmptyQ[x]` | Is list/string/assoc empty? |
 | `EndModule` | `EndModule[]` | End current module scope |
 | `EndOf` | `EndOf[dt, unit]` | End of unit (day/week/month) |
 | `EndScope` | `EndScope[scope]` | End scope and release resources |
-| `EndsWith` | `EndsWith[]` |  |
+| `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `Enqueue` | `Enqueue[queue, value]` | Enqueue value |
-| `EnvExpand` | `EnvExpand[]` |  |
+| `EnvExpand` | `EnvExpand[text, opts?]` | Expand $VAR or %VAR% style environment variables in text. |
 | `EqualsIgnoreCase` | `EqualsIgnoreCase[a, b]` | Case-insensitive string equality |
 | `Events` | `Events[opts?]` | Subscribe to runtime events |
 | `Exp` | `Exp[x]` | Natural exponential e^x |
-| `Expand` | `Expand[]` |  |
-| `ExpandAll` | `ExpandAll[]` |  |
+| `Expand` | `Expand[expr]` | Distribute products over sums once. |
+| `ExpandAll` | `ExpandAll[expr]` | Fully expand products over sums. |
 | `Explain` | `Explain[expr]` | Explain evaluation; returns trace steps when enabled. |
 | `ExplainContainers` | `ExplainContainers[]` | Explain container runtime configuration |
 | `ExplainSQL` | `ExplainSQL[ds]` | Render SQL for pushdown-capable parts |
 | `Export` | `Export[symbols]` | Mark symbol(s) as public |
 | `ExportImages` | `ExportImages[refs, path]` | Export images to an archive |
-| `Exported` | `Exported[]` |  |
-| `Factor` | `Factor[]` |  |
+| `Exported` | `Exported[symbols]` | Mark symbols as exported from current module. |
+| `Factor` | `Factor[expr]` | Factor a polynomial expression. |
 | `Factorial` | `Factorial[n]` | n! (product 1..n) |
-| `Fail` | `Fail[]` |  |
+| `Fail` | `Fail[message?]` | Construct a failure value (optionally with message) |
 | `FeatureExtract` | `FeatureExtract[data, opts]` | Learn preprocessing (impute/encode/standardize) |
 | `Figure` | `Figure[items, opts]` | Compose multiple charts in a grid |
 | `Finally` | `Finally[body, cleanup]` | Ensure cleanup runs (held) |
@@ -140,17 +140,17 @@
 | `Floor` | `Floor[x]` | Largest integer <= x |
 | `FoldList` | `FoldList[f, init, list]` | Cumulative fold producing intermediates |
 | `FormatDate` | `FormatDate[dt, fmt]` | Format DateTime with strftime pattern |
-| `FormatLyra` | `FormatLyra[]` |  |
-| `FormatLyraFile` | `FormatLyraFile[]` |  |
-| `FormatLyraText` | `FormatLyraText[]` |  |
+| `FormatLyra` | `FormatLyra[x]` | Format Lyra from text or file path. |
+| `FormatLyraFile` | `FormatLyraFile[path]` | Format a Lyra source file in place. |
+| `FormatLyraText` | `FormatLyraText[text]` | Format Lyra source text (pretty printer). |
 | `Future` | `Future[expr]` | Create a Future from an expression (held) |
 | `GCD` | `GCD[a, b, …]` | Greatest common divisor |
 | `Gather` | `Gather[futures]` | Await Futures in same structure |
 | `GenerateSBOM` | `GenerateSBOM[path?, opts?]` | Generate SBOM (requires lyra-pm) |
-| `GetDownValues` | `GetDownValues[]` |  |
-| `GetOwnValues` | `GetOwnValues[]` |  |
-| `GetSubValues` | `GetSubValues[]` |  |
-| `GetUpValues` | `GetUpValues[]` |  |
+| `GetDownValues` | `GetDownValues[symbol]` | Return DownValues for a symbol |
+| `GetOwnValues` | `GetOwnValues[symbol]` | Return OwnValues for a symbol |
+| `GetSubValues` | `GetSubValues[symbol]` | Return SubValues for a symbol |
+| `GetUpValues` | `GetUpValues[symbol]` | Return UpValues for a symbol |
 | `Gets` | `Gets[path?]` | Read entire stdin or file as string |
 | `GitAdd` | `GitAdd[paths, opts?]` | Stage files for commit |
 | `GitApply` | `GitApply[patch, opts?]` | Apply a patch (or check only) |
@@ -182,15 +182,15 @@
 | `Histogram` | `Histogram[data, opts]` | Render a histogram |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
-| `HybridSearch` | `HybridSearch[]` |  |
-| `IdempotencyKey` | `IdempotencyKey[]` |  |
+| `HybridSearch` | `HybridSearch[store, query, opts?]` | Combine keyword and vector search for retrieval. |
+| `IdempotencyKey` | `IdempotencyKey[]` | Generate a unique idempotency key. |
 | `Identity` | `Identity[x]` | Identity function: returns its argument |
 | `If` | `If[cond, then, else?]` | Conditional: If[cond, then, else?] (held) |
-| `ImageHistory` | `ImageHistory[]` |  |
+| `ImageHistory` | `ImageHistory[ref]` | Show history/metadata for an image. |
 | `ImportedSymbols` | `ImportedSymbols[]` | Assoc of package -> imported symbols |
 | `InScope` | `InScope[scope, body]` | Run body inside a scope (held) |
 | `IncidentEdges` | `IncidentEdges[graph, id, opts?]` | Edges incident to a node |
-| `IndexOf` | `IndexOf[]` |  |
+| `IndexOf` | `IndexOf[s, substr, from?]` | Index of substring (0-based; -1 if not found) |
 | `InspectContainer` | `InspectContainer[id]` | Inspect container |
 | `InspectImage` | `InspectImage[ref]` | Inspect image details |
 | `InspectNetwork` | `InspectNetwork[name]` | Inspect network |
@@ -198,19 +198,19 @@
 | `InspectVolume` | `InspectVolume[name]` | Inspect volume |
 | `InstallPackage` | `InstallPackage[name, opts?]` | Install a package (requires lyra-pm) |
 | `IntegerQ` | `IntegerQ[x]` | Is value an integer? |
-| `IsBlank` | `IsBlank[]` |  |
-| `It` | `It[]` |  |
+| `IsBlank` | `IsBlank[s]` | True if string is empty or whitespace |
+| `It` | `It[name, body, opts?]` | Define a test case (held). |
 | `KebabCase` | `KebabCase[s]` | Convert to kebab-case |
 | `KillProcess` | `KillProcess[proc, signal?]` | Send signal to process |
 | `LCM` | `LCM[a, b, …]` | Least common multiple |
-| `LastIndexOf` | `LastIndexOf[]` |  |
+| `LastIndexOf` | `LastIndexOf[s, substr, from?]` | Last index of substring (0-based; -1 if not found) |
 | `LayerNormLayer` | `LayerNormLayer[opts]` | Layer normalization layer |
 | `LimitRows` | `LimitRows[ds, n]` | Limit number of rows |
 | `LinePlot` | `LinePlot[data, opts]` | Render a line plot |
 | `LinearLayer` | `LinearLayer[opts]` | Linear (fully-connected) layer |
-| `LintLyra` | `LintLyra[]` |  |
-| `LintLyraFile` | `LintLyraFile[]` |  |
-| `LintLyraText` | `LintLyraText[]` |  |
+| `LintLyra` | `LintLyra[x]` | Lint Lyra from text or file path. |
+| `LintLyraFile` | `LintLyraFile[path]` | Lint a Lyra source file; returns diagnostics. |
+| `LintLyraText` | `LintLyraText[text]` | Lint Lyra source text; returns diagnostics. |
 | `LintPackage` | `LintPackage[path?, opts?]` | Lint a package (requires lyra-pm) |
 | `ListContainers` | `ListContainers[opts?]` | List containers |
 | `ListDifference` | `ListDifference[a, b]` | Elements in a not in b |
@@ -238,14 +238,14 @@
 | `MaxFlow` | `MaxFlow[graph, src, dst]` | Maximum flow value and cut |
 | `Mean` | `Mean[list]` | Arithmetic mean of list |
 | `Median` | `Median[list]` | Median of list |
-| `Metrics` | `Metrics[]` |  |
-| `MetricsReset` | `MetricsReset[]` |  |
+| `Metrics` | `Metrics[]` | Return counters for tools/models/tokens/cost. |
+| `MetricsReset` | `MetricsReset[]` | Reset metrics counters to zero. |
 | `MinimumSpanningTree` | `MinimumSpanningTree[graph]` | Edges in a minimum spanning tree |
 | `Minus` | `Minus[a, b?]` | Subtract or unary negate. |
 | `Mod` | `Mod[a, n]` | Modulo remainder ((a mod n) >= 0) |
-| `Model` | `Model[]` |  |
-| `ModelsList` | `ModelsList[]` |  |
-| `ModuleInfo` | `ModuleInfo[]` |  |
+| `Model` | `Model[id|spec]` | Construct a model handle by id or spec. |
+| `ModelsList` | `ModelsList[]` | List available model providers/ids. |
+| `ModuleInfo` | `ModuleInfo[]` | Information about the current module (path, package). |
 | `ModulePath` | `ModulePath[]` | Get module search path |
 | `MonotonicNow` | `MonotonicNow[]` | Monotonic clock milliseconds since start |
 | `MulLayer` | `MulLayer[opts]` | Elementwise multiply layer |
@@ -256,7 +256,7 @@
 | `NetApply` | `NetApply[net, x, opts]` | Apply network to input |
 | `NetDecoder` | `NetDecoder[net]` | Get network output decoder |
 | `NetEncoder` | `NetEncoder[net]` | Get network input encoder |
-| `NetGraph` | `NetGraph[]` |  |
+| `NetGraph` | `NetGraph[nodes, edges, opts?]` | Construct a simple network graph from layers and edges. |
 | `NetProperty` | `NetProperty[net, prop]` | Inspect network properties |
 | `NetSummary` | `NetSummary[net]` | Summarize network structure |
 | `NetTrain` | `NetTrain[net, data, opts]` | Train network on data |
@@ -266,7 +266,7 @@
 | `NonNegativeQ` | `NonNegativeQ[x]` | Is number >= 0? |
 | `NonPositiveQ` | `NonPositiveQ[x]` | Is number <= 0? |
 | `NowMs` | `NowMs[]` | Current UNIX time in milliseconds |
-| `NthRoot` | `NthRoot[]` |  |
+| `NthRoot` | `NthRoot[x, n]` | Principal nth root of a number. |
 | `NumberQ` | `NumberQ[x]` | Is value numeric (int/real)? |
 | `Offset` | `Offset[ds, n]` | Skip first n rows |
 | `OnFailure` | `OnFailure[body, handler]` | Handle Failure values (held) |
@@ -284,9 +284,9 @@
 | `PackagePath` | `PackagePath[]` | Get current $PackagePath |
 | `PackageVerify` | `PackageVerify[path?, opts?]` | Verify signatures (requires lyra-pm) |
 | `PackageVersion` | `PackageVersion[pkgPath]` | Read version from manifest |
-| `PackedArray` | `PackedArray[]` |  |
-| `PackedShape` | `PackedShape[]` |  |
-| `PackedToList` | `PackedToList[]` |  |
+| `PackedArray` | `PackedArray[list, opts?]` | Create a packed numeric array. |
+| `PackedShape` | `PackedShape[packed]` | Return the shape of a packed array. |
+| `PackedToList` | `PackedToList[packed]` | Convert a packed array back to nested lists. |
 | `ParallelEvaluate` | `ParallelEvaluate[exprs, opts?]` | Evaluate expressions concurrently (held) |
 | `ParallelMap` | `ParallelMap[f, list]` | Map in parallel over list |
 | `ParallelTable` | `ParallelTable[exprs]` | Evaluate list of expressions in parallel (held) |
@@ -300,7 +300,7 @@
 | `PauseContainer` | `PauseContainer[id]` | Pause a container |
 | `Peek` | `Peek[handle]` | Peek top of stack/queue |
 | `Ping` | `Ping[conn]` | Check connectivity for a database connection |
-| `PingContainers` | `PingContainers[]` |  |
+| `PingContainers` | `PingContainers[]` | Check if container engine is reachable. |
 | `PoolingLayer` | `PoolingLayer[opts]` | Pooling layer (Max/Avg) |
 | `Pop` | `Pop[stack]` | Pop from stack |
 | `PositiveQ` | `PositiveQ[x]` | Is number > 0? |
@@ -308,9 +308,9 @@
 | `Predict` | `Predict[data, opts]` | Train a regressor (baseline/linear) |
 | `PredictMeasurements` | `PredictMeasurements[model, data, opts]` | Evaluate regressor metrics |
 | `Private` | `Private[symbols]` | Mark symbol(s) as private |
-| `ProgressAdvance` | `ProgressAdvance[]` |  |
-| `ProgressBar` | `ProgressBar[]` |  |
-| `ProgressFinish` | `ProgressFinish[]` |  |
+| `ProgressAdvance` | `ProgressAdvance[id, n?]` | Advance progress bar by n (default 1). |
+| `ProgressBar` | `ProgressBar[total]` | Create a progress bar; returns id. |
+| `ProgressFinish` | `ProgressFinish[id]` | Finish and remove a progress bar. |
 | `ProjectDiscover` | `ProjectDiscover[start?]` | Search upwards for project.lyra |
 | `ProjectInfo` | `ProjectInfo[root?]` | Summarize project (name, version, paths) |
 | `ProjectInit` | `ProjectInit[path, opts?]` | Initialize new project (scaffold) |
@@ -329,13 +329,13 @@
 | `QueueEmptyQ` | `QueueEmptyQ[queue]` | Is queue empty? |
 | `QueueSize` | `QueueSize[queue]` | Size of queue |
 | `Quotient` | `Quotient[a, n]` | Integer division quotient |
-| `RAGAnswer` | `RAGAnswer[]` |  |
-| `RAGAssembleContext` | `RAGAssembleContext[]` |  |
-| `RAGChunk` | `RAGChunk[]` |  |
-| `RAGIndex` | `RAGIndex[]` |  |
-| `RAGRetrieve` | `RAGRetrieve[]` |  |
+| `RAGAnswer` | `RAGAnswer[store, query, opts?]` | Answer a question using retrieved context and a model. |
+| `RAGAssembleContext` | `RAGAssembleContext[matches, opts?]` | Assemble a context string from matches. |
+| `RAGChunk` | `RAGChunk[text, opts?]` | Split text into overlapping chunks for indexing. |
+| `RAGIndex` | `RAGIndex[store, docs, opts?]` | Embed and upsert documents into a vector store. |
+| `RAGRetrieve` | `RAGRetrieve[store, query, opts?]` | Retrieve similar chunks for a query. |
 | `RealQ` | `RealQ[x]` | Is value a real number? |
-| `Recall` | `Recall[]` |  |
+| `Recall` | `Recall[session, query?, opts?]` | Return recent items from session (with optional query). |
 | `Receive` | `Receive[ch, opts?]` | Receive value from channel |
 | `RegexFind` | `RegexFind[s, pattern]` | Find first regex capture groups |
 | `RegexFindAll` | `RegexFindAll[s, pattern]` | Find all regex capture groups |
@@ -344,22 +344,22 @@
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
 | `RegisterExports` | `RegisterExports[name, exports]` | Register exports for a package (internal) |
 | `RegisterTable` | `RegisterTable[conn, name, rows]` | Register in-memory rows as a table (mock) |
-| `ReleaseTag` | `ReleaseTag[]` |  |
+| `ReleaseTag` | `ReleaseTag[version, opts?]` | Create annotated git tag (and optionally push). |
 | `ReloadPackage` | `ReloadPackage[name]` | Reload a package |
 | `Remainder` | `Remainder[a, n]` | Integer division remainder |
-| `Remember` | `Remember[]` |  |
+| `Remember` | `Remember[session, item]` | Append item to named session buffer. |
 | `RenameCols` | `RenameCols[ds, mapping]` | Rename columns via mapping |
 | `RenameContainer` | `RenameContainer[id, name]` | Rename a container |
 | `Replace` | `Replace[expr, rules]` | Replace first match by rule(s). |
 | `ReplaceAll` | `ReplaceAll[expr, rules]` | Replace all matches by rule(s). |
 | `ReplaceFirst` | `ReplaceFirst[expr, rule]` | Replace first element(s) matching pattern. |
-| `ReplaceRepeated` | `ReplaceRepeated[]` |  |
+| `ReplaceRepeated` | `ReplaceRepeated[expr, rules]` | Repeatedly apply rules until fixed point (held) |
 | `ReshapeLayer` | `ReshapeLayer[shape]` | Reshape to given shape |
-| `ResolveRelative` | `ResolveRelative[]` |  |
+| `ResolveRelative` | `ResolveRelative[path]` | Resolve a path relative to current file/module. |
 | `RestartContainer` | `RestartContainer[id]` | Restart a container |
 | `Reverse` | `Reverse[list]` | Reverse a list |
 | `RightCompose` | `RightCompose[f, g, …]` | Compose functions right-to-left |
-| `Roots` | `Roots[]` |  |
+| `Roots` | `Roots[poly, var?]` | Polynomial roots for univariate polynomial. |
 | `Round` | `Round[x]` | Round to nearest integer |
 | `Rule` | `Rule[k, v]` | Format a rule (k->v) as a string |
 | `SampleEdges` | `SampleEdges[graph, k]` | Sample k edges uniformly |
@@ -370,14 +370,14 @@
 | `Schema` | `Schema[value]` | Return a minimal schema for a value/association. |
 | `Scope` | `Scope[opts, body]` | Run body with resource limits (held) |
 | `SearchImages` | `SearchImages[query, opts?]` | Search registry images |
-| `SecretsGet` | `SecretsGet[]` |  |
+| `SecretsGet` | `SecretsGet[key, provider]` | Get secret by key from provider (Env or File). |
 | `Send` | `Send[ch, value]` | Send value to channel (held) |
-| `SessionClear` | `SessionClear[]` |  |
+| `SessionClear` | `SessionClear[session]` | Clear a named session buffer. |
 | `Set` | `Set[symbol, value]` | Assignment: Set[symbol, value]. |
 | `SetCreate` | `SetCreate[values]` | Create a set from values |
 | `SetDelayed` | `SetDelayed[symbol, expr]` | Delayed assignment evaluated on use. |
 | `SetDifference` | `SetDifference[a, b]` | Elements in a not in b |
-| `SetDownValues` | `SetDownValues[]` |  |
+| `SetDownValues` | `SetDownValues[symbol, defs]` | Attach DownValues to a symbol (held) |
 | `SetEmptyQ` | `SetEmptyQ[set]` | Is set empty? |
 | `SetEqualQ` | `SetEqualQ[a, b]` | Are two sets equal? |
 | `SetFromList` | `SetFromList[list]` | Create set from list |
@@ -385,27 +385,27 @@
 | `SetIntersection` | `SetIntersection[a, b]` | Intersection of two sets |
 | `SetMemberQ` | `SetMemberQ[set, value]` | Is value a member of set? |
 | `SetModulePath` | `SetModulePath[path]` | Set module search path |
-| `SetOwnValues` | `SetOwnValues[]` |  |
+| `SetOwnValues` | `SetOwnValues[symbol, defs]` | Attach OwnValues to a symbol (held) |
 | `SetRemove` | `SetRemove[set, value]` | Remove value from set |
 | `SetSize` | `SetSize[set]` | Number of elements in set |
-| `SetSubValues` | `SetSubValues[]` |  |
+| `SetSubValues` | `SetSubValues[symbol, defs]` | Attach SubValues to a symbol (held) |
 | `SetSubsetQ` | `SetSubsetQ[a, b]` | Is a subset of b? |
 | `SetToList` | `SetToList[set]` | Convert set to list |
 | `SetUnion` | `SetUnion[a, b]` | Union of two sets |
-| `SetUpValues` | `SetUpValues[]` |  |
+| `SetUpValues` | `SetUpValues[symbol, defs]` | Attach UpValues to a symbol (held) |
 | `ShortestPaths` | `ShortestPaths[graph, start, opts?]` | Shortest path distances from start |
 | `ShowDataset` | `ShowDataset[ds, opts?]` | Pretty-print a dataset table to string |
 | `SignPackage` | `SignPackage[path?, opts?]` | Sign package (requires lyra-pm) |
 | `Signum` | `Signum[x]` | Sign of number (-1,0,1) |
-| `Simplify` | `Simplify[]` |  |
+| `Simplify` | `Simplify[expr]` | Simplify algebraic expression. |
 | `Sin` | `Sin[x]` | Sine (radians) |
 | `Sleep` | `Sleep[ms]` | Sleep for N milliseconds |
 | `Slugify` | `Slugify[s]` | Slugify for URLs |
 | `SnakeCase` | `SnakeCase[s]` | Convert to snake_case |
 | `SoftmaxLayer` | `SoftmaxLayer[opts]` | Softmax over last dimension |
-| `Solve` | `Solve[]` |  |
-| `Span` | `Span[]` |  |
-| `SpanEnd` | `SpanEnd[]` |  |
+| `Solve` | `Solve[eqns, vars?]` | Solve equations for variables. |
+| `Span` | `Span[name, opts?]` | Start a trace span and return its id. |
+| `SpanEnd` | `SpanEnd[id?]` | End the last span or the given span id. |
 | `SplitLines` | `SplitLines[s]` | Split string on 
  into lines |
 | `Sqrt` | `Sqrt[x]` | Square root |
@@ -416,7 +416,7 @@
 | `StartContainer` | `StartContainer[id]` | Start a container |
 | `StartOf` | `StartOf[dt, unit]` | Start of unit (day/week/month) |
 | `StartScope` | `StartScope[opts, body]` | Start a managed scope (held) |
-| `StartsWith` | `StartsWith[]` |  |
+| `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `Stats` | `Stats[id, opts?]` | Stream container stats |
 | `StopActor` | `StopActor[actor]` | Stop actor |
 | `StopContainer` | `StopContainer[id, opts?]` | Stop a container |
@@ -434,22 +434,22 @@
 | `Tell` | `Tell[actor, msg]` | Send message to actor (held) |
 | `TermSize` | `TermSize[]` | Current terminal width/height |
 | `TestPackage` | `TestPackage[path?, opts?]` | Run package tests (requires lyra-pm) |
-| `TextCount` | `TextCount[]` |  |
-| `TextDetectEncoding` | `TextDetectEncoding[]` |  |
-| `TextFilesWithMatch` | `TextFilesWithMatch[]` |  |
-| `TextFind` | `TextFind[]` |  |
-| `TextLines` | `TextLines[]` |  |
-| `TextReplace` | `TextReplace[]` |  |
-| `TextSearch` | `TextSearch[]` |  |
+| `TextCount` | `TextCount[input, pattern, opts?]` | Count regex matches per file and total. |
+| `TextDetectEncoding` | `TextDetectEncoding[input]` | Detect likely text encoding for files. |
+| `TextFilesWithMatch` | `TextFilesWithMatch[input, pattern, opts?]` | List files that contain the pattern. |
+| `TextFind` | `TextFind[input, pattern, opts?]` | Find regex matches across files or text. |
+| `TextLines` | `TextLines[input, pattern, opts?]` | Return matching lines with positions for a pattern. |
+| `TextReplace` | `TextReplace[input, pattern, replacement, opts?]` | Replace pattern across files; supports dry-run and backups. |
+| `TextSearch` | `TextSearch[input, query, opts?]` | Search text via regex, fuzzy, or index engine. |
 | `Thread` | `Thread[expr]` | Thread Sequence and lists into arguments. |
 | `Through` | `Through[fs, x]` | Through[{f,g}, x] applies each to x |
 | `Throw` | `Throw[x]` | Throw a value for Catch |
 | `TimeZoneConvert` | `TimeZoneConvert[dt, tz]` | Convert DateTime to another timezone |
 | `TitleCase` | `TitleCase[s]` | Convert to Title Case |
-| `TraceExport` | `TraceExport[]` |  |
-| `TraceGet` | `TraceGet[]` |  |
+| `TraceExport` | `TraceExport[format, opts?]` | Export spans to a file (json). |
+| `TraceGet` | `TraceGet[]` | Return collected spans as a list of assoc. |
 | `TransposeLayer` | `TransposeLayer[perm]` | Transpose dimensions |
-| `Trunc` | `Trunc[]` |  |
+| `Trunc` | `Trunc[x]` | Truncate toward zero (Listable). |
 | `Truncate` | `Truncate[text, width, ellipsis?]` | Truncate to width with ellipsis |
 | `Try` | `Try[body]` | Try body; capture failures (held) |
 | `TryOr` | `TryOr[body, default]` | Try body else default (held) |
@@ -465,8 +465,8 @@
 | `UrlFormDecode` | `UrlFormDecode[s]` | Parse form-encoded string to assoc |
 | `UrlFormEncode` | `UrlFormEncode[params]` | application/x-www-form-urlencoded from assoc |
 | `Using` | `Using[name, opts?]` | Load a package by name with import options |
-| `UuidV4` | `UuidV4[]` |  |
-| `UuidV7` | `UuidV7[]` |  |
+| `UuidV4` | `UuidV4[]` | Generate a random UUID v4 string. |
+| `UuidV7` | `UuidV7[]` | Generate a time-ordered UUID v7 string. |
 | `Variance` | `Variance[list]` | Variance of list |
 | `VectorCount` | `VectorCount[store]` | Count items in store |
 | `VectorDelete` | `VectorDelete[store, ids]` | Delete items by ids |
@@ -474,7 +474,7 @@
 | `VectorSearch` | `VectorSearch[store, query, opts]` | Search by vector or text (hybrid supported) |
 | `VectorStore` | `VectorStore[optsOrDsn]` | Create/open a vector store (memory or DSN) |
 | `VectorUpsert` | `VectorUpsert[store, rows]` | Insert or update vectors with metadata |
-| `VersionBump` | `VersionBump[]` |  |
+| `VersionBump` | `VersionBump[level, paths]` | Bump semver in files: major/minor/patch. |
 | `WaitContainer` | `WaitContainer[id, opts?]` | Wait for container to stop |
 | `WaitProcess` | `WaitProcess[proc]` | Wait for process to exit |
 | `When` | `When[cond, body]` | Evaluate body when condition is True (held) |
@@ -482,15 +482,15 @@
 | `With` | `With[<|vars|>, body]` | Lexically bind symbols within a body. |
 | `WithColumns` | `WithColumns[ds, defs]` | Add/compute new columns (held) |
 | `WithPackage` | `WithPackage[name, expr]` | Temporarily add a path to $PackagePath |
-| `WithPolicy` | `WithPolicy[]` |  |
+| `WithPolicy` | `WithPolicy[opts, body]` | Evaluate body with temporary tool capabilities. |
 | `Workflow` | `Workflow[steps]` | Run a list of steps sequentially (held) |
 | `Wrap` | `Wrap[text, width]` | Wrap text to width |
-| `XdgDirs` | `XdgDirs[]` |  |
+| `XdgDirs` | `XdgDirs[]` | Return XDG base directories (data, cache, config). |
 | `ZipCreate` | `ZipCreate[dest, inputs]` | Create a .zip archive from files/directories. |
 | `ZipExtract` | `ZipExtract[src, dest]` | Extract a .zip archive into a directory. |
-| `__DatasetFromDbTable` | `__DatasetFromDbTable[]` |  |
-| `__SQLToRows` | `__SQLToRows[]` |  |
-| `col` | `col[]` |  |
+| `__DatasetFromDbTable` | `__DatasetFromDbTable[conn, table]` | Internal: create Dataset from DB table. |
+| `__SQLToRows` | `__SQLToRows[conn, sql, params?]` | Internal: run SQL and return rows. |
+| `col` | `col[name]` | Column accessor helper for Dataset expressions. |
 
 ## `AddEdges`
 
@@ -562,6 +562,13 @@
 - Examples:
   - `Compose[f,g][x]  ==> f[g[x]]`
 
+## `ConfigFind`
+
+- Usage: `ConfigFind[names?, startDir?]`
+- Summary: Search upwards for config files (e.g., .env, lyra.toml).
+- Examples:
+  - `ConfigFind["lyra.toml"]  ==> <|"path"->".../lyra.toml"|>`
+
 ## `Confirm`
 
 - Usage: `Confirm[text, opts?]`
@@ -598,6 +605,13 @@
 - Examples:
   - `DateTime["2024-08-01T00:00:00Z"]  ==> <|"epochMs"->...|>`
 
+## `Describe`
+
+- Usage: `Describe[name, items, opts?]`
+- Summary: Define a test suite (held).
+- Examples:
+  - `Describe["Math", {It["adds", 1+1==2]}]  ==> <|"type"->"suite"|>`
+
 ## `DivMod`
 
 - Usage: `DivMod[a, n]`
@@ -613,12 +627,34 @@
   - `Divide[6, 3]  ==> 2`
   - `Divide[7, 2]  ==> 3.5`
 
+## `DotenvLoad`
+
+- Usage: `DotenvLoad[path?, opts?]`
+- Summary: Load .env variables into process env.
+- Examples:
+  - `DotenvLoad[]  ==> <|"path"->".../.env", "loaded"->n|>`
+
 ## `DurationParse`
 
 - Usage: `DurationParse[s]`
 - Summary: Parse human duration (e.g., 1h30m)
 - Examples:
   - `DurationParse["2h30m"]  ==> <|...|>`
+
+## `EndsWith`
+
+- Usage: `EndsWith[s, suffix]`
+- Summary: True if string ends with suffix
+- Examples:
+  - `EndsWith["foobar", "bar"]  ==> True`
+
+## `EnvExpand`
+
+- Usage: `EnvExpand[text, opts?]`
+- Summary: Expand $VAR or %VAR% style environment variables in text.
+- Examples:
+  - `EnvExpand["Hello $USER"]  ==> "Hello alice"`
+  - `EnvExpand["%HOME%\tmp", <|"Style"->"windows"|>]  ==> "/home/alice/tmp"`
 
 ## `Explain`
 
@@ -769,6 +805,22 @@
 - Examples:
   - `If[1<2, "yes", "no"]  ==> "yes"`
 
+## `IndexOf`
+
+- Usage: `IndexOf[s, substr, from?]`
+- Summary: Index of substring (0-based; -1 if not found)
+- Examples:
+  - `IndexOf["banana", "na"]  ==> 2`
+  - `IndexOf["banana", "x"]  ==> -1`
+
+## `IsBlank`
+
+- Usage: `IsBlank[s]`
+- Summary: True if string is empty or whitespace
+- Examples:
+  - `IsBlank["   "]  ==> True`
+  - `IsBlank["a"]  ==> False`
+
 ## `KebabCase`
 
 - Usage: `KebabCase[s]`
@@ -782,6 +834,13 @@
 - Summary: Least common multiple
 - Examples:
   - `LCM[6, 8]  ==> 24`
+
+## `LastIndexOf`
+
+- Usage: `LastIndexOf[s, substr, from?]`
+- Summary: Last index of substring (0-based; -1 if not found)
+- Examples:
+  - `LastIndexOf["banana", "na"]  ==> 4`
 
 ## `Map`
 
@@ -834,6 +893,13 @@
 - Examples:
   - `NowMs[]  ==> 1710000000000`
 
+## `PackedShape`
+
+- Usage: `PackedShape[packed]`
+- Summary: Return the shape of a packed array.
+- Examples:
+  - `PackedShape[PackedArray[{{1,2},{3,4}}]]  ==> {2,2}`
+
 ## `ParallelMap`
 
 - Usage: `ParallelMap[f, list]`
@@ -848,6 +914,15 @@
 - Examples:
   - `Power[2, 8]  ==> 256`
   - `2^3^2 parses as 2^(3^2)`
+
+## `ProgressBar`
+
+- Usage: `ProgressBar[total]`
+- Summary: Create a progress bar; returns id.
+- Examples:
+  - `pb := ProgressBar[100]`
+  - `ProgressAdvance[pb, 10]  ==> True`
+  - `ProgressFinish[pb]  ==> True`
 
 ## `ProjectDiscover`
 
@@ -971,6 +1046,22 @@
 - Examples:
   - `SnakeCase["HelloWorld"]  ==> "hello_world"`
 
+## `Span`
+
+- Usage: `Span[name, opts?]`
+- Summary: Start a trace span and return its id.
+- Examples:
+  - `id := Span["work", <|"Attrs"-><|"module"->"demo"|>|>]`
+  - `SpanEnd[id]  ==> True`
+  - `TraceGet[]  ==> {<|"Name"->"work", ...|>, ...}`
+
+## `StartsWith`
+
+- Usage: `StartsWith[s, prefix]`
+- Summary: True if string starts with prefix
+- Examples:
+  - `StartsWith["foobar", "foo"]  ==> True`
+
 ## `TarCreate`
 
 - Usage: `TarCreate[dest, inputs, opts?]`
@@ -986,6 +1077,56 @@
 - Examples:
   - `TarExtract["/tmp/bundle.tar", "/tmp/untar"]  ==> <|"path"->"/tmp/untar"|>`
 
+## `TextCount`
+
+- Usage: `TextCount[input, pattern, opts?]`
+- Summary: Count regex matches per file and total.
+- Examples:
+  - `TextCount["a b a", "a"]  ==> <|"total"->2, ...|>`
+
+## `TextDetectEncoding`
+
+- Usage: `TextDetectEncoding[input]`
+- Summary: Detect likely text encoding for files.
+- Examples:
+  - `TextDetectEncoding[{"file1.txt"}]  ==> <|"files"->{<|"file"->..., "encoding"->...|>}|>`
+
+## `TextFilesWithMatch`
+
+- Usage: `TextFilesWithMatch[input, pattern, opts?]`
+- Summary: List files that contain the pattern.
+- Examples:
+  - `TextFilesWithMatch["src", "TODO"]  ==> <|"files"->{...}|>`
+
+## `TextFind`
+
+- Usage: `TextFind[input, pattern, opts?]`
+- Summary: Find regex matches across files or text.
+- Examples:
+  - `TextFind["hello world", "\w+"]  ==> <|"matches"->...|>`
+
+## `TextLines`
+
+- Usage: `TextLines[input, pattern, opts?]`
+- Summary: Return matching lines with positions for a pattern.
+- Examples:
+  - `TextLines["a
+TODO b", "TODO"]  ==> <|"lines"->{<|"lineNumber"->2,...|>}|>`
+
+## `TextReplace`
+
+- Usage: `TextReplace[input, pattern, replacement, opts?]`
+- Summary: Replace pattern across files; supports dry-run and backups.
+- Examples:
+  - `TextReplace["src", "foo", "bar", <|"dryRun"->True|>]  ==> <|...|>`
+
+## `TextSearch`
+
+- Usage: `TextSearch[input, query, opts?]`
+- Summary: Search text via regex, fuzzy, or index engine.
+- Examples:
+  - `TextSearch["hello", "hell"]  ==> <|"engine"->"fuzzy", ...|>`
+
 ## `Thread`
 
 - Usage: `Thread[expr]`
@@ -1000,6 +1141,13 @@
 - Summary: Convert to Title Case
 - Examples:
   - `TitleCase["hello world"]  ==> "Hello World"`
+
+## `TraceExport`
+
+- Usage: `TraceExport[format, opts?]`
+- Summary: Export spans to a file (json).
+- Examples:
+  - `Span["build"]; SpanEnd[]; TraceExport["json", <|"Path"->"/tmp/spans.json"|>]  ==> True`
 
 ## `Truncate`
 
@@ -1050,6 +1198,20 @@
 - Examples:
   - `Using["lyra/math", <|"Import"->"All"|>]  ==> True`
 
+## `UuidV4`
+
+- Usage: `UuidV4[]`
+- Summary: Generate a random UUID v4 string.
+- Examples:
+  - `UuidV4[]  ==> "xxxxxxxx-xxxx-4xxx-..."`
+
+## `UuidV7`
+
+- Usage: `UuidV7[]`
+- Summary: Generate a time-ordered UUID v7 string.
+- Examples:
+  - `UuidV7[]  ==> "xxxxxxxx-xxxx-7xxx-..."`
+
 ## `When`
 
 - Usage: `When[cond, body]`
@@ -1063,6 +1225,13 @@
 - Summary: Lexically bind symbols within a body.
 - Examples:
   - `With[<|"x"->2|>, x^3]  ==> 8`
+
+## `WithPolicy`
+
+- Usage: `WithPolicy[opts, body]`
+- Summary: Evaluate body with temporary tool capabilities.
+- Examples:
+  - `WithPolicy[<|"Capabilities"->{"net"}|>, HttpGet["https://example.com"]]`
 
 ## `Workflow`
 
