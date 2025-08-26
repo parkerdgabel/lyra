@@ -1,0 +1,17 @@
+(*
+  19-git-highlevel.lyra — High-level Git workflows
+  Run: lyra-runner --file examples/validation/19-git-highlevel.lyra
+*)
+
+root := "target/tmp/git-hl";
+MakeDirectory[root, <|"Parents"->True|>];
+
+GitEnsureRepo[<|"Path"->root, "InitialBranch"->"main", "GitIgnore"->"target\n*.log\n"|>];
+GitStatusSummary[<|"Cwd"->root|>];
+
+(* feature branch *)
+GitCreateFeatureBranch[<|"Cwd"->root, "Name"->"feat/demo"|>];
+WriteBytes[root<>"/demo.txt", "hello\n"];
+GitSmartCommit[<|"Cwd"->root, "AutoMessage"->"true"|>];
+GitStatusSummary[<|"Cwd"->root|>];
+

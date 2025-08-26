@@ -56,8 +56,8 @@ default = [
   "core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain",
   "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text",
   "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs",
-  "time_cron", "fs_watch", "fs_archive", "module", "project",
-  "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https"
+  "time_cron", "fs_watch", "fs_archive", "module", "project", "git",
+  "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https", "dev"
 ]
 module = []
 project = []
@@ -81,6 +81,7 @@ trace = []
 metrics = []
 memory = []
 policy = []
+dev = []
 workflow = []
 vector = []
 rag = []
@@ -88,6 +89,7 @@ net = []
 time = []
 logging = []
 process = []
+git = []
 fs = []
 fs_archive = ["dep:zip","dep:tar","dep:flate2"]
 time_cron = ["dep:cron", "time"]

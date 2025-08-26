@@ -103,8 +103,21 @@ cargo build --release
 # Run tests to verify installation
 cargo test --lib
 
-# Start the interactive REPL
-cargo run -- repl
+# Start the interactive REPL (unified CLI)
+cargo run -p lyra-repl
+
+# Run MCP server over stdio (for MCP clients)
+cargo run -p lyra-repl -- mcp
+
+# Show help / version
+cargo run -p lyra-repl -- --help
+cargo run -p lyra-repl -- --version
+
+## Editor Integration (LSP)
+
+- Start the language server over stdio: `cargo run -p lyra-lsp`
+- Features (MVP): incremental diagnostics (parse errors), hover with summaries/usage for builtins, and completion for builtins with inline usage hints.
+- Configure your editor to launch the server with stdio transport for `*.lyra` files.
 
 ### Prototype REPL tips
 
@@ -542,6 +555,7 @@ Lyra includes early stdlib + CLI support to develop and consume packages ahead o
   - `ImportedSymbols[name?]`, `LoadedPackages[]`, `ModulePath[]`, `SetModulePath[...]` for introspection and path control.
 
 - CLI `lyra-pm` (skeleton):
+  - Projects: `lyra-pm init [<dir>] [--name <name>]` creates `project.lyra` and `src/main.lyra`; `lyra-pm validate [<dir>]` validates the manifest and prints diagnostics (add `--json` for machine output).
   - Scaffolding: `lyra-pm new <name>`; `lyra-pm new-module <pkg-path> <name>`
   - Path: `lyra-pm path` / `lyra-pm set-path <p1[,p2,...]>`
   - Imports/exports: `lyra-pm register-exports <name> a,b`; `lyra-pm using <name> [--all] [--import a,b] [--except x,y]`; `lyra-pm imports <name>`; `lyra-pm exports <name>`; `lyra-pm loaded`

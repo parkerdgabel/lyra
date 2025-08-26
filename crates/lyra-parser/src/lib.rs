@@ -1,3 +1,3 @@
 mod parser;
 
-pub use parser::{Parser, ParseResult};
+pub use parser::{Parser, ParseResult, ParseErrorDetailed};

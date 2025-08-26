@@ -11,10 +11,16 @@ lyra-core = { path = "../lyra-core" }
 lyra-parser = { path = "../lyra-parser" }
 lyra-runtime = { path = "../lyra-runtime" }
 lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-mcp = { path = "../lyra-mcp" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strsim = "0.11"
 terminal_size = "0.3"
+reedline = { version = "0.29", optional = true }
+
+[features]
+default = []
+reedline = ["dep:reedline"]
 
 [[bin]]
 name = "lyra"

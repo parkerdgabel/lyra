@@ -20,6 +20,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "metrics")] pub mod metrics;
 #[cfg(feature = "memory")] pub mod memory;
 #[cfg(feature = "policy")] pub mod policy;
+#[cfg(feature = "dev")] pub mod dev;
 #[cfg(feature = "workflow")] pub mod workflow;
 #[cfg(feature = "vector")] pub mod vector;
 #[cfg(feature = "rag")] pub mod rag;
@@ -27,6 +28,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "time")] pub mod time;
 #[cfg(feature = "logging")] pub mod logging;
 #[cfg(feature = "process")] pub mod process;
+#[cfg(feature = "git")] pub mod git;
 #[cfg(feature = "fs")] pub mod fs;
 #[cfg(feature = "dataset")] pub mod dataset;
 #[cfg(feature = "db")] pub mod db;
@@ -81,6 +83,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "metrics")] metrics::register_metrics(ev);
     #[cfg(feature = "memory")] memory::register_memory(ev);
     #[cfg(feature = "policy")] policy::register_policy(ev);
+    #[cfg(feature = "dev")] dev::register_dev(ev);
     #[cfg(feature = "workflow")] workflow::register_workflow(ev);
     #[cfg(feature = "vector")] vector::register_vector(ev);
     #[cfg(feature = "rag")] rag::register_rag(ev);
@@ -88,6 +91,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "time")] time::register_time(ev);
     #[cfg(feature = "logging")] logging::register_logging(ev);
     #[cfg(feature = "process")] process::register_process(ev);
+    #[cfg(feature = "git")] git::register_git(ev);
     #[cfg(feature = "fs")] fs::register_fs(ev);
     #[cfg(feature = "dataset")] dataset::register_dataset(ev);
     #[cfg(feature = "db")] db::register_db(ev);
@@ -131,6 +135,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "time" => { #[cfg(feature = "time")] time::register_time(ev) }
             "logging" => { #[cfg(feature = "logging")] logging::register_logging(ev) }
             "process" => { #[cfg(feature = "process")] process::register_process(ev) }
+            "git" => { #[cfg(feature = "git")] git::register_git(ev) }
             "fs" => { #[cfg(feature = "fs")] fs::register_fs(ev) }
             "dataset" => { #[cfg(feature = "dataset")] dataset::register_dataset(ev) }
             "db" => { #[cfg(feature = "db")] db::register_db(ev) }
@@ -150,6 +155,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "package" => { #[cfg(feature = "package")] package::register_package(ev) }
             "module" => { #[cfg(feature = "module")] module::register_module(ev) }
             "project" => { #[cfg(feature = "project")] project::register_project(ev) }
+            "dev" => { #[cfg(feature = "dev")] dev::register_dev(ev) }
             _ => {}
         }
     }
@@ -184,6 +190,7 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "time")] crate::time::register_time_filtered(ev, &predicate);
     #[cfg(feature = "logging")] crate::logging::register_logging_filtered(ev, &predicate);
     #[cfg(feature = "process")] crate::process::register_process_filtered(ev, &predicate);
+    #[cfg(feature = "git")] crate::git::register_git_filtered(ev, &predicate);
     #[cfg(feature = "fs")] crate::fs::register_fs_filtered(ev, &predicate);
     #[cfg(feature = "dataset")] crate::dataset::register_dataset_filtered(ev, &predicate);
     #[cfg(feature = "db")] crate::db::register_db_filtered(ev, &predicate);
@@ -202,6 +209,7 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "nn")] crate::nn::register_nn_filtered(ev, &predicate);
     #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
     #[cfg(feature = "package")] crate::package::register_package_filtered(ev, &predicate);
+    #[cfg(feature = "dev")] crate::dev::register_dev_filtered(ev, &predicate);
     #[cfg(feature = "testing")] crate::testing::register_testing_filtered(ev, &predicate);
 
     // Dispatchers last

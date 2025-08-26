@@ -1,0 +1,17 @@
+[package]
+name = "lyra-mcp"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-core = { path = "../lyra-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+[lib]
+name = "lyra_mcp"
+path = "src/lib.rs"

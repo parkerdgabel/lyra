@@ -3,6 +3,12 @@ use lyra_core::error::{Result, LyraError};
 
 pub type ParseResult<T> = Result<T>;
 
+#[derive(Clone, Debug)]
+pub struct ParseErrorDetailed {
+    pub message: String,
+    pub pos: usize,
+}
+
 pub struct Parser { src: Vec<char>, pos: usize }
 
 impl Parser {
@@ -33,6 +39,31 @@ impl Parser {
             self.skip_ws();
             if self.pos >= self.src.len() { break; }
             out.push(self.expr()?);
+            self.skip_ws();
+            if self.peekc()==Some(';') { self.nextc(); }
+        }
+        Ok(out)
+    }
+
+    pub fn parse_all_detailed(&mut self) -> std::result::Result<Vec<Value>, ParseErrorDetailed> {
+        match self.parse_all() {
+            Ok(v) => Ok(v),
+            Err(e) => Err(ParseErrorDetailed { message: format!("{}", e), pos: self.pos }),
+        }
+    }
+
+    pub fn parse_all_with_ranges(&mut self) -> std::result::Result<Vec<(Value, usize, usize)>, ParseErrorDetailed> {
+        let mut out: Vec<(Value, usize, usize)> = Vec::new();
+        while self.pos < self.src.len() {
+            self.skip_ws();
+            if self.pos >= self.src.len() { break; }
+            let start = self.pos;
+            let v = match self.expr() {
+                Ok(v) => v,
+                Err(e) => return Err(ParseErrorDetailed { message: format!("{}", e), pos: self.pos }),
+            };
+            let end = self.pos;
+            out.push((v, start, end));
             self.skip_ws();
             if self.peekc()==Some(';') { self.nextc(); }
         }

@@ -1,0 +1,18 @@
+[package]
+name = "lyra-lsp"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread","macros","io-std"] }
+tower-lsp = "0.20"
+lyra-core = { path = "../lyra-core" }
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-parser = { path = "../lyra-parser" }
+lyra-stdlib = { path = "../lyra-stdlib" }
+anyhow = "1"
+parking_lot = "0.12"
+regex = "1"
+url = "2"
+serde_json = "1"

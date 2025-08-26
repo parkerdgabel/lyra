@@ -30,6 +30,34 @@ fn main() {
 
     let cmd = args[0].as_str();
     match cmd {
+        "validate" => {
+            let expr = if args.len() >= 2 { format!("ProjectValidate[\"{}\"]", args[1]) } else { "ProjectValidate[]".into() };
+            run_print(&mut ev, &expr, opts);
+        }
+        "init" => {
+            // lyra-pm init [<dir>] [--name <name>]
+            let mut dir: Option<String> = None;
+            let mut name: Option<String> = None;
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--name" => { i+=1; if i<args.len() { name = Some(args[i].clone()); } }
+                    other => {
+                        if dir.is_none() { dir = Some(other.to_string()); }
+                    }
+                }
+                i+=1;
+            }
+            let expr = if name.is_some() || dir.is_some() {
+                let mut parts: Vec<String> = Vec::new();
+                if let Some(n) = name { parts.push(format!("Name->\"{}\"", n)); }
+                if let Some(d) = dir { parts.push(format!("Dir->\"{}\"", d)); }
+                format!("ProjectInit[<|{}|>]", parts.join(","))
+            } else {
+                "ProjectInit[]".into()
+            };
+            run_print(&mut ev, &expr, opts);
+        }
         "new" => {
             if args.len() < 2 { eprintln!("usage: lyra-pm new <name-or-path>"); std::process::exit(2); }
             let expr = format!("NewPackage[\"{}\"]", args[1]);
@@ -169,5 +197,5 @@ fn build_import_assoc(import: Option<&str>, except: Option<&str>) -> String {
 }
 
 fn print_help() {
-    eprintln!("lyra-pm (skeleton)\nUSAGE:\n  lyra-pm [--json] [--pretty] <command> [args]\n\n  Commands:\n    new <name-or-path>\n    new-module <pkg-path> <name>\n    list | info <name>\n    path | set-path <paths-comma-separated>\n    loaded | imports <name> | exports <name> | register-exports <name> <sym1[,sym2,...]>\n    using <name> [--all] [--import a,b] [--except x,y]\n    build|test|lint|pack|sbom|sign|publish|install|update|remove|login|logout|whoami|audit|verify\n");
+    eprintln!("lyra-pm (skeleton)\nUSAGE:\n  lyra-pm [--json] [--pretty] <command> [args]\n\n  Commands:\n    validate [<project-dir>]\n    init [<project-dir>] [--name <name>]\n    new <name-or-path>\n    new-module <pkg-path> <name>\n    list | info <name>\n    path | set-path <paths-comma-separated>\n    loaded | imports <name> | exports <name> | register-exports <name> <sym1[,sym2,...]>\n    using <name> [--all] [--import a,b] [--except x,y]\n    build|test|lint|pack|sbom|sign|publish|install|update|remove|login|logout|whoami|audit|verify\n");
 }

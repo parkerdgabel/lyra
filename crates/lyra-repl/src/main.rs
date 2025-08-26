@@ -13,9 +13,229 @@ use rustyline::validate::{Validator, ValidationContext, ValidationResult};
 use rustyline::{Event, EventHandler, ExternalPrinter};
 use rustyline::{KeyEvent, KeyCode, Modifiers};
 use rustyline::Cmd;
+use rustyline::Movement;
 use lyra_core::value::Value;
 use std::fs;
 use terminal_size::{Width, Height, terminal_size};
+
+#[cfg(feature = "reedline")]
+mod reedline_mode {
+    use super::*;
+    use lyra_core::value::Value;
+    use colored::Colorize;
+    use lyra_runtime::Evaluator;
+    use lyra_stdlib as stdlib;
+    use lyra_runtime::set_default_registrar;
+    use reedline::{DefaultPrompt, Reedline, Signal, Completer as RLCompleter, Suggestion, Span, Hinter as RLHinter, ReedlineMenu, DescriptionMenu, default_emacs_keybindings, Emacs, ReedlineEvent, Highlighter as RLHighlighter, StyledText};
+    use nu_ansi_term::Style as NuStyle;
+
+    #[derive(Clone)]
+    struct LyraCompleter {
+        builtins: std::sync::Arc<Vec<BuiltinEntry>>,
+        env_names: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        pkg_exports: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>>,
+        assoc_keys: std::sync::Arc<Vec<String>>,
+        doc_index: std::sync::Arc<DocIndex>,
+    }
+
+    impl RLCompleter for LyraCompleter {
+        fn complete(&self, line: &str, pos: usize) -> Vec<Suggestion> {
+            let mut out: Vec<(i64, Suggestion)> = Vec::new();
+            // Using[...] context
+            if let Some(ctx) = using_context(line, pos) {
+                match ctx {
+                    UsingCtx::PackageName(prefix) => {
+                        if let Ok(pkgs) = self.pkg_exports.lock() {
+                            for name in pkgs.keys() {
+                                if let Some(s)=fuzzy_score(name, &prefix) {
+                                    out.push((s+1200, Suggestion { value: name.clone(), description: Some("(package)".into()), span: Span { start: pos, end: pos } }));
+                                }
+                            }
+                        }
+                    }
+                    UsingCtx::OptionKey(prefix) => {
+                        for k in ["Import","Except"].into_iter() {
+                            if let Some(s)=fuzzy_score(k, &prefix) {
+                                out.push((s+1100, Suggestion { value: k.to_string(), description: None, span: Span { start: pos, end: pos } }));
+                            }
+                        }
+                    }
+                    UsingCtx::ImportValue { pkg, prefix } => {
+                        if let Ok(pkgs) = self.pkg_exports.lock() {
+                            if let Some(exports) = pkgs.get(&pkg) {
+                                for e in exports {
+                                    if let Some(s)=fuzzy_score(e, &prefix) {
+                                        out.push((s+1300, Suggestion { value: format!("\"{}\"", e), description: Some("(export)".into()), span: Span { start: pos, end: pos } }));
+                                    }
+                                }
+                                if let Some(s)=fuzzy_score("All", &prefix) {
+                                    out.push((s+1000, Suggestion { value: "All".into(), description: Some("(all)".into()), span: Span { start: pos, end: pos } }));
+                                }
+                            }
+                        }
+                    }
+                }
+                out.sort_by(|a,b| b.0.cmp(&a.0));
+                return out.into_iter().map(|(_,s)| s).collect();
+            }
+            // Assoc key
+            if let Some(prefix) = assoc_key_prefix(line, pos) {
+                for k in self.assoc_keys.iter() {
+                    if let Some(s)=fuzzy_score(k, &prefix) {
+                        out.push((s+1000, Suggestion { value: k.clone(), description: Some("(key)".into()), span: Span { start: pos, end: pos } }));
+                    }
+                }
+                out.sort_by(|a,b| b.0.cmp(&a.0));
+                return out.into_iter().map(|(_,s)| s).collect();
+            }
+            // Assoc value
+            if let Some((key, vprefix, quoted)) = assoc_value_context(line, pos) {
+                let mut values: Vec<String> = Vec::new();
+                let lower = key.to_lowercase();
+                if ["inplace","dryrun","verbose","pretty"].contains(&lower.as_str()) { values.extend(vec!["True".into(), "False".into()]); }
+                if lower=="cache" { values.extend(vec!["session".into(), "none".into()]); }
+                if lower=="output" { values.extend(vec!["expr".into(), "json".into()]); }
+                if lower=="assoc" || lower=="assocrender" { values.extend(vec!["auto".into(), "inline".into(), "pretty".into()]); }
+                if lower=="import" { values.push("All".into()); }
+                values.extend(vec!["Null".into(), "0".into(), "1".into(), "\"\"".into()]);
+                for val in values.into_iter() {
+                    if let Some(s)=fuzzy_score(&val, &vprefix) {
+                        let rep = if val=="True" || val=="False" || val=="Null" || val.chars().all(|c| c.is_ascii_digit()) || val.starts_with('"') { val.clone() } else { format!("\"{}\"", val) };
+                        out.push((s+900, Suggestion { value: if quoted { rep.clone() } else { rep }, description: Some("(value)".into()), span: Span { start: pos, end: pos } }));
+                    }
+                }
+                out.sort_by(|a,b| b.0.cmp(&a.0));
+                return out.into_iter().map(|(_,s)| s).collect();
+            }
+            // Default symbol/env completion
+            let (start, word) = current_symbol_token(line, pos);
+            if word.is_empty() { return Vec::new(); }
+            for b in self.builtins.iter() {
+                if let Some(s) = fuzzy_score(&b.name, &word) {
+                    // Build description with summary and usage
+                    let mut desc: Option<String> = None;
+                    if let Some((summary, _attrs, params)) = self.doc_index.map.get(&b.name) {
+                        let usage = if !params.is_empty() { format!("Usage: {}[{}]", b.name, params.join(", ")) } else { String::new() };
+                        let txt = match (summary.is_empty(), usage.is_empty()) {
+                            (true, true) => None,
+                            (false, true) => Some(summary.clone()),
+                            (true, false) => Some(usage),
+                            (false, false) => Some(format!("{} — {}", summary, usage)),
+                        };
+                        desc = txt;
+                    } else if !b.summary.is_empty() { desc = Some(b.summary.clone()); }
+                    out.push((s+1000, Suggestion { value: format!("{}[", b.name), description: desc, span: Span { start, end: pos } }));
+                }
+            }
+            if let Ok(envs) = self.env_names.lock() {
+                for n in envs.iter() {
+                    if let Some(s)=fuzzy_score(n, &word) {
+                        out.push((s+800, Suggestion { value: n.clone(), description: Some("(var)".into()), span: Span { start, end: pos } }));
+                    }
+                }
+            }
+            out.sort_by(|a,b| b.0.cmp(&a.0));
+            out.into_iter().map(|(_,s)| s).collect()
+        }
+    }
+
+    struct LyraRlHighlighter { builtins: std::sync::Arc<Vec<BuiltinEntry>>, env_names: std::sync::Arc<std::sync::Mutex<Vec<String>>> }
+
+    impl RLHighlighter for LyraRlHighlighter {
+        fn highlight(&self, line: &str, _cursor: usize) -> StyledText {
+            let mut st = StyledText::new();
+            let colored = match self.env_names.lock() { Ok(names) => super::highlight_lyra_line(line, &self.builtins, Some(&names)), _ => super::highlight_lyra_line(line, &self.builtins, None) };
+            st.push((NuStyle::new(), colored));
+            st
+        }
+    }
+
+    struct LyraHinter { doc_index: std::sync::Arc<DocIndex>, last: String }
+
+    impl RLHinter for LyraHinter {
+        fn handle(&mut self, line: &str, pos: usize, _history: &dyn reedline::History, use_ansi_coloring: bool) -> String {
+            let mut out = String::new();
+            if let Some(diag) = super::compute_live_diag(line) {
+                out = format!(" ✖ {}", diag.msg);
+                if use_ansi_coloring { out = out.red().bold().to_string(); }
+                self.last = out.clone();
+                return out;
+            }
+            if let Some((head, arg_idx)) = current_call_context(line, pos) {
+                if let Some((_, _attrs, params)) = self.doc_index.map.get(&head) {
+                    let name = if arg_idx < params.len() { params[arg_idx].clone() } else if !params.is_empty() { format!("{} (extra)", params.last().cloned().unwrap_or_default()) } else { String::new() };
+                    if !name.is_empty() { out = format!("  next: {}", name); }
+                }
+            }
+            self.last = out.clone();
+            out
+        }
+        fn complete_hint(&self) -> String { self.last.clone() }
+        fn next_hint_token(&self) -> String { self.last.clone() }
+    }
+
+    pub fn run() -> anyhow::Result<()> {
+        println!("{}", "Lyra REPL (reedline prototype)".bright_yellow().bold());
+        set_default_registrar(stdlib::register_all);
+        let mut ev = Evaluator::new();
+        stdlib::register_all(&mut ev);
+
+        let mut rl = Reedline::create();
+        // Build completer
+        let builtins = discover_builtins(&mut ev);
+        let doc_index = build_doc_index(&mut ev);
+        let env_names_shared: std::sync::Arc<std::sync::Mutex<Vec<String>>> = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let pkg_exports_shared: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>> = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let assoc_keys = std::sync::Arc::new(vec![
+            "MaxThreads".into(), "TimeBudgetMs".into(), "Import".into(), "Except".into(),
+            "replacement".into(), "inPlace".into(), "dryRun".into(), "backupExt".into(),
+        ]);
+        let completer = LyraCompleter {
+            builtins: std::sync::Arc::new(builtins),
+            env_names: env_names_shared.clone(),
+            pkg_exports: pkg_exports_shared.clone(),
+            assoc_keys: assoc_keys.clone(),
+            doc_index: doc_index.clone(),
+        };
+        rl = rl.with_completer(Box::new(completer));
+        rl = rl.with_highlighter(Box::new(LyraRlHighlighter { builtins: std::sync::Arc::new(builtins.clone()), env_names: env_names_shared.clone() }));
+        // Add a description menu for completions (shows summary/usage from Suggestion.description)
+        let completion_menu = Box::new(DescriptionMenu::default().with_name("lyra_menu"));
+        // Keybindings: Tab opens completion menu and starts navigation
+        let mut keybindings = default_emacs_keybindings();
+        keybindings.add_binding(
+            reedline::KeyModifiers::NONE,
+            reedline::KeyCode::Tab,
+            ReedlineEvent::UntilFound(vec![
+                ReedlineEvent::Menu("lyra_menu".to_string()),
+                ReedlineEvent::MenuNext,
+            ]),
+        );
+        let edit_mode = Box::new(Emacs::new(keybindings));
+        rl = rl.with_menu(ReedlineMenu::EngineCompleter(completion_menu)).with_edit_mode(edit_mode);
+        // Add a simple hinter for next parameter hints
+        rl = rl.with_hinter(Box::new(LyraHinter { doc_index: doc_index.clone(), last: String::new() }));
+        let prompt = DefaultPrompt::default();
+        loop {
+            // refresh env and package export data
+            if let Ok(mut n) = env_names_shared.lock() { *n = ev.env_keys(); }
+            if let Ok(mut p) = pkg_exports_shared.lock() { *p = collect_pkg_exports(&mut ev); }
+            match rl.read_line(&prompt) {
+                Ok(Signal::Success(line)) => {
+                    if line.trim().is_empty() { continue; }
+                    let mut p = lyra_parser::Parser::from_source(&line);
+                    match p.parse_all() {
+                        Ok(values) => { for v in values { let out = ev.eval(v); println!("{}", lyra_core::pretty::format_value(&out)); } }
+                        Err(e) => eprintln!("parse error: {}", e),
+                    }
+                }
+                Ok(Signal::CtrlC) => { println!("^C"); continue; }
+                Ok(Signal::CtrlD) | Err(_) => { println!("^D"); break; }
+            }
+        }
+        Ok(())
+    }
+}
 
 fn history_path() -> Option<std::path::PathBuf> {
     if let Ok(home) = std::env::var("HOME") {
@@ -23,6 +243,50 @@ fn history_path() -> Option<std::path::PathBuf> {
         p.push(".lyra_history");
         Some(p)
     } else { None }
+}
+
+fn print_parse_error(file: &str, src: &str, pos: usize, msg: &str) {
+    let (line, col) = byte_to_line_col(src, pos);
+    eprintln!("{}:{}:{}: error: {}", file, line, col, msg);
+    if let Some((ln, text)) = line_text(src, line) {
+        eprintln!("   {} | {}", ln, text);
+        let caret = caret_line(&text, col);
+        eprintln!("     | {}", caret);
+    }
+}
+
+fn byte_to_line_col(src: &str, pos: usize) -> (usize, usize) {
+    let mut line = 1usize; let mut col = 1usize; let mut idx = 0usize;
+    for ch in src.chars() {
+        if idx >= pos { break; }
+        if ch == '\n' { line += 1; col = 1; } else { col += 1; }
+        idx += ch.len_utf8();
+    }
+    (line, col)
+}
+
+fn line_text(src: &str, line: usize) -> Option<(usize, String)> {
+    let mut cur = 1usize; let mut start = 0usize;
+    for (i, ch) in src.char_indices() {
+        if ch == '\n' {
+            if cur == line { return Some((line, src[start..i].to_string())); }
+            cur += 1; start = i + 1;
+        }
+    }
+    if cur == line { return Some((line, src[start..].to_string())); }
+    None
+}
+
+fn caret_line(text: &str, col: usize) -> String {
+    let mut out = String::new();
+    let mut c = 1usize;
+    for ch in text.chars() {
+        if c >= col { break; }
+        match ch { '\t' => out.push('\t'), _ => out.push(' ') }
+        c += 1;
+    }
+    out.push('^');
+    out
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +305,247 @@ struct ReplHelper {
 
 impl Helper for ReplHelper {}
 
-impl Highlighter for ReplHelper {}
+impl Highlighter for ReplHelper {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
+        use std::borrow::Cow;
+        Cow::Owned(highlight_lyra_line(line, &self.builtins, Some(&self.env_names)))
+    }
+    fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
+        use std::borrow::Cow;
+        Cow::Owned(hint.dimmed().to_string())
+    }
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(&self, prompt: &'p str, _default: bool) -> std::borrow::Cow<'b, str> {
+        use std::borrow::Cow;
+        Cow::Owned(prompt.bright_black().to_string())
+    }
+    fn highlight_char(&self, _line: &str, _pos: usize, _forced: bool) -> bool { true }
+}
+
+#[derive(Clone, Debug)]
+struct LiveDiag { start: usize, end: usize, msg: String }
+
+fn compute_live_diag(s: &str) -> Option<LiveDiag> {
+    let ch: Vec<char> = s.chars().collect();
+    let mut i = 0usize;
+    let mut in_string = false;
+    let mut string_open: Option<usize> = None;
+    let mut esc = false;
+    let mut comment_stack: Vec<usize> = Vec::new();
+    let mut bracket_stack: Vec<(char, usize)> = Vec::new();
+    while i < ch.len() {
+        if !in_string {
+            if i + 1 < ch.len() && ch[i] == '(' && ch[i + 1] == '*' { comment_stack.push(i); i += 2; continue; }
+            if i + 1 < ch.len() && ch[i] == '*' && ch[i + 1] == ')' { if comment_stack.pop().is_none() { return Some(LiveDiag{ start: i, end: i+2, msg: "unexpected '*)'".into() }); } i += 2; continue; }
+        }
+        if comment_stack.len() > 0 { i += 1; continue; }
+        if ch[i] == '"' {
+            if !in_string { in_string = true; string_open = Some(i); esc = false; i += 1; continue; }
+            if !esc { in_string = false; string_open = None; i += 1; continue; }
+        }
+        if in_string { esc = ch[i] == '\\' && !esc; i += 1; continue; }
+        match ch[i] {
+            '('|'['|'{' => bracket_stack.push((ch[i], i)),
+            ')'|']'|'}' => {
+                if let Some((open,_pos)) = bracket_stack.pop() {
+                    if !matches!((open, ch[i]), ('(',')')|('[',']')|('{','}')) {
+                        return Some(LiveDiag{ start: i, end: i+1, msg: format!("mismatched '{}'", ch[i]) });
+                    }
+                } else {
+                    return Some(LiveDiag{ start: i, end: i+1, msg: format!("unexpected '{}'", ch[i]) });
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if let Some(pos) = comment_stack.pop() { return Some(LiveDiag{ start: pos, end: s.len(), msg: "unclosed comment".into() }); }
+    if let Some(pos) = string_open { return Some(LiveDiag{ start: pos, end: s.len(), msg: "unclosed string".into() }); }
+    if let Some((open,pos)) = bracket_stack.pop() { return Some(LiveDiag{ start: pos, end: pos+1, msg: format!("unclosed '{}'", open) }); }
+    None
+}
+
+fn parser_backed_diag(s: &str) -> Option<LiveDiag> {
+    let mut p = Parser::from_source(s);
+    match p.parse_all_detailed() {
+        Ok(_) => None,
+        Err(e) => {
+            let start = e.pos.min(s.len());
+            let mut bytes_after: Vec<usize> = s[start..].char_indices().map(|(i,_)| i).collect();
+            bytes_after.push(s.len()-start);
+            let end = if bytes_after.len()>1 { start + bytes_after[1] } else { start };
+            Some(LiveDiag { start, end, msg: e.message })
+        }
+    }
+}
+
+fn highlight_lyra_line(s: &str, builtins: &Vec<BuiltinEntry>, env_names: Option<&[String]>) -> String {
+    let diag = compute_live_diag(s).or_else(|| parser_backed_diag(s));
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0usize;
+    let mut out = String::new();
+    let mut in_string = false;
+    let mut in_comment: usize = 0; // allow simple nested (* *) for highlighting
+
+    while i < chars.len() {
+        // comment close
+        if in_comment > 0 {
+            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == ')' {
+                let styled = "*)".bright_black().to_string();
+                out.push_str(&styled);
+                i += 2;
+                in_comment -= 1;
+                continue;
+            }
+            // flush until potential close or end
+            let mut j = i;
+            while j < chars.len() {
+                if j + 1 < chars.len() && chars[j] == '*' && chars[j + 1] == ')' { break; }
+                j += 1;
+            }
+            out.push_str(&chars[i..j].iter().collect::<String>().bright_black().to_string());
+            i = j;
+            continue;
+        }
+
+        // comment open
+        if !in_string && i + 1 < chars.len() && chars[i] == '(' && chars[i + 1] == '*' {
+            let is_err = matches!(diag, Some(ref d) if d.start==i && d.end>=i+2);
+            let styled = if is_err { "(*".red().underline().to_string() } else { "(*".bright_black().to_string() };
+            out.push_str(&styled);
+            i += 2;
+            in_comment += 1;
+            continue;
+        }
+
+        // strings (detect assoc key if followed by -> after quotes)
+        if !in_string && chars[i] == '"' {
+            let mut j = i + 1;
+            let mut escaped = false;
+            while j < chars.len() {
+                let c = chars[j];
+                if c == '"' && !escaped { j += 1; break; }
+                escaped = c == '\\' && !escaped;
+                if c != '\\' { escaped = false; }
+                j += 1;
+            }
+            // Lookahead for -> to treat as association key
+            let mut k = j;
+            while k < chars.len() && chars[k].is_whitespace() { k += 1; }
+            let is_key = k + 1 < chars.len() && chars[k] == '-' && chars[k + 1] == '>';
+            let is_err = matches!(diag, Some(ref d) if i>=d.start && j<=d.end && d.msg.contains("unclosed string"));
+            let styled = if is_err { chars[i..j].iter().collect::<String>().red().underline().to_string() }
+                else if is_key { chars[i..j].iter().collect::<String>().cyan().to_string() }
+                else { chars[i..j].iter().collect::<String>().green().to_string() };
+            out.push_str(&styled);
+            i = j;
+            continue;
+        }
+
+        // association delimiters <| and |>
+        if i + 1 < chars.len() && chars[i] == '<' && chars[i + 1] == '|' {
+            out.push_str(&"<|".cyan().to_string());
+            i += 2;
+            continue;
+        }
+        if i + 1 < chars.len() && chars[i] == '|' && chars[i + 1] == '>' {
+            out.push_str(&"|>".cyan().to_string());
+            i += 2;
+            continue;
+        }
+
+        // multi-char operators
+        macro_rules! match_emit {
+            ($lit:expr, $style:ident) => {{ if s[i..].starts_with($lit) { out.push_str(&($lit).$style().to_string()); i += $lit.len(); continue; } }}
+        }
+        match_emit!("->", magenta);
+        match_emit!("/;", magenta);
+        match_emit!("==", magenta);
+        match_emit!("!=", magenta);
+        match_emit!("<=", magenta);
+        match_emit!(">=", magenta);
+        match_emit!("||", magenta);
+        match_emit!("&&", magenta);
+        match_emit!("<<", magenta);
+        match_emit!(">>", magenta);
+        match_emit!("=>", magenta);
+        match_emit!("@@@", magenta);
+        match_emit!("@@", magenta);
+        match_emit!("/@", magenta);
+        match_emit!("|>", magenta); // generic pipeline if typed alone
+
+        // brackets and punctuation
+        if matches!(chars[i], '('|')'|'['|']'|'{'|'}'|','|';') {
+            let is_err = matches!(diag, Some(ref d) if i>=d.start && i<d.end);
+            let styled = if is_err { chars[i].to_string().red().underline().to_string() } else { chars[i].to_string().bright_black().to_string() };
+            out.push_str(&styled);
+            i += 1; continue;
+        }
+
+        // single-char operators
+        if matches!(chars[i], '+'|'-'|'*'|'/'|'^'|'='|'<'|'>'|'!'|'@'|'|') {
+            out.push_str(&chars[i].to_string().magenta().to_string());
+            i += 1; continue;
+        }
+
+        // numbers (hex 0x.. or decimal with optional '.')
+        if chars[i].is_ascii_digit() {
+            let mut j = i + 1;
+            if i + 1 < chars.len() && (chars[i] == '0') && (chars[i + 1] == 'x' || chars[i + 1] == 'X') {
+                j = i + 2; while j < chars.len() && chars[j].is_ascii_hexdigit() { j += 1; }
+            } else {
+                while j < chars.len() && (chars[j].is_ascii_digit() || chars[j] == '.') { j += 1; }
+            }
+            out.push_str(&chars[i..j].iter().collect::<String>().bright_blue().to_string());
+            i = j; continue;
+        }
+
+        // slots: # or #n
+        if chars[i] == '#' {
+            let mut j = i + 1;
+            while j < chars.len() && chars[j].is_ascii_digit() { j += 1; }
+            out.push_str(&chars[i..j].iter().collect::<String>().purple().to_string());
+            i = j; continue;
+        }
+
+        // identifiers (including $ and _)
+        if chars[i].is_alphabetic() || chars[i] == '_' || chars[i] == '$' {
+            let mut j = i + 1;
+            while j < chars.len() {
+                let c = chars[j];
+                if c.is_alphanumeric() || c == '_' || c == '$' { j += 1; } else { break; }
+            }
+            let tok: String = chars[i..j].iter().collect();
+            let lowered = tok.as_str();
+            // assoc key if followed by ->
+            let mut k = j; while k < chars.len() && chars[k].is_whitespace() { k += 1; }
+            let is_assoc_key = k + 1 < chars.len() && chars[k] == '-' && chars[k + 1] == '>';
+            if lowered == "True" || lowered == "False" || lowered == "Null" {
+                out.push_str(&tok.purple().to_string());
+            } else if is_assoc_key {
+                out.push_str(&tok.cyan().to_string());
+            } else if builtins.iter().any(|b| b.name == tok) {
+                // If this is a call head, brighten
+                let mut k2 = j; while k2 < chars.len() && chars[k2].is_whitespace() { k2 += 1; }
+                let is_head = k2 < chars.len() && chars[k2] == '[';
+                if is_head { out.push_str(&tok.yellow().bold().to_string()); } else { out.push_str(&tok.yellow().to_string()); }
+            } else if env_names.and_then(|ns| Some(ns.contains(&tok))).unwrap_or(false) {
+                out.push_str(&tok.bright_cyan().to_string());
+            } else {
+                // Non-builtin call head: highlight subtly
+                let mut k2 = j; while k2 < chars.len() && chars[k2].is_whitespace() { k2 += 1; }
+                let is_head = k2 < chars.len() && chars[k2] == '[';
+                if is_head { out.push_str(&tok.bright_yellow().to_string()); } else { out.push_str(&tok); }
+            }
+            i = j; continue;
+        }
+
+        // default: passthrough
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    out
+}
 
 impl Validator for ReplHelper {
     fn validate(&self, _ctx: &mut ValidationContext) -> rustyline::Result<ValidationResult> {
@@ -56,6 +560,19 @@ impl Validator for ReplHelper {
 impl Hinter for ReplHelper {
     type Hint = String;
     fn hint(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<String> {
+        if let Some(diag) = compute_live_diag(line) {
+            let msg = format!(" ✖ {}", diag.msg);
+            return Some(msg.red().bold().to_string());
+        }
+        // Parameter hint: if cursor is inside Name[ ... ], show next param name
+        if let Some((head, arg_idx)) = current_call_context(line, pos) {
+            if let Some((_, _attrs, params)) = self.doc_index.map.get(&head) {
+                let name = if arg_idx < params.len() { params[arg_idx].clone() } else if !params.is_empty() { format!("{} (extra)", params.last().cloned().unwrap_or_default()) } else { String::new() };
+                if !name.is_empty() {
+                    return Some(format!("  next: {}", name).dimmed().to_string());
+                }
+            }
+        }
         // Show inline summary when the current token is a known builtin
         let (start, word) = current_symbol_token(line, pos);
         if start == pos || word.is_empty() { return None; }
@@ -113,24 +630,35 @@ impl Completer for ReplHelper {
             let mut cands: Vec<Pair> = Vec::new();
             match ctx {
                 UsingCtx::PackageName(prefix) => {
-                    // suggest loaded package names (keys in pkg_exports)
-                    for name in self.pkg_exports.keys().filter(|n| n.starts_with(&prefix)) {
-                        cands.push(Pair { display: format!("{} — (package)", name), replacement: name.to_string() });
+                    // suggest loaded package names (keys in pkg_exports) with fuzzy match
+                    let mut scored: Vec<(i64, Pair)> = Vec::new();
+                    for name in self.pkg_exports.keys() {
+                        if let Some(s) = fuzzy_score(name, &prefix) {
+                            scored.push((s, Pair { display: format!("{} — (package)", name), replacement: name.to_string() }));
+                        }
                     }
+                    scored.sort_by(|a,b| b.0.cmp(&a.0));
+                    cands.extend(scored.into_iter().map(|(_,p)| p));
                 }
                 UsingCtx::OptionKey(prefix) => {
+                    let mut scored: Vec<(i64, Pair)> = Vec::new();
                     for k in ["Import","Except"].into_iter() {
-                        if k.starts_with(&prefix) { cands.push(Pair { display: k.to_string(), replacement: k.to_string() }); }
+                        if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s, Pair { display: k.to_string(), replacement: k.to_string() })); }
                     }
+                    scored.sort_by(|a,b| b.0.cmp(&a.0));
+                    cands.extend(scored.into_iter().map(|(_,p)| p));
                 }
                 UsingCtx::ImportValue { pkg, prefix } => {
                     if let Some(exports) = self.pkg_exports.get(&pkg) {
-                        for e in exports.iter().filter(|s| s.starts_with(&prefix)) {
-                            cands.push(Pair { display: e.clone(), replacement: format!("\"{}\"", e) });
+                        let mut scored: Vec<(i64, Pair)> = Vec::new();
+                        for e in exports.iter() {
+                            if let Some(s)=fuzzy_score(e, &prefix) { scored.push((s, Pair { display: e.clone(), replacement: format!("\"{}\"", e) })); }
                         }
-                        if "All".starts_with(&prefix) { cands.push(Pair { display: "All".into(), replacement: "All".into() }); }
+                        if let Some(s)=fuzzy_score("All", &prefix) { scored.push((s, Pair { display: "All".into(), replacement: "All".into() })); }
+                        scored.sort_by(|a,b| b.0.cmp(&a.0));
+                        cands.extend(scored.into_iter().map(|(_,p)| p));
                     } else {
-                        if "All".starts_with(&prefix) { cands.push(Pair { display: "All".into(), replacement: "All".into() }); }
+                        if let Some(_)=fuzzy_score("All", &prefix) { cands.push(Pair { display: "All".into(), replacement: "All".into() }); }
                     }
                 }
             }
@@ -138,26 +666,92 @@ impl Completer for ReplHelper {
         }
         // Association key completion inside <| ... |>
         if let Some(prefix) = assoc_key_prefix(line, pos) {
-            let mut cands: Vec<Pair> = Vec::new();
-            for k in &self.common_option_keys { if k.starts_with(&prefix) { cands.push(Pair { display: k.clone(), replacement: k.clone() }); } }
-            return Ok((pos, cands));
+            let mut scored: Vec<(i64, Pair)> = Vec::new();
+            for k in &self.common_option_keys { if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s, Pair { display: k.clone(), replacement: k.clone() })); } }
+            scored.sort_by(|a,b| b.0.cmp(&a.0));
+            return Ok((pos, scored.into_iter().map(|(_,p)| p).collect()));
+        }
+        // Association value suggestions inside <| key -> value |>
+        if let Some((key, vprefix, quoted)) = assoc_value_context(line, pos) {
+            let mut values: Vec<String> = Vec::new();
+            let lower = key.to_lowercase();
+            if ["inplace","dryrun","verbose","pretty"].contains(&lower.as_str()) { values.extend(vec!["True".into(), "False".into()]); }
+            if lower=="cache" { values.extend(vec!["session".into(), "none".into()]); }
+            if lower=="output" { values.extend(vec!["expr".into(), "json".into()]); }
+            if lower=="assoc" || lower=="assocrender" { values.extend(vec!["auto".into(), "inline".into(), "pretty".into()]); }
+            if lower=="import" { values.push("All".into()); }
+            // Common helpful literals
+            values.extend(vec!["Null".into(), "0".into(), "1".into(), "\"\"".into()]);
+            let mut scored: Vec<(i64, Pair)> = Vec::new();
+            for val in values.into_iter() {
+                let disp = val.clone();
+                let rep = if disp=="True" || disp=="False" || disp=="Null" || disp.chars().all(|c| c.is_ascii_digit()) || disp.starts_with('"') { disp.clone() } else { format!("\"{}\"", disp) };
+                if let Some(s)=fuzzy_score(&disp, &vprefix) { scored.push((s, Pair { display: disp, replacement: if quoted { rep.clone() } else { rep } })); }
+            }
+            scored.sort_by(|a,b| b.0.cmp(&a.0));
+            return Ok((pos, scored.into_iter().map(|(_,p)| p).collect()));
         }
 
         // Default: builtins and env vars
         let (start, word) = current_symbol_token(line, pos);
         if word.is_empty() { return Ok((pos, Vec::new())); }
-        let mut cands: Vec<Pair> = Vec::new();
-        for b in self.builtins.iter().filter(|b| b.name.starts_with(&word)) {
-            let attrs = if b.attrs.is_empty() { String::new() } else { format!(" [{}]", b.attrs.join(", ")) };
-            let display = if b.summary.is_empty() { format!("{}{}", b.name, attrs) } else { format!("{} — {}{}", b.name, b.summary, attrs) };
-            // Auto-insert '[' for function-like builtins
-            cands.push(Pair { display, replacement: format!("{}[", b.name) });
+        let mut scored: Vec<(i64, Pair)> = Vec::new();
+        for b in &self.builtins {
+            if let Some(s) = fuzzy_score(&b.name, &word) {
+                let attrs = if b.attrs.is_empty() { String::new() } else { format!(" [{}]", b.attrs.join(", ")) };
+                let display = if b.summary.is_empty() { format!("{}{}", b.name, attrs) } else { format!("{} — {}{}", b.name, b.summary, attrs) };
+                scored.push((s + 1000, Pair { display, replacement: format!("{}[", b.name) }));
+            }
         }
-        for n in self.env_names.iter().filter(|n| n.starts_with(&word)) {
-            cands.push(Pair { display: format!("{} — (var)", n), replacement: n.clone() });
+        for n in &self.env_names {
+            if let Some(s) = fuzzy_score(n, &word) {
+                scored.push((s + 800, Pair { display: format!("{} — (var)", n), replacement: n.clone() }));
+            }
         }
-        Ok((start, cands))
+        scored.sort_by(|a,b| b.0.cmp(&a.0).then_with(|| a.1.display.cmp(&b.1.display)));
+        Ok((start, scored.into_iter().take(200).map(|(_,p)| p).collect()))
     }
+}
+
+// Simple fuzzy matcher: prefix > substring > subsequence with bonuses
+fn fuzzy_score(candidate: &str, pattern: &str) -> Option<i64> {
+    if pattern.is_empty() { return None; }
+    let c_low = candidate.to_lowercase();
+    let p_low = pattern.to_lowercase();
+    if c_low == p_low { return Some(10_000); }
+    if c_low.starts_with(&p_low) { return Some(5_000 + (100 - (candidate.len() as i64))); }
+    if c_low.contains(&p_low) { return Some(3_000 + (50 - (candidate.len() as i64))); }
+    // subsequence
+    let mut score: i64 = 0;
+    let mut last_idx: isize = -1;
+    let mut consec: i64 = 0;
+    let bytes: Vec<char> = candidate.chars().collect();
+    let mut i = 0usize;
+    for pc in p_low.chars() {
+        let mut found = false;
+        while i < bytes.len() {
+            let cb = bytes[i].to_ascii_lowercase();
+            if cb == pc {
+                // base hit
+                score += 10;
+                // consecutive bonus
+                if last_idx >= 0 && (i as isize) == last_idx + 1 { consec += 1; score += 5 * consec; } else { consec = 0; }
+                // word/start bonus
+                if i == 0 { score += 10; }
+                else {
+                    let prev = bytes[i-1];
+                    if prev == '_' || prev == '-' || prev == ':' || prev == '/' { score += 8; }
+                    if prev.is_lowercase() && bytes[i].is_uppercase() { score += 6; }
+                }
+                last_idx = i as isize;
+                i += 1; found = true; break;
+            }
+            i += 1;
+        }
+        if !found { return None; }
+    }
+    score -= ((candidate.len() as i64) - (pattern.len() as i64)).max(0);
+    Some(score)
 }
 
 fn current_symbol_token(line: &str, pos: usize) -> (usize, String) {
@@ -168,6 +762,55 @@ fn current_symbol_token(line: &str, pos: usize) -> (usize, String) {
         if c.is_alphanumeric() || c == '_' || c == '$' { i -= 1; } else { break; }
     }
     (i, chars[i..pos.min(chars.len())].iter().collect())
+}
+
+// Detect if cursor is inside a call like Name[...], returning (Name, current_arg_index)
+fn current_call_context(line: &str, pos: usize) -> Option<(String, usize)> {
+    // Scan backwards to find matching '[' at depth 0
+    let bytes: Vec<char> = line.chars().collect();
+    let mut i = pos.min(bytes.len());
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    // Find the '[' that opens current bracket group
+    while i > 0 {
+        i -= 1;
+        let c = bytes[i];
+        if c == '"' { let escaped = i>0 && bytes[i-1]=='\\'; if !escaped { in_string = !in_string; } continue; }
+        if in_string { continue; }
+        match c {
+            ']' => depth += 1,
+            '[' => { if depth == 0 { break; } else { depth -= 1; } },
+            _ => {}
+        }
+    }
+    if i == 0 && !(bytes.get(0)==Some(&'[')) { return None; }
+    // Extract head symbol before '['
+    if i == 0 { return None; }
+    let mut j = i;
+    while j>0 {
+        let ch = bytes[j-1];
+        if ch.is_alphanumeric() || ch=='_' || ch=='$' { j -= 1; } else { break; }
+    }
+    if j==i { return None; }
+    let head: String = bytes[j..i].iter().collect();
+    // Count commas at depth 0 inside the bracket from i+1 .. pos
+    let mut k = i+1;
+    depth = 0;
+    in_string = false;
+    let mut arg_idx: usize = 0;
+    while k < pos.min(bytes.len()) {
+        let ch = bytes[k];
+        if ch=='"' { let esc = k>0 && bytes[k-1]=='\\'; if !esc { in_string = !in_string; } k+=1; continue; }
+        if in_string { k+=1; continue; }
+        match ch {
+            '['|'{'|'(' => depth += 1,
+            ']'|'}'|')' => { if depth>0 { depth -= 1; } },
+            ',' => { if depth==0 { arg_idx += 1; } },
+            _=>{}
+        }
+        k+=1;
+    }
+    Some((head, arg_idx))
 }
 
 fn word_start_pos_in_substr(line: &str, pos: usize) -> usize {
@@ -277,6 +920,24 @@ fn assoc_key_prefix(line: &str, pos: usize) -> Option<String> {
     Some(prefix.to_string())
 }
 
+// If cursor is inside an association literal and after '->', return (key, value_prefix, quoted?)
+fn assoc_value_context(line: &str, pos: usize) -> Option<(String, String, bool)> {
+    let left = &line[..pos];
+    let open = left.rfind("<|")?;
+    if line[open..].contains("|>") { return None; }
+    let seg = &left[open+2..];
+    let arrow = seg.rfind("->")?;
+    // Key is before arrow up to previous comma or start of segment
+    let key_start = seg[..arrow].rfind(',').map(|i| i+1).unwrap_or(0);
+    let key = seg[key_start..arrow].trim().trim_matches('"').to_string();
+    // Value prefix is after arrow
+    let after = &seg[arrow+2..];
+    let vprefix = after.rsplit(|c: char| c==',' || c=='<' || c=='|' ).next().unwrap_or("").trim();
+    let quoted = vprefix.starts_with('"');
+    let vprefix_clean = vprefix.trim_matches('"').to_string();
+    Some((key, vprefix_clean, quoted))
+}
+
 fn scan_unbalanced(s: &str) -> Option<(char, usize)> {
     // returns Some((open_char, position)) if any open bracket is unclosed
     let mut stack: Vec<(char, usize)> = Vec::new();
@@ -372,7 +1033,343 @@ impl rustyline::ConditionalEventHandler for DocKeyHandler {
     }
 }
 
+// Show quick docs when pressing Tab and the current token is an exact symbol
+struct TabDocAssistHandler { printer: std::sync::Mutex<Box<dyn ExternalPrinter + Send>>, doc_index: std::sync::Arc<DocIndex>, cfg: std::sync::Arc<std::sync::Mutex<ReplConfig>> }
+
+impl rustyline::ConditionalEventHandler for TabDocAssistHandler {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        ctx: &rustyline::EventContext,
+    ) -> Option<Cmd> {
+        let line = ctx.line();
+        let pos = ctx.pos();
+        let (_, word) = current_symbol_token(line, pos);
+        if word.is_empty() { return None; }
+        // Only trigger on exact match to avoid noise while exploring
+        if !self.doc_index.map.contains_key(&word) { return None; }
+        let msg = build_doc_card_str_from_index(&self.doc_index, &word);
+        let use_pager = self.cfg.lock().map(|c| c.pager_on).unwrap_or(false);
+        if use_pager { let _ = spawn_pager(&msg); }
+        else if let Ok(mut p) = self.printer.lock() { let _ = p.print(msg); }
+        // Return None so default Tab completion still runs
+        None
+    }
+}
+
+// Completion menu: state + handlers for showing and picking candidates
+#[derive(Default, Clone)]
+struct CompletionMenuState {
+    items: Vec<Pair>,
+    prefix_len: usize,
+    selected_idx: usize,
+    active: bool,
+}
+
+fn render_completion_panel(state: &CompletionMenuState, docs: &DocIndex) -> String {
+    let mut msg = String::new();
+    msg.push_str(&format!("{}\n", "Completions (Alt-/, Alt-j/k, Enter to pick)".bold()));
+    for (i, p) in state.items.iter().enumerate() {
+        let sel = if i == state.selected_idx { ">".bright_green().to_string() } else { " ".to_string() };
+        let num = if i < 9 { format!("Alt-{}", i + 1) } else { "Alt-0".into() };
+        msg.push_str(&format!(" {} {:>6}  {}\n", sel, num.dimmed(), p.display.as_str()));
+        if i == state.selected_idx {
+            if let Some(name) = candidate_symbol_name(&p) {
+                if let Some((summary, _attrs, _params)) = docs.map.get(&name) {
+                    if !summary.is_empty() { msg.push_str(&format!("       {} {}\n", "Summary:".dimmed(), summary)); }
+                }
+            }
+        }
+    }
+    msg
+}
+
+fn candidate_symbol_name(p: &Pair) -> Option<String> {
+    let r = p.replacement.as_str();
+    if r.ends_with('[') { return Some(r.trim_end_matches('[').to_string()); }
+    if r.starts_with('"') && r.ends_with('"') && r.len()>=2 { return Some(r[1..r.len()-1].to_string()); }
+    if !r.is_empty() { return Some(r.to_string()); }
+    None
+}
+
+struct ShowCompletionMenuHandler {
+    printer: std::sync::Mutex<Box<dyn ExternalPrinter + Send>>,
+    builtins: std::sync::Arc<Vec<BuiltinEntry>>,
+    env_names: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    state: std::sync::Arc<std::sync::Mutex<CompletionMenuState>>,
+    pkg_exports: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>>,
+    assoc_keys: std::sync::Arc<Vec<String>>,
+    doc_index: std::sync::Arc<DocIndex>,
+}
+
+impl rustyline::ConditionalEventHandler for ShowCompletionMenuHandler {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        ctx: &rustyline::EventContext,
+    ) -> Option<Cmd> {
+        let line = ctx.line();
+        let pos = ctx.pos();
+        let (start, word) = current_symbol_token(line, pos);
+        if word.is_empty() { return None; }
+        let mut scored: Vec<(i64, Pair)> = Vec::new();
+        // Context-aware: Using[...] and assoc key
+        if let Some(ctx) = using_context(line, pos) {
+            match ctx {
+                UsingCtx::PackageName(prefix) => {
+                    if let Ok(pkgs) = self.pkg_exports.lock() {
+                        for name in pkgs.keys() { if let Some(s)=fuzzy_score(name, &prefix) { scored.push((s+1200, Pair{ display: format!("{} — (package)", name), replacement: name.clone() })); } }
+                    }
+                }
+                UsingCtx::OptionKey(prefix) => {
+                    for k in ["Import","Except"].into_iter() { if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s+1100, Pair{ display: k.to_string(), replacement: k.to_string() })); } }
+                }
+                UsingCtx::ImportValue { pkg, prefix } => {
+                    if let Ok(pkgs) = self.pkg_exports.lock() {
+                        if let Some(exports) = pkgs.get(&pkg) {
+                            for e in exports { if let Some(s)=fuzzy_score(e, &prefix) { scored.push((s+1300, Pair{ display: e.clone(), replacement: format!("\"{}\"", e) })); } }
+                            if let Some(s)=fuzzy_score("All", &prefix) { scored.push((s+1000, Pair{ display: "All".into(), replacement: "All".into() })); }
+                        }
+                    }
+                }
+            }
+        } else if let Some(prefix) = assoc_key_prefix(line, pos) {
+            for k in self.assoc_keys.iter() { if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s+1000, Pair{ display: k.clone(), replacement: k.clone() })); } }
+        } else if let Some((key, vprefix, quoted)) = assoc_value_context(line, pos) {
+            let mut values: Vec<String> = Vec::new();
+            let lower = key.to_lowercase();
+            if ["inplace","dryrun","verbose","pretty"].contains(&lower.as_str()) { values.extend(vec!["True".into(), "False".into()]); }
+            if lower=="cache" { values.extend(vec!["session".into(), "none".into()]); }
+            if lower=="output" { values.extend(vec!["expr".into(), "json".into()]); }
+            if lower=="assoc" || lower=="assocrender" { values.extend(vec!["auto".into(), "inline".into(), "pretty".into()]); }
+            if lower=="import" { values.push("All".into()); }
+            values.extend(vec!["Null".into(), "0".into(), "1".into(), "\"\"".into()]);
+            for val in values.into_iter() {
+                if let Some(s)=fuzzy_score(&val, &vprefix) {
+                    let rep = if val=="True" || val=="False" || val=="Null" || val.chars().all(|c| c.is_ascii_digit()) || val.starts_with('"') { val.clone() } else { format!("\"{}\"", val) };
+                    scored.push((s+900, Pair{ display: val, replacement: if quoted { rep.clone() } else { rep } }));
+                }
+            }
+        } else {
+            // Default: builtins + env vars
+            for b in self.builtins.iter() {
+                if let Some(s) = fuzzy_score(&b.name, &word) {
+                    let attrs = if b.attrs.is_empty() { String::new() } else { format!(" [{}]", b.attrs.join(", ")) };
+                    let display = if b.summary.is_empty() { format!("{}{}", b.name, attrs) } else { format!("{} — {}{}", b.name, b.summary, attrs) };
+                    scored.push((s + 1000, Pair { display, replacement: format!("{}[", b.name) }));
+                }
+            }
+            if let Ok(envs) = self.env_names.lock() {
+                for n in envs.iter() { if let Some(s) = fuzzy_score(n, &word) { scored.push((s + 800, Pair { display: format!("{} — (var)", n), replacement: n.clone() })); } }
+            }
+        }
+        if scored.is_empty() { return None; }
+        scored.sort_by(|a,b| b.0.cmp(&a.0).then_with(|| a.1.display.cmp(&b.1.display)));
+        let pairs: Vec<Pair> = scored.into_iter().take(10).map(|(_,p)| p).collect();
+        if let Ok(mut st) = self.state.lock() {
+            st.items = pairs;
+            st.prefix_len = pos.saturating_sub(start);
+            st.selected_idx = 0;
+            st.active = !st.items.is_empty();
+            if let Ok(mut pr) = self.printer.lock() { let _ = pr.print(render_completion_panel(&st, &self.doc_index)); }
+        }
+        Some(Cmd::Noop)
+    }
+}
+
+struct PickCompletionHandler { state: std::sync::Arc<std::sync::Mutex<CompletionMenuState>>, index: usize }
+
+impl rustyline::ConditionalEventHandler for PickCompletionHandler {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        _ctx: &rustyline::EventContext,
+    ) -> Option<Cmd> {
+        if let Ok(st) = self.state.lock() {
+            let idx = if self.index == 9 { 9 } else { self.index.saturating_sub(1) };
+            if idx < st.items.len() {
+                let repl = st.items[idx].replacement.clone();
+                let back = st.prefix_len.max(0);
+                return Some(Cmd::Replace(Movement::BackwardChar(back), Some(repl)));
+            }
+        }
+        Some(Cmd::Noop)
+    }
+}
+
+struct CycleCompletionMenuHandler {
+    printer: std::sync::Mutex<Box<dyn ExternalPrinter + Send>>,
+    state: std::sync::Arc<std::sync::Mutex<CompletionMenuState>>,
+    delta: isize,
+    doc_index: std::sync::Arc<DocIndex>,
+}
+
+impl rustyline::ConditionalEventHandler for CycleCompletionMenuHandler {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        _ctx: &rustyline::EventContext,
+    ) -> Option<Cmd> {
+        if let Ok(mut st) = self.state.lock() {
+            if !st.active || st.items.is_empty() { return None; }
+            let len = st.items.len();
+            let cur = st.selected_idx as isize;
+            let mut next = cur + self.delta;
+            if next < 0 { next = len as isize - 1; }
+            if next >= len as isize { next = 0; }
+            st.selected_idx = next as usize;
+            if let Ok(mut pr) = self.printer.lock() { let _ = pr.print(render_completion_panel(&st, &self.doc_index)); }
+            return Some(Cmd::Noop);
+        }
+        None
+    }
+}
+
+struct AcceptCompletionMenuHandler { state: std::sync::Arc<std::sync::Mutex<CompletionMenuState>> }
+
+impl rustyline::ConditionalEventHandler for AcceptCompletionMenuHandler {
+    fn handle(
+        &self,
+        _evt: &Event,
+        _n: rustyline::RepeatCount,
+        _positive: bool,
+        _ctx: &rustyline::EventContext,
+    ) -> Option<Cmd> {
+        if let Ok(mut st) = self.state.lock() {
+            if !st.active || st.items.is_empty() { return None; }
+            let idx = st.selected_idx.min(st.items.len()-1);
+            let repl = st.items[idx].replacement.clone();
+            let back = st.prefix_len.max(0);
+            st.active = false;
+            return Some(Cmd::Replace(Movement::BackwardChar(back), Some(repl)));
+        }
+        None
+    }
+}
+
+fn print_usage() {
+    eprintln!("Lyra — Unified CLI\nUSAGE:\n  lyra                Start interactive REPL\n  lyra mcp            Run MCP server over stdio\n  lyra --help         Show this help\n  lyra --version      Show version");
+}
+
 fn main() -> Result<()> {
+    // Unified CLI: early check for MCP mode or help/version
+    {
+        let mut args_iter = std::env::args().skip(1);
+        if let Some(first) = args_iter.next() {
+            match first.as_str() {
+                "mcp" | "--mcp" => { return lyra_mcp::run_stdio_server(); }
+                "fmt" | "format" => {
+                    let files: Vec<String> = args_iter.collect();
+                    if files.is_empty() { eprintln!("usage: lyra fmt <files...>"); return Ok(()); }
+                    lyra_runtime::set_default_registrar(lyra_stdlib::register_all);
+                    let mut ev = Evaluator::new(); lyra_stdlib::register_all(&mut ev);
+                    let mut changed = 0i64; let total = files.len() as i64;
+                    for f in files {
+                        match std::fs::read_to_string(&f) {
+                            Ok(src) => {
+                                let mut p = lyra_parser::Parser::from_source(&src);
+                                if let Err(e) = p.parse_all_detailed() {
+                                    print_parse_error(&f, &src, e.pos, &e.message);
+                                    continue;
+                                }
+                                let v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("FormatLyraFile".into())), args: vec![Value::String(f.clone())] });
+                                match v {
+                                    Value::Assoc(m) => { let ch = matches!(m.get("changed"), Some(Value::Boolean(true))); if ch { changed+=1; } println!("{}: {}", f, if ch { "formatted" } else { "ok" }); }
+                                    _ => println!("{}: error", f)
+                                }
+                            }
+                            Err(e) => { eprintln!("{}: read error: {}", f, e); }
+                        }
+                    }
+                    println!("formatted {} / {}", changed, total);
+                    return Ok(());
+                }
+                "--reedline" => {
+                    #[cfg(feature = "reedline")]
+                    { return reedline_mode::run(); }
+                    #[cfg(not(feature = "reedline"))]
+                    { eprintln!("Rebuild with --features reedline to use reedline REPL"); return Ok(()); }
+                }
+                "lint" => {
+                    let files: Vec<String> = args_iter.collect();
+                    if files.is_empty() { eprintln!("usage: lyra lint <files...>"); return Ok(()); }
+                    lyra_runtime::set_default_registrar(lyra_stdlib::register_all);
+                    let mut ev = Evaluator::new(); lyra_stdlib::register_all(&mut ev);
+                    let mut total_issues = 0i64;
+                    for f in files {
+                        match std::fs::read_to_string(&f) {
+                            Ok(src) => {
+                                let mut p = lyra_parser::Parser::from_source(&src);
+                                if let Err(e) = p.parse_all_detailed() {
+                                    print_parse_error(&f, &src, e.pos, &e.message);
+                                    total_issues += 1;
+                                    continue;
+                                }
+                                let v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("LintLyraFile".into())), args: vec![Value::String(f.clone())] });
+                                match v {
+                                    Value::Assoc(m) => {
+                                        if let Some(Value::List(issues)) = m.get("issues") { let n = issues.len() as i64; total_issues += n; println!("{}: {} issues", f, n); } else { println!("{}: ok", f); }
+                                    }
+                                    _ => println!("{}: error", f)
+                                }
+                            }
+                            Err(e) => { eprintln!("{}: read error: {}", f, e); total_issues += 1; }
+                        }
+                    }
+                    println!("total issues: {}", total_issues);
+                    return Ok(());
+                }
+                "test" => {
+                    let path = if let Some(p) = args_iter.next() { p } else { eprintln!("usage: lyra test <file.lyra>"); return Ok(()); };
+                    lyra_runtime::set_default_registrar(lyra_stdlib::register_all);
+                    let mut ev = Evaluator::new(); lyra_stdlib::register_all(&mut ev);
+                    match std::fs::read_to_string(&path) {
+                        Ok(src) => {
+                            let mut parser = lyra_parser::Parser::from_source(&src);
+                            match parser.parse_all_with_ranges() {
+                                Ok(exprs) => {
+                                    let mut last = Value::Symbol("Null".into());
+                                    for (e, s, _e) in exprs {
+                                        ev.set_current_span(Some((s, _e)));
+                                        let out = ev.eval(e);
+                                        ev.set_current_span(None);
+                                        if let Value::Assoc(m) = &out {
+                                            let is_err = matches!(m.get("error"), Some(Value::Boolean(true))) || m.get("message").is_some();
+                                            if is_err {
+                                                let (mut pos, mut msg) = (s, String::from("error"));
+                                                if let Some(Value::String(mtxt)) = m.get("message") { msg = mtxt.clone(); }
+                                                if let Some(Value::Assoc(sp)) = m.get("span") {
+                                                    if let (Some(Value::Integer(ss)), Some(Value::Integer(_ee))) = (sp.get("start"), sp.get("end")) { pos = *ss as usize; }
+                                                }
+                                                print_parse_error(&path, &src, pos, &msg);
+                                            }
+                                        }
+                                        last = out;
+                                    }
+                                    let spec = ev.eval(Value::Expr { head: Box::new(Value::Symbol("TestSpec".into())), args: vec![last.clone()] });
+                                    println!("{}", lyra_core::pretty::format_value(&spec));
+                                    return Ok(());
+                                }
+                                Err(e) => { print_parse_error(&path, &src, e.pos, &e.message); return Ok(()); }
+                            }
+                        }
+                        Err(e) => { eprintln!("error: {}", e); return Ok(()); }
+                    }
+                }
+                "-h" | "--help" | "help" => { print_usage(); return Ok(()); }
+                "--version" | "version" => { println!("{}", env!("CARGO_PKG_VERSION")); return Ok(()); }
+                _ => { /* fall through to REPL for unknown args */ }
+            }
+        }
+    }
     // Build evaluator and register stdlib first (for builtin discovery)
     println!("{}", "Lyra REPL (prototype)".bright_yellow().bold());
     // Ensure spawned Evaluators (e.g., in Futures) inherit stdlib
@@ -395,10 +1392,19 @@ fn main() -> Result<()> {
         "MaxThreads".into(), "TimeBudgetMs".into(), "Import".into(), "Except".into(),
         "replacement".into(), "inPlace".into(), "dryRun".into(), "backupExt".into(),
     ];
-    let helper = ReplHelper { builtins, env_names: Vec::new(), doc_index: doc_index.clone(), cfg: cfg.clone(), pkg_exports: std::collections::HashMap::new(), repl_cmds, common_option_keys };
+    let assoc_keys_arc = std::sync::Arc::new(common_option_keys.clone());
+    let helper = ReplHelper { builtins: builtins.clone(), env_names: Vec::new(), doc_index: doc_index.clone(), cfg: cfg.clone(), pkg_exports: std::collections::HashMap::new(), repl_cmds, common_option_keys };
 
     // Editor with helper for completion and hints
-    let mut rl = Editor::<ReplHelper, DefaultHistory>::new()?;
+    // Try to enable a more discoverable completion experience (list/menu style)
+    let rl_cfg = rustyline::Config::builder()
+        .history_ignore_dups(true).expect("config")
+        .history_ignore_space(true)
+        .auto_add_history(false)
+        .completion_type(rustyline::CompletionType::List)
+        .completion_prompt_limit(50)
+        .build();
+    let mut rl = Editor::<ReplHelper, DefaultHistory>::with_config(rl_cfg)?;
     rl.set_history_ignore_dups(true);
     rl.set_history_ignore_space(true);
     rl.set_edit_mode(rustyline::EditMode::Emacs);
@@ -415,15 +1421,62 @@ fn main() -> Result<()> {
     let printer2 = rl.create_external_printer().expect("external printer");
     rl.bind_sequence(
         Event::from(KeyEvent::alt('h')),
-        EventHandler::Conditional(Box::new(DocKeyHandler { printer: std::sync::Mutex::new(Box::new(printer2)), doc_index, cfg: cfg.clone() }))
+        EventHandler::Conditional(Box::new(DocKeyHandler { printer: std::sync::Mutex::new(Box::new(printer2)), doc_index: doc_index.clone(), cfg: cfg.clone() }))
     );
+    // Bind Tab to also show quick docs on exact symbol match (non-destructive)
+    let printer3 = rl.create_external_printer().expect("external printer");
+    rl.bind_sequence(
+        Event::from(KeyEvent(KeyCode::Tab, Modifiers::NONE)),
+        EventHandler::Conditional(Box::new(TabDocAssistHandler { printer: std::sync::Mutex::new(Box::new(printer3)), doc_index: doc_index.clone(), cfg: cfg.clone() }))
+    );
+    // Note: rustyline v13 lists candidates with CompletionType::List; cycling bindings depend on upstream support
+    // Completion menu state + handlers
+    let menu_state = std::sync::Arc::new(std::sync::Mutex::new(CompletionMenuState::default()));
+    let env_names_shared: std::sync::Arc<std::sync::Mutex<Vec<String>>> = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let printer_menu = rl.create_external_printer().expect("external printer");
+    let pkg_exports_shared: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>> = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    rl.bind_sequence(
+        Event::from(KeyEvent::alt('/')),
+        EventHandler::Conditional(Box::new(ShowCompletionMenuHandler {
+            printer: std::sync::Mutex::new(Box::new(printer_menu)),
+            builtins: std::sync::Arc::new(builtins.clone()),
+            env_names: env_names_shared.clone(),
+            state: menu_state.clone(),
+            pkg_exports: pkg_exports_shared.clone(),
+            assoc_keys: assoc_keys_arc.clone(),
+            doc_index: doc_index.clone(),
+        }))
+    );
+    // Alt-j / Alt-k to move selection
+    let printer_menu2 = rl.create_external_printer().expect("external printer");
+    rl.bind_sequence(
+        Event::from(KeyEvent::alt('j')),
+        EventHandler::Conditional(Box::new(CycleCompletionMenuHandler { printer: std::sync::Mutex::new(Box::new(printer_menu2)), state: menu_state.clone(), delta: 1, doc_index: doc_index.clone() }))
+    );
+    let printer_menu3 = rl.create_external_printer().expect("external printer");
+    rl.bind_sequence(
+        Event::from(KeyEvent::alt('k')),
+        EventHandler::Conditional(Box::new(CycleCompletionMenuHandler { printer: std::sync::Mutex::new(Box::new(printer_menu3)), state: menu_state.clone(), delta: -1, doc_index: doc_index.clone() }))
+    );
+    // Enter accepts selection if panel is active
+    rl.bind_sequence(
+        Event::from(KeyEvent(KeyCode::Enter, Modifiers::NONE)),
+        EventHandler::Conditional(Box::new(AcceptCompletionMenuHandler { state: menu_state.clone() }))
+    );
+    // Alt-1..9 and Alt-0 to pick
+    for (i, key) in ['1','2','3','4','5','6','7','8','9','0'].iter().enumerate() {
+        rl.bind_sequence(
+            Event::from(KeyEvent::alt(*key)),
+            EventHandler::Conditional(Box::new(PickCompletionHandler { state: menu_state.clone(), index: i+1 }))
+        );
+    }
     // Bind Shift-Enter and Ctrl-Enter to insert newline explicitly
     rl.bind_sequence(Event::from(KeyEvent(KeyCode::Enter, Modifiers::SHIFT)), Cmd::Newline);
     rl.bind_sequence(Event::from(KeyEvent(KeyCode::Enter, Modifiers::CTRL)), Cmd::Newline);
     // Load history if present
     if let Some(p) = history_path() { let _ = rl.load_history(&p); }
     // Print quick help of new features
-    println!("{}", "Tip: F1/Alt-h for docs · Tab to complete · :format assoc/output · :history · :help".dimmed());
+    println!("{}", "Tip: Tab = fuzzy-complete (and docs on exact); F1/Alt-h = docs; :format assoc/output; :history; :help".dimmed());
     // State for output rendering
     let mut last_output: Option<Value> = None;
     let mut truncate_cfg = recommended_truncation_for_width(term_width_cols());
@@ -438,8 +1491,12 @@ fn main() -> Result<()> {
     loop {
         // Refresh environment names and package exports for completion before prompt
         if let Some(h) = rl.helper_mut() {
-            h.env_names = ev.env_keys();
-            h.pkg_exports = collect_pkg_exports(&mut ev);
+            let names = ev.env_keys();
+            h.env_names = names.clone();
+            if let Ok(mut m) = env_names_shared.lock() { *m = names; }
+            let exports = collect_pkg_exports(&mut ev);
+            h.pkg_exports = exports.clone();
+            if let Ok(mut pe) = pkg_exports_shared.lock() { *pe = exports; }
         }
         match read_repl_input(&mut rl, &format!("In[{}]> ", in_counter)) {
             Ok(line) => {
@@ -610,11 +1667,14 @@ fn main() -> Result<()> {
                 // Echo input like In[n]:= expr
                 println!("In[{}]:= {}", in_counter, line.trim());
                 let mut p = Parser::from_source(&line);
-                match p.parse_all() {
+                match p.parse_all_with_ranges() {
                     Ok(values) => {
-                        for v in values {
+                        for (v, start, _end) in values {
+                            // Attach top-level span for better runtime error reporting
+                            ev.set_current_span(Some((start, _end)));
                             let t0 = std::time::Instant::now();
                             let out = ev.eval(v);
+                            ev.set_current_span(None);
                             let elapsed = t0.elapsed();
                             let suffix = result_suffix(&out, elapsed);
                             // Save last output
@@ -625,6 +1685,27 @@ fn main() -> Result<()> {
                             let _ = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Set".into())), args: vec![Value::Symbol("%".into()), out.clone()] });
                             let _ = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Set".into())), args: vec![Value::Symbol("OutList".into()), Value::List(out_buf.clone())] });
                             let (assoc_mode, print_mode) = { if let Ok(c)=cfg.lock() { (c.assoc_mode, c.print_mode) } else { (AssocMode::Auto, PrintMode::Expr) } };
+                            // Detect failure shape and print as error with caret under top-level expr
+                            let mut is_error = false; let mut err_msg = String::new();
+                            let mut span_from_val: Option<(usize,usize)> = None;
+                            if let Value::Assoc(m) = &out {
+                                if matches!(m.get("error"), Some(Value::Boolean(true))) || m.get("message").is_some() { is_error = true; }
+                                if let Some(Value::String(msg)) = m.get("message") { err_msg = msg.clone(); }
+                                if let Some(Value::Assoc(sp)) = m.get("span") {
+                                    let s = sp.get("start").and_then(|v| if let Value::Integer(n)=v { Some(*n as usize) } else { None });
+                                    let e = sp.get("end").and_then(|v| if let Value::Integer(n)=v { Some(*n as usize) } else { None });
+                                    if let (Some(sv), Some(ev2)) = (s,e) { span_from_val = Some((sv, ev2)); }
+                                }
+                            }
+                            if is_error {
+                                let err_start = span_from_val.map(|(s,_e)| s).unwrap_or(start);
+                                let (line_no, col) = byte_to_line_col(&line, err_start);
+                                eprintln!("{}:{}:{}: error: {}", "<repl>", line_no, col, err_msg);
+                                if let Some((_ln, text)) = line_text(&line, line_no) {
+                                    eprintln!("     | {}", text);
+                                    eprintln!("     | {}", caret_line(&text, col));
+                                }
+                            }
                             let rendered = match print_mode { PrintMode::Expr => format_value_color(&out, Some(truncate_cfg), assoc_mode), PrintMode::Json => serde_json::to_string_pretty(&out).unwrap_or_else(|_| "<json error>".into()) };
                             let out_line = format!("Out[{}]= {}{}", out_counter, rendered, suffix);
                             println!("{}", out_line);
@@ -639,7 +1720,7 @@ fn main() -> Result<()> {
                             }
                         }
                     }
-                    Err(e) => render_parse_error(&rl, &line, &e.to_string()),
+                    Err(e) => render_parse_error(&rl, &line, &e.message),
                 }
             }
             Err(ReadlineError::Interrupted) => { println!("^C"); continue; }
@@ -1011,24 +2092,36 @@ fn render_doc_card(ev: &mut Evaluator, sym: &str) {
             }
         }
     }
+    // Prefer DescribeBuiltins summary and ToolsDescribe params
     let summary = builtin_help(sym);
     let header = format!("{} {}", sym.bold(), attrs.join(", "));
-    println!("{}\n  {} {}", header, "Summary:".bold(), summary);
+    // Try ToolsDescribe for params
+    let td = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ToolsDescribe".into())), args: vec![Value::String(sym.to_string())] });
+    let mut params: Vec<String> = Vec::new();
+    if let Value::Assoc(m) = td { if let Some(Value::List(vs)) = m.get("params") { params = vs.iter().filter_map(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).collect(); } }
+    println!("{}\n  {} {}{}", header, "Summary:".bold(), summary, if params.is_empty() { String::new() } else { format!("\n  {} {}[{}]", "Usage:".bold(), sym, params.join(", ")) });
 }
 
-struct DocIndex { map: std::collections::HashMap<String, (String, Vec<String>)> }
+struct DocIndex { map: std::collections::HashMap<String, (String, Vec<String>, Vec<String>)> }
 
 fn build_doc_index(ev: &mut Evaluator) -> std::sync::Arc<DocIndex> {
     use std::collections::HashMap;
-    let mut map: HashMap<String, (String, Vec<String>)> = HashMap::new();
+    let mut map: HashMap<String, (String, Vec<String>, Vec<String>)> = HashMap::new();
     let resp = ev.eval(Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args: vec![] });
     if let Value::List(items) = resp {
         for it in items {
             if let Value::Assoc(m) = it {
                 if let Some(Value::String(name)) = m.get("name") {
-                    let summary = builtin_help(name).to_string();
+                    let mut summary = builtin_help(name).to_string();
                     let attrs: Vec<String> = match m.get("attributes") { Some(Value::List(vs)) => vs.iter().filter_map(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).collect(), _=>Vec::new() };
-                    map.insert(name.clone(), (summary, attrs));
+                    // Enrich via ToolsDescribe when available
+                    let td = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ToolsDescribe".into())), args: vec![Value::String(name.clone())] });
+                    let mut params: Vec<String> = Vec::new();
+                    if let Value::Assoc(dm) = td {
+                        if let Some(Value::String(s)) = dm.get("summary") { if !s.is_empty() { summary = s.clone(); } }
+                        if let Some(Value::List(vs)) = dm.get("params") { params = vs.iter().filter_map(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).collect(); }
+                    }
+                    map.insert(name.clone(), (summary, attrs, params));
                 }
             }
         }
@@ -1037,9 +2130,11 @@ fn build_doc_index(ev: &mut Evaluator) -> std::sync::Arc<DocIndex> {
 }
 
 fn build_doc_card_str_from_index(index: &std::sync::Arc<DocIndex>, sym: &str) -> String {
-    if let Some((summary, attrs)) = index.map.get(sym) {
+    if let Some((summary, attrs, params)) = index.map.get(sym) {
         let header = if attrs.is_empty() { sym.bold().to_string() } else { format!("{} {}", sym.bold(), attrs.join(", ")) };
-        format!("{}\n  {} {}", header, "Summary:".bold(), summary)
+        let mut s = format!("{}\n  {} {}", header, "Summary:".bold(), summary);
+        if !params.is_empty() { s.push_str(&format!("\n  {} {}[{}]", "Usage:".bold(), sym, params.join(", "))); }
+        s
     } else {
         format!("{}\n  {} {}", sym.bold(), "Summary:".bold(), "No documentation yet.")
     }

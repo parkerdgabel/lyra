@@ -144,6 +144,7 @@ pub struct Evaluator {
     trace_enabled: bool,
     trace_steps: Vec<Value>,
     defs: DefinitionStore,
+    current_span: Option<(usize, usize)>,
 }
 
 static DEFAULT_REGISTRAR: OnceLock<fn(&mut Evaluator)> = OnceLock::new();
@@ -154,7 +155,7 @@ pub fn set_default_registrar(f: fn(&mut Evaluator)) {
 
 impl Evaluator {
     pub fn new() -> Self {
-        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, thread_limiter: None, deadline: None, trace_enabled: false, trace_steps: Vec::new(), defs: DefinitionStore::new() };
+        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, thread_limiter: None, deadline: None, trace_enabled: false, trace_steps: Vec::new(), defs: DefinitionStore::new(), current_span: None };
         if let Some(f) = DEFAULT_REGISTRAR.get().copied() { f(&mut ev); }
         ev
     }
@@ -181,6 +182,24 @@ impl Evaluator {
 
     pub fn unset_env(&mut self, key: &str) {
         self.env.remove(key);
+    }
+
+    pub fn set_current_span(&mut self, span: Option<(usize, usize)>) {
+        self.current_span = span;
+    }
+
+    fn make_error(&self, message: &str, tag: &str) -> Value {
+        let mut m = std::collections::HashMap::new();
+        m.insert("error".to_string(), Value::Boolean(true));
+        m.insert("message".to_string(), Value::String(message.into()));
+        m.insert("tag".to_string(), Value::String(tag.into()));
+        if let Some((s,e)) = self.current_span {
+            let mut span = std::collections::HashMap::new();
+            span.insert("start".to_string(), Value::Integer(s as i64));
+            span.insert("end".to_string(), Value::Integer(e as i64));
+            m.insert("span".to_string(), Value::Assoc(span));
+        }
+        Value::Assoc(m)
     }
 
     pub fn eval(&mut self, v: Value) -> Value {
@@ -642,7 +661,13 @@ pub fn register_introspection(ev: &mut Evaluator) {
         if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args } }
         let mut out: Vec<Value> = Vec::new();
         // builtins is private; this function is inside this module and can access it
-        for (name, (_f, attrs)) in ev.builtins.iter() {
+        // Snapshot names and attributes; DescribeBuiltins should not depend on ToolsDescribe to avoid recursion
+        let snapshot: Vec<(String, Attributes)> = ev
+            .builtins
+            .iter()
+            .map(|(name, (_f, attrs))| (name.clone(), *attrs))
+            .collect();
+        for (name, attrs) in snapshot.into_iter() {
             let mut attr_list: Vec<Value> = Vec::new();
             if attrs.contains(Attributes::LISTABLE) { attr_list.push(Value::String("LISTABLE".into())); }
             if attrs.contains(Attributes::FLAT) { attr_list.push(Value::String("FLAT".into())); }
@@ -656,6 +681,7 @@ pub fn register_introspection(ev: &mut Evaluator) {
                 ("name".to_string(), Value::String(name.clone())),
                 ("summary".to_string(), Value::String(String::new())),
                 ("tags".to_string(), Value::List(vec![])),
+                ("params".to_string(), Value::List(vec![])),
                 ("attributes".to_string(), Value::List(attr_list)),
             ].into_iter().collect());
             out.push(card);
@@ -749,11 +775,7 @@ fn await_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     };
     if let Some(id) = id_opt { if let Some(task) = ev.tasks.remove(&id) { return task.rx.recv().unwrap_or(Value::Symbol("Null".into())); } }
-    // Failure stub
-    Value::Assoc(vec![
-        ("message".to_string(), Value::String("Await: invalid or unknown future".into())),
-        ("tag".to_string(), Value::String("Await::invfuture".into())),
-    ].into_iter().collect())
+    ev.make_error("Await: invalid or unknown future", "Await::invfuture")
 }
 
 fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -774,7 +796,9 @@ fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn cancelled_failure() -> Value {
+    // no access to self here; embed minimal shape
     Value::Assoc(vec![
+        ("error".to_string(), Value::Boolean(true)),
         ("message".to_string(), Value::String("Computation cancelled".into())),
         ("tag".to_string(), Value::String("Cancel::abort".into())),
     ].into_iter().collect())
@@ -782,6 +806,7 @@ fn cancelled_failure() -> Value {
 
 fn time_budget_failure() -> Value {
     Value::Assoc(vec![
+        ("error".to_string(), Value::Boolean(true)),
         ("message".to_string(), Value::String("Time budget exceeded".into())),
         ("tag".to_string(), Value::String("TimeBudget::exceeded".into())),
     ].into_iter().collect())

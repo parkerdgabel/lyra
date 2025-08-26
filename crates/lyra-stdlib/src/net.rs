@@ -28,6 +28,11 @@ pub fn register_net(ev: &mut Evaluator) {
     ev.register("HttpServerStop", http_server_stop as NativeFn, Attributes::empty());
     ev.register("HttpServerAddr", http_server_addr as NativeFn, Attributes::empty());
     ev.register("HttpServeRoutes", http_serve_routes as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Cors", cors as NativeFn, Attributes::HOLD_ALL);
+    ev.register("CorsApply", cors_apply as NativeFn, Attributes::HOLD_ALL);
+    ev.register("AuthJwt", auth_jwt as NativeFn, Attributes::HOLD_ALL);
+    ev.register("AuthJwtApply", auth_jwt_apply as NativeFn, Attributes::HOLD_ALL);
+    ev.register("OpenApiGenerate", openapi_generate as NativeFn, Attributes::empty());
     ev.register("PathMatch", path_match_builtin as NativeFn, Attributes::empty());
     ev.register("RespondFile", respond_file as NativeFn, Attributes::empty());
     ev.register("RespondText", respond_text as NativeFn, Attributes::empty());
@@ -92,6 +97,11 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
     register_if(ev, pred, "HttpServerStop", http_server_stop as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpServerAddr", http_server_addr as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpServeRoutes", http_serve_routes as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Cors", cors as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "CorsApply", cors_apply as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "AuthJwt", auth_jwt as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "AuthJwtApply", auth_jwt_apply as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "OpenApiGenerate", openapi_generate as NativeFn, Attributes::empty());
     register_if(ev, pred, "PathMatch", path_match_builtin as NativeFn, Attributes::empty());
     register_if(ev, pred, "RespondFile", respond_file as NativeFn, Attributes::empty());
     register_if(ev, pred, "RespondText", respond_text as NativeFn, Attributes::empty());
@@ -1441,6 +1451,138 @@ fn http_serve_routes(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let id = next_srv_id();
     servers_reg().lock().unwrap().insert(id, ServerEntry { stop, addr: addr_clone_for_stop });
     Value::Expr { head: Box::new(Value::Symbol("ServerId".into())), args: vec![Value::Integer(id)] }
+}
+
+// --- Middleware: CORS
+fn cors(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Cors[opts, handler]
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Cors".into())), args } }
+    let opts = ev.eval(args[0].clone());
+    let handler = args[1].clone();
+    // Build PureFunction req -> CorsApply[opts, handler, req]
+    let body = Value::Expr { head: Box::new(Value::Symbol("CorsApply".into())), args: vec![opts, handler, Value::Symbol("req".into())] };
+    Value::PureFunction { params: Some(vec!["req".into()]), body: Box::new(body) }
+}
+
+fn cors_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // CorsApply[opts, handler, req]
+    if args.len()<3 { return Value::Expr { head: Box::new(Value::Symbol("CorsApply".into())), args } }
+    let opts = match ev.eval(args[0].clone()) { Value::Assoc(m)=>m, _=>std::collections::HashMap::new() };
+    let handler = args[1].clone();
+    let req = ev.eval(args[2].clone());
+    let allow_origin = opts.get("AllowOrigin").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or("*".into());
+    let allow_methods = opts.get("AllowMethods").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or("GET,POST,PUT,PATCH,DELETE,OPTIONS".into());
+    let allow_headers = opts.get("AllowHeaders").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or("*".into());
+    let expose_headers = opts.get("ExposeHeaders").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None });
+    let allow_creds = opts.get("AllowCredentials").and_then(|v| if let Value::Boolean(b)=v { Some(*b) } else { None }).unwrap_or(false);
+    // Extract method
+    let method = match &req { Value::Assoc(m)=> m.get("method").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or("GET".into()), _=>"GET".into() };
+    // Preflight
+    if method.eq_ignore_ascii_case("OPTIONS") {
+        let mut headers: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+        headers.insert("Access-Control-Allow-Origin".into(), Value::String(allow_origin));
+        headers.insert("Access-Control-Allow-Methods".into(), Value::String(allow_methods));
+        headers.insert("Access-Control-Allow-Headers".into(), Value::String(allow_headers));
+        if let Some(eh) = expose_headers { headers.insert("Access-Control-Expose-Headers".into(), Value::String(eh)); }
+        if allow_creds { headers.insert("Access-Control-Allow-Credentials".into(), Value::String("true".into())); }
+        return Value::Assoc(vec![
+            ("status".into(), Value::Integer(204)),
+            ("headers".into(), Value::Assoc(headers)),
+            ("body".into(), Value::String(String::new())),
+        ].into_iter().collect());
+    }
+    // Call inner handler
+    let mut resp = ev.eval(Value::Expr { head: Box::new(handler), args: vec![req] });
+    // Merge CORS headers
+    if let Value::Assoc(m) = &mut resp {
+        let hdrs = m.entry("headers".into()).or_insert(Value::Assoc(std::collections::HashMap::new()));
+        if let Value::Assoc(hm) = hdrs {
+            hm.insert("Access-Control-Allow-Origin".into(), Value::String(allow_origin));
+            hm.insert("Access-Control-Allow-Methods".into(), Value::String(allow_methods));
+            hm.insert("Access-Control-Allow-Headers".into(), Value::String(allow_headers));
+            if let Some(eh) = expose_headers { hm.insert("Access-Control-Expose-Headers".into(), Value::String(eh)); }
+            if allow_creds { hm.insert("Access-Control-Allow-Credentials".into(), Value::String("true".into())); }
+        }
+    }
+    resp
+}
+
+// --- Middleware: AuthJwt
+fn auth_jwt(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // AuthJwt[opts, handler]
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("AuthJwt".into())), args } }
+    let opts = ev.eval(args[0].clone());
+    let handler = args[1].clone();
+    let body = Value::Expr { head: Box::new(Value::Symbol("AuthJwtApply".into())), args: vec![opts, handler, Value::Symbol("req".into())] };
+    Value::PureFunction { params: Some(vec!["req".into()]), body: Box::new(body) }
+}
+
+fn auth_jwt_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // AuthJwtApply[opts, handler, req]
+    if args.len()<3 { return Value::Expr { head: Box::new(Value::Symbol("AuthJwtApply".into())), args } }
+    let opts = match ev.eval(args[0].clone()) { Value::Assoc(m)=>m, _=>std::collections::HashMap::new() };
+    let handler = args[1].clone();
+    let req = ev.eval(args[2].clone());
+    let secret = opts.get("Secret").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None });
+    let audience = opts.get("Audience").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None });
+    let issuer = opts.get("Issuer").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None });
+    // Extract Bearer
+    let bearer = match &req { Value::Assoc(m) => {
+        if let Some(Value::Assoc(h)) = m.get("headers") { if let Some(Value::String(auth)) = h.get("Authorization").or_else(|| h.get("authorization")).cloned() {
+            let s = auth.trim(); if s.to_ascii_lowercase().starts_with("bearer ") { Some(s[7..].trim().to_string()) } else { None }
+        } else { None } } else { None }
+    }
+    _ => None };
+    if bearer.is_none() { return Value::Assoc(vec![("status".into(), Value::Integer(401)), ("body".into(), Value::String(String::from("Unauthorized")))].into_iter().collect()); }
+    let token = bearer.unwrap();
+    let mut verify_args = vec![ Value::String(token), Value::List(vec![ Value::String(secret.unwrap_or_default()) ]) ];
+    let mut verify_opts = std::collections::HashMap::new(); if let Some(aud)=audience { verify_opts.insert("Audience".into(), Value::String(aud)); } if let Some(iss)=issuer { verify_opts.insert("Issuer".into(), Value::String(iss)); }
+    verify_args.push(Value::Assoc(verify_opts));
+    let ver = ev.eval(Value::Expr { head: Box::new(Value::Symbol("JwtVerify".into())), args: verify_args });
+    if let Value::Assoc(m) = &ver { if let Some(Value::Boolean(true)) = m.get("valid") {
+        // Inject claims into req as req.auth.claims
+        let mut reqm = match req { Value::Assoc(m)=>m, _=>std::collections::HashMap::new() };
+        let mut auth_map = std::collections::HashMap::new(); if let Some(claims) = m.get("claims") { auth_map.insert("claims".into(), claims.clone()); }
+        reqm.insert("auth".into(), Value::Assoc(auth_map));
+        return ev.eval(Value::Expr { head: Box::new(handler), args: vec![ Value::Assoc(reqm) ] });
+    } }
+    Value::Assoc(vec![("status".into(), Value::Integer(401)), ("body".into(), Value::String(String::from("Unauthorized")))].into_iter().collect())
+}
+
+// --- OpenAPI generator (minimal)
+fn openapi_generate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // OpenApiGenerate[routes, info?] where routes is the same mapping as HttpServeRoutes
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("OpenApiGenerate".into())), args } }
+    let routes_val = ev.eval(args[0].clone());
+    let info = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(std::collections::HashMap::new()) };
+    let mut paths: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    if let Value::Assoc(m) = routes_val {
+        for (k, v) in m.iter() {
+            let ks = k.trim(); let (method, pat) = if let Some(space) = ks.find(' ') { (ks[..space].to_lowercase(), ks[space+1..].to_string()) } else { ("get".into(), ks.to_string()) };
+            // Support richer spec: <|"Handler"->..., "Summary"->..., "Input"->schema, "Output"->schema, "Tags"->{}|>
+            let (summary, tags, input_schema, output_schema) = match v {
+                Value::Assoc(hm) => (
+                    hm.get("Summary").and_then(|x| if let Value::String(s)=x { Some(s.clone()) } else { None }).unwrap_or_default(),
+                    hm.get("Tags").and_then(|x| if let Value::List(xs)=x { Some(xs.clone()) } else { None }).unwrap_or_else(Vec::new),
+                    hm.get("Input").cloned(),
+                    hm.get("Output").cloned(),
+                ),
+                _ => (String::new(), Vec::new(), None, None),
+            };
+            let op = Value::Assoc(vec![
+                ("summary".into(), Value::String(summary)),
+                ("tags".into(), Value::List(tags)),
+                ("responses".into(), Value::Assoc(vec![ ("200".into(), Value::Assoc(vec![ ("description".into(), Value::String(String::from("OK"))), ("content".into(), Value::Assoc(vec![ ("application/json".into(), Value::Assoc(match output_schema { Some(s)=> std::collections::HashMap::from([(String::from("schema"), s)]), None=> std::collections::HashMap::new() })) ].into_iter().collect())) ].into_iter().collect())) ].into_iter().collect())),
+            ].into_iter().collect());
+            let path_item = paths.entry(pat).or_insert(Value::Assoc(std::collections::HashMap::new()));
+            if let Value::Assoc(pm) = path_item { pm.insert(method, op); }
+        }
+    }
+    Value::Assoc(vec![
+        ("openapi".into(), Value::String("3.1.0".into())),
+        ("info".into(), info),
+        ("paths".into(), Value::Assoc(paths)),
+    ].into_iter().collect())
 }
 
 

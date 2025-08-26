@@ -12,6 +12,8 @@ pub fn register_project(ev: &mut Evaluator) {
     ev.register("ProjectRoot", project_root as NativeFn, Attributes::empty());
     ev.register("ProjectLoad", project_load as NativeFn, Attributes::empty());
     ev.register("ProjectInfo", project_info as NativeFn, Attributes::empty());
+    ev.register("ProjectValidate", project_validate as NativeFn, Attributes::empty());
+    ev.register("ProjectInit", project_init as NativeFn, Attributes::empty());
 }
 
 fn failure(tag: &str, msg: &str) -> Value {
@@ -117,3 +119,152 @@ fn project_info(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+// ---------------- Validation & Init ----------------
+
+#[derive(Default)]
+struct Diag {
+    errors: Vec<(String, String, String)>,   // (path, code, message)
+    warnings: Vec<(String, String, String)>, // (path, code, message)
+}
+
+fn push_err(d: &mut Diag, path: &str, code: &str, msg: &str) { d.errors.push((path.to_string(), code.to_string(), msg.to_string())); }
+fn push_warn(d: &mut Diag, path: &str, code: &str, msg: &str) { d.warnings.push((path.to_string(), code.to_string(), msg.to_string())); }
+
+fn validate_manifest(root: &Path, v: &Value) -> Value {
+    use std::collections::HashMap;
+    let mut d = Diag::default();
+    let mut top = match v { Value::Assoc(m)=>m.clone(), other=>{
+        push_err(&mut d, "", "type.top", &format!("project.lyra must evaluate to an association, got {:?}", other));
+        return Value::Assoc(HashMap::from([
+            ("ok".into(), Value::Boolean(false)),
+            ("errors".into(), Value::List(d.errors.into_iter().map(|(p,c,m)| Value::Assoc(HashMap::from([(String::from("path"),Value::String(p)),(String::from("code"),Value::String(c)),(String::from("message"),Value::String(m))]))).collect())),
+            ("warnings".into(), Value::List(Vec::new())),
+        ]));
+    }};
+    // Allowed keys
+    let allowed: std::collections::HashSet<&str> = ["Project","Modules","Scripts","Env","Config","Workspace","Deps"].into_iter().collect();
+    for k in top.keys() {
+        if !allowed.contains(k.as_str()) {
+            push_warn(&mut d, &format!("{}", k), "key.unknown", &format!("Unknown top-level key '{}'; allowed: Project, Modules, Scripts, Env, Config, Workspace, Deps", k));
+        }
+    }
+    // Project
+    match top.get("Project") { Some(Value::Assoc(pm)) => {
+        match pm.get("Name") { Some(Value::String(_))|Some(Value::Symbol(_)) => {}, Some(other) => push_err(&mut d, "Project.Name", "type.string", &format!("expected string/symbol, got {:?}", other)), None => push_err(&mut d, "Project.Name", "missing", "Project.Name is required") }
+        match pm.get("Version") { Some(Value::String(_))|Some(Value::Symbol(_)) => {}, Some(other) => push_err(&mut d, "Project.Version", "type.string", &format!("expected string/symbol, got {:?}", other)), None => push_err(&mut d, "Project.Version", "missing", "Project.Version is required") }
+        if let Some(other) = pm.get("Description") { if !matches!(other, Value::String(_) | Value::Symbol(_)) { push_warn(&mut d, "Project.Description", "type.string", &format!("expected string/symbol, got {:?}", other)); } }
+    }, Some(other) => push_err(&mut d, "Project", "type.assoc", &format!("expected association, got {:?}", other)), None => push_err(&mut d, "Project", "missing", "Top-level Project assoc is required") }
+    // Modules
+    match top.get("Modules") { Some(Value::Assoc(mm)) => {
+        for (name, pathv) in mm.iter() {
+            let pname = match name.as_str() { s => s };
+            match pathv {
+                Value::String(s)|Value::Symbol(s) => {
+                    let p = PathBuf::from(s);
+                    if !p.exists() { push_err(&mut d, &format!("Modules.{}", pname), "path.missing", &format!("module path does not exist: {}", s)); }
+                    else if p.is_dir() { push_warn(&mut d, &format!("Modules.{}", pname), "path.is_dir", &format!("expected file, got directory: {}", s)); }
+                }
+                other => push_err(&mut d, &format!("Modules.{}", pname), "type.string", &format!("expected string path, got {:?}", other)),
+            }
+        }
+    }, Some(other) => push_err(&mut d, "Modules", "type.assoc", &format!("expected association, got {:?}", other)), None => {} }
+    // Scripts
+    match top.get("Scripts") { Some(Value::Assoc(sm)) => {
+        for (sname, val) in sm.iter() {
+            if let Value::Assoc(am) = val {
+                // Validate Module reference if present
+                if let Some(Value::String(mn))|Some(Value::Symbol(mn)) = am.get("Module") {
+                    if let Some(Value::Assoc(mm)) = top.get("Modules") { if !mm.contains_key(mn) { push_err(&mut d, &format!("Scripts.{}", sname), "script.unknownModule", &format!("references unknown module '{}'", mn)); } }
+                }
+            } else if !matches!(val, Value::String(_)|Value::Symbol(_)|Value::List(_)) {
+                push_warn(&mut d, &format!("Scripts.{}", sname), "type.unsupported", &format!("script value should be assoc/string/list; got {:?}", val));
+            }
+        }
+    }, Some(other) => push_err(&mut d, "Scripts", "type.assoc", &format!("expected association, got {:?}", other)), None => {} }
+    // Env
+    match top.get("Env") { Some(Value::Assoc(em)) => {
+        for (k, v) in em.iter() { if !matches!(v, Value::String(_)|Value::Symbol(_)|Value::Integer(_)|Value::Real(_)) { push_warn(&mut d, &format!("Env.{}", k), "type.string", &format!("env var should be string/number, got {:?}", v)); } }
+    }, Some(other) => push_err(&mut d, "Env", "type.assoc", &format!("expected association, got {:?}", other)), None => {} }
+    // Config: best-effort assoc
+    if let Some(other) = top.get("Config") { if !matches!(other, Value::Assoc(_)) { push_warn(&mut d, "Config", "type.assoc", &format!("expected association, got {:?}", other)); } }
+    // Workspace (optional): Members list if present
+    if let Some(Value::Assoc(ws)) = top.get("Workspace") {
+        if let Some(m) = ws.get("Members").or_else(|| ws.get("members")).or_else(|| ws.get("members")) {
+            if let Value::List(vs) = m { for v in vs { if !matches!(v, Value::String(_)|Value::Symbol(_)) { push_err(&mut d, "Workspace.Members", "type.string", &format!("expected string entries, got {:?}", v)); } } }
+            else { push_err(&mut d, "Workspace.Members", "type.list", &format!("expected list of strings, got {:?}", m)); }
+        }
+    } else if let Some(other) = top.get("Workspace") { if !matches!(other, Value::Symbol(_)) { push_warn(&mut d, "Workspace", "type.assocOrNull", &format!("expected assoc or Null, got {:?}", other)); } }
+
+    let mut errors_v: Vec<Value> = Vec::new();
+    for (p,c,m) in d.errors.into_iter() { errors_v.push(Value::Assoc(HashMap::from([(String::from("path"),Value::String(p)),(String::from("code"),Value::String(c)),(String::from("message"),Value::String(m))]))); }
+    let mut warns_v: Vec<Value> = Vec::new();
+    for (p,c,m) in d.warnings.into_iter() { warns_v.push(Value::Assoc(HashMap::from([(String::from("path"),Value::String(p)),(String::from("code"),Value::String(c)),(String::from("message"),Value::String(m))]))); }
+    Value::Assoc(HashMap::from([
+        (String::from("ok"), Value::Boolean(errors_v.is_empty())),
+        (String::from("errors"), Value::List(errors_v)),
+        (String::from("warnings"), Value::List(warns_v)),
+    ]))
+}
+
+fn project_validate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // ProjectValidate[] or ProjectValidate[<path>]
+    let root = if args.len()==1 { as_string(&ev.eval(args[0].clone())).map(PathBuf::from) } else { None }
+        .or_else(|| if let Some(Value::String(s)) = ev.get_env("ProjectRoot") { Some(PathBuf::from(s)) } else { None })
+        .or_else(|| discover_from(&current_dir(ev)));
+    let root = match root { Some(r)=>r, None=> return failure("Project::validate", "No project found") };
+    let manifest = root.join("project.lyra");
+    match eval_manifest_at(&manifest).and_then(|v| normalize_manifest(&root, v)) {
+        Ok(v) => validate_manifest(&root, &v),
+        Err(e) => Value::Assoc(std::iter::IntoIterator::into_iter([
+            (String::from("ok"), Value::Boolean(false)),
+            (String::from("errors"), Value::List(vec![Value::Assoc(std::iter::IntoIterator::into_iter([
+                (String::from("path"), Value::String(String::from("project.lyra"))),
+                (String::from("code"), Value::String(String::from("parse"))),
+                (String::from("message"), Value::String(e))
+            ]).collect())])),
+            (String::from("warnings"), Value::List(vec![])),
+        ]).collect()),
+    }
+}
+
+fn project_init(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    use std::collections::HashMap;
+    // ProjectInit[] | ProjectInit["dir"] | ProjectInit[<|Name->.., Dir->..|>]
+    let mut name_opt: Option<String> = None;
+    let mut dir_opt: Option<PathBuf> = None;
+    if args.len()==1 {
+        match ev.eval(args[0].clone()) {
+            Value::String(s)|Value::Symbol(s) => { dir_opt = Some(PathBuf::from(s)); }
+            Value::Assoc(m) => {
+                if let Some(Value::String(s))|Some(Value::Symbol(s)) = m.get("Name").or_else(|| m.get("name")) { name_opt = Some(s.clone()); }
+                if let Some(Value::String(s))|Some(Value::Symbol(s)) = m.get("Dir").or_else(|| m.get("dir")) { dir_opt = Some(PathBuf::from(s)); }
+            }
+            _ => {}
+        }
+    }
+    let cwd = current_dir(ev);
+    let dir = dir_opt.unwrap_or_else(|| cwd.clone());
+    let name = name_opt.unwrap_or_else(|| dir.file_name().and_then(|s| s.to_str()).unwrap_or("lyra-project").to_string());
+    // Create structure
+    if let Err(e) = std::fs::create_dir_all(dir.join("src")) { return failure("Project::init", &format!("create src dir: {}", e)); }
+    let manifest_path = dir.join("project.lyra");
+    if manifest_path.exists() { return failure("Project::init", "project.lyra already exists"); }
+    let template = format!(
+        "Exported[{{}}];\n\n<|\n  \"Project\" -> <| \"Name\"->\"{}\", \"Version\"->\"0.1.0\", \"Description\"->\"\" |>,\n  \"Modules\" -> <| \"main\" -> ResolveRelative[\"src/main.lyra\"] |>,\n  \"Scripts\" -> <| \"run\" -> <| \"Module\"->\"main\", \"Entry\"->\"Main\" |> |>,\n  \"Env\" -> <||>,\n  \"Config\" -> <||>,\n  \"Workspace\" -> Null,\n  \"Deps\" -> <||>\n|>\n",
+        name
+    );
+    if let Err(e) = std::fs::write(&manifest_path, template) { return failure("Project::init", &format!("write project.lyra: {}", e)); }
+    let main_src = "Main[] := (Puts[\"Hello from Lyra!\"]; )\n";
+    if let Err(e) = std::fs::write(dir.join("src/main.lyra"), main_src) { return failure("Project::init", &format!("write src/main.lyra: {}", e)); }
+    // Optional .gitignore if not present
+    let gi = dir.join(".gitignore");
+    if !gi.exists() {
+        let _ = std::fs::write(gi, "target\nbuild\n.DS_Store\n");
+    }
+    Value::Assoc(HashMap::from([
+        (String::from("ok"), Value::Boolean(true)),
+        (String::from("root"), Value::String(dir.to_string_lossy().to_string())),
+        (String::from("manifest"), Value::String(manifest_path.to_string_lossy().to_string())),
+        (String::from("created"), Value::List(vec![Value::String(String::from("project.lyra")), Value::String(String::from("src/main.lyra"))])),
+    ]))
+}
