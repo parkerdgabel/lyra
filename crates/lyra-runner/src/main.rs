@@ -2,25 +2,34 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use lyra_runtime::{Evaluator, set_default_registrar};
+use lyra_stdlib as stdlib;
 
 // This file is generated once; the KEEP list is injected by lyra-compiler build command
 // It should define: pub static KEEP: &[&str]
 include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/keep_symbols.in.rs"));
 
 fn main() {
-    // Install default registrar that registers only selected symbols
-    set_default_registrar(|ev: &mut Evaluator| {
-        let mut set: HashSet<&str> = HashSet::new();
-        for &s in KEEP.iter() { set.insert(s); }
-        lyra_stdlib::register_selected(ev, &set);
-    });
-
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let keep_only = args.iter().any(|a| a == "--keep-only");
+
+    // Default: full stdlib. Opt-out with --keep-only for tree-shaken builds.
+    if keep_only {
+        set_default_registrar(|ev: &mut Evaluator| {
+            let mut set: HashSet<&str> = HashSet::new();
+            for &s in KEEP.iter() { set.insert(s); }
+            stdlib::register_selected(ev, &set);
+        });
+    } else {
+        set_default_registrar(stdlib::register_all);
+    }
     if args.is_empty() || args.iter().any(|a| a=="-h"||a=="--help") {
-        eprintln!("lyra-runner minimal
+        eprintln!("lyra-runner
 USAGE:
-  lyra-runner --eval <expr>
-  lyra-runner --file <file.lyra>
+  lyra-runner [--keep-only] --eval <expr>
+  lyra-runner [--keep-only] --file <file.lyra>
+
+OPTIONS:
+  --keep-only    Register only symbols listed in keep_symbols.in.rs (tree-shaken mode).\n    Default is full stdlib registration.
 ");
         return;
     }
@@ -29,6 +38,7 @@ USAGE:
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--keep-only" => { /* handled above; skip */ },
             "--eval" => { i+=1; if i<args.len() { eval_src = Some(args[i].clone()); } },
             "--file" => { i+=1; if i<args.len() { file = Some(PathBuf::from(&args[i])); } },
             _ => {}

@@ -16,4 +16,3 @@ handle := HttpStreamRequest[<|"Method"->"GET", "Url"->url|>];
 part1 := HttpStreamRead[handle, <|"MaxBytes"->4096|>];
 _ := HttpStreamClose[handle];
 part1;  (* prints first chunk of response body *)
-

@@ -4,7 +4,7 @@
 
 (* Lists *)
 {1,2,3};                 (* => {1,2,3} *)
-{1,2,3}[[2]];            (* 1-based index => 2 *)
+Part[{1,2,3}, 2];        (* 1-based index => 2 *)
 
 (* Associations with symbol or string keys *)
 <|a->1, "b"->2|>;        (* => <|a->1, b->2|> *)
@@ -12,4 +12,3 @@ Part[<|a->1, b->2|>, "b"];  (* => 2 *)
 
 (* Dot property and method chaining *)
 <|name->"ann"|>.name;    (* => "ann" via Lookup *)
-

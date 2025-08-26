@@ -3,9 +3,9 @@
 *)
 
 (* Future and Await *)
-f := Future[(#^2)&[21]];
+sq := (#^2)&;
+f := Future[sq[21]];
 Await[f];                          (* => 441 *)
 
 (* ParallelMap over a small list *)
 ParallelMap[(#*2)&, {1,2,3}, <|"MaxThreads"->2|>];
-

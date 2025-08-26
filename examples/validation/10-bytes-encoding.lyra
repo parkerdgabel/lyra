@@ -5,4 +5,3 @@
 bytes := TextEncode["hi"];           (* => byte array; printed as list or bytes repr *)
 Base64Encode[bytes];                  (* => "aGk=" *)
 HexEncode[bytes];                     (* => "6869" *)
-

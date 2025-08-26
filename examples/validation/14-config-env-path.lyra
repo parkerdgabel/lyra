@@ -5,7 +5,7 @@
 
 tmp := "target/tmp/env";
 _ := Run["mkdir", "-p", tmp];
-dotenv := tmp<>"/.env";
+dotenv := PathJoin[{tmp, ".env"}];
 WriteFile[dotenv, "FOO=bar\nHOME_ALIAS=${HOME}\n"];
 
 DotenvLoad[dotenv];                    (* loads into process env *)
@@ -17,4 +17,3 @@ PathNormalize["./."];                   (* => absolute canonical path *)
 PathResolve["a/b", "/root"];          (* => "/root/a/b" *)
 PathRelative["/root/a/b", "/root"];   (* => "a/b" *)
 PathExtname["/foo/bar.txt"];            (* => ".txt" *)
-

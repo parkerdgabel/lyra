@@ -8,5 +8,5 @@ args := ArgsParse[{"--name", "--count"}];
 args;                                         (* show parsed assoc: <|Options->..., Flags->..., Rest->...|> *)
 
 name := Lookup[Part[args, "Options"], "name"];  (* string or Null *)
-greet := (n_) => "Hello, " <> n <> "!";
+greet := (n_) => StringJoin[{"Hello, ", n, "!"}];
 greet[name];

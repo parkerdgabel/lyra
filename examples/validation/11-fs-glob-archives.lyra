@@ -5,20 +5,19 @@
 
 tmp := "target/tmp/fs";
 _ := Run["rm", "-rf", tmp];
-_ := Run["mkdir", "-p", tmp <> "/sub"];
-WriteFile[tmp<>"/a.txt", "A"];
-WriteFile[tmp<>"/sub/b.log", "B"];
+_ := Run["mkdir", "-p", PathJoin[{tmp, "sub"}]];
+WriteFile[PathJoin[{tmp, "a.txt"}], "A"];
+WriteFile[PathJoin[{tmp, "sub", "b.log"}], "B"];
 
-Glob[tmp<>"/**/*.txt"];                (* => list of .txt paths *)
+Glob[PathJoin[{tmp, "**", "*.txt"}]];   (* => list of .txt paths *)
 
-zip := tmp<>"/bundle.zip";
-ZipCreate[zip, {tmp<>"/a.txt", tmp<>"/sub"}];
-ZipExtract[zip, tmp<>"/unz"];           (* contents extracted *)
+zip := PathJoin[{tmp, "bundle.zip"}];
+ZipCreate[zip, {PathJoin[{tmp, "a.txt"}], PathJoin[{tmp, "sub"}]}];
+ZipExtract[zip, PathJoin[{tmp, "unz"}]]; (* contents extracted *)
 
-tar := tmp<>"/bundle.tar";
+tar := PathJoin[{tmp, "bundle.tar"}];
 TarCreate[tar, {tmp}];
-TarExtract[tar, tmp<>"/untar"];
+TarExtract[tar, PathJoin[{tmp, "untar"}]];
 
-gz := tmp<>"/a.txt.gz";
-Gzip[tmp<>"/a.txt", gz];
-
+gz := PathJoin[{tmp, "a.txt.gz"}];
+Gzip[PathJoin[{tmp, "a.txt"}], gz];

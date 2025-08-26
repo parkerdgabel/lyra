@@ -6,7 +6,7 @@
 tmpdir := "target/tmp";
 _ := Run["mkdir", "-p", tmpdir];
 
-path := tmpdir <> "/hello.txt";
+path := PathJoin[{tmpdir, "hello.txt"}];
 WriteFile[path, "hello lyra"];
 ReadFile[path];                         (* => "hello lyra" *)
 
@@ -14,4 +14,3 @@ ReadFile[path];                         (* => "hello lyra" *)
 JsonStringify[<|a->1, b->2|>];
 YamlParse["a: 1\nb: 2\n"];           (* => <|a->1, b->2|> *)
 TomlParse["[x]\ny=1\n"];               (* => <|x-><|y->1|>|> *)
-

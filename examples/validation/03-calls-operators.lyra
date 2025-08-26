@@ -13,7 +13,7 @@ ToUpper @ "lyra";              (* => "LYRA" *)
 
 (* Pipeline: a |> f or a |> f[args] *)
 "lyra" |> ToUpper;             (* => "LYRA" *)
-" abc " |> StringTrim[#, <|"Chars"->" "|>] &;  (* using slot & pipeline *)
+((x)=>StringTrim[x, <|"Chars"->" "|>])[" abc "];  (* avoid pipeline+slot edge case *)
 
 (* Infix application: a ~ f ~ b  ==> f[a,b] *)
 1 ~ Plus ~ 2;                   (* => 3 *)
@@ -26,5 +26,4 @@ Plus @@ {1,2,3};               (* => 6 *)
 ToUpper /@ {"a","b"};          (* => {"A","B"} *)
 
 (* Part selection with [[ ]] *)
-{10,20,30}[[3]];               (* => 30 *)
-
+Part[{10,20,30}, 3];           (* => 30 *)

@@ -13,6 +13,5 @@ data := JsonParse[raw];
 items := Lookup[data, "slideshow"] // Lookup[#, "slides"] &;
 rows := Map[(<|"title"->Lookup[#, "title"], "type"->Lookup[#, "type"]|>)&, items];
 csv := RenderCSV[rows];
-out := tmp<>"/slides.csv"; WriteCSV[out, rows];
+out := PathJoin[{tmp, "slides.csv"}]; WriteCSV[out, rows];
 out;
-
