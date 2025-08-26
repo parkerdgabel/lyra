@@ -1,0 +1,73 @@
+(*
+  Kanban CLI — Projects/Columns/Cards
+  See README.md for usage.
+*)
+
+(* import db helpers by evaluating the file *)
+<< "examples/apps/kanban/db.lyra";
+conn := ConnectKanban[];
+
+ShowHelp[] := Puts[StringJoin[{
+  "Kanban CLI\n",
+  "Commands:\n",
+  "  init\n",
+  "  project add <name>\n",
+  "  column add <project_id> <name> [--pos N]\n",
+  "  card add <project_id> <column_id> <title> [--prio N]\n",
+  "  board <project_id>\n"
+}]];
+
+Args := ArgsParse[{"--pos", "--prio"}];
+Rest := Part[Args, "Rest"]; Opts := Part[Args, "Options"]; Flags := Part[Args, "Flags"];
+cmdIdx := If[Length[Rest] >= 1 && RegexIsMatch[Part[Rest,1], ".*\\.lyra$"], 2, 1];
+cmd := If[Length[Rest] >= cmdIdx, Part[Rest, cmdIdx], "help"];
+
+If[cmd=="help", ShowHelp[],
+  If[cmd=="init", (EnsureSchema[conn]; Puts["Initialized."]),
+    If[cmd=="project", (
+      sub := If[Length[Rest] >= cmdIdx+1, Part[Rest, cmdIdx+1], "help"];
+      If[sub=="add", (
+        If[Length[Rest] < cmdIdx+2, Puts["Usage: project add <name>"],
+          name := Part[Rest, cmdIdx+2];
+          Exec[conn, "INSERT INTO projects(name) VALUES ($name)", <|"name"->name|>]; Puts["Project added."]
+        ]
+      ), ShowHelp[]]
+    ),
+      If[cmd=="column", (
+        sub2 := If[Length[Rest] >= cmdIdx+1, Part[Rest, cmdIdx+1], "help"];
+        If[sub2=="add", (
+          If[Length[Rest] < cmdIdx+3, Puts["Usage: column add <project_id> <name> [--pos N]"],
+            pid := Part[Rest, cmdIdx+2]; nm := Part[Rest, cmdIdx+3]; pos := Lookup[Opts, "pos"];
+            Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid, $name, $pos)", <|"pid"->pid, "name"->nm, "pos"->pos|>];
+            Puts["Column added."]
+          ]
+        ), ShowHelp[]]
+      ),
+        If[cmd=="card", (
+          sub3 := If[Length[Rest] >= cmdIdx+1, Part[Rest, cmdIdx+1], "help"];
+          If[sub3=="add", (
+            If[Length[Rest] < cmdIdx+4, Puts["Usage: card add <project_id> <column_id> <title> [--prio N]"],
+              pid := Part[Rest, cmdIdx+2]; cid := Part[Rest, cmdIdx+3]; ttl := Part[Rest, cmdIdx+4]; pr := Lookup[Opts, "prio"];
+              Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid, $cid, $title, '', $prio, strftime('%s','now'))",
+                <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>]; Puts["Card added."]
+            ]
+          ), ShowHelp[]]
+        ),
+          If[cmd=="board", (
+            If[Length[Rest] < cmdIdx+1, Puts["Usage: board <project_id>"],
+              pid2 := Part[Rest, cmdIdx+1];
+              header := StringJoin[{AnsiStyle["Board ", <|"Bold"->True|>], JsonStringify[pid2]}]; Puts[header]; Puts[Rule["-", 60]];
+              cols := Collect[SQL[conn, StringJoin[{"SELECT id, name, pos FROM columns WHERE project_id=", JsonStringify[pid2], " ORDER BY pos"}]]];
+              Map[(col_)=> (
+                colId := Part[col, "id"]; colName := Part[col, "name"]; Puts[StringJoin[{AnsiStyle[colName, <|"Bold"->True|>], " (", JsonStringify[colId], ")"}]];
+                cards := Collect[SQL[conn, StringJoin[{"SELECT id, title, prio, datetime(created_at,'unixepoch') AS created FROM cards WHERE column_id=", JsonStringify[colId], " ORDER BY prio DESC, created_at DESC"}]]];
+                Puts[TableSimple[cards, <|"Columns"->{"id","title","prio","created"}|>]];
+              ), cols]
+            ]
+          ), ShowHelp[]]
+        ]
+      ]
+    ]
+  ]
+]
+

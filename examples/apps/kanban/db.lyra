@@ -1,0 +1,35 @@
+(* DB helpers for Kanban app *)
+dbDir := "target/tmp";
+dbFile := PathJoin[{dbDir, "kanban.sqlite"}];
+DSN[] := StringJoin[{"sqlite://", dbFile}];
+
+EnsureSchema[conn_] := (
+  Exec[conn, "CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  )"];
+  Exec[conn, "CREATE TABLE IF NOT EXISTS columns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    pos INTEGER NOT NULL DEFAULT 0
+  )"];
+  Exec[conn, "CREATE TABLE IF NOT EXISTS cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    column_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    desc TEXT,
+    prio INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  )"];
+  True
+);
+
+ConnectKanban[] := (
+  MakeDirectory[dbDir, <|"Parents"->True|>];
+  conn := Connect[DSN[]];
+  EnsureSchema[conn];
+  conn
+);
+
