@@ -1,0 +1,20 @@
+(*
+  10_rag_vector.lyra — In-memory VectorStore + simple RAG flow
+  Run: lyra-runner --file examples/validation/ai/10_rag_vector.lyra
+*)
+
+VSNew[<|"Name"->"mem", "Dims"->8|>];
+
+docs := {
+  <|"id"->"d1", "text"->"Lyra is a compute system for AI."|>,
+  <|"id"->"d2", "text"->"Vector stores enable fast similarity search."|>,
+  <|"id"->"d3", "text"->"RAG retrieves relevant chunks to help answer questions."|>
+};
+
+RAGIndex["mem", docs, <||>];
+
+q := "What helps answer questions?";
+matches := RAGRetrieve["mem", q, <|"K"->2|>];
+ctx := RAGAssembleContext[matches, <|"MaxChars"->2000|>];
+RAGAnswer["mem", q, <|"K"->2|>];
+

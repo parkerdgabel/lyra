@@ -57,7 +57,7 @@ default = [
   "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text",
   "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs",
   "time_cron", "fs_watch", "fs_archive", "module", "project",
-  "model", "trace", "metrics", "memory", "policy", "workflow"
+  "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag"
 ]
 module = []
 project = []
@@ -82,6 +82,8 @@ metrics = []
 memory = []
 policy = []
 workflow = []
+vector = []
+rag = []
 net = []
 time = []
 logging = []

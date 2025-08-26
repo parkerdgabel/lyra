@@ -21,6 +21,8 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "memory")] pub mod memory;
 #[cfg(feature = "policy")] pub mod policy;
 #[cfg(feature = "workflow")] pub mod workflow;
+#[cfg(feature = "vector")] pub mod vector;
+#[cfg(feature = "rag")] pub mod rag;
 #[cfg(feature = "net")] pub mod net;
 #[cfg(feature = "time")] pub mod time;
 #[cfg(feature = "logging")] pub mod logging;
@@ -80,6 +82,8 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "memory")] memory::register_memory(ev);
     #[cfg(feature = "policy")] policy::register_policy(ev);
     #[cfg(feature = "workflow")] workflow::register_workflow(ev);
+    #[cfg(feature = "vector")] vector::register_vector(ev);
+    #[cfg(feature = "rag")] rag::register_rag(ev);
     #[cfg(feature = "net")] net::register_net(ev);
     #[cfg(feature = "time")] time::register_time(ev);
     #[cfg(feature = "logging")] logging::register_logging(ev);
@@ -174,6 +178,8 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "memory")] crate::memory::register_memory_filtered(ev, &predicate);
     #[cfg(feature = "policy")] crate::policy::register_policy_filtered(ev, &predicate);
     #[cfg(feature = "workflow")] crate::workflow::register_workflow_filtered(ev, &predicate);
+    #[cfg(feature = "vector")] crate::vector::register_vector_filtered(ev, &predicate);
+    #[cfg(feature = "rag")] crate::rag::register_rag_filtered(ev, &predicate);
     #[cfg(feature = "net")] crate::net::register_net_filtered(ev, &predicate);
     #[cfg(feature = "time")] crate::time::register_time_filtered(ev, &predicate);
     #[cfg(feature = "logging")] crate::logging::register_logging_filtered(ev, &predicate);

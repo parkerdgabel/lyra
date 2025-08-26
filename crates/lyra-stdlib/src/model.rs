@@ -58,7 +58,7 @@ fn extract_messages(m: &Value) -> Vec<(String,String)> {
     }
 }
 
-fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Chat[Model["mock:echo"], <|"Messages"->[{role,content}...], "Tools"->..., "Stream"->True|>]
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Chat".into())), args } }
     let mut model_id: String = "mock:echo".into();
@@ -131,7 +131,7 @@ fn complete(ev: &mut Evaluator, mut args: Vec<Value>) -> Value {
     out
 }
 
-fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Embed[Model[...], Text->list|string]
     let mut texts: Vec<String> = Vec::new();
     for a in &args {
