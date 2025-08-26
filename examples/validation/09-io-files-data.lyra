@@ -7,8 +7,8 @@ tmpdir := "target/tmp";
 _ := Run["mkdir", "-p", tmpdir];
 
 path := PathJoin[{tmpdir, "hello.txt"}];
-WriteFile[path, "hello lyra"];
-ReadFile[path];                         (* => "hello lyra" *)
+"hello lyra" >> path;
+<< path;                         (* => "hello lyra" *)
 
 (* JSON/YAML/TOML parse/stringify *)
 JsonStringify[<|a->1, b->2|>];

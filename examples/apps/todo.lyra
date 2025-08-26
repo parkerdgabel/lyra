@@ -1,0 +1,125 @@
+(*
+  Todo CLI — SQLite-backed task tracker
+  Usage:
+    lyra-runner --file examples/apps/todo.lyra -- init
+    lyra-runner --file examples/apps/todo.lyra -- add "Buy milk" [--project Home] [--prio 2]
+    lyra-runner --file examples/apps/todo.lyra -- list [--all|--done] [--project Home]
+    lyra-runner --file examples/apps/todo.lyra -- done 1
+    lyra-runner --file examples/apps/todo.lyra -- undone 1
+    lyra-runner --file examples/apps/todo.lyra -- edit 1 "Buy almond milk"
+    lyra-runner --file examples/apps/todo.lyra -- delete 1
+    lyra-runner --file examples/apps/todo.lyra -- clear-done
+*)
+
+dbDir := "target/tmp";
+dbFile := PathJoin[{dbDir, "todo.sqlite"}];
+dsn := StringJoin[{"sqlite://", dbFile}];
+
+EnsureSchema[conn_] := (
+  Exec[conn, "CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    project TEXT,
+    prio INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  )"];
+  True
+);
+
+ShowHelp[] := Puts[StringJoin[{
+  "Todo CLI\n",
+  "Commands:\n",
+  "  init\n",
+  "  add <title> [--project P] [--prio N]\n",
+  "  list [--all|--done] [--project P]\n",
+  "  done <id>\n",
+  "  undone <id>\n",
+  "  edit <id> <new title>\n",
+  "  delete <id>\n",
+  "  clear-done\n"
+}]];
+
+FormatRow[row_] := Module[{},
+  id := Part[row, "id"]; title := Part[row, "title"]; pr := Part[row, "prio"]; proj := Part[row, "project"]; dn := Part[row, "done"]; cr := Part[row, "created"];
+  mark := If[dn==1, "[x]", "[ ]"];
+  StringJoin[{ToString[id], " ", mark, " ", title,
+    If[proj==Null || proj=="", "", StringJoin[{"  (", proj, ")"}]],
+    If[pr==Null || pr==0, "", StringJoin[{"  prio:", ToString[pr]}]],
+    "  ", cr
+  }]
+];
+
+ListTodos[conn_, opts_] := (
+  filter := If[AssocContainsKeyQ[opts, "done"], "done", If[AssocContainsKeyQ[opts, "all"], "all", "open"]];
+  project := Lookup[opts, "project"];
+  where := If[filter=="all", "1=1", If[filter=="done", "done=1", "done=0"]];
+  where2 := If[project==Null, where, StringJoin[{where, " AND (project = '", project, "')"}]];
+  sql := StringJoin[{"SELECT id, title, done, coalesce(project,'') AS project, coalesce(prio,0) AS prio, datetime(created_at,'unixepoch') AS created FROM todos WHERE ", where2, " ORDER BY done, prio DESC, created_at DESC"}];
+  rowsDs := SQL[conn, sql];
+  rows := Collect[rowsDs];
+  ForEach[rows, (Puts[FormatRow[#]])&];
+);
+
+AddTodo[conn_, title_, opts_] := (
+  project := Lookup[opts, "project"]; pr := Lookup[opts, "prio"];
+  Exec[conn, "INSERT INTO todos (title, project, prio, created_at, done) VALUES ($title, $project, $prio, strftime('%s','now'), 0)", <|"title"->title, "project"->project, "prio"->pr|>];
+  Puts["Added."]
+);
+
+MarkDone[conn_, id_, done_] := (
+  Exec[conn, "UPDATE todos SET done=$done WHERE id=$id", <|"id"->ToInteger[id], "done"->If[done, 1, 0]|>];
+  Puts[If[done, "Marked done.", "Marked open."]]
+);
+
+EditTodo[conn_, id_, title_] := (
+  Exec[conn, "UPDATE todos SET title=$title WHERE id=$id", <|"id"->ToInteger[id], "title"->title|>];
+  Puts["Updated."]
+);
+
+DeleteTodo[conn_, id_] := (
+  Exec[conn, "DELETE FROM todos WHERE id=$id", <|"id"->ToInteger[id]|>];
+  Puts["Deleted."]
+);
+
+ClearDone[conn_] := (
+  Exec[conn, "DELETE FROM todos WHERE done=1"]; Puts["Cleared done items."]
+);
+
+(* Main entry *)
+Args := ArgsParse[{"--project", "--prio", "--all", "--done"}];
+Rest := Part[Args, "Rest"]; Opts := Part[Args, "Options"]; Flags := Part[Args, "Flags"];
+
+MakeDirectory[dbDir, <|"Parents"->True|>];
+conn := Connect[dsn]; EnsureSchema[conn];
+
+cmd := If[Length[Rest] >= 1, Part[Rest, 1], "help"];
+
+Switch[cmd,
+  "help", ShowHelp[],
+  "init", (EnsureSchema[conn]; Puts["Initialized."]),
+  "add", (
+    If[Length[Rest] < 2, Puts["Usage: add <title> [--project P] [--prio N]"],
+      title := Part[Rest, 2];
+      AddTodo[conn, title, Opts]
+    ]
+  ),
+  "list", (
+    ListTodos[conn, Merge[Opts, Flags, (a_, b_)=>a]]
+  ),
+  "done", (
+    If[Length[Rest] < 2, Puts["Usage: done <id>"], MarkDone[conn, Part[Rest, 2], True]]
+  ),
+  "undone", (
+    If[Length[Rest] < 2, Puts["Usage: undone <id>"], MarkDone[conn, Part[Rest, 2], False]]
+  ),
+  "edit", (
+    If[Length[Rest] < 3, Puts["Usage: edit <id> <new title>"], EditTodo[conn, Part[Rest, 2], Part[Rest, 3]]]
+  ),
+  "delete", (
+    If[Length[Rest] < 2, Puts["Usage: delete <id>"], DeleteTodo[conn, Part[Rest, 2]]]
+  ),
+  "clear-done", ClearDone[conn],
+  _, ShowHelp[]
+]
+

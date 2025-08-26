@@ -13,5 +13,6 @@ data := Part[resp, "json"];  (* httpbin returns JSON; no branch needed *)
 slides := Lookup[Lookup[data, "slideshow"], "slides"];
 rows := Map[(<|"title"->Lookup[#, "title"], "type"->Lookup[#, "type"]|>)&, slides];
 csv := RenderCSV[rows];
-out := PathJoin[{tmp, "slides.csv"}]; WriteCSV[out, rows];
+out := PathJoin[{tmp, "slides.csv"}];
+csv >> out;
 out;

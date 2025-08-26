@@ -6,7 +6,7 @@
 tmp := "target/tmp/env";
 MakeDirectory[tmp, <|"Parents"->True|>];
 dotenv := PathJoin[{tmp, ".env"}];
-WriteFile[dotenv, "FOO=bar\nHOME_ALIAS=${HOME}\n"];
+"FOO=bar\nHOME_ALIAS=${HOME}\n" >> dotenv;
 
 DotenvLoad[dotenv];                    (* loads into process env *)
 EnvExpand["$FOO-$HOME_ALIAS"];

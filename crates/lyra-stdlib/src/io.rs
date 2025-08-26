@@ -18,6 +18,8 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 pub fn register_io(ev: &mut Evaluator) {
     ev.register("ReadFile", read_file as NativeFn, Attributes::empty());
     ev.register("WriteFile", write_file as NativeFn, Attributes::empty());
+    ev.register("Puts", puts as NativeFn, Attributes::empty());
+    ev.register("Gets", gets as NativeFn, Attributes::empty());
     ev.register("ReadLines", read_lines as NativeFn, Attributes::empty());
     ev.register("FileExistsQ", file_exists_q as NativeFn, Attributes::empty());
     ev.register("ListDirectory", list_directory as NativeFn, Attributes::empty());
@@ -198,6 +200,28 @@ fn write_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Ok(_) => Value::Boolean(true),
         Err(e) => failure("IO::write", &format!("WriteFile: {}", e)),
     }
+}
+
+// Puts[value] -> prints to stdout with newline
+// Puts[value, path] -> writes stringified value to file (overwrites)
+fn puts(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [v] => { let s = to_string_arg(ev, v.clone()); println!("{}", s); Value::Boolean(true) }
+        [v, p] => {
+            let s = to_string_arg(ev, v.clone());
+            let path = to_string_arg(ev, p.clone());
+            match std::fs::write(&path, s.as_bytes()) { Ok(_)=> Value::Boolean(true), Err(e)=> failure("IO::puts", &e.to_string()) }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Puts".into())), args }
+    }
+}
+
+// Gets[path] -> reads entire file as string
+// Future: Gets[] could read stdin
+fn gets(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Gets".into())), args } }
+    let path = to_string_arg(ev, args[0].clone());
+    match std::fs::read_to_string(&path) { Ok(s)=> Value::String(s), Err(e)=> failure("IO::gets", &e.to_string()) }
 }
 
 fn read_lines(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

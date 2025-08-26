@@ -132,6 +132,7 @@ impl Parser {
         let mut lhs = self.parse_additive()?;
         loop {
             self.skip_ws();
+            if self.starts_with(">>") { self.pos += 2; let rhs = self.parse_additive()?; lhs = Value::expr(Value::Symbol("Puts".into()), vec![lhs, rhs]); continue; }
             if self.starts_with("&&") { self.pos += 2; let rhs = self.parse_additive()?; lhs = Value::expr(Value::Symbol("And".into()), vec![lhs, rhs]); continue; }
             if self.starts_with("==") { self.pos += 2; let rhs = self.parse_additive()?; lhs = Value::expr(Value::Symbol("Equal".into()), vec![lhs, rhs]); continue; }
             if self.starts_with("!=") { self.pos += 2; let rhs = self.parse_additive()?; let eq = Value::expr(Value::Symbol("Equal".into()), vec![lhs, rhs]); lhs = Value::expr(Value::Symbol("Not".into()), vec![eq]); continue; }
@@ -187,7 +188,8 @@ impl Parser {
 
     fn parse_power(&mut self) -> ParseResult<Value> {
         self.skip_ws();
-        // unary +/- and !
+        // unary <<, +/- and !
+        if self.starts_with("<<") { self.pos += 2; let v = self.parse_power()?; return Ok(Value::expr(Value::Symbol("Gets".into()), vec![v])); }
         if self.peekc()==Some('!') { self.nextc(); let v = self.parse_power()?; return Ok(Value::expr(Value::Symbol("Not".into()), vec![v])); }
         if self.peekc()==Some('-') { self.nextc(); let v = self.parse_power()?; return Ok(Value::expr(Value::Symbol("Minus".into()), vec![v])); }
         if self.peekc()==Some('+') { self.nextc(); return self.parse_power(); }
