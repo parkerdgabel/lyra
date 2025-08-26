@@ -145,7 +145,7 @@ fn compose_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // RightCompose[f, g, h] => h[g[f[#]]]&
 fn right_compose_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let mut fns: Vec<Value> = match args.as_slice() {
+    let fns: Vec<Value> = match args.as_slice() {
         [Value::List(fs)] => fs.clone(),
         _ => args.clone(),
     };

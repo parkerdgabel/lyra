@@ -60,7 +60,7 @@ fn run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut child = match c.spawn() { Ok(ch)=> ch, Err(e)=> return failure("Process::run", &format!("spawn: {}", e)) };
     if let Some(data) = input.take() { if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(&data); } }
     let start = std::time::Instant::now();
-    let (status, mut out, mut err) = (||{
+    let (status, out, err) = (||{
         let mut stdout = Vec::new(); let mut stderr = Vec::new();
         if let Some(mut s) = child.stdout.take() { let _ = s.read_to_end(&mut stdout); }
         if let Some(mut s) = child.stderr.take() { let _ = s.read_to_end(&mut stderr); }

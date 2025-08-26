@@ -220,7 +220,7 @@ fn collect_by(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn collect_mono_with_order(expr: Value, vars: &[String], order_by: &str) -> Value {
     use std::collections::BTreeMap;
     let mut map: BTreeMap<Vec<usize>, i64> = BTreeMap::new();
-    fn add_term(map: &mut std::collections::BTreeMap<Vec<usize>, i64>, mut coeff: i64, deg: Vec<usize>) {
+    fn add_term(map: &mut std::collections::BTreeMap<Vec<usize>, i64>, coeff: i64, deg: Vec<usize>) {
         if coeff == 0 { return; }
         let entry = map.entry(deg).or_insert(0);
         *entry = entry.saturating_add(coeff);

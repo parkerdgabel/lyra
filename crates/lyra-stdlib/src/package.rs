@@ -329,7 +329,7 @@ fn with_package_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=2 { return uneval("WithPackage", args); }
     let name = match ev.eval(args[0].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return uneval("WithPackage", vec![other, args[1].clone()]) };
     // Prepend to $PackagePath for the duration
-    let mut paths = read_package_path(ev);
+    let paths = read_package_path(ev);
     let mut found: Option<String> = None;
     // derive a candidate path by searching and keeping exact path
     for base in paths.iter() {

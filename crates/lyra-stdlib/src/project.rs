@@ -133,7 +133,7 @@ fn push_warn(d: &mut Diag, path: &str, code: &str, msg: &str) { d.warnings.push(
 fn validate_manifest(root: &Path, v: &Value) -> Value {
     use std::collections::HashMap;
     let mut d = Diag::default();
-    let mut top = match v { Value::Assoc(m)=>m.clone(), other=>{
+    let top = match v { Value::Assoc(m)=>m.clone(), other=>{
         push_err(&mut d, "", "type.top", &format!("project.lyra must evaluate to an association, got {:?}", other));
         return Value::Assoc(HashMap::from([
             ("ok".into(), Value::Boolean(false)),

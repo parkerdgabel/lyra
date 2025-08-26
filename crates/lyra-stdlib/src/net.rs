@@ -412,7 +412,7 @@ fn parse_http_response(buf: &[u8]) -> Result<(u16, String, Vec<(String, Value)>,
     // Find header/body split
     let marker = b"\r\n\r\n";
     let pos = buf.windows(marker.len()).position(|w| w==marker).ok_or_else(|| "Invalid HTTP response".to_string())?;
-    let (head_b, mut body) = (&buf[..pos], &buf[pos+4..]);
+    let (head_b, body) = (&buf[..pos], &buf[pos+4..]);
     let head = String::from_utf8_lossy(head_b);
     let mut lines = head.lines();
     let status_line = lines.next().ok_or_else(|| "Missing status".to_string())?;
@@ -579,7 +579,7 @@ fn download_stream_raw(url: &str, path: &str, opts: &HttpOpts) -> Result<(), Str
     let mut file = std::fs::File::create(path).map_err(|e| format!("open {}: {}", path, e))?;
     // If chunked
     if has_header_case(&headers.iter().map(|(k,v)|(k.clone(), match v { Value::String(s)=>s.clone(), Value::Symbol(s)=>s.clone(), _=>String::new() })).collect::<Vec<_>>(), "Transfer-Encoding", "chunked") {
-        let mut body_initial = &buf[header_end_pos..];
+        let body_initial = &buf[header_end_pos..];
         // Decode chunked by streaming
         let mut rest = body_initial.to_vec();
         loop {
@@ -605,7 +605,7 @@ fn download_stream_raw(url: &str, path: &str, opts: &HttpOpts) -> Result<(), Str
     } else if let Some((_, Value::String(cl))) = headers.iter().find(|(k,_)| k.eq_ignore_ascii_case("Content-Length")) {
         let len: usize = cl.parse().unwrap_or(0);
         let mut written = 0usize;
-        let mut body_initial = &buf[header_end_pos..];
+        let body_initial = &buf[header_end_pos..];
         if !body_initial.is_empty() { file.write_all(body_initial).map_err(|e| format!("write: {}", e))?; written += body_initial.len(); }
         while written < len {
             let n = stream.read(&mut tmp).map_err(|e| format!("Read: {}", e))?; if n==0 { break; }
@@ -614,7 +614,7 @@ fn download_stream_raw(url: &str, path: &str, opts: &HttpOpts) -> Result<(), Str
         }
     } else {
         // Unknown length: just copy to EOF
-        let mut body_initial = &buf[header_end_pos..];
+        let body_initial = &buf[header_end_pos..];
         if !body_initial.is_empty() { file.write_all(body_initial).map_err(|e| format!("write: {}", e))?; }
         loop {
             let n = stream.read(&mut tmp).map_err(|e| format!("Read: {}", e))?; if n==0 { break; }
@@ -944,13 +944,13 @@ fn http_serve(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         let mut headers = spec.headers;
                         if let Some(ref body) = spec.body { headers.entry("Content-Length".into()).or_insert(body.len().to_string()); }
                         if let Some(file_path) = spec.body_file.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(FileChunkIter::new(&file_path)));
                         } else if let Some(chunks) = spec.chunks.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(chunks.into_iter()));
                         } else if let Some(cid) = spec.chan_id {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(ChannelChunkIter::new(cid)));
                         } else if let Some(body) = spec.body.clone() {
                             let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
@@ -1182,8 +1182,8 @@ fn http_serve_tls(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let handler = args[0].clone();
     let (opts, tls) = match tls_opts_from(ev, args.get(1).cloned()) { Ok(v)=>v, Err(e)=> return failure("HTTP::tls", &e) };
     // Load certs/keys
-    let certs = match std::fs::File::open(&tls.cert_path).and_then(|mut f| { let mut reader = std::io::BufReader::new(f); let certs = rustls_pemfile::certs(&mut reader)?; Ok(certs) }) { Ok(v)=> v.into_iter().map(rustls::Certificate).collect::<Vec<_>>(), Err(e)=> return failure("HTTP::tls", &format!("certs: {}", e)) };
-    let key = match std::fs::File::open(&tls.key_path).and_then(|mut f| {
+    let certs = match std::fs::File::open(&tls.cert_path).and_then(|f| { let mut reader = std::io::BufReader::new(f); let certs = rustls_pemfile::certs(&mut reader)?; Ok(certs) }) { Ok(v)=> v.into_iter().map(rustls::Certificate).collect::<Vec<_>>(), Err(e)=> return failure("HTTP::tls", &format!("certs: {}", e)) };
+    let key = match std::fs::File::open(&tls.key_path).and_then(|f| {
         let mut reader = std::io::BufReader::new(f);
         let mut keys = rustls_pemfile::pkcs8_private_keys(&mut reader)?;
         if keys.is_empty() {
@@ -1210,7 +1210,7 @@ fn http_serve_tls(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     let acceptor2 = acceptor.clone();
                     let handler_v = handler.clone();
                     std::thread::spawn(move || {
-                        let mut conn = match rustls::ServerConnection::new(acceptor2) { Ok(c)=>c, Err(_)=> return };
+                        let conn = match rustls::ServerConnection::new(acceptor2) { Ok(c)=>c, Err(_)=> return };
                         let mut tls_stream = rustls::StreamOwned::new(conn, stream);
                         use std::io::{Read, Write};
                         if let Some(d) = read_to { let _ = tls_stream.sock.set_read_timeout(Some(d)); }
@@ -1242,13 +1242,13 @@ fn http_serve_tls(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         let mut headers = spec.headers;
                         if let Some(ref body) = spec.body { headers.entry("Content-Length".into()).or_insert(body.len().to_string()); }
                         if let Some(file_path) = spec.body_file.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp_tls(&mut tls_stream, status, "OK", hdrs, Box::new(FileChunkIter::new(&file_path)));
                         } else if let Some(chunks) = spec.chunks.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp_tls(&mut tls_stream, status, "OK", hdrs, Box::new(chunks.into_iter()));
                         } else if let Some(cid) = spec.chan_id {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp_tls(&mut tls_stream, status, "OK", hdrs, Box::new(ChannelChunkIter::new(cid)));
                         } else if let Some(body) = spec.body.clone() {
                             let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
@@ -1427,13 +1427,13 @@ fn http_serve_routes(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         let mut headers = spec.headers;
                         if let Some(ref body) = spec.body { headers.entry("Content-Length".into()).or_insert(body.len().to_string()); }
                         if let Some(file_path) = spec.body_file.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(FileChunkIter::new(&file_path)));
                         } else if let Some(chunks) = spec.chunks.clone() {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(chunks.into_iter()));
                         } else if let Some(cid) = spec.chan_id {
-                            let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();
+                            let hdrs: Vec<(String,String)> = headers.into_iter().collect();
                             let _ = write_chunked_resp(&mut stream, status, "OK", hdrs, Box::new(ChannelChunkIter::new(cid)));
                         } else if let Some(body) = spec.body.clone() {
                             let mut hdrs: Vec<(String,String)> = headers.into_iter().collect();

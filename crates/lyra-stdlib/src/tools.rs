@@ -269,7 +269,7 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
     // Only include if function exists in current instance (post tree-shake) by checking DescribeBuiltins names.
     let names: std::collections::HashSet<String> = builtin_cards(ev).into_iter().filter_map(|v| if let Value::Assoc(m)=v { get_str(&m, "name") } else { None }).collect();
     let mut specs: Vec<Value> = Vec::new();
-    let mut add = |name: &str, summary: &str, params: Vec<&str>, tags: Vec<&str>| {
+    let add = |name: &str, summary: &str, params: Vec<&str>, tags: Vec<&str>| {
         if names.contains(name) {
             let pvals: Vec<Value> = params.iter().map(|s| Value::String((*s).into())).collect();
             let tvals: Vec<Value> = tags.iter().map(|s| Value::String((*s).into())).collect();

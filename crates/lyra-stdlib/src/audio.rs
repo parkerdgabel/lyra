@@ -8,7 +8,7 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 #[cfg(feature = "tools")] use crate::tools::add_specs;
 #[cfg(feature = "tools")] use crate::tool_spec;
-#[cfg(feature = "tools")] use crate::{schema_str, schema_bool};
+#[cfg(feature = "tools")] use crate::schema_str;
 #[cfg(feature = "tools")] use std::collections::HashMap;
 
 pub fn register_audio(ev: &mut Evaluator) {
@@ -94,7 +94,7 @@ fn decode_with_symphonia(bytes: &[u8]) -> Result<DecodedAudio, String> {
 
     let cursor = Cursor::new(bytes.to_vec());
     let mss = MediaSourceStream::new(Box::new(cursor), Default::default());
-    let mut hint = Hint::new();
+    let hint = Hint::new();
     let probed = symphonia::default::get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
         .map_err(|e| e.to_string())?;
     let mut format = probed.format;
@@ -500,7 +500,7 @@ fn audio_save(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("AudioSave".into())), args } }
     // Decode input to f32 samples, supporting raw assoc too.
     let maybe_assoc = matches!(ev.eval(args[0].clone()), Value::Assoc(_));
-    let mut dec: DecodedAudio;
+    let dec: DecodedAudio;
     if maybe_assoc {
         // Reuse AudioEncode path to get a WAV, then write bytes directly.
         let wav_b64 = audio_encode(ev, vec![args[0].clone()]);

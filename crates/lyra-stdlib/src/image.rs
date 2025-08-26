@@ -431,7 +431,7 @@ fn image_pad(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let kernel = opts.get("kernel").or_else(|| opts.get("Kernel")).and_then(|v| if let Value::String(s)=v { Some(s.to_lowercase()) } else { None }).unwrap_or_else(|| "lanczos3".into());
     let filter = match kernel.as_str() { "nearest" => image::imageops::FilterType::Nearest, "mitchell" => image::imageops::FilterType::CatmullRom, _ => image::imageops::FilterType::Lanczos3 };
     // If the image is larger than target, scale it down to fit (contain)
-    let mut content = if ow > tw || oh > th {
+    let content = if ow > tw || oh > th {
         let scale = f32::min(tw as f32 / ow as f32, th as f32 / oh as f32);
         let rw = ((ow as f32) * scale).round().max(1.0) as u32;
         let rh = ((oh as f32) * scale).round().max(1.0) as u32;

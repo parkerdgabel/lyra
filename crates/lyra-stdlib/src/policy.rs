@@ -1,7 +1,6 @@
 use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
-use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 

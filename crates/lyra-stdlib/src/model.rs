@@ -124,7 +124,7 @@ pub fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     out
 }
 
-fn complete(ev: &mut Evaluator, mut args: Vec<Value>) -> Value {
+fn complete(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Complete[Model[...], Prompt->"..."] or Complete[Prompt]
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Complete".into())), args } }
     let mut prompt = String::new();

@@ -164,7 +164,7 @@ fn duration_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Some(s) = as_string(&v) { // very small ISO-8601 subset: PnDTnHnMnS
         let p = s.trim();
         if p.starts_with('P') {
-            let mut rest = &p[1..];
+            let rest = &p[1..];
             let mut ms: i64 = 0;
             let mut in_time = false;
             let mut num = String::new();
@@ -308,12 +308,12 @@ fn cron_schedule(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let mut upcoming = schedule.upcoming(chrono::Utc);
             loop {
                 // Check cancellation before computing next
-                if { if let Some(s) = reg().lock().unwrap().get(&id) { s.cancelled } else { true } } { break; }
+                if if let Some(s) = reg().lock().unwrap().get(&id) { s.cancelled } else { true } { break; }
                 let next_time = match upcoming.next() { Some(dt)=> dt, None => break };
                 let now = chrono::Utc::now();
                 let dur_ms = (next_time - now).num_milliseconds();
                 if dur_ms > 0 { std::thread::sleep(StdDuration::from_millis(dur_ms as u64)); }
-                if { if let Some(s) = reg().lock().unwrap().get(&id) { s.cancelled } else { true } } { break; }
+                if if let Some(s) = reg().lock().unwrap().get(&id) { s.cancelled } else { true } { break; }
                 let mut ev2 = Evaluator::new();
                 crate::register_all(&mut ev2);
                 let _ = ev2.eval(Value::Expr{ head: Box::new(callable.clone()), args: vec![] });

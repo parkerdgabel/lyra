@@ -349,7 +349,7 @@ fn apply_batchnorm(params: &HashMap<String, Value>, x: &mut [f64]) {
     let var = if x.is_empty() { 1.0 } else { let m=mean; let mut s=0.0; for v in x.iter() { let d = *v - m; s += d*d; } s/(x.len() as f64) };
     let inv = 1.0/ (var + eps).sqrt();
     for i in 0..x.len() {
-        let mut y = (x[i]-mean) * inv;
+        let y = (x[i]-mean) * inv;
         let g = match gamma { Some(Value::List(gs)) => gs.get(i).and_then(|v| match v { Value::Real(r)=>Some(*r), Value::Integer(n)=>Some(*n as f64), _=>None }).unwrap_or(1.0), Some(Value::Real(r))=>*r, Some(Value::Integer(n))=>*n as f64, _=>1.0 };
         let be = match beta { Some(Value::List(bs)) => bs.get(i).and_then(|v| match v { Value::Real(r)=>Some(*r), Value::Integer(n)=>Some(*n as f64), _=>None }).unwrap_or(0.0), Some(Value::Real(r))=>*r, Some(Value::Integer(n))=>*n as f64, _=>0.0 };
         x[i] = y*g + be;

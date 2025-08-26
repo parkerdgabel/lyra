@@ -418,7 +418,7 @@ fn insert_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         #[cfg(feature = "db_sqlite")] ConnectorKind::Sqlite => {
             if let Some(conn) = st.sqlite_conn.as_ref() {
-                let mut guard = conn.lock().unwrap();
+                let guard = conn.lock().unwrap();
                 if !st.in_tx { let _ = guard.execute_batch("BEGIN"); }
                 let res = guard.execute_batch(&sql).map(|_| Value::Integer(count)).unwrap_or(Value::Integer(0));
                 if !st.in_tx { let _ = guard.execute_batch("COMMIT"); }

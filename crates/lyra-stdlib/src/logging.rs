@@ -3,7 +3,6 @@ use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
-use std::fs::File;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 

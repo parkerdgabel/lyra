@@ -3,7 +3,7 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -260,7 +260,7 @@ fn watch_directory(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }, _ => (true, 50) };
     #[cfg(feature = "fs_watch")]
     {
-        use notify::{RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher, Config, event::{EventKind, ModifyKind, CreateKind, RemoveKind}};
+        use notify::{RecursiveMode, Watcher, Config, event::{EventKind, ModifyKind, CreateKind, RemoveKind}};
         let id = next_wid();
         wreg().lock().unwrap().insert(id, WatchState{ id, path: path.clone(), active: true });
         let rec_mode = if recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
