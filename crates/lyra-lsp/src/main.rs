@@ -545,7 +545,7 @@ fn score(candidate: &str, pat: &str) -> Option<i64> {
 
 fn current_call_context_at(text: &str, pos: Position) -> Option<(String, usize)> {
     // Find nearest head[ ... ] that includes pos. We'll scan backward from pos to find '[' and the head name, then compute argument index by counting commas at depth 0 until pos.
-    let mut line_idx = pos.line as usize;
+    let line_idx = pos.line as usize;
     let lines: Vec<&str> = text.lines().collect();
     if line_idx >= lines.len() { return None; }
     // Build a single string up to pos as a simpler approach

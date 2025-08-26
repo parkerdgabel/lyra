@@ -41,6 +41,7 @@ mod reedline_mode {
     impl RLCompleter for LyraCompleter {
         fn complete(&self, line: &str, pos: usize) -> Vec<Suggestion> {
             let mut out: Vec<(i64, Suggestion)> = Vec::new();
+            let (tok_start, tok_word) = current_symbol_token(line, pos);
             // Using[...] context
             if let Some(ctx) = using_context(line, pos) {
                 match ctx {
@@ -48,7 +49,8 @@ mod reedline_mode {
                         if let Ok(pkgs) = self.pkg_exports.lock() {
                             for name in pkgs.keys() {
                                 if let Some(s)=fuzzy_score(name, &prefix) {
-                                    out.push((s+1200, Suggestion { value: name.clone(), description: Some("(package)".into()), span: Span { start: pos, end: pos } }));
+                                    let start = pos.saturating_sub(prefix.len());
+                                    out.push((s+1200, Suggestion { value: name.clone(), description: Some("(package)".into()), span: Span { start, end: pos } }));
                                 }
                             }
                         }
@@ -56,7 +58,8 @@ mod reedline_mode {
                     UsingCtx::OptionKey(prefix) => {
                         for k in ["Import","Except"].into_iter() {
                             if let Some(s)=fuzzy_score(k, &prefix) {
-                                out.push((s+1100, Suggestion { value: k.to_string(), description: None, span: Span { start: pos, end: pos } }));
+                                let start = pos.saturating_sub(prefix.len());
+                                out.push((s+1100, Suggestion { value: k.to_string(), description: None, span: Span { start, end: pos } }));
                             }
                         }
                     }
@@ -65,11 +68,13 @@ mod reedline_mode {
                             if let Some(exports) = pkgs.get(&pkg) {
                                 for e in exports {
                                     if let Some(s)=fuzzy_score(e, &prefix) {
-                                        out.push((s+1300, Suggestion { value: format!("\"{}\"", e), description: Some("(export)".into()), span: Span { start: pos, end: pos } }));
+                                        let start = pos.saturating_sub(prefix.len());
+                                        out.push((s+1300, Suggestion { value: format!("\"{}\"", e), description: Some("(export)".into()), span: Span { start, end: pos } }));
                                     }
                                 }
                                 if let Some(s)=fuzzy_score("All", &prefix) {
-                                    out.push((s+1000, Suggestion { value: "All".into(), description: Some("(all)".into()), span: Span { start: pos, end: pos } }));
+                                    let start = pos.saturating_sub(prefix.len());
+                                    out.push((s+1000, Suggestion { value: "All".into(), description: Some("(all)".into()), span: Span { start, end: pos } }));
                                 }
                             }
                         }
@@ -82,7 +87,8 @@ mod reedline_mode {
             if let Some(prefix) = assoc_key_prefix(line, pos) {
                 for k in self.assoc_keys.iter() {
                     if let Some(s)=fuzzy_score(k, &prefix) {
-                        out.push((s+1000, Suggestion { value: k.clone(), description: Some("(key)".into()), span: Span { start: pos, end: pos } }));
+                        let start = pos.saturating_sub(prefix.len());
+                        out.push((s+1000, Suggestion { value: k.clone(), description: Some("(key)".into()), span: Span { start, end: pos } }));
                     }
                 }
                 out.sort_by(|a,b| b.0.cmp(&a.0));
@@ -101,7 +107,8 @@ mod reedline_mode {
                 for val in values.into_iter() {
                     if let Some(s)=fuzzy_score(&val, &vprefix) {
                         let rep = if val=="True" || val=="False" || val=="Null" || val.chars().all(|c| c.is_ascii_digit()) || val.starts_with('"') { val.clone() } else { format!("\"{}\"", val) };
-                        out.push((s+900, Suggestion { value: if quoted { rep.clone() } else { rep }, description: Some("(value)".into()), span: Span { start: pos, end: pos } }));
+                        let start = pos.saturating_sub(vprefix.len());
+                        out.push((s+900, Suggestion { value: if quoted { rep.clone() } else { rep }, description: Some("(value)".into()), span: Span { start, end: pos } }));
                     }
                 }
                 out.sort_by(|a,b| b.0.cmp(&a.0));
@@ -112,6 +119,7 @@ mod reedline_mode {
             if word.is_empty() { return Vec::new(); }
             for b in self.builtins.iter() {
                 if let Some(s) = fuzzy_score(&b.name, &word) {
+                    if b.name == word { continue; }
                     // Build description with summary and usage
                     let mut desc: Option<String> = None;
                     if let Some((summary, _attrs, params)) = self.doc_index.map.get(&b.name) {
@@ -130,12 +138,23 @@ mod reedline_mode {
             if let Ok(envs) = self.env_names.lock() {
                 for n in envs.iter() {
                     if let Some(s)=fuzzy_score(n, &word) {
+                        if n == &word { continue; }
                         out.push((s+800, Suggestion { value: n.clone(), description: Some("(var)".into()), span: Span { start, end: pos } }));
                     }
                 }
             }
             out.sort_by(|a,b| b.0.cmp(&a.0));
-            out.into_iter().map(|(_,s)| s).collect()
+            // Guard: avoid emitting a single suggestion identical to current token
+            let mut suggs: Vec<Suggestion> = out.into_iter().map(|(_,s)| s).collect();
+            if suggs.len()==1 {
+                let s = &suggs[0];
+                // If replacement equals current token content, suppress
+                if s.span.start <= s.span.end {
+                    let replaced = &line[s.span.start..s.span.end];
+                    if s.value == replaced || s.value == tok_word { return Vec::new(); }
+                }
+            }
+            suggs
         }
     }
 
@@ -156,8 +175,7 @@ mod reedline_mode {
         fn handle(&mut self, line: &str, pos: usize, _history: &dyn reedline::History, use_ansi_coloring: bool) -> String {
             let mut out = String::new();
             if let Some(diag) = super::compute_live_diag(line) {
-                out = format!(" ✖ {}", diag.msg);
-                if use_ansi_coloring { out = out.red().bold().to_string(); }
+                out = format!("error: {}", diag.msg);
                 self.last = out.clone();
                 return out;
             }
@@ -201,15 +219,12 @@ mod reedline_mode {
         rl = rl.with_highlighter(Box::new(LyraRlHighlighter { builtins: std::sync::Arc::new(builtins.clone()), env_names: env_names_shared.clone() }));
         // Add a description menu for completions (shows summary/usage from Suggestion.description)
         let completion_menu = Box::new(DescriptionMenu::default().with_name("lyra_menu"));
-        // Keybindings: Tab opens completion menu and starts navigation
+        // Keybindings: Tab opens completion menu (no auto-next to avoid edge hangs)
         let mut keybindings = default_emacs_keybindings();
         keybindings.add_binding(
             reedline::KeyModifiers::NONE,
             reedline::KeyCode::Tab,
-            ReedlineEvent::UntilFound(vec![
-                ReedlineEvent::Menu("lyra_menu".to_string()),
-                ReedlineEvent::MenuNext,
-            ]),
+            ReedlineEvent::Menu("lyra_menu".to_string()),
         );
         let edit_mode = Box::new(Emacs::new(keybindings));
         rl = rl.with_menu(ReedlineMenu::EngineCompleter(completion_menu)).with_edit_mode(edit_mode);
@@ -383,7 +398,7 @@ fn highlight_lyra_line(s: &str, builtins: &Vec<BuiltinEntry>, env_names: Option<
     let chars: Vec<char> = s.chars().collect();
     let mut i = 0usize;
     let mut out = String::new();
-    let mut in_string = false;
+    let in_string = false;
     let mut in_comment: usize = 0; // allow simple nested (* *) for highlighting
 
     while i < chars.len() {
@@ -561,8 +576,7 @@ impl Hinter for ReplHelper {
     type Hint = String;
     fn hint(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<String> {
         if let Some(diag) = compute_live_diag(line) {
-            let msg = format!(" ✖ {}", diag.msg);
-            return Some(msg.red().bold().to_string());
+            return Some(format!("error: {}", diag.msg));
         }
         // Parameter hint: if cursor is inside Name[ ... ], show next param name
         if let Some((head, arg_idx)) = current_call_context(line, pos) {
@@ -622,6 +636,10 @@ impl Completer for ReplHelper {
                     for v in ["assoc","output"] { if v.starts_with(&word) { cands.push(Pair { display: v.into(), replacement: format!("{} ", v) }); } }
                 }
             }
+            // Guard: if single suggestion identical to current token, suppress
+            if cands.len()==1 {
+                if cands[0].replacement.trim() == format!(":{}", word) { return Ok((pos, Vec::new())); }
+            }
             return Ok((pos.saturating_sub(word.len()), cands));
         }
 
@@ -669,7 +687,9 @@ impl Completer for ReplHelper {
             let mut scored: Vec<(i64, Pair)> = Vec::new();
             for k in &self.common_option_keys { if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s, Pair { display: k.clone(), replacement: k.clone() })); } }
             scored.sort_by(|a,b| b.0.cmp(&a.0));
-            return Ok((pos, scored.into_iter().map(|(_,p)| p).collect()));
+            let mut pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
+            if pairs.len()==1 && pairs[0].replacement == prefix { return Ok((pos, Vec::new())); }
+            return Ok((pos.saturating_sub(prefix.len()), pairs));
         }
         // Association value suggestions inside <| key -> value |>
         if let Some((key, vprefix, quoted)) = assoc_value_context(line, pos) {
@@ -689,7 +709,10 @@ impl Completer for ReplHelper {
                 if let Some(s)=fuzzy_score(&disp, &vprefix) { scored.push((s, Pair { display: disp, replacement: if quoted { rep.clone() } else { rep } })); }
             }
             scored.sort_by(|a,b| b.0.cmp(&a.0));
-            return Ok((pos, scored.into_iter().map(|(_,p)| p).collect()));
+            let mut pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
+            if pairs.len()==1 && pairs[0].replacement.trim_matches('"') == vprefix { return Ok((pos, Vec::new())); }
+            let start = pos.saturating_sub(vprefix.len());
+            return Ok((start, pairs));
         }
 
         // Default: builtins and env vars
@@ -698,6 +721,7 @@ impl Completer for ReplHelper {
         let mut scored: Vec<(i64, Pair)> = Vec::new();
         for b in &self.builtins {
             if let Some(s) = fuzzy_score(&b.name, &word) {
+                if b.name == word { continue; }
                 let attrs = if b.attrs.is_empty() { String::new() } else { format!(" [{}]", b.attrs.join(", ")) };
                 let display = if b.summary.is_empty() { format!("{}{}", b.name, attrs) } else { format!("{} — {}{}", b.name, b.summary, attrs) };
                 scored.push((s + 1000, Pair { display, replacement: format!("{}[", b.name) }));
@@ -705,11 +729,19 @@ impl Completer for ReplHelper {
         }
         for n in &self.env_names {
             if let Some(s) = fuzzy_score(n, &word) {
+                if n == &word { continue; }
                 scored.push((s + 800, Pair { display: format!("{} — (var)", n), replacement: n.clone() }));
             }
         }
         scored.sort_by(|a,b| b.0.cmp(&a.0).then_with(|| a.1.display.cmp(&b.1.display)));
-        Ok((start, scored.into_iter().take(200).map(|(_,p)| p).collect()))
+        let mut pairs: Vec<Pair> = scored.into_iter().take(200).map(|(_,p)| p).collect();
+        // Guard: if exactly one candidate and it doesn't add any characters over the current word,
+        // return no completions to avoid editor stalls on single-candidate autopick.
+        if pairs.len()==1 {
+            let rep = pairs[0].replacement.as_str();
+            if rep == word { return Ok((start, Vec::new())); }
+        }
+        Ok((start, pairs))
     }
 }
 
@@ -826,7 +858,7 @@ fn word_start_pos_in_substr(line: &str, pos: usize) -> usize {
 fn current_path_token(line: &str, pos: usize) -> Option<(usize, String, bool)> {
     // If inside quotes or token looks like a path (starts with ./, ../, ~/, or contains '/')
     let chars: Vec<char> = line.chars().collect();
-    let mut i = pos.min(chars.len());
+    let i = pos.min(chars.len());
     let mut in_quotes = false;
     let mut j = i;
     // scan backwards for start quote on this token
@@ -844,7 +876,7 @@ fn current_path_token(line: &str, pos: usize) -> Option<(usize, String, bool)> {
 }
 
 fn complete_paths(token: &str) -> Vec<(String, String)> {
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     let expanded = if token.starts_with("~/") {
         std::env::var("HOME").ok().map(|h| format!("{}{}", h, &token[1..])).unwrap_or(token.to_string())
     } else { token.to_string() };
@@ -1054,8 +1086,8 @@ impl rustyline::ConditionalEventHandler for TabDocAssistHandler {
         let use_pager = self.cfg.lock().map(|c| c.pager_on).unwrap_or(false);
         if use_pager { let _ = spawn_pager(&msg); }
         else if let Ok(mut p) = self.printer.lock() { let _ = p.print(msg); }
-        // Return None so default Tab completion still runs
-        None
+        // Swallow Tab when showing docs on exact match to avoid auto-complete side effects
+        Some(Cmd::Noop)
     }
 }
 
@@ -1158,13 +1190,14 @@ impl rustyline::ConditionalEventHandler for ShowCompletionMenuHandler {
             // Default: builtins + env vars
             for b in self.builtins.iter() {
                 if let Some(s) = fuzzy_score(&b.name, &word) {
+                    if b.name == word { continue; }
                     let attrs = if b.attrs.is_empty() { String::new() } else { format!(" [{}]", b.attrs.join(", ")) };
                     let display = if b.summary.is_empty() { format!("{}{}", b.name, attrs) } else { format!("{} — {}{}", b.name, b.summary, attrs) };
                     scored.push((s + 1000, Pair { display, replacement: format!("{}[", b.name) }));
                 }
             }
             if let Ok(envs) = self.env_names.lock() {
-                for n in envs.iter() { if let Some(s) = fuzzy_score(n, &word) { scored.push((s + 800, Pair { display: format!("{} — (var)", n), replacement: n.clone() })); } }
+                for n in envs.iter() { if let Some(s) = fuzzy_score(n, &word) { if n == &word { continue; } scored.push((s + 800, Pair { display: format!("{} — (var)", n), replacement: n.clone() })); } }
             }
         }
         if scored.is_empty() { return None; }
@@ -1401,7 +1434,7 @@ fn main() -> Result<()> {
         .history_ignore_dups(true).expect("config")
         .history_ignore_space(true)
         .auto_add_history(false)
-        .completion_type(rustyline::CompletionType::List)
+        .completion_type(rustyline::CompletionType::Circular)
         .completion_prompt_limit(50)
         .build();
     let mut rl = Editor::<ReplHelper, DefaultHistory>::with_config(rl_cfg)?;
@@ -2342,7 +2375,7 @@ fn collect_pkg_exports(ev: &mut Evaluator) -> std::collections::HashMap<String, 
 }
 
 fn edit_and_eval(ev: &mut Evaluator, path: &str) -> anyhow::Result<()> {
-    use std::io::Write;
+    
     use std::process::Command;
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let file_path = if path.is_empty() {

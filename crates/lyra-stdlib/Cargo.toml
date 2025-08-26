@@ -54,7 +54,7 @@ symphonia = { version = "0.5", optional = true, default-features = false, featur
 [features]
 default = [
   "core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain",
-  "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text",
+  "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "visual", "audio", "media", "text",
   "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs",
   "time_cron", "fs_watch", "fs_archive", "module", "project", "git",
   "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https", "dev"
@@ -118,6 +118,7 @@ crypto_argon2 = []
 crypto_jose = []
 crypto_hpke = []
 image = ["dep:image"]
+visual = ["image"]
 image_avif = []
 image_heif = []
 image_simd = []

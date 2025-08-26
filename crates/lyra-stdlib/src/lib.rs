@@ -36,6 +36,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "graphs")] pub mod graphs;
 #[cfg(feature = "crypto")] pub mod crypto;
 #[cfg(feature = "image")] pub mod image;
+#[cfg(feature = "visual")] pub mod visual;
 #[cfg(feature = "audio")] pub mod audio;
 #[cfg(feature = "media")] pub mod media;
 #[cfg(feature = "text")] pub mod text;
@@ -99,6 +100,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "graphs")] graphs::register_graphs(ev);
     #[cfg(feature = "crypto")] crypto::register_crypto(ev);
     #[cfg(feature = "image")] image::register_image(ev);
+    #[cfg(feature = "visual")] visual::register_visual(ev);
     #[cfg(feature = "audio")] audio::register_audio(ev);
     #[cfg(feature = "media")] media::register_media(ev);
     #[cfg(feature = "text")] text::register_text(ev);
@@ -143,6 +145,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "graphs" => { #[cfg(feature = "graphs")] graphs::register_graphs(ev) }
             "crypto" => { #[cfg(feature = "crypto")] crypto::register_crypto(ev) }
             "image" => { #[cfg(feature = "image")] image::register_image(ev) }
+            "visual" => { #[cfg(feature = "visual")] visual::register_visual(ev) }
             "audio" => { #[cfg(feature = "audio")] audio::register_audio(ev) }
             "media" => { #[cfg(feature = "media")] media::register_media(ev) }
             "text" => { #[cfg(feature = "text")] text::register_text(ev) }
@@ -198,6 +201,7 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "graphs")] crate::graphs::register_graphs_filtered(ev, &predicate);
     #[cfg(feature = "crypto")] crate::crypto::register_crypto_filtered(ev, &predicate);
     #[cfg(feature = "image")] crate::image::register_image_filtered(ev, &predicate);
+    #[cfg(feature = "visual")] crate::visual::register_visual_filtered(ev, &predicate);
     #[cfg(feature = "audio")] crate::audio::register_audio_filtered(ev, &predicate);
     #[cfg(feature = "media")] crate::media::register_media_filtered(ev, &predicate);
     #[cfg(feature = "text")] crate::text::register_text_filtered(ev, &predicate);
