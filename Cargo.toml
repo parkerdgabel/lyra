@@ -32,8 +32,3 @@ colored = "2"
 unused_imports = "warn"
 dead_code = "warn"
 
-[alias]
-# Minimal feature builds for gating/tree-shaking checks
-min-rt = "build -p lyra-runtime --no-default-features"
-min-stdlib = "build -p lyra-stdlib --no-default-features -F logic -F list"
-shake = "run -p lyra-compiler --release --"

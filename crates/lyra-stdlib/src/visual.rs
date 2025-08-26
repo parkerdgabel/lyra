@@ -438,7 +438,7 @@ fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, names: Option<Vec<String>
     let title = enc_str(opts, "Title");
     let xlabel = enc_str(opts, "XLabel");
     let ylabel = enc_str(opts, "YLabel");
-    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    let mut left = 40u32; let right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
     if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
     if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
     if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
@@ -472,7 +472,7 @@ fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, names: Option<Vec<String>
         if !ns.is_empty() {
             let pal = pick_palette(series.len());
             let (l,t,r,_b) = c.plot_area();
-            let mut x = r as i32 - 100; let mut y = t as i32 + 4;
+            let x = r as i32 - 100; let mut y = t as i32 + 4;
             for (i, name) in ns.iter().enumerate() {
                 let col = pal[i % pal.len()];
                 c.fill_rect(x, y, x+7, y+7, col);
@@ -492,7 +492,7 @@ fn render_bar(values: &std::collections::HashMap<String, f64>, opts: &std::colle
     let title = enc_str(opts, "Title");
     let xlabel = enc_str(opts, "XLabel");
     let ylabel = enc_str(opts, "YLabel");
-    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    let mut left = 40u32; let right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
     if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
     if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
     if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
@@ -504,7 +504,7 @@ fn render_bar(values: &std::collections::HashMap<String, f64>, opts: &std::colle
     if let Some(Value::String(s)) = opts.get("Sort").or_else(|| opts.get("sort")) { if s.eq_ignore_ascii_case("y") { items.sort_by(|a,b| a.1.partial_cmp(&b.1).unwrap()); } }
     let (xmin,xmax) = (0.5, (items.len() as f64) + 0.5);
     let (ymin,ymax) = {
-        let mut ymin = 0.0; let mut ymax = f64::NEG_INFINITY; for (_k,v) in &items { if *v>ymax { ymax=*v; } }
+        let ymin = 0.0; let mut ymax = f64::NEG_INFINITY; for (_k,v) in &items { if *v>ymax { ymax=*v; } }
         if ymax<=0.0 { ymax = 1.0; }
         (ymin,ymax)
     };
@@ -543,7 +543,7 @@ fn render_histogram(vals: &[f64], opts: &std::collections::HashMap<String, Value
     let title = enc_str(opts, "Title");
     let xlabel = enc_str(opts, "XLabel");
     let ylabel = enc_str(opts, "YLabel");
-    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    let mut left = 40u32; let right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
     if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
     if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
     if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
@@ -599,7 +599,7 @@ fn render_heatmap(matrix: &Vec<Vec<f64>>, opts: &std::collections::HashMap<Strin
     let title = enc_str(opts, "Title");
     let xlabel = enc_str(opts, "XLabel");
     let ylabel = enc_str(opts, "YLabel");
-    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    let mut left = 40u32; let right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
     if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
     if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
     if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
@@ -641,7 +641,7 @@ fn render_area(series: Vec<Vec<(f64,f64)>>, stacked: bool, opts: &std::collectio
     let title = enc_str(opts, "Title");
     let xlabel = enc_str(opts, "XLabel");
     let ylabel = enc_str(opts, "YLabel");
-    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    let mut left = 40u32; let right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
     if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
     if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
     if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }

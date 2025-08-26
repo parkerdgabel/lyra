@@ -687,7 +687,7 @@ impl Completer for ReplHelper {
             let mut scored: Vec<(i64, Pair)> = Vec::new();
             for k in &self.common_option_keys { if let Some(s)=fuzzy_score(k, &prefix) { scored.push((s, Pair { display: k.clone(), replacement: k.clone() })); } }
             scored.sort_by(|a,b| b.0.cmp(&a.0));
-            let mut pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
+            let pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
             if pairs.len()==1 && pairs[0].replacement == prefix { return Ok((pos, Vec::new())); }
             return Ok((pos.saturating_sub(prefix.len()), pairs));
         }
@@ -709,7 +709,7 @@ impl Completer for ReplHelper {
                 if let Some(s)=fuzzy_score(&disp, &vprefix) { scored.push((s, Pair { display: disp, replacement: if quoted { rep.clone() } else { rep } })); }
             }
             scored.sort_by(|a,b| b.0.cmp(&a.0));
-            let mut pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
+            let pairs: Vec<Pair> = scored.into_iter().map(|(_,p)| p).collect();
             if pairs.len()==1 && pairs[0].replacement.trim_matches('"') == vprefix { return Ok((pos, Vec::new())); }
             let start = pos.saturating_sub(vprefix.len());
             return Ok((start, pairs));
@@ -734,7 +734,7 @@ impl Completer for ReplHelper {
             }
         }
         scored.sort_by(|a,b| b.0.cmp(&a.0).then_with(|| a.1.display.cmp(&b.1.display)));
-        let mut pairs: Vec<Pair> = scored.into_iter().take(200).map(|(_,p)| p).collect();
+        let pairs: Vec<Pair> = scored.into_iter().take(200).map(|(_,p)| p).collect();
         // Guard: if exactly one candidate and it doesn't add any characters over the current word,
         // return no completions to avoid editor stalls on single-candidate autopick.
         if pairs.len()==1 {
