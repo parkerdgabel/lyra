@@ -84,6 +84,21 @@ pub fn register_io(ev: &mut Evaluator) {
     ev.register("BytesSlice", bytes_slice as NativeFn, Attributes::empty());
     ev.register("BytesLength", bytes_length as NativeFn, Attributes::empty());
 
+    // Terminal formatting helpers
+    ev.register("TermSize", term_size as NativeFn, Attributes::empty());
+    ev.register("AnsiStyle", ansi_style as NativeFn, Attributes::empty());
+    ev.register("AnsiEnabled", ansi_enabled as NativeFn, Attributes::empty());
+    ev.register("StripAnsi", strip_ansi as NativeFn, Attributes::empty());
+    ev.register("AlignLeft", align_left as NativeFn, Attributes::empty());
+    ev.register("AlignRight", align_right as NativeFn, Attributes::empty());
+    ev.register("AlignCenter", align_center as NativeFn, Attributes::empty());
+    ev.register("Truncate", truncate_fn as NativeFn, Attributes::empty());
+    ev.register("Wrap", wrap_fn as NativeFn, Attributes::empty());
+    ev.register("TableSimple", table_simple as NativeFn, Attributes::empty());
+    ev.register("Rule", rule_fn as NativeFn, Attributes::empty());
+    ev.register("BoxText", box_text as NativeFn, Attributes::empty());
+    ev.register("Columnize", columns_fn as NativeFn, Attributes::empty());
+
     #[cfg(feature = "tools")]
     add_specs(vec![
         tool_spec!("ReadFile", summary: "Read entire file as string", params: ["path"], tags: ["io","fs"], input_schema: schema_str!(), output_schema: schema_str!(), effects: ["fs.read"]),
@@ -237,6 +252,207 @@ fn puts_append(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let s = to_string_arg(ev, args[0].clone());
     let path = to_string_arg(ev, args[1].clone());
     match std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| std::io::Write::write_all(&mut f, s.as_bytes())) { Ok(_)=> Value::Boolean(true), Err(e)=> failure("IO::puts", &e.to_string()) }
+}
+
+// -------- Terminal formatting helpers --------
+fn term_size(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("TermSize".into())), args } }
+    if let Some((w, h)) = terminal_size::terminal_size() {
+        Value::Assoc(std::collections::HashMap::from([
+            ("width".into(), Value::Integer(w.0 as i64)),
+            ("height".into(), Value::Integer(h.0 as i64)),
+        ]))
+    } else {
+        Value::Assoc(std::collections::HashMap::from([
+            ("width".into(), Value::Integer(80)),
+            ("height".into(), Value::Integer(24)),
+        ]))
+    }
+}
+
+fn strip_ansi_regex() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\x1B\[[0-9;?]*[ -/]*[@-~]").unwrap())
+}
+
+fn strip_ansi(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("StripAnsi".into())), args } }
+    match &args[0] { v => {
+        let s = match v { Value::String(s)|Value::Symbol(s)=>s.clone(), _=> lyra_core::pretty::format_value(v) };
+        Value::String(strip_ansi_regex().replace_all(&s, "").to_string())
+    }}
+}
+
+fn visible_width(s: &str) -> usize { strip_ansi_regex().replace_all(s, "").chars().count() }
+
+fn ansi_style(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("AnsiStyle".into())), args } }
+    let text = to_string_arg(ev, args[0].clone());
+    let opts = if args.len()>1 { if let Value::Assoc(m)=ev.eval(args[1].clone()) { m } else { std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    let mut codes: Vec<&str> = Vec::new();
+    let color_map = |name: &str| -> Option<&'static str> {
+        match name.to_ascii_lowercase().as_str() {
+            "black"=>Some("30"),"red"=>Some("31"),"green"=>Some("32"),"yellow"=>Some("33"),"blue"=>Some("34"),"magenta"=>Some("35"),"cyan"=>Some("36"),"white"=>Some("37"),"gray"|"grey"=>Some("90"), _=>None }
+    };
+    if let Some(Value::String(s))|Some(Value::Symbol(s)) = opts.get("Color") { if let Some(c)=color_map(s) { codes.push(c); } }
+    if let Some(Value::String(s))|Some(Value::Symbol(s)) = opts.get("BgColor") { if let Some(c)=color_map(s) { match c { "30"=>codes.push("40"),"31"=>codes.push("41"),"32"=>codes.push("42"),"33"=>codes.push("43"),"34"=>codes.push("44"),"35"=>codes.push("45"),"36"=>codes.push("46"),"37"=>codes.push("47"),"90"=>codes.push("100"), _=>{} } } }
+    if matches!(opts.get("Bold"), Some(Value::Boolean(true))) { codes.push("1"); }
+    if matches!(opts.get("Dim"), Some(Value::Boolean(true))) { codes.push("2"); }
+    if matches!(opts.get("Italic"), Some(Value::Boolean(true))) { codes.push("3"); }
+    if matches!(opts.get("Underline"), Some(Value::Boolean(true))) { codes.push("4"); }
+    if matches!(opts.get("Invert"), Some(Value::Boolean(true))) { codes.push("7"); }
+    if codes.is_empty() { return Value::String(text); }
+    let start = format!("\x1b[{}m", codes.join(";"));
+    let end = "\x1b[0m";
+    Value::String(format!("{}{}{}", start, text, end))
+}
+
+fn ansi_enabled(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("AnsiEnabled".into())), args } }
+    let no_color = std::env::var("NO_COLOR").ok();
+    Value::Boolean(no_color.is_none())
+}
+
+fn align_left(ev: &mut Evaluator, args: Vec<Value>) -> Value { align_generic(ev, args, 0) }
+fn align_right(ev: &mut Evaluator, args: Vec<Value>) -> Value { align_generic(ev, args, 2) }
+fn align_center(ev: &mut Evaluator, args: Vec<Value>) -> Value { align_generic(ev, args, 1) }
+
+fn align_generic(ev: &mut Evaluator, args: Vec<Value>, mode: i32) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol(match mode {0=>"AlignLeft",1=>"AlignCenter",_=>"AlignRight"}.into())), args } }
+    let s = to_string_arg(ev, args[0].clone());
+    let w = match ev.eval(args[1].clone()) { Value::Integer(n) if n>=0 => n as usize, other=> return Value::Expr { head: Box::new(Value::Symbol(match mode {0=>"AlignLeft",1=>"AlignCenter",_=>"AlignRight"}.into())), args: vec![Value::String(s), other] } };
+    let pad = if args.len()>2 { to_string_arg(ev, args[2].clone()) } else { " ".to_string() };
+    let pad_ch = pad.chars().next().unwrap_or(' ');
+    let width = visible_width(&s);
+    if width >= w { return Value::String(s); }
+    let spaces = w - width;
+    let out = match mode { 0 => format!("{}{}", s, pad_ch.to_string().repeat(spaces)), 2 => format!("{}{}", pad_ch.to_string().repeat(spaces), s), _ => { let l = spaces/2; let r = spaces - l; format!("{}{}{}", pad_ch.to_string().repeat(l), s, pad_ch.to_string().repeat(r)) } };
+    Value::String(out)
+}
+
+fn truncate_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Truncate".into())), args } }
+    let s = to_string_arg(ev, args[0].clone());
+    let w = match ev.eval(args[1].clone()) { Value::Integer(n) if n>=0 => n as usize, other=> return Value::Expr { head: Box::new(Value::Symbol("Truncate".into())), args: vec![Value::String(s), other] } };
+    let ell = if args.len()>2 { to_string_arg(ev, args[2].clone()) } else { "…".to_string() };
+    let width = visible_width(&s);
+    if width <= w { return Value::String(s); }
+    let target = w.saturating_sub(visible_width(&ell));
+    let mut out = String::new(); let mut count = 0;
+    for ch in strip_ansi_regex().replace_all(&s, "").chars() { if count>=target { break; } out.push(ch); count+=1; }
+    Value::String(out + &ell)
+}
+
+fn wrap_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Wrap".into())), args } }
+    let s = to_string_arg(ev, args[0].clone());
+    let w = match ev.eval(args[1].clone()) { Value::Integer(n) if n>0 => n as usize, other=> return Value::Expr { head: Box::new(Value::Symbol("Wrap".into())), args: vec![Value::String(s), other] } };
+    let mut out_lines: Vec<String> = Vec::new();
+    for line in s.split('\n') {
+        let mut cur = String::new();
+        for word in line.split_whitespace() {
+            let sep = if cur.is_empty() { 0 } else { 1 };
+            let next_w = visible_width(&cur) + sep + word.chars().count();
+            if next_w > w && !cur.is_empty() { out_lines.push(cur); cur = word.to_string(); } else { if sep==1 { cur.push(' '); } cur.push_str(word); }
+        }
+        out_lines.push(cur);
+    }
+    Value::String(out_lines.join("\n"))
+}
+
+fn table_simple(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("TableSimple".into())), args } }
+    let rows = match ev.eval(args[0].clone()) { Value::List(vs)=>vs, other=> return Value::Expr { head: Box::new(Value::Symbol("TableSimple".into())), args: vec![other] } };
+    let opts = if args.len()>1 { if let Value::Assoc(m)=ev.eval(args[1].clone()) { m } else { std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    let headers: Vec<String> = if let Some(Value::List(cols)) = opts.get("Columns") { cols.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect() } else {
+        // Infer from first assoc row
+        rows.iter().find_map(|r| if let Value::Assoc(m)=r { Some(m.keys().cloned().collect()) } else { None }).unwrap_or_else(|| vec![])
+    };
+    let mut data: Vec<Vec<String>> = Vec::new();
+    for r in &rows {
+        if let Value::Assoc(m) = r {
+            data.push(headers.iter().map(|k| match m.get(k) { Some(Value::String(s))=>s.clone(), Some(Value::Symbol(s))=>s.clone(), Some(v)=> lyra_core::pretty::format_value(v), None=>"".into() }).collect());
+        } else if let Value::List(items) = r {
+            data.push(items.iter().map(|v| lyra_core::pretty::format_value(v)).collect());
+        }
+    }
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
+    for row in &data { for (i, cell) in row.iter().enumerate() { if i<widths.len() { widths[i] = widths[i].max(cell.chars().count()); } else { widths.push(cell.chars().count()); } } }
+    let pad = 1usize;
+    let mut out = String::new();
+    if !headers.is_empty() {
+        for (i, h) in headers.iter().enumerate() { let w = widths.get(i).cloned().unwrap_or(0)+pad; out.push_str(&format!("{:width$}", h, width=w)); }
+        out.push('\n');
+        for (i, _) in headers.iter().enumerate() { let w = widths.get(i).cloned().unwrap_or(0)+pad; out.push_str(&"-".repeat(w)); }
+        out.push('\n');
+    }
+    for row in &data { for (i, cell) in row.iter().enumerate() { let w = widths.get(i).cloned().unwrap_or(0)+pad; out.push_str(&format!("{:width$}", cell, width=w)); } out.push('\n'); }
+    Value::String(out)
+}
+
+fn rule_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let ch = if !args.is_empty() { to_string_arg(ev, args[0].clone()).chars().next().unwrap_or('-') } else { '-' };
+    let width = if args.len()>1 { match ev.eval(args[1].clone()) { Value::Integer(n) if n>0 => n as usize, _=>0 } } else { 0 };
+    let w = if width>0 { width } else { if let Some((tw,_)) = terminal_size::terminal_size() { tw.0 as usize } else { 80 } };
+    Value::String(ch.to_string().repeat(w))
+}
+
+fn box_text(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("BoxText".into())), args } }
+    let text = to_string_arg(ev, args[0].clone());
+    let opts = if args.len()>1 { if let Value::Assoc(m)=ev.eval(args[1].clone()) { m } else { std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    let padding = opts.get("Padding").and_then(|v| if let Value::Integer(n)=v { Some(*n as usize) } else { None }).unwrap_or(1);
+    let border = opts.get("Border").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or("+-|".into());
+    let mut chars = border.chars();
+    let tl = chars.next().unwrap_or('+'); let tr = chars.next().unwrap_or('-'); let vbar = chars.next().unwrap_or('|');
+    let lines: Vec<&str> = text.split('\n').collect();
+    let maxw = lines.iter().map(|l| visible_width(l)).max().unwrap_or(0);
+    let inner = maxw + 2*padding;
+    let mut out = String::new();
+    out.push(tl); out.push_str(&tr.to_string().repeat(inner)); out.push(tl); out.push('\n');
+    for ln in lines {
+        out.push(vbar);
+        out.push_str(&" ".repeat(padding));
+        out.push_str(ln);
+        out.push_str(&" ".repeat(inner - visible_width(ln)));
+        out.push(vbar);
+        out.push('\n');
+    }
+    out.push(tl); out.push_str(&tr.to_string().repeat(inner)); out.push(tl);
+    Value::String(out)
+}
+
+fn columns_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("Columns".into())), args } }
+    let items = match ev.eval(args[0].clone()) { Value::List(vs)=> vs.into_iter().map(|v| lyra_core::pretty::format_value(&v)).collect::<Vec<_>>(), other=> return Value::Expr { head: Box::new(Value::Symbol("Columns".into())), args: vec![other, args[1].clone()] } };
+    let cols = match ev.eval(args[1].clone()) { Value::Integer(n) if n>0 => n as usize, _=> 2 };
+    let termw = if args.len()>2 { match ev.eval(args[2].clone()) { Value::Integer(n) if n>0 => n as usize, _=> 0 } } else { 0 };
+    let width = if termw>0 { termw } else { if let Some((tw,_)) = terminal_size::terminal_size() { tw.0 as usize } else { 80 } };
+    let colw = (width.saturating_sub(cols-1)) / cols; // 1 space between columns
+    let mut out = String::new();
+    let mut i = 0usize;
+    while i < items.len() {
+        let mut line = String::new();
+        for c in 0..cols {
+            if i+c < items.len() {
+                let cell = truncate_visible(&items[i+c], colw);
+                line.push_str(&format!("{:<width$}", cell, width=colw));
+                if c+1 < cols { line.push(' '); }
+            }
+        }
+        out.push_str(&line); out.push('\n');
+        i += cols;
+    }
+    Value::String(out)
+}
+
+fn truncate_visible(s: &str, w: usize) -> String {
+    let width = visible_width(s);
+    if width <= w { return s.to_string(); }
+    let mut out = String::new(); let mut count = 0;
+    for ch in strip_ansi_regex().replace_all(s, "").chars() { if count>=w { break; } out.push(ch); count+=1; }
+    out
 }
 
 fn read_lines(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

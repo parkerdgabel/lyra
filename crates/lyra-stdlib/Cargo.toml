@@ -13,6 +13,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { version = "0.9" }
 toml = { version = "0.8" }
+terminal_size = { version = "0.3" }
 rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 duckdb = { version = "0.10", optional = true }
 base64 = "0.21"

@@ -58,7 +58,17 @@ ListTodos[conn_, opts_, flags_] := (
   sql := StringJoin[{"SELECT id, title, done, coalesce(project,'') AS project, coalesce(prio,0) AS prio, datetime(created_at,'unixepoch') AS created FROM todos WHERE ", where2, " ORDER BY done, prio DESC, created_at DESC"}];
   rowsDs := SQL[conn, sql];
   rows := Collect[rowsDs];
-  Map[(Puts[FormatRow[#]])&, rows];
+  fmt := (row_) => (
+    id := Part[row, "id"]; t := Part[row, "title"]; dn := Part[row, "done"]; pr := Part[row, "prio"]; pj := Part[row, "project"]; cr := Part[row, "created"];
+    mark := If[dn==1, AnsiStyle["[x]", <|"Color"->"green"|>], AnsiStyle["[ ]", <|"Color"->"yellow"|>]];
+    title := If[dn==1, AnsiStyle[t, <|"Dim"->True|>], t];
+    <|"id"->id, "title"->StringJoin[{mark, " ", title}], "project"->pj, "prio"->pr, "created"->cr|>
+  );
+  rows2 := Map[fmt, rows];
+  header := StringJoin[{AnsiStyle["TODOs", <|"Bold"->True|>], "  ", If[filter=="done", "(done)", If[filter=="all", "(all)", "(open)"]]}];
+  Puts[header];
+  Puts[Rule["-", 60]];
+  Puts[TableSimple[rows2, <|"Columns"->{"id","title","project","prio","created"}|>]];
 );
 
 AddTodo[conn_, title_, opts_] := (
