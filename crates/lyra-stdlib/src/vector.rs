@@ -23,6 +23,21 @@ pub fn register_vector(ev: &mut Evaluator) {
     ev.register("VectorDelete", vector_delete as NativeFn, Attributes::LISTABLE);
     ev.register("VectorCount", vector_count as NativeFn, Attributes::empty());
     ev.register("VectorReset", vector_reset as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    {
+        use crate::{tools::add_specs, tool_spec};
+        let specs = vec![
+            tool_spec!("VectorStore", summary: "Create/open a vector store (memory or DSN)", params: ["optsOrDsn"], tags: ["vector","store"]),
+            tool_spec!("VectorUpsert", summary: "Insert or update vectors with metadata", params: ["store","rows"], tags: ["vector","upsert"]),
+            tool_spec!("VectorSearch", summary: "Search by vector or text (hybrid supported)", params: ["store","query","opts"], tags: ["vector","search"]),
+            tool_spec!("VectorDelete", summary: "Delete items by ids", params: ["store","ids"], tags: ["vector","delete"]),
+            tool_spec!("VectorCount", summary: "Count items in store", params: ["store"], tags: ["vector","info"]),
+            tool_spec!("VectorReset", summary: "Clear all items in store", params: ["store"], tags: ["vector","admin"]),
+        ];
+        add_specs(specs);
+    }
+
 }
 
 pub fn register_vector_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -75,9 +90,9 @@ fn cosine(a: &[f64], b: &[f64]) -> f64 {
 }
 
 fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // VSNew[<|Name->"default", Dims->n|>] or VSNew["sqlite://path.db"]
+    // VectorStore[<|Name->"default", Dims->n|>] or VectorStore["sqlite://path.db"]
     if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("VSNew".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("VectorStore".into())), args };
     }
     let mut name = "default".to_string();
     let mut dims: usize = 3;
@@ -153,9 +168,9 @@ fn vector_reset(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 pub fn vector_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // VSUpsert[store, {<|id, vector, meta?|>, ...}]
+    // VectorUpsert[store, {<|id, vector, meta?|>, ...}]
     if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("VSUpsert".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("VectorUpsert".into())), args };
     }
     let name = store_name_arg(args.get(0));
     let items_v = args[1].clone();
@@ -224,9 +239,9 @@ pub fn vector_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // VSQuery[store, vector|text, <|K->n, Filter->assoc, Hybrid->..., Alpha->...|>]
+    // VectorSearch[store, vector|text, <|K->n, Filter->assoc, Hybrid->..., Alpha->...|>]
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("VSQuery".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("VectorSearch".into())), args };
     }
     let name = store_name_arg(args.get(0));
     let query = args[1].clone();
@@ -339,9 +354,9 @@ fn vectorize_from_value(v: &Value, dims: usize) -> Vec<f64> {
 }
 
 fn vector_delete(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // VSDelete[store, {ids...}]
+    // VectorDelete[store, {ids...}]
     if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("VSDelete".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("VectorDelete".into())), args };
     }
     let name = store_name_arg(args.get(0));
     if name.starts_with("sqlite://") {
