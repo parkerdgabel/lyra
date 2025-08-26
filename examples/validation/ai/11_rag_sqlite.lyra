@@ -1,0 +1,18 @@
+(*
+  11_rag_sqlite.lyra — SQLite VectorStore (hybrid BM25 + vector) + RAG
+  Run: lyra-runner --file examples/validation/ai/11_rag_sqlite.lyra
+*)
+
+store := VSNew["sqlite://target/tmp/vs.db"];
+
+docs := {
+  <|"id"->"d1", "text"->"Lyra ships with an AI-native stdlib."|>,
+  <|"id"->"d2", "text"->"SQLite FTS5 powers fast keyword search."|>,
+  <|"id"->"d3", "text"->"Hybrid BM25 + vector improves retrieval quality."|>
+};
+
+RAGIndex["sqlite://target/tmp/vs.db", docs, <||>];
+
+q := "What improves retrieval?";
+matches := VSQuery["sqlite://target/tmp/vs.db", q, <|"K"->3, "Hybrid"->"true", "Alpha"->0.5|>];
+RAGAnswer["sqlite://target/tmp/vs.db", q, <|"K"->2|>];

@@ -205,7 +205,7 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } }
     let conn_id = match get_conn(&args[0]) { Some(id)=>id, None => return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };
     let sql = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, other=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args: vec![args[0].clone(), other] } };
-    let _params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
+    let params_map = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=> Some(m), _=> None } } else { None };
     // For Mock connector, support a trivial form: "SELECT * FROM table" only
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) { Some(s)=>s.clone(), None=> return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args } };

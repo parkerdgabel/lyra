@@ -2,6 +2,8 @@ use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
+#[cfg(feature = "net_https")] use reqwest::blocking::Client;
+#[cfg(feature = "net_https")] use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -74,6 +76,11 @@ pub fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Evaluate Messages if it's a symbol/expression
     let msgs_val = match opts.get("Messages") { Some(v) => ev.eval(v.clone()), None => Value::List(vec![]) };
     let messages = extract_messages(&msgs_val);
+    // Provider routing: if ModelsMode=="auto" and model is openai:* and OPENAI_API_KEY set, try provider; else mock
+    let mode = ev.get_env("ModelsMode").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).unwrap_or_else(|| "mock".into());
+    if mode=="auto" && model_id.starts_with("openai:") {
+        if let Some(res) = chat_openai(&model_id, &messages) { return res; }
+    }
     // Mock behavior: echo last user content or compose a trivial response
     let mut response = String::new();
     if let Some((_, last)) = messages.iter().rev().find(|(r,_)| r=="user") { response = format!("Echo: {}", last); }
@@ -156,4 +163,25 @@ pub fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let n = t.len() as i64;
         Value::List(vec![ Value::Real(n as f64), Value::Real((n % 7) as f64), Value::Real(((n*3) % 11) as f64) ])
     }).collect())
+}
+
+#[cfg(feature = "net_https")]
+fn chat_openai(model_id: &str, messages: &Vec<(String,String)>) -> Option<Value> {
+    let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+    let model = model_id.split(':').nth(1).unwrap_or("gpt-4o");
+    let client = Client::new();
+    let ms: Vec<serde_json::Value> = messages.iter().map(|(r,c)| serde_json::json!({"role": r, "content": c})).collect();
+    let body = serde_json::json!({"model": model, "messages": ms});
+    let resp = client.post("https://api.openai.com/v1/chat/completions")
+        .header(AUTHORIZATION, format!("Bearer {}", api_key))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&body)
+        .send().ok()?;
+    let js: serde_json::Value = resp.json().ok()?;
+    let content = js["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
+    Some(Value::Assoc(HashMap::from([
+        ("role".into(), Value::String("assistant".into())),
+        ("content".into(), Value::String(content)),
+        ("model".into(), Value::String(model_id.to_string())),
+    ])))
 }
