@@ -1,0 +1,96 @@
+(* Kanban HTTP server *)
+<< "examples/apps/kanban/db.lyra";
+conn := ConnectKanban[];
+
+JsonResp[v_] := <|"json"->v|>;
+TextResp[s_] := <|"body"->s, "headers"-><|"Content-Type"->"text/plain; charset=utf-8"|>|>;
+BadReq[s_] := <|"status"->400, "body"->s|>;
+NotFound[] := <|"status"->404, "body"->"Not found"|>;
+
+ParseJsonBody[req_] := (
+  bytes := Part[req, "body"]; (* list of integers *)
+  s := TextDecode[bytes];
+  FromJson[s]
+);
+
+Route[req_] := Module[{},
+  m := Part[req, "method"]; path := Part[req, "path"]; q := Part[req, "query"];
+  pm := PathMatch;
+  (* Health *)
+  If[m=="GET" && Part[pm["/health", path], "ok"]==True, Return[JsonResp[<|"ok"->True|>]]];
+  (* Projects list/create *)
+  If[m=="GET" && Part[pm["/projects", path], "ok"]==True,
+    rows := Collect[SQL[conn, "SELECT id, name FROM projects ORDER BY id DESC"]];
+    Return[JsonResp[rows]]
+  ];
+  If[m=="POST" && Part[pm["/projects", path], "ok"]==True,
+    body := ParseJsonBody[req];
+    name := Lookup[body, "name"];
+    If[name==Null || name=="", Return[BadReq["name required"]]];
+    Exec[conn, "INSERT INTO projects(name) VALUES ($name)", <|"name"->name|>];
+    Return[JsonResp[<|"ok"->True|>]]
+  ];
+  (* Columns *)
+  mm := pm["/projects/:id/columns", path];
+  If[m=="GET" && Part[mm, "ok"]==True,
+    pid := Part[Part[mm, "params"], "id"];
+    rows := Collect[SQL[conn, StringJoin[{"SELECT id, name, pos FROM columns WHERE project_id=", pid, " ORDER BY pos"}]]];
+    Return[JsonResp[rows]]
+  ];
+  If[m=="POST" && Part[pm["/columns", path], "ok"]==True,
+    body := ParseJsonBody[req]; pid := Lookup[body, "project_id"]; nm := Lookup[body, "name"]; ps := Lookup[body, "pos"];
+    Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid, $name, $pos)", <|"pid"->pid, "name"->nm, "pos"->ps|>];
+    Return[JsonResp[<|"ok"->True|>]]
+  ];
+  (* Cards list/create *)
+  mm2 := pm["/columns/:id/cards", path];
+  If[m=="GET" && Part[mm2, "ok"]==True,
+    cid := Part[Part[mm2, "params"], "id"];
+    rows := Collect[SQL[conn, StringJoin[{"SELECT id, title, prio, datetime(created_at,'unixepoch') AS created FROM cards WHERE column_id=", cid, " ORDER BY prio DESC, created_at DESC"}]]];
+    Return[JsonResp[rows]]
+  ];
+  If[m=="POST" && Part[pm["/cards", path], "ok"]==True,
+    body := ParseJsonBody[req]; pid := Lookup[body, "project_id"]; cid := Lookup[body, "column_id"]; ttl := Lookup[body, "title"]; pr := Lookup[body, "prio"];
+    Exec[conn, "INSERT INTO cards(project_id, column_id, title, prio, created_at, desc) VALUES ($pid, $cid, $title, $prio, strftime('%s','now'), '')",
+      <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>];
+    Return[JsonResp[<|"ok"->True|>]]
+  ];
+  (* Tags *)
+  mm3 := pm["/cards/:id/tags", path];
+  If[Part[mm3, "ok"]==True,
+    card := Part[Part[mm3, "params"], "id"];
+    If[m=="GET",
+      rows := Collect[SQL[conn, StringJoin[{"SELECT tag FROM card_tags WHERE card_id=", card, " ORDER BY tag"}]]];
+      Return[JsonResp[rows]]
+    ];
+    If[m=="POST",
+      body := ParseJsonBody[req]; tg := Lookup[body, "tag"]; If[tg==Null || tg=="", Return[BadReq["tag required"]]];
+      Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid, $tag)", <|"cid"->card, "tag"->tg|>];
+      Return[JsonResp[<|"ok"->True|>]]
+    ]
+  ];
+  (* Search *)
+  mmq := Lookup[q, "q"]; If[m=="GET" && Part[pm["/search", path], "ok"]==True,
+    If[mmq==Null || mmq=="", Return[JsonResp[{ }]]];
+    like := StringJoin[{"'%", mmq, "%'"}];
+    sql := StringJoin[{"SELECT c.id, c.title, c.prio, c.column_id, c.project_id FROM cards c WHERE c.title LIKE ", like, " OR c.desc LIKE ", like, " OR EXISTS (SELECT 1 FROM card_tags t WHERE t.card_id=c.id AND t.tag LIKE ", like, ")"}];
+    rows := Collect[SQL[conn, sql]]; Return[JsonResp[rows]]
+  ];
+  (* Export *)
+  mm4 := pm["/projects/:id/export", path];
+  If[m=="GET" && Part[mm4, "ok"]==True,
+    pid := Part[Part[mm4, "params"], "id"];
+    prj := Collect[SQL[conn, StringJoin[{"SELECT id, name FROM projects WHERE id=", pid}]]];
+    cols := Collect[SQL[conn, StringJoin[{"SELECT id, name, pos FROM columns WHERE project_id=", pid, " ORDER BY pos"}]]];
+    cards := Collect[SQL[conn, StringJoin[{"SELECT id, column_id, title, prio, desc, created_at FROM cards WHERE project_id=", pid}]]];
+    tags := Collect[SQL[conn, StringJoin[{"SELECT card_id, tag FROM card_tags WHERE card_id IN (SELECT id FROM cards WHERE project_id=", pid, ")"}]]];
+    obj := <|"project"->prj, "columns"->cols, "cards"->cards, "tags"->tags|>;
+    Return[JsonResp[obj]]
+  ];
+  NotFound[]
+];
+
+port := 8080; srv := HttpServe[Route, <|"Host"->"127.0.0.1", "Port"->port|>];
+Puts[StringJoin[{"Kanban server listening on http://127.0.0.1:", JsonStringify[port]}]];
+srv
+

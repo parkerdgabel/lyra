@@ -23,6 +23,10 @@ EnsureSchema[conn_] := (
     prio INTEGER,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
   )"];
+  Exec[conn, "CREATE TABLE IF NOT EXISTS card_tags (
+    card_id INTEGER NOT NULL,
+    tag TEXT NOT NULL
+  )"];
   True
 );
 
@@ -32,4 +36,3 @@ ConnectKanban[] := (
   EnsureSchema[conn];
   conn
 );
-
