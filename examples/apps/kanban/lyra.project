@@ -1,0 +1,9 @@
+[project]
+name = "kanban"
+version = "0.1.0"
+
+[modules]
+db = "examples/apps/kanban/db.lyra"
+cli = "examples/apps/kanban/cli.lyra"
+server = "examples/apps/kanban/server.lyra"
+

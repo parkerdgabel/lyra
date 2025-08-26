@@ -1,5 +1,5 @@
 (* Kanban HTTP server *)
-<< "examples/apps/kanban/db.lyra";
+Using["db"];
 conn := ConnectKanban[];
 
 JsonResp[v_] := <|"json"->v|>;

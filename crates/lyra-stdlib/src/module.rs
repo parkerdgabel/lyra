@@ -79,7 +79,6 @@ fn using(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // capture keys before
     let before: std::collections::HashSet<String> = ev.env_keys().into_iter().collect();
     // set env vars
-    let old_cf = None; let old_cd = None; let old_pr = None; // placeholders in v1
     let cur_dir = abs.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
     let proj_root = find_project_root(&cur_dir).unwrap_or(cur_dir.clone());
     ev.set_env("CurrentFile", Value::String(abs.to_string_lossy().to_string()));
@@ -142,4 +141,3 @@ fn failure(tag: &str, msg: &str) -> Value {
         (String::from("tag"), Value::String(tag.to_string())),
     ]))
 }
-

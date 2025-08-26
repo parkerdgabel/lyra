@@ -48,10 +48,10 @@ OPTIONS:
 
     let mut ev = Evaluator::new();
     if let Some(src) = eval_src {
-        run_src(&mut ev, &src);
+        run_src(&mut ev, &src, None);
     } else if let Some(p) = file {
         match fs::read_to_string(&p) {
-            Ok(src) => run_src(&mut ev, &src),
+            Ok(src) => run_src(&mut ev, &src, Some(&p)),
             Err(e) => { eprintln!("error: {}", e); std::process::exit(1); }
         }
     } else {
@@ -60,7 +60,28 @@ OPTIONS:
     }
 }
 
-fn run_src(ev: &mut Evaluator, src: &str) {
+fn find_project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut p = Some(start);
+    while let Some(cur) = p {
+        let cand = cur.join("lyra.project");
+        if std::path::Path::new(&cand).exists() { return Some(cur.to_path_buf()); }
+        p = cur.parent();
+    }
+    None
+}
+
+fn run_src(ev: &mut Evaluator, src: &str, file_path: Option<&std::path::Path>) {
+    if let Some(p) = file_path {
+        let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join(p) };
+        let dir = abs.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        ev.set_env("CurrentFile", lyra_core::value::Value::String(abs.to_string_lossy().to_string()));
+        ev.set_env("CurrentDir", lyra_core::value::Value::String(dir.to_string_lossy().to_string()));
+        let root = find_project_root(&dir).unwrap_or(dir);
+        ev.set_env("ProjectRoot", lyra_core::value::Value::String(root.to_string_lossy().to_string()));
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        ev.set_env("CurrentDir", lyra_core::value::Value::String(cwd.to_string_lossy().to_string()));
+    }
     let mut parser = lyra_parser::Parser::from_source(src);
     match parser.parse_all() {
         Ok(exprs) => {
