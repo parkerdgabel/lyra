@@ -146,18 +146,30 @@ lazy_static! {
     };
 }
 
-pub fn features_for(symbols: &std::collections::HashSet<String>) -> std::collections::HashSet<String> {
+pub fn features_for(
+    symbols: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     for s in symbols {
-        if let Some(e) = REGISTRY.get(s.as_str()) { for f in e.features { out.insert(f.to_string()); } }
+        if let Some(e) = REGISTRY.get(s.as_str()) {
+            for f in e.features {
+                out.insert(f.to_string());
+            }
+        }
     }
     out
 }
 
-pub fn capabilities_for(symbols: &std::collections::HashSet<String>) -> std::collections::HashSet<&'static str> {
+pub fn capabilities_for(
+    symbols: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<&'static str> {
     let mut out = std::collections::HashSet::new();
     for s in symbols {
-        if let Some(e) = REGISTRY.get(s.as_str()) { for cap in e.effects { out.insert(*cap); } }
+        if let Some(e) = REGISTRY.get(s.as_str()) {
+            for cap in e.effects {
+                out.insert(*cap);
+            }
+        }
     }
     out
 }

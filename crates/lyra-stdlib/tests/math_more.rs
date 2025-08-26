@@ -1,8 +1,8 @@
 #![cfg(feature = "math")]
 
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
 use lyra_parser::Parser;
+use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
@@ -37,4 +37,3 @@ fn median_variance_stddev() {
     // Round[StdDev^2*100] == 125
     assert_eq!(eval_one("Round[StandardDeviation[{1,2,3,4}]^2 * 100]"), "125");
 }
-

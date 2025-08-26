@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -19,5 +19,7 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new() -> Self { Self { symbols: vec![], features: vec![], capabilities: vec![] } }
+    pub fn new() -> Self {
+        Self { symbols: vec![], features: vec![], capabilities: vec![] }
+    }
 }

@@ -1,4 +1,4 @@
-use lyra_core::numeric::{Rational, Complex, BigReal};
+use lyra_core::numeric::{BigReal, Complex, Rational};
 
 #[test]
 #[ignore]
@@ -23,4 +23,3 @@ fn bigreal_placeholder() {
     let b = BigReal::from_str("3.14159");
     assert!(b.digits.starts_with("3.14"));
 }
-

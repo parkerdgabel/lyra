@@ -1,20 +1,32 @@
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
+#[cfg(feature = "db_sqlite")]
+use rusqlite::{params, Connection};
 use std::collections::HashMap;
-use std::sync::{OnceLock, Mutex};
-#[cfg(feature = "db_sqlite")] use rusqlite::{Connection, params};
+use std::sync::{Mutex, OnceLock};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 #[derive(Clone)]
-struct Item { id: String, vec: Vec<f64>, meta: Value }
+struct Item {
+    id: String,
+    vec: Vec<f64>,
+    meta: Value,
+}
 
 #[derive(Clone)]
-struct Store { name: String, dims: usize, items: Vec<Item> }
+struct Store {
+    #[allow(dead_code)]
+    name: String,
+    dims: usize,
+    items: Vec<Item>,
+}
 
 static STORES: OnceLock<Mutex<HashMap<String, Store>>> = OnceLock::new();
-fn stores() -> &'static Mutex<HashMap<String, Store>> { STORES.get_or_init(|| Mutex::new(HashMap::new())) }
+fn stores() -> &'static Mutex<HashMap<String, Store>> {
+    STORES.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 pub fn register_vector(ev: &mut Evaluator) {
     ev.register("VectorStore", vector_store as NativeFn, Attributes::empty());
@@ -26,7 +38,7 @@ pub fn register_vector(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     {
-        use crate::{tools::add_specs, tool_spec};
+        use crate::{tool_spec, tools::add_specs};
         let specs = vec![
             tool_spec!("VectorStore", summary: "Create/open a vector store (memory or DSN)", params: ["optsOrDsn"], tags: ["vector","store"]),
             tool_spec!("VectorUpsert", summary: "Insert or update vectors with metadata", params: ["store","rows"], tags: ["vector","upsert"]),
@@ -37,7 +49,6 @@ pub fn register_vector(ev: &mut Evaluator) {
         ];
         add_specs(specs);
     }
-
 }
 
 pub fn register_vector_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -50,7 +61,10 @@ pub fn register_vector_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
 }
 
 fn assoc_str(m: &HashMap<String, Value>, k: &str) -> Option<String> {
-    m.get(k).and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None })
+    m.get(k).and_then(|v| match v {
+        Value::String(s) | Value::Symbol(s) => Some(s.clone()),
+        _ => None,
+    })
 }
 
 fn store_name_arg(arg: Option<&Value>) -> String {
@@ -66,7 +80,11 @@ fn as_vecf(v: &Value) -> Option<Vec<f64>> {
         Value::List(items) => Some(
             items
                 .iter()
-                .filter_map(|x| match x { Value::Real(r) => Some(*r), Value::Integer(i) => Some(*i as f64), _ => None })
+                .filter_map(|x| match x {
+                    Value::Real(r) => Some(*r),
+                    Value::Integer(i) => Some(*i as f64),
+                    _ => None,
+                })
                 .collect(),
         ),
         _ => None,
@@ -86,7 +104,11 @@ fn cosine(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na * nb) }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na * nb)
+    }
 }
 
 fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -98,8 +120,12 @@ fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut dims: usize = 3;
     match &args[0] {
         Value::Assoc(m) => {
-            if let Some(s) = assoc_str(m, "Name") { name = s; }
-            if let Some(Value::Integer(n)) = m.get("Dims") { dims = (*n).max(1) as usize; }
+            if let Some(s) = assoc_str(m, "Name") {
+                name = s;
+            }
+            if let Some(Value::Integer(n)) = m.get("Dims") {
+                dims = (*n).max(1) as usize;
+            }
         }
         Value::String(s) | Value::Symbol(s) => name = s.clone(),
         _ => {}
@@ -114,7 +140,8 @@ fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     "CREATE TABLE IF NOT EXISTS vs_items(id TEXT PRIMARY KEY, dim INTEGER, vec BLOB, meta TEXT, text TEXT)",
                     [],
                 );
-                let _ = conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS vs_fts USING fts5(id, text)", []);
+                let _ = conn
+                    .execute("CREATE VIRTUAL TABLE IF NOT EXISTS vs_fts USING fts5(id, text)", []);
             }
         }
         return Value::Assoc(HashMap::from([
@@ -138,7 +165,9 @@ fn vector_count(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         {
             let path = name.trim_start_matches("sqlite://");
             if let Ok(conn) = Connection::open(path) {
-                if let Ok(cnt) = conn.query_row("SELECT COUNT(*) FROM vs_items", [], |r| r.get::<_, i64>(0)) {
+                if let Ok(cnt) =
+                    conn.query_row("SELECT COUNT(*) FROM vs_items", [], |r| r.get::<_, i64>(0))
+                {
                     return Value::Integer(cnt);
                 }
             }
@@ -146,7 +175,11 @@ fn vector_count(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return Value::Integer(0);
     }
     let guard = stores().lock().unwrap();
-    if let Some(s) = guard.get(&name) { Value::Integer(s.items.len() as i64) } else { Value::Integer(0) }
+    if let Some(s) = guard.get(&name) {
+        Value::Integer(s.items.len() as i64)
+    } else {
+        Value::Integer(0)
+    }
 }
 
 fn vector_reset(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -187,14 +220,22 @@ pub fn vector_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                                 if let Some(vecv) = m.get("vector").and_then(as_vecf) {
                                     let dim = vecv.len() as i64;
                                     let mut blob = Vec::with_capacity(vecv.len() * 8);
-                                    for f in vecv { blob.extend_from_slice(&f.to_le_bytes()); }
+                                    for f in vecv {
+                                        blob.extend_from_slice(&f.to_le_bytes());
+                                    }
                                     let meta_s = m
                                         .get("meta")
                                         .map(|x| lyra_core::pretty::format_value(x))
                                         .unwrap_or_else(|| "<||>".into());
                                     let text_s = if let Some(Value::Assoc(mm)) = m.get("meta") {
-                                        if let Some(Value::String(t)) = mm.get("text") { t.clone() } else { String::new() }
-                                    } else { String::new() };
+                                        if let Some(Value::String(t)) = mm.get("text") {
+                                            t.clone()
+                                        } else {
+                                            String::new()
+                                        }
+                                    } else {
+                                        String::new()
+                                    };
                                     let _ = conn.execute(
                                         "REPLACE INTO vs_items(id, dim, vec, meta, text) VALUES (?1, ?2, ?3, ?4, ?5)",
                                         params![id, dim, blob, meta_s, text_s],
@@ -208,25 +249,32 @@ pub fn vector_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         }
                     }
                 }
-                if let Value::Integer(n) = vector_count(_ev, vec![Value::String(name.clone())]) { return Value::Integer(n); }
+                if let Value::Integer(n) = vector_count(_ev, vec![Value::String(name.clone())]) {
+                    return Value::Integer(n);
+                }
             }
         }
         return Value::Integer(0);
     }
 
     let mut guard = stores().lock().unwrap();
-    let st = guard
-        .entry(name.clone())
-        .or_insert(Store { name: name.clone(), dims: 3, items: Vec::new() });
+    let st = guard.entry(name.clone()).or_insert(Store {
+        name: name.clone(),
+        dims: 3,
+        items: Vec::new(),
+    });
     match items_v {
         Value::List(rows) => {
             for r in rows {
                 if let Value::Assoc(m) = r {
                     if let Some(id) = assoc_str(&m, "id") {
                         if let Some(vecv) = m.get("vector").and_then(as_vecf) {
-                            if let Some(pos) = st.items.iter().position(|it| it.id == id) { st.items.remove(pos); }
+                            if let Some(pos) = st.items.iter().position(|it| it.id == id) {
+                                st.items.remove(pos);
+                            }
                             st.dims = vecv.len();
-                            let meta = m.get("meta").cloned().unwrap_or(Value::Assoc(HashMap::new()));
+                            let meta =
+                                m.get("meta").cloned().unwrap_or(Value::Assoc(HashMap::new()));
                             st.items.push(Item { id, vec: vecv, meta });
                         }
                     }
@@ -250,11 +298,26 @@ pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut hybrid: bool = false;
     let mut alpha: f64 = 0.5;
     if let Some(Value::Assoc(m)) = args.get(2) {
-        if let Some(Value::Integer(n)) = m.get("K") { if *n > 0 { k = *n as usize; } }
-        if let Some(Value::Assoc(f)) = m.get("Filter") { filter = Some(f.clone()); }
-        if let Some(Value::Boolean(b)) = m.get("Hybrid") { hybrid = *b; }
-        if let Some(Value::String(s)) = m.get("Hybrid") { let ls = s.to_lowercase(); if ls=="true"||ls=="on"||ls=="1" { hybrid = true; } }
-        if let Some(Value::Real(a)) = m.get("Alpha") { alpha = *a; }
+        if let Some(Value::Integer(n)) = m.get("K") {
+            if *n > 0 {
+                k = *n as usize;
+            }
+        }
+        if let Some(Value::Assoc(f)) = m.get("Filter") {
+            filter = Some(f.clone());
+        }
+        if let Some(Value::Boolean(b)) = m.get("Hybrid") {
+            hybrid = *b;
+        }
+        if let Some(Value::String(s)) = m.get("Hybrid") {
+            let ls = s.to_lowercase();
+            if ls == "true" || ls == "on" || ls == "1" {
+                hybrid = true;
+            }
+        }
+        if let Some(Value::Real(a)) = m.get("Alpha") {
+            alpha = *a;
+        }
     }
 
     if name.starts_with("sqlite://") {
@@ -274,7 +337,9 @@ pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     Value::List(_) => as_vecf(&query).unwrap_or_else(|| vec![]),
                     Value::String(s) | Value::Symbol(s) => {
                         let dim: usize = conn
-                            .query_row("SELECT COALESCE(MAX(dim),3) FROM vs_items", [], |r| r.get::<_, i64>(0))
+                            .query_row("SELECT COALESCE(MAX(dim),3) FROM vs_items", [], |r| {
+                                r.get::<_, i64>(0)
+                            })
                             .unwrap_or(3) as usize;
                         hash_embed(s, dim)
                     }
@@ -282,14 +347,34 @@ pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 };
                 let mut scored: Vec<(f64, String, Value)> = Vec::new();
                 if let Ok(mut st) = conn.prepare("SELECT id, vec, meta FROM vs_items") {
-                    if let Ok(rows) = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, String>(2)?))) {
+                    if let Ok(rows) = st.query_map([], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, Vec<u8>>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    }) {
                         for row in rows.flatten() {
                             let (id, blob, meta_s) = row;
                             let mut vecf: Vec<f64> = Vec::new();
-                            for chunk in blob.chunks_exact(8) { let mut arr = [0u8; 8]; arr.copy_from_slice(chunk); vecf.push(f64::from_le_bytes(arr)); }
+                            for chunk in blob.chunks_exact(8) {
+                                let mut arr = [0u8; 8];
+                                arr.copy_from_slice(chunk);
+                                vecf.push(f64::from_le_bytes(arr));
+                            }
                             let vscore = if qv.is_empty() { 0.0 } else { cosine(&qv, &vecf) };
-                            let tscore = t_candidates.iter().find(|(cid, _)| cid == &id).map(|(_, s)| *s).unwrap_or(0.0);
-                            let score = if hybrid { alpha * tscore + (1.0 - alpha) * vscore } else if !qv.is_empty() { vscore } else { tscore };
+                            let tscore = t_candidates
+                                .iter()
+                                .find(|(cid, _)| cid == &id)
+                                .map(|(_, s)| *s)
+                                .unwrap_or(0.0);
+                            let score = if hybrid {
+                                alpha * tscore + (1.0 - alpha) * vscore
+                            } else if !qv.is_empty() {
+                                vscore
+                            } else {
+                                tscore
+                            };
                             let meta_v = Value::String(meta_s);
                             scored.push((score, id, meta_v));
                         }
@@ -299,11 +384,13 @@ pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let out: Vec<Value> = scored
                     .into_iter()
                     .take(k)
-                    .map(|(score, id, meta)| Value::Assoc(HashMap::from([
-                        ("id".into(), Value::String(id)),
-                        ("score".into(), Value::Real(score)),
-                        ("meta".into(), meta),
-                    ])))
+                    .map(|(score, id, meta)| {
+                        Value::Assoc(HashMap::from([
+                            ("id".into(), Value::String(id)),
+                            ("score".into(), Value::Real(score)),
+                            ("meta".into(), meta),
+                        ]))
+                    })
                     .collect();
                 return Value::List(out);
             }
@@ -330,11 +417,13 @@ pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let out: Vec<Value> = scored
             .into_iter()
             .take(k)
-            .map(|(score, it)| Value::Assoc(HashMap::from([
-                ("id".into(), Value::String(it.id.clone())),
-                ("score".into(), Value::Real(score)),
-                ("meta".into(), it.meta.clone()),
-            ])))
+            .map(|(score, it)| {
+                Value::Assoc(HashMap::from([
+                    ("id".into(), Value::String(it.id.clone())),
+                    ("score".into(), Value::Real(score)),
+                    ("meta".into(), it.meta.clone()),
+                ]))
+            })
             .collect();
         Value::List(out)
     } else {
@@ -347,7 +436,11 @@ fn vectorize_from_value(v: &Value, dims: usize) -> Vec<f64> {
         Value::String(s) => hash_embed(s, dims),
         Value::List(items) => items
             .iter()
-            .filter_map(|x| match x { Value::Real(r) => Some(*r), Value::Integer(i) => Some(*i as f64), _ => None })
+            .filter_map(|x| match x {
+                Value::Real(r) => Some(*r),
+                Value::Integer(i) => Some(*i as f64),
+                _ => None,
+            })
             .collect(),
         _ => vec![0.0; dims],
     }
@@ -381,7 +474,9 @@ fn vector_delete(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         if let Value::List(ids) = &args[1] {
             for idv in ids {
                 if let Value::String(id) | Value::Symbol(id) = idv {
-                    if let Some(pos) = st.items.iter().position(|it| &it.id == id) { st.items.remove(pos); }
+                    if let Some(pos) = st.items.iter().position(|it| &it.id == id) {
+                        st.items.remove(pos);
+                    }
                 }
             }
         }

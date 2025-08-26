@@ -1,11 +1,11 @@
-pub mod rule;
 pub mod defs;
-pub mod matcher;
 pub mod engine;
+pub mod matcher;
 pub mod nets;
+pub mod rule;
 
-pub use rule::{Rule, RuleSet, Delayed};
-pub use defs::{DefinitionStore, DefKind};
-pub use matcher::{Bindings, match_rule, match_rules};
-pub use engine::{rewrite_once, rewrite_all, rewrite_with_limit};
+pub use defs::{DefKind, DefinitionStore};
+pub use engine::{rewrite_all, rewrite_once, rewrite_with_limit};
+pub use matcher::{match_rule, match_rules, Bindings};
 pub use nets::PatternNet;
+pub use rule::{Delayed, Rule, RuleSet};

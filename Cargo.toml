@@ -9,6 +9,7 @@ members = [
   "crates/lyra-pm-cli",
   "crates/lyra-mcp",
   "crates/lyra-lsp",
+  "crates/lyra-docgen",
 ]
 resolver = "2"
 
@@ -28,7 +29,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 colored = "2"
 
+[patch.crates-io]
+# Work around arrow-arith v51 ambiguity with Chrono's Datelike::quarter by overriding the crate
+# to a locally patched copy that disambiguates the method call.
+arrow-arith = { path = "vendor/arrow-arith" }
+
 [workspace.lints.rust]
 unused_imports = "warn"
 dead_code = "warn"
-

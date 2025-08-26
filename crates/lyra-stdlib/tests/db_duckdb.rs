@@ -1,13 +1,15 @@
 #![cfg(feature = "db_duckdb")]
+use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
-use lyra_core::value::Value;
 
 fn eval_str(ev: &mut Evaluator, src: &str) -> Value {
     let mut p = lyra_parser::Parser::from_source(src);
     let exprs = p.parse_all().unwrap();
     let mut last = Value::Symbol("Null".into());
-    for e in exprs { last = ev.eval(e); }
+    for e in exprs {
+        last = ev.eval(e);
+    }
     last
 }
 
@@ -23,36 +25,72 @@ fn duckdb_join_and_list_tables() {
         Value::assoc(vec![("id", Value::Integer(1)), ("x", Value::Integer(10))]),
         Value::assoc(vec![("id", Value::Integer(2)), ("x", Value::Integer(20))]),
     ]);
-    let rows_b = Value::List(vec![
-        Value::assoc(vec![("id", Value::Integer(1)), ("y", Value::Integer(7)), ("z", Value::Integer(100))]),
-    ]);
-    let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("a".into()), rows_a]));
-    let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("b".into()), rows_b]));
+    let rows_b = Value::List(vec![Value::assoc(vec![
+        ("id", Value::Integer(1)),
+        ("y", Value::Integer(7)),
+        ("z", Value::Integer(100)),
+    ])]);
+    let _ = ev.eval(Value::expr(
+        Value::Symbol("InsertRows".into()),
+        vec![conn.clone(), Value::String("a".into()), rows_a],
+    ));
+    let _ = ev.eval(Value::expr(
+        Value::Symbol("InsertRows".into()),
+        vec![conn.clone(), Value::String("b".into()), rows_b],
+    ));
     // For DistinctOn test
     let rows_c = Value::List(vec![
         Value::assoc(vec![("id", Value::Integer(1)), ("v", Value::Integer(3))]),
         Value::assoc(vec![("id", Value::Integer(1)), ("v", Value::Integer(9))]),
         Value::assoc(vec![("id", Value::Integer(2)), ("v", Value::Integer(8))]),
     ]);
-    let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("c".into()), rows_c]));
+    let _ = ev.eval(Value::expr(
+        Value::Symbol("InsertRows".into()),
+        vec![conn.clone(), Value::String("c".into()), rows_c],
+    ));
     // Join pushdown with filters on each side
-    let la = eval_str(&mut ev, &format!("FilterRows[(row)=>Greater[Part[row,\"x\"], 5], Table[{}, \"a\"]]", lyra_core::pretty::format_value(&conn)));
-    let lb = eval_str(&mut ev, &format!("FilterRows[(row)=>GreaterEqual[Part[row,\"y\"], 7], Table[{}, \"b\"]]", lyra_core::pretty::format_value(&conn)));
-    let join_ds = eval_str(&mut ev, &format!("Join[{}, {}, {{\"id\"}}, <|How->\"inner\"|>]", lyra_core::pretty::format_value(&la), lyra_core::pretty::format_value(&lb)));
-    let ex = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&join_ds)));
+    let la = eval_str(
+        &mut ev,
+        &format!(
+            "FilterRows[(row)=>Greater[Part[row,\"x\"], 5], Table[{}, \"a\"]]",
+            lyra_core::pretty::format_value(&conn)
+        ),
+    );
+    let lb = eval_str(
+        &mut ev,
+        &format!(
+            "FilterRows[(row)=>GreaterEqual[Part[row,\"y\"], 7], Table[{}, \"b\"]]",
+            lyra_core::pretty::format_value(&conn)
+        ),
+    );
+    let join_ds = eval_str(
+        &mut ev,
+        &format!(
+            "Join[{}, {}, {{\"id\"}}, <|How->\"inner\"|>]",
+            lyra_core::pretty::format_value(&la),
+            lyra_core::pretty::format_value(&lb)
+        ),
+    );
+    let ex =
+        eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&join_ds)));
     let s = lyra_core::pretty::format_value(&ex);
     assert!(s.to_lowercase().contains("join"));
     // Execute and verify row with id=1 present, and right projection alias "y_right"
     let mat = eval_str(&mut ev, &format!("Collect[{}]", lyra_core::pretty::format_value(&join_ds)));
     let txt = lyra_core::pretty::format_value(&mat);
-    assert!(txt.contains("\"id\" -> 1") && txt.contains("\"y_right\"") && txt.contains("\"z_right\""));
+    assert!(
+        txt.contains("\"id\" -> 1") && txt.contains("\"y_right\"") && txt.contains("\"z_right\"")
+    );
     // ListTables should include a and b
     let lt = eval_str(&mut ev, &format!("ListTables[{}]", lyra_core::pretty::format_value(&conn)));
     let lt_s = lyra_core::pretty::format_value(&lt).to_lowercase();
     assert!(lt_s.contains("a") && lt_s.contains("b"));
 
     // Distinct with keys
-    let d = eval_str(&mut ev, &format!("Distinct[Table[{}, \"a\"], {{\"id\"}}]", lyra_core::pretty::format_value(&conn)));
+    let d = eval_str(
+        &mut ev,
+        &format!("Distinct[Table[{}, \"a\"], {{\"id\"}}]", lyra_core::pretty::format_value(&conn)),
+    );
     let exd = eval_str(&mut ev, &format!("ExplainSQL[{}]", lyra_core::pretty::format_value(&d)));
     let sdx = lyra_core::pretty::format_value(&exd).to_lowercase();
     assert!(sdx.contains("select distinct id from"));
@@ -71,14 +109,33 @@ fn duckdb_join_and_list_tables() {
 
     // Multi-key DistinctOn on d(id,grp,v)
     let rows_d = Value::List(vec![
-        Value::assoc(vec![("id", Value::Integer(1)), ("grp", Value::Integer(1)), ("v", Value::Integer(4))]),
-        Value::assoc(vec![("id", Value::Integer(1)), ("grp", Value::Integer(1)), ("v", Value::Integer(6))]),
-        Value::assoc(vec![("id", Value::Integer(2)), ("grp", Value::Integer(2)), ("v", Value::Integer(8))]),
+        Value::assoc(vec![
+            ("id", Value::Integer(1)),
+            ("grp", Value::Integer(1)),
+            ("v", Value::Integer(4)),
+        ]),
+        Value::assoc(vec![
+            ("id", Value::Integer(1)),
+            ("grp", Value::Integer(1)),
+            ("v", Value::Integer(6)),
+        ]),
+        Value::assoc(vec![
+            ("id", Value::Integer(2)),
+            ("grp", Value::Integer(2)),
+            ("v", Value::Integer(8)),
+        ]),
     ]);
-    let _ = ev.eval(Value::expr(Value::Symbol("InsertRows".into()), vec![conn.clone(), Value::String("d".into()), rows_d]));
+    let _ = ev.eval(Value::expr(
+        Value::Symbol("InsertRows".into()),
+        vec![conn.clone(), Value::String("d".into()), rows_d],
+    ));
     let do_multi = eval_str(&mut ev, &format!(
         "Collect[DistinctOn[Table[{}, \"d\"], {{\"id\", \"grp\"}}, <|OrderBy->{{\"v\"->\"asc\"}}, Keep->\"last\"|>]]",
         lyra_core::pretty::format_value(&conn)));
     let do_multi_s = lyra_core::pretty::format_value(&do_multi);
-    assert!(do_multi_s.contains("\"id\" -> 1") && do_multi_s.contains("\"grp\" -> 1") && do_multi_s.contains("\"v\" -> 6"));
+    assert!(
+        do_multi_s.contains("\"id\" -> 1")
+            && do_multi_s.contains("\"grp\" -> 1")
+            && do_multi_s.contains("\"v\" -> 6")
+    );
 }

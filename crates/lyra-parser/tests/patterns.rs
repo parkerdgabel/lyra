@@ -1,5 +1,5 @@
-use lyra_parser::Parser;
 use lyra_core::value::Value;
+use lyra_parser::Parser;
 
 fn parse_ok(src: &str) -> Vec<Value> {
     let mut p = Parser::from_source(src);
@@ -14,8 +14,11 @@ fn head_alternatives_without_parens() {
         Value::Expr { head, args } => {
             match &**head {
                 Value::Expr { head: h2, args: alts } => {
-                    match &**h2 { Value::Symbol(s) => assert_eq!(s, "Alternative"), _=> panic!() }
-                    assert!(alts.len()>=2);
+                    match &**h2 {
+                        Value::Symbol(s) => assert_eq!(s, "Alternative"),
+                        _ => panic!(),
+                    }
+                    assert!(alts.len() >= 2);
                 }
                 _ => panic!("expected Alternative head"),
             }
@@ -31,4 +34,3 @@ fn sequence_patterns_parse() {
     parse_ok("f[x__Integer, y___String]");
     parse_ok("f[a|b, c]");
 }
-

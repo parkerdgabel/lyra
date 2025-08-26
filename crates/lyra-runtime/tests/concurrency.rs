@@ -1,10 +1,10 @@
 #![cfg(feature = "concurrency_tests")]
-use lyra_parser::Parser;
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
 use lyra_core::value::Value;
-use lyra_stdlib as stdlib;
+use lyra_parser::Parser;
 use lyra_runtime::set_default_registrar;
+use lyra_runtime::Evaluator;
+use lyra_stdlib as stdlib;
 use std::time::Instant;
 
 fn eval_one(src: &str) -> String {
@@ -18,13 +18,13 @@ fn eval_one(src: &str) -> String {
 
 #[test]
 fn future_await_simple() {
-    let s = eval_one("Await[Future[Plus[1,2]]]" );
+    let s = eval_one("Await[Future[Plus[1,2]]]");
     assert_eq!(s, "3");
 }
 
 #[test]
 fn parallel_map_squares() {
-    let s = eval_one("ParallelMap[(x)=>Times[x,x], {1,2,3,4}]" );
+    let s = eval_one("ParallelMap[(x)=>Times[x,x], {1,2,3,4}]");
     assert_eq!(s, "{1, 4, 9, 16}");
 }
 
@@ -32,7 +32,8 @@ fn parallel_map_squares() {
 fn explain_and_schema_exist() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
-    let plus = Value::expr(Value::Symbol("Plus".into()), vec![Value::Integer(1), Value::Integer(2)]);
+    let plus =
+        Value::expr(Value::Symbol("Plus".into()), vec![Value::Integer(1), Value::Integer(2)]);
     let explain = Value::expr(Value::Symbol("Explain".into()), vec![plus]);
     let out1 = ev.eval(explain);
     let s1 = format_value(&out1);
@@ -55,7 +56,7 @@ fn map_async_and_gather() {
 fn map_async_nested_and_partial_failures() {
     // nested structure
     let s1 = eval_one("Gather[MapAsync[EvenQ, {{1,2}, {3,4}}]]");
-    assert_eq!(s1, "{{False, True}, {False, True}}" );
+    assert_eq!(s1, "{{False, True}, {False, True}}");
     // partial failures using Fail builtin
     let s2 = eval_one("Gather[MapAsync[(x)=>If[EvenQ[x], Fail[\"oops\"], Times[x,x]], {1,2,3}]]");
     assert!(s2.contains("\"oops\""));
@@ -63,9 +64,9 @@ fn map_async_nested_and_partial_failures() {
 
 #[test]
 fn cancel_future_and_await_failure() {
+    use lyra_core::pretty::format_value;
     use lyra_parser::Parser;
     use lyra_runtime::Evaluator;
-    use lyra_core::pretty::format_value;
     // Ensure spawned evaluators inherit stdlib registrations
     set_default_registrar(stdlib::register_all);
     // Build one evaluator for multiple statements
@@ -74,7 +75,9 @@ fn cancel_future_and_await_failure() {
     let mut p = Parser::from_source("f = Future[BusyWait[50]]; Cancel[f]; Await[f]");
     let vals = p.parse_all().expect("parse");
     let mut last = lyra_core::value::Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert!(s.contains("Cancel::abort"), "Got: {}", s);
 }
@@ -87,7 +90,7 @@ fn await_unknown_future_failure() {
 
 #[test]
 fn parallel_table_basic() {
-    let s = eval_one("ParallelTable[Times[i,i], {i, 1, 5}]" );
+    let s = eval_one("ParallelTable[Times[i,i], {i, 1, 5}]");
     assert_eq!(s, "{1, 4, 9, 16, 25}");
 }
 
@@ -103,7 +106,8 @@ fn scope_max_threads_limits_parallel_table() {
     set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
-    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelTable[BusyWait[20], {i,1,6}]]");
+    let mut p =
+        Parser::from_source("Scope[<|MaxThreads->2|>, ParallelTable[BusyWait[20], {i,1,6}]]");
     let vals = p.parse_all().expect("parse");
     let expr = vals.into_iter().last().unwrap();
     let start = Instant::now();
@@ -118,7 +122,9 @@ fn scope_max_threads_limits_parallel_map() {
     set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
-    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[20], {1,2,3,4,5,6}]]");
+    let mut p = Parser::from_source(
+        "Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[20], {1,2,3,4,5,6}]]",
+    );
     let vals = p.parse_all().expect("parse");
     let expr = vals.into_iter().last().unwrap();
     let start = Instant::now();
@@ -136,15 +142,23 @@ fn cancel_scope_group_cancels_futures() {
     // 1) sid = StartScope[<||>]
     let mut p = Parser::from_source("sid = StartScope[<||>]");
     let vals = p.parse_all().expect("parse1");
-    for v in vals { let _ = ev.eval(v); }
+    for v in vals {
+        let _ = ev.eval(v);
+    }
     // 2) InScope[sid, {Set[f, Future[BusyWait[50]]], Set[g, Future[BusyWait[50]]]}]
-    let mut p2 = Parser::from_source("InScope[sid, {Set[f, Future[BusyWait[50]]], Set[g, Future[BusyWait[50]]]}]");
+    let mut p2 = Parser::from_source(
+        "InScope[sid, {Set[f, Future[BusyWait[50]]], Set[g, Future[BusyWait[50]]]}]",
+    );
     let vals2 = p2.parse_all().expect("parse2");
-    for v in vals2 { let _ = ev.eval(v); }
+    for v in vals2 {
+        let _ = ev.eval(v);
+    }
     // 3) CancelScope[sid]
     let mut p3 = Parser::from_source("CancelScope[sid]");
     let vals3 = p3.parse_all().expect("parse3");
-    for v in vals3 { let _ = ev.eval(v); }
+    for v in vals3 {
+        let _ = ev.eval(v);
+    }
     // 4) {Await[f], Await[g]}
     let mut p4 = Parser::from_source("{Await[f], Await[g]}");
     let vals4 = p4.parse_all().expect("parse4");
@@ -160,7 +174,9 @@ fn parallel_map_with_options_overrides_scope() {
     set_default_registrar(stdlib::register_all);
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
-    let mut p = Parser::from_source("Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[10], {1,2,3,4}, <|MaxThreads->1|>]]");
+    let mut p = Parser::from_source(
+        "Scope[<|MaxThreads->2|>, ParallelMap[(x)=>BusyWait[10], {1,2,3,4}, <|MaxThreads->1|>]]",
+    );
     let vals = p.parse_all().expect("parse");
     let expr = vals.into_iter().last().unwrap();
     let start = Instant::now();
@@ -199,7 +215,9 @@ fn end_scope_cleans_registry() {
     stdlib::register_all(&mut ev);
     // sid = StartScope[<||>]
     let mut p1 = Parser::from_source("sid = StartScope[<||>]");
-    for v in p1.parse_all().unwrap() { let _ = ev.eval(v); }
+    for v in p1.parse_all().unwrap() {
+        let _ = ev.eval(v);
+    }
     // First EndScope[sid] -> True
     let mut p2 = Parser::from_source("EndScope[sid]");
     let out1 = ev.eval(p2.parse_all().unwrap().into_iter().last().unwrap());
@@ -220,7 +238,9 @@ fn channel_roundtrip_and_close() {
     let mut p = Parser::from_source("ch = BoundedChannel[2]; Send[ch, 1]; Send[ch, 2]; {Receive[ch], Receive[ch], CloseChannel[ch], Receive[ch]}");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "{1, 2, True, Null}");
 }
@@ -234,7 +254,9 @@ fn actor_tell_and_stop() {
     let mut p = Parser::from_source("a = Actor[(m)=>Null]; Tell[a, 123]; StopActor[a]");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "True");
 }
@@ -248,11 +270,12 @@ fn actor_ask_reply_pattern() {
     let mut p = Parser::from_source("a = Actor[(m)=>Send[Part[m, \"replyTo\"], Times[2, Part[m, \"msg\"]]]]; f = Ask[a, 21]; Await[f]");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "42");
 }
-
 
 #[test]
 fn parallel_map_inherits_env() {
@@ -262,7 +285,9 @@ fn parallel_map_inherits_env() {
     let mut p = Parser::from_source("k = 10; ParallelMap[(x)=>Plus[x,k], {1,2,3}]");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "{11, 12, 13}");
 }
@@ -275,12 +300,12 @@ fn parallel_evaluate_inherits_env() {
     let mut p = Parser::from_source("k = 5; ParallelEvaluate[{Plus[1,k], Times[2,k]}]");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "{6, 10}");
 }
-
-
 
 #[test]
 fn channel_try_ops_and_timeout() {
@@ -291,7 +316,9 @@ fn channel_try_ops_and_timeout() {
     let mut p = Parser::from_source("ch = BoundedChannel[1]; {TryReceive[ch], TrySend[ch, 1], TrySend[ch, 2], Receive[ch, <|TimeoutMs->10|>]}");
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "{Null, True, False, 1}");
 }
@@ -302,10 +329,14 @@ fn ask_with_timeout_returns_null_on_expiry() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     // Actor that delays reply beyond timeout
-    let mut p = Parser::from_source("a = Actor[(m)=>BusyWait[20];]; f = Ask[a, 1, <|TimeoutMs->5|>]; Await[f]");
+    let mut p = Parser::from_source(
+        "a = Actor[(m)=>BusyWait[20];]; f = Ask[a, 1, <|TimeoutMs->5|>]; Await[f]",
+    );
     let vals = p.parse_all().expect("parse");
     let mut last = Value::Symbol("Null".into());
-    for v in vals { last = ev.eval(v); }
+    for v in vals {
+        last = ev.eval(v);
+    }
     let s = format_value(&last);
     assert_eq!(s, "Null");
 }

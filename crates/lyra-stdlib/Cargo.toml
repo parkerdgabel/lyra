@@ -147,6 +147,11 @@ text_encoding_detect = ["dep:chardetng", "dep:encoding_rs"]
 optional = true
 version = "0.3"
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# On macOS, building bundled DuckDB from source can fail on some toolchains.
+# Avoid pulling it when checking all-features on macOS; available on other targets.
+duckdb = { version = "0.10", optional = true, default-features = false, features = ["bundled"] }
+
 # tantivy removed; using SQLite FTS5 via rusqlite
 
 [dependencies.rug]

@@ -1,16 +1,19 @@
-use lyra_core::value::Value;
-use std::collections::HashMap;
-use std::thread;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering, AtomicI64}, Mutex, Condvar};
-use std::sync::mpsc::{self, Sender, Receiver};
-use std::time::{Instant, Duration};
 use crate::attrs::Attributes;
 use lyra_core::schema::schema_of;
-use std::sync::OnceLock;
-use std::collections::VecDeque;
-use std::cell::RefCell;
-use lyra_rewrite::defs::{DefinitionStore, DefKind};
+use lyra_core::value::Value;
+use lyra_rewrite::defs::{DefKind, DefinitionStore};
 use lyra_rewrite::rule::{Rule, RuleSet};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::OnceLock;
+use std::sync::{
+    atomic::{AtomicBool, AtomicI64, Ordering},
+    Arc, Condvar, Mutex,
+};
+use std::thread;
+use std::time::{Duration, Instant};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -24,11 +27,18 @@ struct ScopeCtx {
 static SCOPE_REG: OnceLock<Mutex<HashMap<i64, ScopeCtx>>> = OnceLock::new();
 static NEXT_SCOPE_ID: OnceLock<AtomicI64> = OnceLock::new();
 
-fn scope_reg() -> &'static Mutex<HashMap<i64, ScopeCtx>> { SCOPE_REG.get_or_init(|| Mutex::new(HashMap::new())) }
-fn next_scope_id() -> i64 { let a = NEXT_SCOPE_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
+fn scope_reg() -> &'static Mutex<HashMap<i64, ScopeCtx>> {
+    SCOPE_REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn next_scope_id() -> i64 {
+    let a = NEXT_SCOPE_ID.get_or_init(|| AtomicI64::new(1));
+    a.fetch_add(1, Ordering::Relaxed)
+}
 
 // Simple global thread pool for parallel primitives
-struct ThreadPool { tx: Sender<Box<dyn FnOnce() + Send + 'static>> }
+struct ThreadPool {
+    tx: Sender<Box<dyn FnOnce() + Send + 'static>>,
+}
 static POOL: OnceLock<ThreadPool> = OnceLock::new();
 
 fn thread_pool() -> &'static ThreadPool {
@@ -38,13 +48,14 @@ fn thread_pool() -> &'static ThreadPool {
         let shared_rx = Arc::new(Mutex::new(rx));
         for _ in 0..workers {
             let rx_cl = shared_rx.clone();
-            thread::spawn(move || {
-                loop {
-                    let job_opt = {
-                        let lock = rx_cl.lock().unwrap();
-                        lock.recv()
-                    };
-                    match job_opt { Ok(job) => job(), Err(_) => break }
+            thread::spawn(move || loop {
+                let job_opt = {
+                    let lock = rx_cl.lock().unwrap();
+                    lock.recv()
+                };
+                match job_opt {
+                    Ok(job) => job(),
+                    Err(_) => break,
                 }
             });
         }
@@ -53,9 +64,13 @@ fn thread_pool() -> &'static ThreadPool {
 }
 
 fn spawn_task<F>(f: F) -> Receiver<Value>
-where F: FnOnce() -> Value + Send + 'static {
+where
+    F: FnOnce() -> Value + Send + 'static,
+{
     let (tx, rx) = mpsc::channel::<Value>();
-    let job = Box::new(move || { let _ = tx.send(f()); }) as Box<dyn FnOnce() + Send + 'static>;
+    let job = Box::new(move || {
+        let _ = tx.send(f());
+    }) as Box<dyn FnOnce() + Send + 'static>;
     let _ = thread_pool().tx.send(job);
     rx
 }
@@ -65,8 +80,12 @@ thread_local! {
     static TRACE_BUF: RefCell<Vec<Value>> = RefCell::new(Vec::new());
 }
 
-fn trace_push_step(step: Value) { TRACE_BUF.with(|b| b.borrow_mut().push(step)); }
-fn trace_drain_steps() -> Vec<Value> { TRACE_BUF.with(|b| std::mem::take(&mut *b.borrow_mut())) }
+fn trace_push_step(step: Value) {
+    TRACE_BUF.with(|b| b.borrow_mut().push(step));
+}
+fn trace_drain_steps() -> Vec<Value> {
+    TRACE_BUF.with(|b| std::mem::take(&mut *b.borrow_mut()))
+}
 
 // Bounded channels
 struct ChannelQueue {
@@ -76,41 +95,96 @@ struct ChannelQueue {
     not_empty: Condvar,
 }
 
-struct ChannelInner { q: VecDeque<Value>, closed: bool }
+struct ChannelInner {
+    q: VecDeque<Value>,
+    closed: bool,
+}
 
 impl ChannelQueue {
-    fn new(cap: usize) -> Self { Self { cap, inner: Mutex::new(ChannelInner { q: VecDeque::new(), closed: false }), not_full: Condvar::new(), not_empty: Condvar::new() } }
+    fn new(cap: usize) -> Self {
+        Self {
+            cap,
+            inner: Mutex::new(ChannelInner { q: VecDeque::new(), closed: false }),
+            not_full: Condvar::new(),
+            not_empty: Condvar::new(),
+        }
+    }
     fn send(&self, v: Value, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> bool {
         let mut guard = self.inner.lock().unwrap();
         loop {
-            if guard.closed { return false; }
-            if guard.q.len() < self.cap { guard.q.push_back(v); self.not_empty.notify_one(); return true; }
-            if let Some(tok) = &cancel { if tok.load(Ordering::Relaxed) { return false; } }
-            if let Some(dl) = deadline { if Instant::now() > dl { return false; } }
-            let (g, _timeout) = if let Some(_dl) = deadline { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() } else { self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap() };
+            if guard.closed {
+                return false;
+            }
+            if guard.q.len() < self.cap {
+                guard.q.push_back(v);
+                self.not_empty.notify_one();
+                return true;
+            }
+            if let Some(tok) = &cancel {
+                if tok.load(Ordering::Relaxed) {
+                    return false;
+                }
+            }
+            if let Some(dl) = deadline {
+                if Instant::now() > dl {
+                    return false;
+                }
+            }
+            let (g, _timeout) = if let Some(_dl) = deadline {
+                self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap()
+            } else {
+                self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap()
+            };
             guard = g;
         }
     }
     fn recv(&self, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> Option<Value> {
         let mut guard = self.inner.lock().unwrap();
         loop {
-            if let Some(v) = guard.q.pop_front() { self.not_full.notify_one(); return Some(v); }
-            if guard.closed { return None; }
-            if let Some(tok) = &cancel { if tok.load(Ordering::Relaxed) { return None; } }
-            if let Some(dl) = deadline { if Instant::now() > dl { return None; } }
-            let (g, _timeout) = self.not_empty.wait_timeout(guard, Duration::from_millis(5)).unwrap();
+            if let Some(v) = guard.q.pop_front() {
+                self.not_full.notify_one();
+                return Some(v);
+            }
+            if guard.closed {
+                return None;
+            }
+            if let Some(tok) = &cancel {
+                if tok.load(Ordering::Relaxed) {
+                    return None;
+                }
+            }
+            if let Some(dl) = deadline {
+                if Instant::now() > dl {
+                    return None;
+                }
+            }
+            let (g, _timeout) =
+                self.not_empty.wait_timeout(guard, Duration::from_millis(5)).unwrap();
             guard = g;
         }
     }
-    fn close(&self) { let mut guard = self.inner.lock().unwrap(); guard.closed = true; self.not_full.notify_all(); self.not_empty.notify_all(); }
+    fn close(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.closed = true;
+        self.not_full.notify_all();
+        self.not_empty.notify_all();
+    }
 }
 
 static CH_REG: OnceLock<Mutex<HashMap<i64, Arc<ChannelQueue>>>> = OnceLock::new();
 static NEXT_CH_ID: OnceLock<AtomicI64> = OnceLock::new();
-fn ch_reg() -> &'static Mutex<HashMap<i64, Arc<ChannelQueue>>> { CH_REG.get_or_init(|| Mutex::new(HashMap::new())) }
-fn next_ch_id() -> i64 { let a = NEXT_CH_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
+fn ch_reg() -> &'static Mutex<HashMap<i64, Arc<ChannelQueue>>> {
+    CH_REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn next_ch_id() -> i64 {
+    let a = NEXT_CH_ID.get_or_init(|| AtomicI64::new(1));
+    a.fetch_add(1, Ordering::Relaxed)
+}
 
-struct TaskInfo { rx: Receiver<Value>, cancel: Arc<AtomicBool> }
+struct TaskInfo {
+    rx: Receiver<Value>,
+    cancel: Arc<AtomicBool>,
+}
 
 #[derive(Debug)]
 struct ThreadLimiter {
@@ -120,27 +194,42 @@ struct ThreadLimiter {
 }
 
 impl ThreadLimiter {
-    fn new(max: usize) -> Self { Self { max, in_use: Mutex::new(0), cv: Condvar::new() } }
+    fn new(max: usize) -> Self {
+        Self { max, in_use: Mutex::new(0), cv: Condvar::new() }
+    }
     fn acquire(&self) {
         let mut guard = self.in_use.lock().unwrap();
-        while *guard >= self.max { guard = self.cv.wait(guard).unwrap(); }
+        while *guard >= self.max {
+            guard = self.cv.wait(guard).unwrap();
+        }
         *guard += 1;
     }
     fn release(&self) {
         let mut guard = self.in_use.lock().unwrap();
-        if *guard > 0 { *guard -= 1; }
+        if *guard > 0 {
+            *guard -= 1;
+        }
         self.cv.notify_one();
     }
 }
 
+#[derive(Clone, Debug)]
+struct DocEntry {
+    summary: String,
+    params: Vec<String>,
+    examples: Vec<String>,
+}
+
 pub struct Evaluator {
     builtins: HashMap<String, (NativeFn, Attributes)>,
+    // Documentation registry: function name -> summary, params, examples
+    docs: HashMap<String, DocEntry>,
     env: HashMap<String, Value>,
     tasks: HashMap<i64, TaskInfo>, // minimal future registry
     next_task_id: i64,
     cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
     thread_limiter: Option<Arc<ThreadLimiter>>, // scope-wide thread budget
-    deadline: Option<Instant>, // scope-wide deadline
+    deadline: Option<Instant>,             // scope-wide deadline
     trace_enabled: bool,
     trace_steps: Vec<Value>,
     defs: DefinitionStore,
@@ -155,17 +244,71 @@ pub fn set_default_registrar(f: fn(&mut Evaluator)) {
 
 impl Evaluator {
     pub fn new() -> Self {
-        let mut ev = Self { builtins: HashMap::new(), env: HashMap::new(), tasks: HashMap::new(), next_task_id: 1, cancel_token: None, thread_limiter: None, deadline: None, trace_enabled: false, trace_steps: Vec::new(), defs: DefinitionStore::new(), current_span: None };
-        if let Some(f) = DEFAULT_REGISTRAR.get().copied() { f(&mut ev); }
+        let mut ev = Self {
+            builtins: HashMap::new(),
+            docs: HashMap::new(),
+            env: HashMap::new(),
+            tasks: HashMap::new(),
+            next_task_id: 1,
+            cancel_token: None,
+            thread_limiter: None,
+            deadline: None,
+            trace_enabled: false,
+            trace_steps: Vec::new(),
+            defs: DefinitionStore::new(),
+            current_span: None,
+        };
+        if let Some(f) = DEFAULT_REGISTRAR.get().copied() {
+            f(&mut ev);
+        }
         ev
     }
 
-    pub fn with_env(env: HashMap<String, Value>) -> Self { let mut ev = Self::new(); ev.env = env; ev }
+    pub fn with_env(env: HashMap<String, Value>) -> Self {
+        let mut ev = Self::new();
+        ev.env = env;
+        ev
+    }
 
-    pub fn with_env_and_token(env: HashMap<String, Value>, token: Arc<AtomicBool>) -> Self { let mut ev = Self::new(); ev.env = env; ev.cancel_token = Some(token); ev }
+    pub fn with_env_and_token(env: HashMap<String, Value>, token: Arc<AtomicBool>) -> Self {
+        let mut ev = Self::new();
+        ev.env = env;
+        ev.cancel_token = Some(token);
+        ev
+    }
 
     pub fn register(&mut self, name: &str, f: NativeFn, attrs: Attributes) {
         self.builtins.insert(name.to_string(), (f, attrs));
+    }
+
+    // --- Documentation registry helpers ---
+    pub fn set_doc<S: Into<String>>(&mut self, name: &str, summary: S, params: &[&str]) {
+        let entry = self.docs.entry(name.to_string()).or_insert(DocEntry {
+            summary: String::new(),
+            params: Vec::new(),
+            examples: Vec::new(),
+        });
+        entry.summary = summary.into();
+        entry.params = params.iter().map(|s| (*s).to_string()).collect();
+    }
+
+    pub fn set_doc_examples(&mut self, name: &str, examples: &[&str]) {
+        let entry = self.docs.entry(name.to_string()).or_insert(DocEntry {
+            summary: String::new(),
+            params: Vec::new(),
+            examples: Vec::new(),
+        });
+        entry.examples = examples.iter().map(|s| (*s).to_string()).collect();
+    }
+
+    pub fn get_doc(&self, name: &str) -> Option<(String, Vec<String>)> {
+        self.docs
+            .get(name)
+            .map(|d| (d.summary.clone(), d.params.clone()))
+    }
+
+    pub fn get_doc_full(&self, name: &str) -> Option<DocEntry> {
+        self.docs.get(name).cloned()
     }
 
     pub fn env_keys(&self) -> Vec<String> {
@@ -193,7 +336,7 @@ impl Evaluator {
         m.insert("error".to_string(), Value::Boolean(true));
         m.insert("message".to_string(), Value::String(message.into()));
         m.insert("tag".to_string(), Value::String(tag.into()));
-        if let Some((s,e)) = self.current_span {
+        if let Some((s, e)) = self.current_span {
             let mut span = std::collections::HashMap::new();
             span.insert("start".to_string(), Value::Integer(s as i64));
             span.insert("end".to_string(), Value::Integer(e as i64));
@@ -203,8 +346,16 @@ impl Evaluator {
     }
 
     pub fn eval(&mut self, v: Value) -> Value {
-        if let Some(tok) = &self.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
-        if let Some(dl) = self.deadline { if Instant::now() > dl { return time_budget_failure(); } }
+        if let Some(tok) = &self.cancel_token {
+            if tok.load(Ordering::Relaxed) {
+                return cancelled_failure();
+            }
+        }
+        if let Some(dl) = self.deadline {
+            if Instant::now() > dl {
+                return time_budget_failure();
+            }
+        }
         match v {
             Value::Expr { head, args } => {
                 let head_eval = self.eval(*head);
@@ -214,33 +365,59 @@ impl Evaluator {
                     let applied = apply_pure_function(*body, params.as_ref(), &eval_args);
                     return self.eval(applied);
                 }
-                let fname = match &head_eval { Value::Symbol(s) => s.clone(), _ => {
-                    // SubValues rewrite for compound head: (g[...])[args]
-                    if let Value::Expr { head: inner_head, .. } = &head_eval {
-                        if let Value::Symbol(sub_sym) = &**inner_head {
-                            if let Some(rs) = self.defs.rules(DefKind::Sub, sub_sym) {
-                                if !rs.is_empty() {
-                                    let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
-                                    let expr0 = Value::Expr { head: Box::new(head_eval.clone()), args: args.clone() };
-                                    // Build closures for conditions/pattern tests
-                                    let env_snapshot = self.env.clone();
-                                    let pred = |pred: &Value, arg: &Value| {
-                                        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
-                                        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
-                                        let res = matches!(ev2.eval(call), Value::Boolean(true));
-                                        let data = Value::Assoc(vec![
-                                            ("pred".to_string(), pred.clone()),
-                                            ("arg".to_string(), arg.clone()),
-                                            ("result".to_string(), Value::Boolean(res)),
-                                        ].into_iter().collect());
-                                        trace_push_step(Value::Assoc(vec![
-                                            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                                            ("head".to_string(), Value::Symbol("PatternTest".into())),
-                                            ("data".to_string(), data),
-                                        ].into_iter().collect()));
-                                        res
-                                    };
-                                    let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                let fname = match &head_eval {
+                    Value::Symbol(s) => s.clone(),
+                    _ => {
+                        // SubValues rewrite for compound head: (g[...])[args]
+                        if let Value::Expr { head: inner_head, .. } = &head_eval {
+                            if let Value::Symbol(sub_sym) = &**inner_head {
+                                if let Some(rs) = self.defs.rules(DefKind::Sub, sub_sym) {
+                                    if !rs.is_empty() {
+                                        let rules: Vec<(Value, Value)> = rs
+                                            .iter()
+                                            .map(|r| (r.lhs.clone(), r.rhs.clone()))
+                                            .collect();
+                                        let expr0 = Value::Expr {
+                                            head: Box::new(head_eval.clone()),
+                                            args: args.clone(),
+                                        };
+                                        // Build closures for conditions/pattern tests
+                                        let env_snapshot = self.env.clone();
+                                        let pred = |pred: &Value, arg: &Value| {
+                                            let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                                            let call = Value::Expr {
+                                                head: Box::new(pred.clone()),
+                                                args: vec![arg.clone()],
+                                            };
+                                            let res =
+                                                matches!(ev2.eval(call), Value::Boolean(true));
+                                            let data = Value::Assoc(
+                                                vec![
+                                                    ("pred".to_string(), pred.clone()),
+                                                    ("arg".to_string(), arg.clone()),
+                                                    ("result".to_string(), Value::Boolean(res)),
+                                                ]
+                                                .into_iter()
+                                                .collect(),
+                                            );
+                                            trace_push_step(Value::Assoc(
+                                                vec![
+                                                    (
+                                                        "action".to_string(),
+                                                        Value::String("ConditionEvaluated".into()),
+                                                    ),
+                                                    (
+                                                        "head".to_string(),
+                                                        Value::Symbol("PatternTest".into()),
+                                                    ),
+                                                    ("data".to_string(), data),
+                                                ]
+                                                .into_iter()
+                                                .collect(),
+                                            ));
+                                            res
+                                        };
+                                        let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                                         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                                         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
                                         let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
@@ -256,48 +433,90 @@ impl Evaluator {
                                         ].into_iter().collect()));
                                         res
                                     };
-                                    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
-                                    let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
-                                    if out != expr0 {
-                                        if self.trace_enabled {
-                                            for (lhs, rhs) in &rules {
-                                                if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
-                                                    let data = Value::Assoc(vec![
-                                                        ("lhs".to_string(), lhs.clone()),
-                                                        ("rhs".to_string(), rhs.clone()),
-                                                    ].into_iter().collect());
-                                                    self.trace_steps.push(Value::Assoc(vec![
-                                                        ("action".to_string(), Value::String("RuleMatch".into())),
-                                                        ("head".to_string(), Value::Symbol("SubValues".into())),
-                                                        ("data".to_string(), data),
-                                                    ].into_iter().collect()));
-                                                    break;
+                                        let ctx = lyra_rewrite::matcher::MatcherCtx {
+                                            eval_pred: Some(&pred),
+                                            eval_cond: Some(&cond),
+                                        };
+                                        let out =
+                                            lyra_rewrite::engine::rewrite_once_indexed_with_ctx(
+                                                &ctx,
+                                                expr0.clone(),
+                                                &rules,
+                                            );
+                                        if out != expr0 {
+                                            if self.trace_enabled {
+                                                for (lhs, rhs) in &rules {
+                                                    if lyra_rewrite::matcher::match_rule_with(
+                                                        &ctx, lhs, &expr0,
+                                                    )
+                                                    .is_some()
+                                                    {
+                                                        let data = Value::Assoc(
+                                                            vec![
+                                                                ("lhs".to_string(), lhs.clone()),
+                                                                ("rhs".to_string(), rhs.clone()),
+                                                            ]
+                                                            .into_iter()
+                                                            .collect(),
+                                                        );
+                                                        self.trace_steps.push(Value::Assoc(
+                                                            vec![
+                                                                (
+                                                                    "action".to_string(),
+                                                                    Value::String(
+                                                                        "RuleMatch".into(),
+                                                                    ),
+                                                                ),
+                                                                (
+                                                                    "head".to_string(),
+                                                                    Value::Symbol(
+                                                                        "SubValues".into(),
+                                                                    ),
+                                                                ),
+                                                                ("data".to_string(), data),
+                                                            ]
+                                                            .into_iter()
+                                                            .collect(),
+                                                        ));
+                                                        break;
+                                                    }
                                                 }
+                                                self.trace_steps.extend(trace_drain_steps());
                                             }
-                                            self.trace_steps.extend(trace_drain_steps());
+                                            return self.eval(out);
                                         }
-                                        return self.eval(out);
                                     }
                                 }
                             }
                         }
+                        return Value::Expr { head: Box::new(head_eval), args };
                     }
-                    return Value::Expr { head: Box::new(head_eval), args };
-                } };
+                };
                 // UpValues rewrite (single step) prior to DownValues and builtin dispatch
                 {
-                    let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.clone())), args: args.clone() };
+                    let expr0 = Value::Expr {
+                        head: Box::new(Value::Symbol(fname.clone())),
+                        args: args.clone(),
+                    };
                     let mut up_rules: Vec<(Value, Value)> = Vec::new();
                     // Collect UpValues for any symbol at top-level arguments (Symbol or Expr head Symbol)
                     for a in &args {
                         let sym_opt = match a {
                             Value::Symbol(s) => Some(s.clone()),
-                            Value::Expr { head, .. } => if let Value::Symbol(s) = &**head { Some(s.clone()) } else { None },
+                            Value::Expr { head, .. } => {
+                                if let Value::Symbol(s) = &**head {
+                                    Some(s.clone())
+                                } else {
+                                    None
+                                }
+                            }
                             _ => None,
                         };
                         if let Some(sym) = sym_opt {
                             if let Some(rs) = self.defs.rules(DefKind::Up, &sym) {
-                                for r in rs.iter() { up_rules.push((r.lhs.clone(), r.rhs.clone())); }
+                                for r in rs.iter() {
+                                    up_rules.push((r.lhs.clone(), r.rhs.clone()));
+                                }
                             }
                         }
                     }
@@ -307,52 +526,95 @@ impl Evaluator {
                         let env_snapshot = self.env.clone();
                         let pred = |pred: &Value, arg: &Value| {
                             let mut ev2 = Evaluator::with_env(env_snapshot.clone());
-                            let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                            let call = Value::Expr {
+                                head: Box::new(pred.clone()),
+                                args: vec![arg.clone()],
+                            };
                             let res = matches!(ev2.eval(call), Value::Boolean(true));
-                            let data = Value::Assoc(vec![
-                                ("pred".to_string(), pred.clone()),
-                                ("arg".to_string(), arg.clone()),
-                                ("result".to_string(), Value::Boolean(res)),
-                            ].into_iter().collect());
-                            trace_push_step(Value::Assoc(vec![
-                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                                ("head".to_string(), Value::Symbol("PatternTest".into())),
-                                ("data".to_string(), data),
-                            ].into_iter().collect()));
+                            let data = Value::Assoc(
+                                vec![
+                                    ("pred".to_string(), pred.clone()),
+                                    ("arg".to_string(), arg.clone()),
+                                    ("result".to_string(), Value::Boolean(res)),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            );
+                            trace_push_step(Value::Assoc(
+                                vec![
+                                    (
+                                        "action".to_string(),
+                                        Value::String("ConditionEvaluated".into()),
+                                    ),
+                                    ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
                             res
                         };
                         let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                             let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                             let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
                             let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-                            let data = Value::Assoc(vec![
-                                ("expr".to_string(), cond_sub),
-                                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-                                ("result".to_string(), Value::Boolean(res)),
-                            ].into_iter().collect());
-                            trace_push_step(Value::Assoc(vec![
-                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                                ("head".to_string(), Value::Symbol("Condition".into())),
-                                ("data".to_string(), data),
-                            ].into_iter().collect()));
+                            let data = Value::Assoc(
+                                vec![
+                                    ("expr".to_string(), cond_sub),
+                                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                    ("result".to_string(), Value::Boolean(res)),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            );
+                            trace_push_step(Value::Assoc(
+                                vec![
+                                    (
+                                        "action".to_string(),
+                                        Value::String("ConditionEvaluated".into()),
+                                    ),
+                                    ("head".to_string(), Value::Symbol("Condition".into())),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
                             res
                         };
-                        let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+                        let ctx = lyra_rewrite::matcher::MatcherCtx {
+                            eval_pred: Some(&pred),
+                            eval_cond: Some(&cond),
+                        };
                         for (lhs, rhs) in &up_rules {
-                            if let Some(b) = lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0) {
+                            if let Some(b) =
+                                lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0)
+                            {
                                 if self.trace_enabled {
-                                    let data = Value::Assoc(vec![
-                                        ("lhs".to_string(), lhs.clone()),
-                                        ("rhs".to_string(), rhs.clone()),
-                                    ].into_iter().collect());
-                                    self.trace_steps.push(Value::Assoc(vec![
-                                        ("action".to_string(), Value::String("RuleMatch".into())),
-                                        ("head".to_string(), Value::Symbol("UpValues".into())),
-                                        ("data".to_string(), data),
-                                    ].into_iter().collect()));
+                                    let data = Value::Assoc(
+                                        vec![
+                                            ("lhs".to_string(), lhs.clone()),
+                                            ("rhs".to_string(), rhs.clone()),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    );
+                                    self.trace_steps.push(Value::Assoc(
+                                        vec![
+                                            (
+                                                "action".to_string(),
+                                                Value::String("RuleMatch".into()),
+                                            ),
+                                            ("head".to_string(), Value::Symbol("UpValues".into())),
+                                            ("data".to_string(), data),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    ));
                                 }
                                 let out = lyra_rewrite::matcher::substitute_named(rhs, &b);
-                                if self.trace_enabled { self.trace_steps.extend(trace_drain_steps()); }
+                                if self.trace_enabled {
+                                    self.trace_steps.extend(trace_drain_steps());
+                                }
                                 return self.eval(out);
                             }
                         }
@@ -361,58 +623,107 @@ impl Evaluator {
                 // DownValues rewrite (single step) prior to builtin dispatch
                 if let Some(rs) = self.defs.rules(DefKind::Down, &fname) {
                     if !rs.is_empty() {
-                        let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
-                        let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.clone())), args: args.clone() };
+                        let rules: Vec<(Value, Value)> =
+                            rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+                        let expr0 = Value::Expr {
+                            head: Box::new(Value::Symbol(fname.clone())),
+                            args: args.clone(),
+                        };
                         // Build closures to evaluate conditions/pattern tests and record Explain
                         let env_snapshot = self.env.clone();
                         let pred = |pred: &Value, arg: &Value| {
                             let mut ev2 = Evaluator::with_env(env_snapshot.clone());
-                            let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                            let call = Value::Expr {
+                                head: Box::new(pred.clone()),
+                                args: vec![arg.clone()],
+                            };
                             let res = matches!(ev2.eval(call), Value::Boolean(true));
-                            let data = Value::Assoc(vec![
-                                ("pred".to_string(), pred.clone()),
-                                ("arg".to_string(), arg.clone()),
-                                ("result".to_string(), Value::Boolean(res)),
-                            ].into_iter().collect());
-                            trace_push_step(Value::Assoc(vec![
-                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                                ("head".to_string(), Value::Symbol("PatternTest".into())),
-                                ("data".to_string(), data),
-                            ].into_iter().collect()));
+                            let data = Value::Assoc(
+                                vec![
+                                    ("pred".to_string(), pred.clone()),
+                                    ("arg".to_string(), arg.clone()),
+                                    ("result".to_string(), Value::Boolean(res)),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            );
+                            trace_push_step(Value::Assoc(
+                                vec![
+                                    (
+                                        "action".to_string(),
+                                        Value::String("ConditionEvaluated".into()),
+                                    ),
+                                    ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
                             res
                         };
                         let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                             let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                             let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
                             let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-                            let data = Value::Assoc(vec![
-                                ("expr".to_string(), cond_sub),
-                                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-                                ("result".to_string(), Value::Boolean(res)),
-                            ].into_iter().collect());
-                            trace_push_step(Value::Assoc(vec![
-                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                                ("head".to_string(), Value::Symbol("Condition".into())),
-                                ("data".to_string(), data),
-                            ].into_iter().collect()));
+                            let data = Value::Assoc(
+                                vec![
+                                    ("expr".to_string(), cond_sub),
+                                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                    ("result".to_string(), Value::Boolean(res)),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            );
+                            trace_push_step(Value::Assoc(
+                                vec![
+                                    (
+                                        "action".to_string(),
+                                        Value::String("ConditionEvaluated".into()),
+                                    ),
+                                    ("head".to_string(), Value::Symbol("Condition".into())),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
                             res
                         };
-                        let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
-                        let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
+                        let ctx = lyra_rewrite::matcher::MatcherCtx {
+                            eval_pred: Some(&pred),
+                            eval_cond: Some(&cond),
+                        };
+                        let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(
+                            &ctx,
+                            expr0.clone(),
+                            &rules,
+                        );
                         if out != expr0 {
                             if self.trace_enabled {
                                 // Note: For simplicity, we re-scan rules to find the first matching lhs for trace
                                 for (lhs, rhs) in &rules {
-                                    if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
-                                        let data = Value::Assoc(vec![
-                                            ("lhs".to_string(), lhs.clone()),
-                                            ("rhs".to_string(), rhs.clone()),
-                                        ].into_iter().collect());
-                                        self.trace_steps.push(Value::Assoc(vec![
-                                            ("action".to_string(), Value::String("RuleMatch".into())),
-                                            ("head".to_string(), Value::Symbol(fname.clone())),
-                                            ("data".to_string(), data),
-                                        ].into_iter().collect()));
+                                    if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0)
+                                        .is_some()
+                                    {
+                                        let data = Value::Assoc(
+                                            vec![
+                                                ("lhs".to_string(), lhs.clone()),
+                                                ("rhs".to_string(), rhs.clone()),
+                                            ]
+                                            .into_iter()
+                                            .collect(),
+                                        );
+                                        self.trace_steps.push(Value::Assoc(
+                                            vec![
+                                                (
+                                                    "action".to_string(),
+                                                    Value::String("RuleMatch".into()),
+                                                ),
+                                                ("head".to_string(), Value::Symbol(fname.clone())),
+                                                ("data".to_string(), data),
+                                            ]
+                                            .into_iter()
+                                            .collect(),
+                                        ));
                                         break;
                                     }
                                 }
@@ -423,21 +734,48 @@ impl Evaluator {
                     }
                 }
                 // Listable threading and builtin dispatch
-                let (fun, attrs) = match self.builtins.get(&fname) { Some(t) => (t.0, t.1), None => return Value::Expr { head: Box::new(Value::Symbol(fname)), args } };
+                let (fun, attrs) = match self.builtins.get(&fname) {
+                    Some(t) => (t.0, t.1),
+                    None => return Value::Expr { head: Box::new(Value::Symbol(fname)), args },
+                };
                 if attrs.contains(Attributes::LISTABLE) {
                     if args.iter().any(|a| matches!(a, Value::List(_))) {
                         if self.trace_enabled {
-                            let count = args.iter().filter_map(|a| if let Value::List(v)=a { Some(v.len() as i64) } else { None }).max().unwrap_or(0);
-                            let arg_lens: Vec<Value> = args.iter().map(|a| match a { Value::List(v)=>Value::Integer(v.len() as i64), _=>Value::Integer(0) }).collect();
-                            let data = Value::Assoc(vec![
-                                ("count".to_string(), Value::Integer(count)),
-                                ("argLens".to_string(), Value::List(arg_lens)),
-                            ].into_iter().collect());
-                            self.trace_steps.push(Value::Assoc(vec![
-                                ("action".to_string(), Value::String("ListableThread".into())),
-                                ("head".to_string(), head_eval.clone()),
-                                ("data".to_string(), data),
-                            ].into_iter().collect()));
+                            let count = args
+                                .iter()
+                                .filter_map(|a| {
+                                    if let Value::List(v) = a {
+                                        Some(v.len() as i64)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .max()
+                                .unwrap_or(0);
+                            let arg_lens: Vec<Value> = args
+                                .iter()
+                                .map(|a| match a {
+                                    Value::List(v) => Value::Integer(v.len() as i64),
+                                    _ => Value::Integer(0),
+                                })
+                                .collect();
+                            let data = Value::Assoc(
+                                vec![
+                                    ("count".to_string(), Value::Integer(count)),
+                                    ("argLens".to_string(), Value::List(arg_lens)),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            );
+                            self.trace_steps.push(Value::Assoc(
+                                vec![
+                                    ("action".to_string(), Value::String("ListableThread".into())),
+                                    ("head".to_string(), head_eval.clone()),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
                         }
                         return listable_thread(self, fun, args);
                     }
@@ -447,19 +785,38 @@ impl Evaluator {
                     let held: Vec<i64> = if attrs.contains(Attributes::HOLD_ALL) {
                         (1..=args.len()).map(|i| i as i64).collect()
                     } else if attrs.contains(Attributes::HOLD_FIRST) {
-                        if args.is_empty() { vec![] } else { vec![1] }
+                        if args.is_empty() {
+                            vec![]
+                        } else {
+                            vec![1]
+                        }
                     } else if attrs.contains(Attributes::HOLD_REST) {
-                        if args.len()<=1 { vec![] } else { (2..=args.len()).map(|i| i as i64).collect() }
-                    } else { vec![] };
+                        if args.len() <= 1 {
+                            vec![]
+                        } else {
+                            (2..=args.len()).map(|i| i as i64).collect()
+                        }
+                    } else {
+                        vec![]
+                    };
                     if !held.is_empty() {
-                        let data = Value::Assoc(vec![
-                            ("held".to_string(), Value::List(held.into_iter().map(Value::Integer).collect())),
-                        ].into_iter().collect());
-                        self.trace_steps.push(Value::Assoc(vec![
-                            ("action".to_string(), Value::String("Hold".into())),
-                            ("head".to_string(), head_eval.clone()),
-                            ("data".to_string(), data),
-                        ].into_iter().collect()));
+                        let data = Value::Assoc(
+                            vec![(
+                                "held".to_string(),
+                                Value::List(held.into_iter().map(Value::Integer).collect()),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        );
+                        self.trace_steps.push(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("Hold".into())),
+                                ("head".to_string(), head_eval.clone()),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
                     }
                 }
                 let mut eval_args: Vec<Value> = if attrs.contains(Attributes::HOLD_ALL) {
@@ -467,14 +824,22 @@ impl Evaluator {
                 } else if attrs.contains(Attributes::HOLD_FIRST) {
                     let mut out = Vec::with_capacity(args.len());
                     let mut it = args.into_iter();
-                    if let Some(first) = it.next() { out.push(first); }
-                    for a in it { out.push(self.eval(a)); }
+                    if let Some(first) = it.next() {
+                        out.push(first);
+                    }
+                    for a in it {
+                        out.push(self.eval(a));
+                    }
                     out
                 } else if attrs.contains(Attributes::HOLD_REST) {
                     let mut out = Vec::with_capacity(args.len());
                     let mut it = args.into_iter();
-                    if let Some(first) = it.next() { out.push(self.eval(first)); }
-                    for a in it { out.push(a); }
+                    if let Some(first) = it.next() {
+                        out.push(self.eval(first));
+                    }
+                    for a in it {
+                        out.push(a);
+                    }
                     out
                 } else {
                     args.into_iter().map(|a| self.eval(a)).collect()
@@ -488,14 +853,26 @@ impl Evaluator {
                         if let Value::Expr { head: h2, args: a2 } = &a {
                             if matches!(&**h2, Value::Symbol(s) if s == &fname) {
                                 if self.trace_enabled {
-                                    let data = Value::Assoc(vec![
-                                        ("added".to_string(), Value::Integer(a2.len() as i64)),
-                                    ].into_iter().collect());
-                                    self.trace_steps.push(Value::Assoc(vec![
-                                        ("action".to_string(), Value::String("FlatFlatten".into())),
-                                        ("head".to_string(), head_eval.clone()),
-                                        ("data".to_string(), data),
-                                    ].into_iter().collect()));
+                                    let data = Value::Assoc(
+                                        vec![(
+                                            "added".to_string(),
+                                            Value::Integer(a2.len() as i64),
+                                        )]
+                                        .into_iter()
+                                        .collect(),
+                                    );
+                                    self.trace_steps.push(Value::Assoc(
+                                        vec![
+                                            (
+                                                "action".to_string(),
+                                                Value::String("FlatFlatten".into()),
+                                            ),
+                                            ("head".to_string(), head_eval.clone()),
+                                            ("data".to_string(), data),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    ));
                                 }
                                 flat.extend(a2.clone());
                                 continue;
@@ -507,47 +884,70 @@ impl Evaluator {
                 }
                 // Orderless: canonical sort of args
                 if attrs.contains(Attributes::ORDERLESS) {
-                    eval_args.sort_by(|x,y| value_order(x).cmp(&value_order(y)));
+                    eval_args.sort_by(|x, y| value_order(x).cmp(&value_order(y)));
                     if self.trace_enabled {
-                        let data = Value::Assoc(vec![
-                            ("finalOrder".to_string(), Value::List(eval_args.clone())),
-                        ].into_iter().collect());
-                        self.trace_steps.push(Value::Assoc(vec![
-                            ("action".to_string(), Value::String("OrderlessSort".into())),
-                            ("head".to_string(), head_eval.clone()),
-                            ("data".to_string(), data),
-                        ].into_iter().collect()));
+                        let data = Value::Assoc(
+                            vec![("finalOrder".to_string(), Value::List(eval_args.clone()))]
+                                .into_iter()
+                                .collect(),
+                        );
+                        self.trace_steps.push(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("OrderlessSort".into())),
+                                ("head".to_string(), head_eval.clone()),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
                     }
                 }
                 // OneIdentity: f[x] -> x (after canonicalization and holds)
-                if attrs.contains(Attributes::ONE_IDENTITY) && eval_args.len()==1 {
+                if attrs.contains(Attributes::ONE_IDENTITY) && eval_args.len() == 1 {
                     return eval_args.into_iter().next().unwrap();
                 }
                 fun(self, eval_args)
             }
             Value::List(items) => Value::List(items.into_iter().map(|x| self.eval(x)).collect()),
-            Value::Assoc(m) => Value::Assoc(m.into_iter().map(|(k,v)|(k,self.eval(v))).collect()),
+            Value::Assoc(m) => {
+                Value::Assoc(m.into_iter().map(|(k, v)| (k, self.eval(v))).collect())
+            }
             Value::Symbol(s) => {
                 // OwnValues rewrite for symbol
                 if let Some(rs) = self.defs.rules(DefKind::Own, &s) {
                     if !rs.is_empty() {
-                        let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+                        let rules: Vec<(Value, Value)> =
+                            rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
                         let expr0 = Value::Symbol(s.clone());
                         // Linear top-level match for simplicity
                         for (lhs, rhs) in &rules {
                             if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
                                 if self.trace_enabled {
-                                    let data = Value::Assoc(vec![
-                                        ("lhs".to_string(), lhs.clone()),
-                                        ("rhs".to_string(), rhs.clone()),
-                                    ].into_iter().collect());
-                                    self.trace_steps.push(Value::Assoc(vec![
-                                        ("action".to_string(), Value::String("RuleMatch".into())),
-                                        ("head".to_string(), Value::Symbol("OwnValues".into())),
-                                        ("data".to_string(), data),
-                                    ].into_iter().collect()));
+                                    let data = Value::Assoc(
+                                        vec![
+                                            ("lhs".to_string(), lhs.clone()),
+                                            ("rhs".to_string(), rhs.clone()),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    );
+                                    self.trace_steps.push(Value::Assoc(
+                                        vec![
+                                            (
+                                                "action".to_string(),
+                                                Value::String("RuleMatch".into()),
+                                            ),
+                                            ("head".to_string(), Value::Symbol("OwnValues".into())),
+                                            ("data".to_string(), data),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    ));
                                 }
-                                let out = lyra_rewrite::matcher::substitute_named(rhs, &lyra_rewrite::matcher::Bindings::new());
+                                let out = lyra_rewrite::matcher::substitute_named(
+                                    rhs,
+                                    &lyra_rewrite::matcher::Bindings::new(),
+                                );
                                 return self.eval(out);
                             }
                         }
@@ -562,7 +962,9 @@ impl Evaluator {
 
 // (compat registrations removed)
 
-pub fn evaluate(v: Value) -> Value { Evaluator::new().eval(v) }
+pub fn evaluate(v: Value) -> Value {
+    Evaluator::new().eval(v)
+}
 
 // Public registration helpers for stdlib wrappers
 #[cfg(feature = "core")]
@@ -618,7 +1020,9 @@ pub fn register_concurrency(ev: &mut Evaluator) {
 // Only registers symbols that satisfy the provided predicate.
 pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     let mut reg = |name: &str, f: NativeFn, attrs: Attributes| {
-        if pred(name) { ev.register(name, f, attrs); }
+        if pred(name) {
+            ev.register(name, f, attrs);
+        }
     };
     reg("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
     reg("Await", await_fn as NativeFn, Attributes::empty());
@@ -658,49 +1062,165 @@ pub fn register_schema(ev: &mut Evaluator) {
 // Introspection: list current builtin functions with their attributes
 pub fn register_introspection(ev: &mut Evaluator) {
     fn describe_builtins_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-        if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args } }
+        if !args.is_empty() {
+            return Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args };
+        }
         let mut out: Vec<Value> = Vec::new();
         // builtins is private; this function is inside this module and can access it
         // Snapshot names and attributes; DescribeBuiltins should not depend on ToolsDescribe to avoid recursion
-        let snapshot: Vec<(String, Attributes)> = ev
-            .builtins
-            .iter()
-            .map(|(name, (_f, attrs))| (name.clone(), *attrs))
-            .collect();
+        let snapshot: Vec<(String, Attributes)> =
+            ev.builtins.iter().map(|(name, (_f, attrs))| (name.clone(), *attrs)).collect();
         for (name, attrs) in snapshot.into_iter() {
             let mut attr_list: Vec<Value> = Vec::new();
-            if attrs.contains(Attributes::LISTABLE) { attr_list.push(Value::String("LISTABLE".into())); }
-            if attrs.contains(Attributes::FLAT) { attr_list.push(Value::String("FLAT".into())); }
-            if attrs.contains(Attributes::ORDERLESS) { attr_list.push(Value::String("ORDERLESS".into())); }
-            if attrs.contains(Attributes::HOLD_ALL) { attr_list.push(Value::String("HOLD_ALL".into())); }
-            if attrs.contains(Attributes::HOLD_FIRST) { attr_list.push(Value::String("HOLD_FIRST".into())); }
-            if attrs.contains(Attributes::HOLD_REST) { attr_list.push(Value::String("HOLD_REST".into())); }
-            if attrs.contains(Attributes::ONE_IDENTITY) { attr_list.push(Value::String("ONE_IDENTITY".into())); }
-            let card = Value::Assoc(vec![
-                ("id".to_string(), Value::String(name.clone())),
-                ("name".to_string(), Value::String(name.clone())),
-                ("summary".to_string(), Value::String(String::new())),
-                ("tags".to_string(), Value::List(vec![])),
-                ("params".to_string(), Value::List(vec![])),
-                ("attributes".to_string(), Value::List(attr_list)),
-            ].into_iter().collect());
+            if attrs.contains(Attributes::LISTABLE) {
+                attr_list.push(Value::String("LISTABLE".into()));
+            }
+            if attrs.contains(Attributes::FLAT) {
+                attr_list.push(Value::String("FLAT".into()));
+            }
+            if attrs.contains(Attributes::ORDERLESS) {
+                attr_list.push(Value::String("ORDERLESS".into()));
+            }
+            if attrs.contains(Attributes::HOLD_ALL) {
+                attr_list.push(Value::String("HOLD_ALL".into()));
+            }
+            if attrs.contains(Attributes::HOLD_FIRST) {
+                attr_list.push(Value::String("HOLD_FIRST".into()));
+            }
+            if attrs.contains(Attributes::HOLD_REST) {
+                attr_list.push(Value::String("HOLD_REST".into()));
+            }
+            if attrs.contains(Attributes::ONE_IDENTITY) {
+                attr_list.push(Value::String("ONE_IDENTITY".into()));
+            }
+            let (summary, params): (String, Vec<String>) =
+                ev.get_doc(&name).unwrap_or((String::new(), Vec::new()));
+            let card = Value::Assoc(
+                vec![
+                    ("id".to_string(), Value::String(name.clone())),
+                    ("name".to_string(), Value::String(name.clone())),
+                    ("summary".to_string(), Value::String(summary)),
+                    ("tags".to_string(), Value::List(vec![])),
+                    (
+                        "params".to_string(),
+                        Value::List(params.into_iter().map(Value::String).collect()),
+                    ),
+                    ("attributes".to_string(), Value::List(attr_list)),
+                    ("examples".to_string(), Value::List(match ev.get_doc_full(&name) {
+                        Some(ent) => ent
+                            .examples
+                            .into_iter()
+                            .map(Value::String)
+                            .collect::<Vec<_>>(),
+                        None => vec![],
+                    })),
+                ]
+                .into_iter()
+                .collect(),
+            );
             out.push(card);
         }
         Value::List(out)
     }
     ev.register("DescribeBuiltins", describe_builtins_fn as NativeFn, Attributes::empty());
+
+    // Documentation[name?] -> <|"name","summary","params","attributes","examples"|> or list for all
+    fn documentation_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        // 0 args: return docs for all builtins we know about
+        if args.is_empty() {
+            let head = Value::Symbol("DescribeBuiltins".to_string());
+            let expr = Value::Expr { head: Box::new(head), args: vec![] };
+            return ev.eval(expr);
+        }
+        // 1 arg: lookup specific symbol by name
+        if args.len() == 1 {
+            let name = match &args[0] {
+                Value::String(s) | Value::Symbol(s) => s.clone(),
+                other => match ev.eval(other.clone()) {
+                    Value::String(s) | Value::Symbol(s) => s,
+                    _ => String::new(),
+                },
+            };
+            // Build using DescribeBuiltins to include attributes, but override with our docs if present
+            let head = Value::Symbol("DescribeBuiltins".to_string());
+            let desc = ev.eval(Value::Expr { head: Box::new(head), args: vec![] });
+            if let Value::List(items) = desc {
+                for it in items {
+                    if let Value::Assoc(mut m) = it {
+                        if let Some(Value::String(n)) = m.get("name").cloned() {
+                            if n == name {
+                                if let Some((sum, params)) = ev.get_doc(&n) {
+                                    m.insert("summary".into(), Value::String(sum));
+                                    m.insert(
+                                        "params".into(),
+                                        Value::List(
+                                            params.into_iter().map(Value::String).collect(),
+                                        ),
+                                    );
+                                    if let Some(ent) = ev.get_doc_full(&n) {
+                                        m.insert(
+                                            "examples".into(),
+                                            Value::List(
+                                                ent.examples
+                                                    .into_iter()
+                                                    .map(Value::String)
+                                                    .collect(),
+                                            ),
+                                        );
+                                    }
+                                }
+                                return Value::Assoc(m);
+                            }
+                        }
+                    }
+                }
+            }
+            // If not found, but we have docs, synthesize a minimal card
+            if let Some((sum, params)) = ev.get_doc(&name) {
+                let examples = ev
+                    .get_doc_full(&name)
+                    .map(|e| e.examples)
+                    .unwrap_or_default();
+                return Value::Assoc(
+                    vec![
+                        ("id".to_string(), Value::String(name.clone())),
+                        ("name".to_string(), Value::String(name.clone())),
+                        ("summary".to_string(), Value::String(sum)),
+                        (
+                            "params".to_string(),
+                            Value::List(params.into_iter().map(Value::String).collect()),
+                        ),
+                        ("attributes".to_string(), Value::List(vec![])),
+                        (
+                            "examples".to_string(),
+                            Value::List(examples.into_iter().map(Value::String).collect()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+            }
+            return Value::Assoc(std::collections::HashMap::new());
+        }
+        Value::Expr { head: Box::new(Value::Symbol("Documentation".into())), args }
+    }
+    ev.register("Documentation", documentation_fn as NativeFn, Attributes::empty());
 }
 
 fn listable_thread(ev: &mut Evaluator, f: NativeFn, args: Vec<Value>) -> Value {
     // Determine length: max length of list args (scalars broadcast)
-    let len = args.iter().filter_map(|a| if let Value::List(v)=a { Some(v.len()) } else { None }).max().unwrap_or(0);
+    let len = args
+        .iter()
+        .filter_map(|a| if let Value::List(v) = a { Some(v.len()) } else { None })
+        .max()
+        .unwrap_or(0);
     let mut out = Vec::with_capacity(len);
     for i in 0..len {
         let mut elem_args = Vec::with_capacity(args.len());
         for a in &args {
             match a {
                 Value::List(vs) => {
-                    let idx = if i < vs.len() { i } else { vs.len()-1 };
+                    let idx = if i < vs.len() { i } else { vs.len() - 1 };
                     elem_args.push(vs[idx].clone());
                 }
                 other => elem_args.push(other.clone()),
@@ -729,14 +1249,24 @@ fn splice_sequences(args: Vec<Value>) -> Vec<Value> {
 // removed unused compat helpers: plus, map
 
 fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args } }
+    if args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args };
+    }
     let expr = args[0].clone();
     let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+                if *n > 0 {
+                    opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+                }
+            }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+                if *ms > 0 {
+                    opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     let env_snapshot = ev.env.clone();
@@ -747,12 +1277,16 @@ fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
     let deadline = opt_deadline.or(ev.deadline);
     let rx = spawn_task(move || {
-        if let Some(l) = limiter.as_ref() { l.acquire(); }
+        if let Some(l) = limiter.as_ref() {
+            l.acquire();
+        }
         let mut ev2 = Evaluator::with_env_and_token(env_snapshot, token_for_task);
         ev2.thread_limiter = limiter;
         ev2.deadline = deadline;
         let out = ev2.eval(expr);
-        if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+        if let Some(l) = ev2.thread_limiter.as_ref() {
+            l.release();
+        }
         out
     });
     ev.tasks.insert(id, TaskInfo { rx, cancel: token });
@@ -760,31 +1294,52 @@ fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn await_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Await".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Await".into())), args };
+    }
     let id_opt = match &args[0] {
         Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
-            if let Some(Value::Integer(i)) = args.get(0) { Some(*i) } else { None }
+            if let Some(Value::Integer(i)) = args.get(0) {
+                Some(*i)
+            } else {
+                None
+            }
         }
         Value::Integer(i) => Some(*i),
         other => match ev.eval(other.clone()) {
             Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="FutureId") => {
-                if let Some(Value::Integer(i)) = args.get(0) { Some(*i) } else { None }
+                if let Some(Value::Integer(i)) = args.get(0) {
+                    Some(*i)
+                } else {
+                    None
+                }
             }
             Value::Integer(i) => Some(i),
             _ => None,
-        }
+        },
     };
-    if let Some(id) = id_opt { if let Some(task) = ev.tasks.remove(&id) { return task.rx.recv().unwrap_or(Value::Symbol("Null".into())); } }
+    if let Some(id) = id_opt {
+        if let Some(task) = ev.tasks.remove(&id) {
+            return task.rx.recv().unwrap_or(Value::Symbol("Null".into()));
+        }
+    }
     ev.make_error("Await: invalid or unknown future", "Await::invfuture")
 }
 
 fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Cancel".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Cancel".into())), args };
+    }
     // Accept FutureId[...] or integer id
     let id_opt = match &args[0] {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         Value::Integer(i) => Some(*i),
-        other => match ev.eval(other.clone()) { Value::Integer(i)=>Some(i), _=>None },
+        other => match ev.eval(other.clone()) {
+            Value::Integer(i) => Some(i),
+            _ => None,
+        },
     };
     if let Some(id) = id_opt {
         if let Some(task) = ev.tasks.get(&id) {
@@ -797,31 +1352,49 @@ fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn cancelled_failure() -> Value {
     // no access to self here; embed minimal shape
-    Value::Assoc(vec![
-        ("error".to_string(), Value::Boolean(true)),
-        ("message".to_string(), Value::String("Computation cancelled".into())),
-        ("tag".to_string(), Value::String("Cancel::abort".into())),
-    ].into_iter().collect())
+    Value::Assoc(
+        vec![
+            ("error".to_string(), Value::Boolean(true)),
+            ("message".to_string(), Value::String("Computation cancelled".into())),
+            ("tag".to_string(), Value::String("Cancel::abort".into())),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 fn time_budget_failure() -> Value {
-    Value::Assoc(vec![
-        ("error".to_string(), Value::Boolean(true)),
-        ("message".to_string(), Value::String("Time budget exceeded".into())),
-        ("tag".to_string(), Value::String("TimeBudget::exceeded".into())),
-    ].into_iter().collect())
+    Value::Assoc(
+        vec![
+            ("error".to_string(), Value::Boolean(true)),
+            ("message".to_string(), Value::String("Time budget exceeded".into())),
+            ("tag".to_string(), Value::String("TimeBudget::exceeded".into())),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args } }
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args };
+    }
     let f = args[0].clone();
     let target = args[1].clone();
     let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+                if *n > 0 {
+                    opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+                }
+            }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+                if *ms > 0 {
+                    opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     // Capture env so sub-evaluations inherit current lexical bindings
@@ -832,16 +1405,27 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
             if ev.trace_enabled {
-                let data = Value::Assoc(vec![
-                    ("items".to_string(), Value::Integer(items.len() as i64)),
-                    ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
-                    ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
-                ].into_iter().collect());
-                ev.trace_steps.push(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ParallelDispatch".into())),
-                    ("head".to_string(), Value::Symbol("ParallelMap".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("items".to_string(), Value::Integer(items.len() as i64)),
+                        (
+                            "maxThreads".to_string(),
+                            Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                        ),
+                        ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ParallelDispatch".into())),
+                        ("head".to_string(), Value::Symbol("ParallelMap".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
             }
             let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
@@ -851,61 +1435,139 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let deadline_cl = deadline;
                 let env_cl = env_snapshot.clone();
                 rxs.push(spawn_task(move || {
-                    if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
-                    let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(env_cl.clone(), tok) } else { Evaluator::with_env(env_cl.clone()) };
+                    if let Some(l) = limiter_cl.as_ref() {
+                        l.acquire();
+                    }
+                    let mut ev2 = if let Some(tok) = token_cl {
+                        Evaluator::with_env_and_token(env_cl.clone(), tok)
+                    } else {
+                        Evaluator::with_env(env_cl.clone())
+                    };
                     ev2.thread_limiter = limiter_cl;
                     ev2.deadline = deadline_cl;
                     let call = Value::Expr { head: Box::new(f_cl), args: vec![it] };
                     let out = ev2.eval(call);
-                    if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+                    if let Some(l) = ev2.thread_limiter.as_ref() {
+                        l.release();
+                    }
                     out
                 }));
             }
             let mut out = Vec::with_capacity(rxs.len());
-            for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
+            for rx in rxs {
+                out.push(rx.recv().unwrap_or(Value::Symbol("Null".into())));
+            }
             Value::List(out)
         }
-        other => Value::Expr { head: Box::new(Value::Symbol("ParallelMap".into())), args: vec![f, other] },
+        other => Value::Expr {
+            head: Box::new(Value::Symbol("ParallelMap".into())),
+            args: vec![f, other],
+        },
     }
 }
 
 // ParallelTable[expr, {i, imin, imax}] and ParallelTable[expr, {i, imin, imax, step}]
 fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } }
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args };
+    }
     let expr = args[0].clone();
     let spec = args[1].clone();
     let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+                if *n > 0 {
+                    opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+                }
+            }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+                if *ms > 0 {
+                    opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     // Expect spec to be a List: {Symbol(i), imin, imax[, step]}
     let (var_name, start, end, step) = match spec {
         Value::List(items) => {
-            if items.len() < 3 { return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args: vec![expr, Value::List(items)] } }
-            let vname = match &items[0] { Value::Symbol(s) => s.clone(), other => {
-                let evd = ev.eval(other.clone());
-                if let Value::Symbol(s2) = evd { s2 } else { return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } }
-            }};
-            let s = match ev.eval(items[1].clone()) { Value::Integer(i) => i, _ => return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } };
-            let e = match ev.eval(items[2].clone()) { Value::Integer(i) => i, _ => return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args } };
-            let st = if items.len() >= 4 { match ev.eval(items[3].clone()) { Value::Integer(i) => if i==0 {1} else {i}, _ => 1 } } else { 1 };
+            if items.len() < 3 {
+                return Value::Expr {
+                    head: Box::new(Value::Symbol("ParallelTable".into())),
+                    args: vec![expr, Value::List(items)],
+                };
+            }
+            let vname = match &items[0] {
+                Value::Symbol(s) => s.clone(),
+                other => {
+                    let evd = ev.eval(other.clone());
+                    if let Value::Symbol(s2) = evd {
+                        s2
+                    } else {
+                        return Value::Expr {
+                            head: Box::new(Value::Symbol("ParallelTable".into())),
+                            args,
+                        };
+                    }
+                }
+            };
+            let s = match ev.eval(items[1].clone()) {
+                Value::Integer(i) => i,
+                _ => {
+                    return Value::Expr {
+                        head: Box::new(Value::Symbol("ParallelTable".into())),
+                        args,
+                    }
+                }
+            };
+            let e = match ev.eval(items[2].clone()) {
+                Value::Integer(i) => i,
+                _ => {
+                    return Value::Expr {
+                        head: Box::new(Value::Symbol("ParallelTable".into())),
+                        args,
+                    }
+                }
+            };
+            let st = if items.len() >= 4 {
+                match ev.eval(items[3].clone()) {
+                    Value::Integer(i) => {
+                        if i == 0 {
+                            1
+                        } else {
+                            i
+                        }
+                    }
+                    _ => 1,
+                }
+            } else {
+                1
+            };
             (vname, s, e, st)
         }
-        other => return Value::Expr { head: Box::new(Value::Symbol("ParallelTable".into())), args: vec![expr, other] },
+        other => {
+            return Value::Expr {
+                head: Box::new(Value::Symbol("ParallelTable".into())),
+                args: vec![expr, other],
+            }
+        }
     };
 
     // Build range according to step and bounds (inclusive)
     let mut values: Vec<i64> = Vec::new();
     if step > 0 {
         let mut i = start;
-        while i <= end { values.push(i); i += step; }
+        while i <= end {
+            values.push(i);
+            i += step;
+        }
     } else {
         let mut i = start;
-        while i >= end { values.push(i); i += step; }
+        while i >= end {
+            values.push(i);
+            i += step;
+        }
     }
 
     // Spawn per iteration (naive); each thread gets its own evaluator with env snapshot and bound variable
@@ -914,16 +1576,27 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let token = ev.cancel_token.clone();
     let deadline = opt_deadline.or(ev.deadline);
     if ev.trace_enabled {
-        let data = Value::Assoc(vec![
-            ("items".to_string(), Value::Integer(values.len() as i64)),
-            ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
-            ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
-        ].into_iter().collect());
-        ev.trace_steps.push(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ParallelDispatch".into())),
-            ("head".to_string(), Value::Symbol("ParallelTable".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("items".to_string(), Value::Integer(values.len() as i64)),
+                (
+                    "maxThreads".to_string(),
+                    Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                ),
+                ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ev.trace_steps.push(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ParallelDispatch".into())),
+                ("head".to_string(), Value::Symbol("ParallelTable".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
     }
     let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(values.len());
     for iv in values.into_iter() {
@@ -934,31 +1607,51 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let token_cl = token.clone();
         let deadline_cl = deadline;
         rxs.push(spawn_task(move || {
-            if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
-            let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(env_cl, tok) } else { Evaluator::with_env(env_cl) };
+            if let Some(l) = limiter_cl.as_ref() {
+                l.acquire();
+            }
+            let mut ev2 = if let Some(tok) = token_cl {
+                Evaluator::with_env_and_token(env_cl, tok)
+            } else {
+                Evaluator::with_env(env_cl)
+            };
             ev2.thread_limiter = limiter_cl;
             ev2.deadline = deadline_cl;
             ev2.env.insert(var, Value::Integer(iv));
             let out = ev2.eval(expr_cl);
-            if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+            if let Some(l) = ev2.thread_limiter.as_ref() {
+                l.release();
+            }
             out
         }));
     }
     let mut out: Vec<Value> = Vec::with_capacity(rxs.len());
-    for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
+    for rx in rxs {
+        out.push(rx.recv().unwrap_or(Value::Symbol("Null".into())));
+    }
     Value::List(out)
 }
 
 fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args } }
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("MapAsync".into())), args };
+    }
     let f = args[0].clone();
     let v = ev.eval(args[1].clone());
     let opts = if args.len() >= 3 { Some(ev.eval(args[2].clone())) } else { None };
     // If options are provided, apply MaxThreads/TimeBudget to the current evaluator for the duration of this call
     let (old_lim, old_dead) = (ev.thread_limiter.clone(), ev.deadline);
     if let Some(Value::Assoc(m)) = &opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ev.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if *n > 0 {
+                ev.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+            }
+        }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if *ms > 0 {
+                ev.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+            }
+        }
     }
     let out_list = Value::List(map_async_rec(ev, f, v, None));
     // restore
@@ -968,7 +1661,9 @@ fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn gather(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Gather".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Gather".into())), args };
+    }
     let v = ev.eval(args[0].clone());
     Value::List(gather_rec(ev, v))
 }
@@ -976,35 +1671,64 @@ fn gather(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn busy_wait(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let cycles = match args.as_slice() {
         [Value::Integer(n)] => *n as usize,
-        [n] => match ev.eval(n.clone()) { Value::Integer(i)=> i as usize, _=> 10 },
+        [n] => match ev.eval(n.clone()) {
+            Value::Integer(i) => i as usize,
+            _ => 10,
+        },
         _ => 10,
     };
     for _ in 0..cycles {
-        if let Some(tok) = &ev.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
-        if let Some(dl) = ev.deadline { if Instant::now() > dl { return time_budget_failure(); } }
+        if let Some(tok) = &ev.cancel_token {
+            if tok.load(Ordering::Relaxed) {
+                return cancelled_failure();
+            }
+        }
+        if let Some(dl) = ev.deadline {
+            if Instant::now() > dl {
+                return time_budget_failure();
+            }
+        }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     Value::Symbol("Done".into())
 }
 
 fn fail_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let tag = match args.get(0) { Some(Value::String(s)) => s.clone(), Some(Value::Symbol(s)) => s.clone(), _ => "Fail".into() };
-    Value::Assoc(vec![
-        ("message".to_string(), Value::String("Failure".into())),
-        ("tag".to_string(), Value::String(tag)),
-    ].into_iter().collect())
+    let tag = match args.get(0) {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Symbol(s)) => s.clone(),
+        _ => "Fail".into(),
+    };
+    Value::Assoc(
+        vec![
+            ("message".to_string(), Value::String("Failure".into())),
+            ("tag".to_string(), Value::String(tag)),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 // ParallelEvaluate[{expr1, expr2, ...}, opts?]
 fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args } }
+    if args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args };
+    }
     let target = args[0].clone();
     let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+                if *n > 0 {
+                    opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+                }
+            }
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+                if *ms > 0 {
+                    opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     // Capture env so sub-evaluations inherit current lexical bindings
@@ -1015,16 +1739,27 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
             let deadline = opt_deadline.or(ev.deadline);
             if ev.trace_enabled {
-                let data = Value::Assoc(vec![
-                    ("items".to_string(), Value::Integer(items.len() as i64)),
-                    ("maxThreads".to_string(), Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
-                    ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
-                ].into_iter().collect());
-                ev.trace_steps.push(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ParallelDispatch".into())),
-                    ("head".to_string(), Value::Symbol("ParallelEvaluate".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("items".to_string(), Value::Integer(items.len() as i64)),
+                        (
+                            "maxThreads".to_string(),
+                            Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                        ),
+                        ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ParallelDispatch".into())),
+                        ("head".to_string(), Value::Symbol("ParallelEvaluate".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
             }
             let mut rxs: Vec<Receiver<Value>> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
@@ -1033,151 +1768,250 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let deadline_cl = deadline;
                 let env_cl = env_snapshot.clone();
                 rxs.push(spawn_task(move || {
-                    if let Some(l) = limiter_cl.as_ref() { l.acquire(); }
-                    let mut ev2 = if let Some(tok) = token_cl { Evaluator::with_env_and_token(env_cl.clone(), tok) } else { Evaluator::with_env(env_cl.clone()) };
+                    if let Some(l) = limiter_cl.as_ref() {
+                        l.acquire();
+                    }
+                    let mut ev2 = if let Some(tok) = token_cl {
+                        Evaluator::with_env_and_token(env_cl.clone(), tok)
+                    } else {
+                        Evaluator::with_env(env_cl.clone())
+                    };
                     ev2.thread_limiter = limiter_cl;
                     ev2.deadline = deadline_cl;
                     let out = ev2.eval(it);
-                    if let Some(l) = ev2.thread_limiter.as_ref() { l.release(); }
+                    if let Some(l) = ev2.thread_limiter.as_ref() {
+                        l.release();
+                    }
                     out
                 }));
             }
             let mut out = Vec::with_capacity(rxs.len());
-            for rx in rxs { out.push(rx.recv().unwrap_or(Value::Symbol("Null".into()))); }
+            for rx in rxs {
+                out.push(rx.recv().unwrap_or(Value::Symbol("Null".into())));
+            }
             Value::List(out)
         }
-        other => Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args: vec![other] },
+        other => Value::Expr {
+            head: Box::new(Value::Symbol("ParallelEvaluate".into())),
+            args: vec![other],
+        },
     }
 }
 
 // Channels
 fn bounded_channel_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let cap = match args.get(0) { Some(Value::Integer(n)) if *n > 0 => *n as usize, _ => 16 };
+    let cap = match args.get(0) {
+        Some(Value::Integer(n)) if *n > 0 => *n as usize,
+        _ => 16,
+    };
     let id = next_ch_id();
     ch_reg().lock().unwrap().insert(id, Arc::new(ChannelQueue::new(cap)));
-    Value::Expr { head: Box::new(Value::Symbol("ChannelId".into())), args: vec![Value::Integer(id)] }
+    Value::Expr {
+        head: Box::new(Value::Symbol("ChannelId".into())),
+        args: vec![Value::Integer(id)],
+    }
 }
 
 fn send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Send".into())), args } }
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Send".into())), args };
+    }
     let chv = ev.eval(args[0].clone());
     let val = ev.eval(args[1].clone());
     let mut call_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") { if *ms > 0 { call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") {
+                if *ms > 0 {
+                    call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-        if ev.trace_enabled {
-            let data = Value::Assoc(vec![
-                ("channelId".to_string(), Value::Integer(id)),
-            ].into_iter().collect());
-            ev.trace_steps.push(Value::Assoc(vec![
-                ("action".to_string(), Value::String("ChannelSend".into())),
-                ("head".to_string(), Value::Symbol("Send".into())),
-                ("data".to_string(), data),
-            ].into_iter().collect()));
+    if let Some(id) = cid {
+        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+            if ev.trace_enabled {
+                let data = Value::Assoc(
+                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ChannelSend".into())),
+                        ("head".to_string(), Value::Symbol("Send".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+            }
+            let ok = ch.send(val, ev.cancel_token.clone(), call_deadline.or(ev.deadline));
+            return Value::Boolean(ok);
         }
-        let ok = ch.send(val, ev.cancel_token.clone(), call_deadline.or(ev.deadline));
-        return Value::Boolean(ok);
-    } }
+    }
     Value::Boolean(false)
 }
 
 fn receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args } }
+    if args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args };
+    }
     let chv = ev.eval(args[0].clone());
     let mut call_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") { if *ms > 0 { call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") {
+                if *ms > 0 {
+                    call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+                }
+            }
         }
     }
     let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-        if ev.trace_enabled {
-            let data = Value::Assoc(vec![
-                ("channelId".to_string(), Value::Integer(id)),
-            ].into_iter().collect());
-            ev.trace_steps.push(Value::Assoc(vec![
-                ("action".to_string(), Value::String("ChannelReceive".into())),
-                ("head".to_string(), Value::Symbol("Receive".into())),
-                ("data".to_string(), data),
-            ].into_iter().collect()));
+    if let Some(id) = cid {
+        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+            if ev.trace_enabled {
+                let data = Value::Assoc(
+                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ChannelReceive".into())),
+                        ("head".to_string(), Value::Symbol("Receive".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+            }
+            return ch
+                .recv(ev.cancel_token.clone(), call_deadline.or(ev.deadline))
+                .unwrap_or(Value::Symbol("Null".into()));
         }
-        return ch.recv(ev.cancel_token.clone(), call_deadline.or(ev.deadline)).unwrap_or(Value::Symbol("Null".into()));
-    } }
+    }
     Value::Symbol("Null".into())
 }
 
 fn close_channel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("CloseChannel".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("CloseChannel".into())), args };
+    }
     let chv = ev.eval(args[0].clone());
     let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id) { ch.close(); return Value::Boolean(true); } }
+    if let Some(id) = cid {
+        if let Some(ch) = ch_reg().lock().unwrap().get(&id) {
+            ch.close();
+            return Value::Boolean(true);
+        }
+    }
     Value::Boolean(false)
 }
 
-
 // Non-blocking channel operations
 fn try_send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("TrySend".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("TrySend".into())), args };
+    }
     let chv = ev.eval(args[0].clone());
     let val = ev.eval(args[1].clone());
     let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-        if ev.trace_enabled {
-            let data = Value::Assoc(vec![ ("channelId".to_string(), Value::Integer(id)) ].into_iter().collect());
-            ev.trace_steps.push(Value::Assoc(vec![ ("action".to_string(), Value::String("ChannelSend".into())), ("head".to_string(), Value::Symbol("TrySend".into())), ("data".to_string(), data) ].into_iter().collect()));
+    if let Some(id) = cid {
+        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+            if ev.trace_enabled {
+                let data = Value::Assoc(
+                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ChannelSend".into())),
+                        ("head".to_string(), Value::Symbol("TrySend".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+            }
+            let ok = ch.send(val, ev.cancel_token.clone(), Some(Instant::now()));
+            return Value::Boolean(ok);
         }
-        let ok = ch.send(val, ev.cancel_token.clone(), Some(Instant::now()));
-        return Value::Boolean(ok);
-    } }
+    }
     Value::Boolean(false)
 }
 
 fn try_receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("TryReceive".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("TryReceive".into())), args };
+    }
     let chv = ev.eval(args[0].clone());
     let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = cid { if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-        if ev.trace_enabled {
-            let data = Value::Assoc(vec![ ("channelId".to_string(), Value::Integer(id)) ].into_iter().collect());
-            ev.trace_steps.push(Value::Assoc(vec![ ("action".to_string(), Value::String("ChannelReceive".into())), ("head".to_string(), Value::Symbol("TryReceive".into())), ("data".to_string(), data) ].into_iter().collect()));
+    if let Some(id) = cid {
+        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
+            if ev.trace_enabled {
+                let data = Value::Assoc(
+                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ChannelReceive".into())),
+                        ("head".to_string(), Value::Symbol("TryReceive".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+            }
+            return ch
+                .recv(ev.cancel_token.clone(), Some(Instant::now()))
+                .unwrap_or(Value::Symbol("Null".into()));
         }
-        return ch.recv(ev.cancel_token.clone(), Some(Instant::now())).unwrap_or(Value::Symbol("Null".into()));
-    } }
+    }
     Value::Symbol("Null".into())
 }
 
-
 // Minimal actor
 #[derive(Clone)]
-struct ActorInfo { chan_id: i64 }
+struct ActorInfo {
+    chan_id: i64,
+}
 static ACT_REG: OnceLock<Mutex<HashMap<i64, ActorInfo>>> = OnceLock::new();
 static NEXT_ACT_ID: OnceLock<AtomicI64> = OnceLock::new();
-fn act_reg() -> &'static Mutex<HashMap<i64, ActorInfo>> { ACT_REG.get_or_init(|| Mutex::new(HashMap::new())) }
-fn next_act_id() -> i64 { let a = NEXT_ACT_ID.get_or_init(|| AtomicI64::new(1)); a.fetch_add(1, Ordering::Relaxed) }
+fn act_reg() -> &'static Mutex<HashMap<i64, ActorInfo>> {
+    ACT_REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn next_act_id() -> i64 {
+    let a = NEXT_ACT_ID.get_or_init(|| AtomicI64::new(1));
+    a.fetch_add(1, Ordering::Relaxed)
+}
 
 fn actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Actor".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Actor".into())), args };
+    }
     let handler = args[0].clone();
     // Create a channel and spawn worker reading messages and applying handler
     let cap = 64usize;
@@ -1192,58 +2026,96 @@ fn actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let _ = spawn_task(move || {
         loop {
             let msg_opt = chan.recv(token.clone(), deadline);
-            match msg_opt { Some(msg) => {
-                if let Some(l) = limiter.as_ref() { l.acquire(); }
-                // Evaluate handler[msg] in a fresh evaluator
-                let mut ev2 = if let Some(tok) = token.clone() { Evaluator::with_env_and_token(env_snapshot.clone(), tok) } else { Evaluator::with_env(env_snapshot.clone()) };
-                ev2.thread_limiter = limiter.clone();
-                ev2.deadline = deadline;
-                let call = Value::Expr { head: Box::new(handler.clone()), args: vec![msg] };
-                let _ = ev2.eval(call);
-                if let Some(l) = limiter.as_ref() { l.release(); }
+            match msg_opt {
+                Some(msg) => {
+                    if let Some(l) = limiter.as_ref() {
+                        l.acquire();
+                    }
+                    // Evaluate handler[msg] in a fresh evaluator
+                    let mut ev2 = if let Some(tok) = token.clone() {
+                        Evaluator::with_env_and_token(env_snapshot.clone(), tok)
+                    } else {
+                        Evaluator::with_env(env_snapshot.clone())
+                    };
+                    ev2.thread_limiter = limiter.clone();
+                    ev2.deadline = deadline;
+                    let call = Value::Expr { head: Box::new(handler.clone()), args: vec![msg] };
+                    let _ = ev2.eval(call);
+                    if let Some(l) = limiter.as_ref() {
+                        l.release();
+                    }
+                }
+                None => break,
             }
-            None => break }
         }
         Value::Symbol("Done".into())
     });
     let aid = next_act_id();
-    act_reg().lock().unwrap().insert(aid, ActorInfo { chan_id: chan_id });
+    act_reg().lock().unwrap().insert(aid, ActorInfo { chan_id });
     Value::Expr { head: Box::new(Value::Symbol("ActorId".into())), args: vec![Value::Integer(aid)] }
 }
 
 fn tell_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Tell".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Tell".into())), args };
+    }
     let actv = ev.eval(args[0].clone());
     let msg = args[1].clone();
     let aid = match actv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = aid { if let Some(info) = act_reg().lock().unwrap().get(&id).cloned() { if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id).cloned() { let ok = ch.send(msg, ev.cancel_token.clone(), ev.deadline); return Value::Boolean(ok); } } }
+    if let Some(id) = aid {
+        if let Some(info) = act_reg().lock().unwrap().get(&id).cloned() {
+            if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id).cloned() {
+                let ok = ch.send(msg, ev.cancel_token.clone(), ev.deadline);
+                return Value::Boolean(ok);
+            }
+        }
+    }
     Value::Boolean(false)
 }
 
 fn stop_actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("StopActor".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("StopActor".into())), args };
+    }
     let actv = ev.eval(args[0].clone());
     let aid = match actv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = aid { if let Some(info) = act_reg().lock().unwrap().remove(&id) { if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id) { ch.close(); } return Value::Boolean(true); } }
+    if let Some(id) = aid {
+        if let Some(info) = act_reg().lock().unwrap().remove(&id) {
+            if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id) {
+                ch.close();
+            }
+            return Value::Boolean(true);
+        }
+    }
     Value::Boolean(false)
 }
 
 fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args } }
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args };
+    }
     // Extract actor id
     let actv = ev.eval(args[0].clone());
     let msg = args[1].clone();
     // Optional opts (e.g., <|TimeoutMs->t|>)
     let mut recv_opts: Option<Value> = None;
-    if args.len() >= 3 { recv_opts = Some(ev.eval(args[2].clone())); }
+    if args.len() >= 3 {
+        recv_opts = Some(ev.eval(args[2].clone()));
+    }
     let aid = match actv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
     if let Some(id) = aid {
@@ -1251,15 +2123,32 @@ fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let ch_id = next_ch_id();
         ch_reg().lock().unwrap().insert(ch_id, Arc::new(ChannelQueue::new(1)));
         // Build message: <|"msg"->msg, "replyTo"->ChannelId[ch_id]|>
-        let reply = Value::Expr { head: Box::new(Value::Symbol("ChannelId".into())), args: vec![Value::Integer(ch_id)] };
-        let m = Value::Assoc(vec![
-            ("msg".to_string(), msg),
-            ("replyTo".to_string(), reply.clone()),
-        ].into_iter().collect());
+        let reply = Value::Expr {
+            head: Box::new(Value::Symbol("ChannelId".into())),
+            args: vec![Value::Integer(ch_id)],
+        };
+        let m = Value::Assoc(
+            vec![("msg".to_string(), msg), ("replyTo".to_string(), reply.clone())]
+                .into_iter()
+                .collect(),
+        );
         // Send to actor
-        let _ = tell_fn(ev, vec![Value::Expr { head: Box::new(Value::Symbol("ActorId".into())), args: vec![Value::Integer(id)] }, m]);
+        let _ = tell_fn(
+            ev,
+            vec![
+                Value::Expr {
+                    head: Box::new(Value::Symbol("ActorId".into())),
+                    args: vec![Value::Integer(id)],
+                },
+                m,
+            ],
+        );
         // Return a Future awaiting Receive[reply, opts?]
-        let recv_expr = if let Some(o) = recv_opts { Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply, o] } } else { Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply] } };
+        let recv_expr = if let Some(o) = recv_opts {
+            Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply, o] }
+        } else {
+            Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply] }
+        };
         return future_fn(ev, vec![recv_expr]);
     }
     Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args }
@@ -1279,10 +2168,17 @@ fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value, opts: Option<Value>) -> Vec<Value> {
     match v {
-        Value::List(items) => items.into_iter().map(|it| {
-            let mapped = map_async_rec(ev, f.clone(), it, opts.clone());
-            if mapped.len()==1 { mapped.into_iter().next().unwrap() } else { Value::List(mapped) }
-        }).collect(),
+        Value::List(items) => items
+            .into_iter()
+            .map(|it| {
+                let mapped = map_async_rec(ev, f.clone(), it, opts.clone());
+                if mapped.len() == 1 {
+                    mapped.into_iter().next().unwrap()
+                } else {
+                    Value::List(mapped)
+                }
+            })
+            .collect(),
         other => {
             let call = Value::Expr { head: Box::new(f), args: vec![other] };
             vec![future_fn(ev, vec![call])]
@@ -1292,10 +2188,17 @@ fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value, opts: Option<Value>) ->
 
 fn gather_rec(ev: &mut Evaluator, v: Value) -> Vec<Value> {
     match v {
-        Value::List(items) => items.into_iter().map(|it| {
-            let g = gather_rec(ev, it);
-            if g.len()==1 { g.into_iter().next().unwrap() } else { Value::List(g) }
-        }).collect(),
+        Value::List(items) => items
+            .into_iter()
+            .map(|it| {
+                let g = gather_rec(ev, it);
+                if g.len() == 1 {
+                    g.into_iter().next().unwrap()
+                } else {
+                    Value::List(g)
+                }
+            })
+            .collect(),
         other => vec![await_fn(ev, vec![other])],
     }
 }
@@ -1303,46 +2206,80 @@ fn gather_rec(ev: &mut Evaluator, v: Value) -> Vec<Value> {
 // removed: test echo helpers moved to stdlib/testing
 
 fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args };
+    }
     let v = ev.eval(args[0].clone());
     schema_of(&v)
 }
 
 // Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]
 fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Scope".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Scope".into())), args };
+    }
     let opts = ev.eval(args[0].clone());
     let body = args[1].clone();
     // New evaluator inheriting env; establish a scope token
     let mut ev2 = Evaluator::with_env(ev.env.clone());
     ev2.cancel_token = Some(Arc::new(AtomicBool::new(false)));
     if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if *n > 0 {
+                ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+            }
+        }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if *ms > 0 {
+                ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+            }
+        }
     }
     if ev.trace_enabled {
-        let data = Value::Assoc(vec![
-            ("maxThreads".to_string(), Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1))),
-            ("hasDeadline".to_string(), Value::Boolean(ev2.deadline.is_some())),
-        ].into_iter().collect());
-        ev.trace_steps.push(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ScopeApply".into())),
-            ("head".to_string(), Value::Symbol("Scope".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                (
+                    "maxThreads".to_string(),
+                    Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                ),
+                ("hasDeadline".to_string(), Value::Boolean(ev2.deadline.is_some())),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ev.trace_steps.push(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ScopeApply".into())),
+                ("head".to_string(), Value::Symbol("Scope".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
     }
     ev2.eval(body)
 }
 
 // StartScope[opts] -> ScopeId[id]
 fn start_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args };
+    }
     let opts = ev.eval(args[0].clone());
     let id = next_scope_id();
-    let mut ctx = ScopeCtx { cancel: Arc::new(AtomicBool::new(false)), limiter: None, deadline: None };
+    let mut ctx =
+        ScopeCtx { cancel: Arc::new(AtomicBool::new(false)), limiter: None, deadline: None };
     if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") { if *n > 0 { ctx.limiter = Some(Arc::new(ThreadLimiter::new(*n as usize))); } }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") { if *ms > 0 { ctx.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64)); } }
+        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if *n > 0 {
+                ctx.limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
+            }
+        }
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if *ms > 0 {
+                ctx.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
+            }
+        }
     }
     scope_reg().lock().unwrap().insert(id, ctx);
     Value::Expr { head: Box::new(Value::Symbol("ScopeId".into())), args: vec![Value::Integer(id)] }
@@ -1350,10 +2287,14 @@ fn start_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // InScope[ScopeId[id], body] -- runs body in current evaluator under the scope budgets
 fn in_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("InScope".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("InScope".into())), args };
+    }
     let sid_val = ev.eval(args[0].clone());
     let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
     if let Some(id) = sid {
@@ -1373,38 +2314,59 @@ fn in_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             return out;
         }
     }
-    Value::Assoc(vec![
-        ("message".to_string(), Value::String("InScope: invalid scope id".into())),
-        ("tag".to_string(), Value::String("InScope::invscope".into())),
-    ].into_iter().collect())
+    Value::Assoc(
+        vec![
+            ("message".to_string(), Value::String("InScope: invalid scope id".into())),
+            ("tag".to_string(), Value::String("InScope::invscope".into())),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 // CancelScope[ScopeId[id]] -> True/False
 fn cancel_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("CancelScope".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("CancelScope".into())), args };
+    }
     let sid_val = ev.eval(args[0].clone());
     let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = sid { if let Some(ctx) = scope_reg().lock().unwrap().get(&id) { ctx.cancel.store(true, Ordering::Relaxed); return Value::Boolean(true); } }
+    if let Some(id) = sid {
+        if let Some(ctx) = scope_reg().lock().unwrap().get(&id) {
+            ctx.cancel.store(true, Ordering::Relaxed);
+            return Value::Boolean(true);
+        }
+    }
     Value::Boolean(false)
 }
 
 // EndScope[ScopeId[id]] -> True/False (removes from registry)
 fn end_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("EndScope".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("EndScope".into())), args };
+    }
     let sid_val = ev.eval(args[0].clone());
     let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => args.get(0).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None }),
+        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
         _ => None,
     };
-    if let Some(id) = sid { return Value::Boolean(scope_reg().lock().unwrap().remove(&id).is_some()); }
+    if let Some(id) = sid {
+        return Value::Boolean(scope_reg().lock().unwrap().remove(&id).is_some());
+    }
     Value::Boolean(false)
 }
 
 fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args };
+    }
     let expr = args[0].clone();
     // Evaluate under tracing using same env
     let env_snapshot = ev.env.clone();
@@ -1412,12 +2374,16 @@ fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ev2.trace_enabled = true;
     let _ = ev2.eval(expr);
     let steps = Value::List(ev2.trace_steps);
-    Value::Assoc(vec![
-        ("steps".to_string(), steps),
-        ("algorithm".to_string(), Value::String("stub".into())),
-        ("provider".to_string(), Value::String("cpu".into())),
-        ("estCost".to_string(), Value::Assoc(Default::default())),
-    ].into_iter().collect())
+    Value::Assoc(
+        vec![
+            ("steps".to_string(), steps),
+            ("algorithm".to_string(), Value::String("stub".into())),
+            ("provider".to_string(), Value::String("cpu".into())),
+            ("estCost".to_string(), Value::Assoc(Default::default())),
+        ]
+        .into_iter()
+        .collect(),
+    )
 }
 
 fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Value>) -> Value {
@@ -1428,11 +2394,20 @@ fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Val
                 Value::Symbol(s) => {
                     if let Some((i, _)) = names.iter().enumerate().find(|(_, n)| *n == s) {
                         args.get(i).cloned().unwrap_or(Value::Symbol("Null".into()))
-                    } else { v.clone() }
+                    } else {
+                        v.clone()
+                    }
                 }
-                Value::List(items) => Value::List(items.iter().map(|x| subst(x, names, args)).collect()),
-                Value::Assoc(m) => Value::Assoc(m.iter().map(|(k,v)| (k.clone(), subst(v, names, args))).collect()),
-                Value::Expr { head, args: a } => Value::Expr { head: Box::new(subst(head, names, args)), args: a.iter().map(|x| subst(x, names, args)).collect() },
+                Value::List(items) => {
+                    Value::List(items.iter().map(|x| subst(x, names, args)).collect())
+                }
+                Value::Assoc(m) => Value::Assoc(
+                    m.iter().map(|(k, v)| (k.clone(), subst(v, names, args))).collect(),
+                ),
+                Value::Expr { head, args: a } => Value::Expr {
+                    head: Box::new(subst(head, names, args)),
+                    args: a.iter().map(|x| subst(x, names, args)).collect(),
+                },
                 other => other.clone(),
             }
         }
@@ -1442,10 +2417,17 @@ fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Val
     fn subst_slot(v: &Value, args: &Vec<Value>) -> Value {
         match v {
             Value::Slot(None) => args.get(0).cloned().unwrap_or(Value::Symbol("Null".into())),
-            Value::Slot(Some(n)) => args.get(n.saturating_sub(1)).cloned().unwrap_or(Value::Symbol("Null".into())),
+            Value::Slot(Some(n)) => {
+                args.get(n.saturating_sub(1)).cloned().unwrap_or(Value::Symbol("Null".into()))
+            }
             Value::List(items) => Value::List(items.iter().map(|x| subst_slot(x, args)).collect()),
-            Value::Assoc(m) => Value::Assoc(m.iter().map(|(k,v)| (k.clone(), subst_slot(v, args))).collect()),
-            Value::Expr { head, args: a } => Value::Expr { head: Box::new(subst_slot(head, args)), args: a.iter().map(|x| subst_slot(x, args)).collect() },
+            Value::Assoc(m) => {
+                Value::Assoc(m.iter().map(|(k, v)| (k.clone(), subst_slot(v, args))).collect())
+            }
+            Value::Expr { head, args: a } => Value::Expr {
+                head: Box::new(subst_slot(head, args)),
+                args: a.iter().map(|x| subst_slot(x, args)).collect(),
+            },
             other => other.clone(),
         }
     }
@@ -1456,7 +2438,9 @@ fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Val
 
 // legacy logic helpers removed (If/Equal/Comparisons/And/Or/Not now in stdlib)
 
-pub fn value_order_key(v: &Value) -> String { value_order(v) }
+pub fn value_order_key(v: &Value) -> String {
+    value_order(v)
+}
 
 fn value_order(v: &Value) -> String {
     // Simple canonical string for ordering
@@ -1466,17 +2450,29 @@ fn value_order(v: &Value) -> String {
         Value::BigReal(s) => format!("1b:{s}"),
         Value::Rational { num, den } => format!("1r:{}/{}", num, den),
         Value::Complex { re, im } => format!("1c:{}+{}i", value_order(re), value_order(im)),
-        Value::PackedArray { shape, .. } => format!("1p:[{}]", shape.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("x")),
+        Value::PackedArray { shape, .. } => {
+            format!("1p:[{}]", shape.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("x"))
+        }
         Value::String(s) => format!("2:{s}"),
         Value::Symbol(s) => format!("3:{s}"),
-        Value::Boolean(b) => format!("4:{}", if *b {1}else{0}),
-        Value::List(items) => format!("5:[{}]", items.iter().map(|x| value_order(x)).collect::<Vec<_>>().join(";")),
+        Value::Boolean(b) => format!("4:{}", if *b { 1 } else { 0 }),
+        Value::List(items) => {
+            format!("5:[{}]", items.iter().map(|x| value_order(x)).collect::<Vec<_>>().join(";"))
+        }
         Value::Assoc(m) => {
-            let mut keys: Vec<_> = m.keys().collect(); keys.sort();
-            let parts: Vec<_> = keys.into_iter().map(|k| format!("{}=>{}", k, value_order(m.get(k).unwrap()))).collect();
+            let mut keys: Vec<_> = m.keys().collect();
+            keys.sort();
+            let parts: Vec<_> = keys
+                .into_iter()
+                .map(|k| format!("{}=>{}", k, value_order(m.get(k).unwrap())))
+                .collect();
             format!("6:<|{}|>", parts.join(","))
         }
-        Value::Expr { head, args } => format!("7:{}[{}]", value_order(head), args.iter().map(|x| value_order(x)).collect::<Vec<_>>().join(",")),
+        Value::Expr { head, args } => format!(
+            "7:{}[{}]",
+            value_order(head),
+            args.iter().map(|x| value_order(x)).collect::<Vec<_>>().join(",")
+        ),
         Value::Slot(n) => format!("8:#{}", n.unwrap_or(1)),
         Value::PureFunction { .. } => "9:PureFunction".into(),
     }
@@ -1502,24 +2498,37 @@ fn thread(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [Value::Expr { head, args: a }] => {
             // thread over list arguments of expr
             let lists: Vec<_> = a.iter().map(|x| ev.eval(x.clone())).collect();
-            let lens: Vec<usize> = lists.iter().map(|v| if let Value::List(l)=v { l.len() } else { usize::MAX }).collect();
+            let lens: Vec<usize> = lists
+                .iter()
+                .map(|v| if let Value::List(l) = v { l.len() } else { usize::MAX })
+                .collect();
             let len = lens.into_iter().min().unwrap_or(0);
             let mut out = Vec::with_capacity(len);
             for i in 0..len {
                 let mut call_args = Vec::with_capacity(lists.len());
-                for lst in &lists { match lst { Value::List(v)=>call_args.push(v[i].clone()), other=>call_args.push(other.clone()) } }
+                for lst in &lists {
+                    match lst {
+                        Value::List(v) => call_args.push(v[i].clone()),
+                        other => call_args.push(other.clone()),
+                    }
+                }
                 out.push(ev.eval(Value::Expr { head: head.clone(), args: call_args }));
             }
             Value::List(out)
         }
-        [f, rest @ ..] if rest.len()>=1 => {
+        [f, rest @ ..] if rest.len() >= 1 => {
             let lists: Vec<Value> = rest.iter().map(|a| ev.eval(a.clone())).collect();
-            let lens: Vec<usize> = lists.iter().map(|v| if let Value::List(l)=v { l.len() } else { 0 }).collect();
+            let lens: Vec<usize> =
+                lists.iter().map(|v| if let Value::List(l) = v { l.len() } else { 0 }).collect();
             let len = lens.iter().copied().min().unwrap_or(0);
             let mut out = Vec::with_capacity(len);
             for i in 0..len {
                 let mut call_args = Vec::with_capacity(lists.len());
-                for lst in &lists { if let Value::List(v)=lst { call_args.push(v[i].clone()); } }
+                for lst in &lists {
+                    if let Value::List(v) = lst {
+                        call_args.push(v[i].clone());
+                    }
+                }
                 let fh = ev.eval(f.clone());
                 out.push(ev.eval(Value::Expr { head: Box::new(fh), args: call_args }));
             }
@@ -1542,13 +2551,15 @@ fn collect_rules(ev: &mut Evaluator, rules_v: Value) -> Vec<(Value, Value)> {
             Value::List(rs) => {
                 for r in rs {
                     if let Value::Expr { head, args } = r {
-                        if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 {
+                        if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len() == 2 {
                             out.push((args[0].clone(), args[1].clone()));
                         }
                     }
                 }
             }
-            Value::Expr { head, args } if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len()==2 => {
+            Value::Expr { head, args }
+                if matches!(*head, Value::Symbol(ref s) if s=="Rule") && args.len() == 2 =>
+            {
                 out.push((args[0].clone(), args[1].clone()))
             }
             _ => {}
@@ -1557,7 +2568,9 @@ fn collect_rules(ev: &mut Evaluator, rules_v: Value) -> Vec<(Value, Value)> {
     }
     // Prefer raw structure (to preserve patterns), then fall back to evaluated form
     let mut out = extract(rules_v.clone());
-    if out.is_empty() { out = extract(ev.eval(rules_v)); }
+    if out.is_empty() {
+        out = extract(ev.eval(rules_v));
+    }
     out
 }
 
@@ -1573,15 +2586,23 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             if ev.trace_enabled {
                 for (lhs, rhs) in &rules {
                     if lyra_rewrite::matcher::match_rule(lhs, &target).is_some() {
-                        let data = Value::Assoc(vec![
-                            ("lhs".to_string(), lhs.clone()),
-                            ("rhs".to_string(), rhs.clone()),
-                        ].into_iter().collect());
-                        ev.trace_steps.push(Value::Assoc(vec![
-                            ("action".to_string(), Value::String("RuleMatch".into())),
-                            ("head".to_string(), Value::Symbol("Replace".into())),
-                            ("data".to_string(), data),
-                        ].into_iter().collect()));
+                        let data = Value::Assoc(
+                            vec![
+                                ("lhs".to_string(), lhs.clone()),
+                                ("rhs".to_string(), rhs.clone()),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        );
+                        ev.trace_steps.push(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("RuleMatch".into())),
+                                ("head".to_string(), Value::Symbol("Replace".into())),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
                         break;
                     }
                 }
@@ -1592,37 +2613,58 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
                 let res = matches!(ev2.eval(call), Value::Boolean(true));
-                let data = Value::Assoc(vec![
-                    ("pred".to_string(), pred.clone()),
-                    ("arg".to_string(), arg.clone()),
-                    ("result".to_string(), Value::Boolean(res)),
-                ].into_iter().collect());
-                trace_push_step(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                    ("head".to_string(), Value::Symbol("PatternTest".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("pred".to_string(), pred.clone()),
+                        ("arg".to_string(), arg.clone()),
+                        ("result".to_string(), Value::Boolean(res)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("PatternTest".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
                 res
             };
             let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
                 let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-                let data = Value::Assoc(vec![
-                    ("expr".to_string(), cond_sub),
-                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-                    ("result".to_string(), Value::Boolean(res)),
-                ].into_iter().collect());
-                trace_push_step(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                    ("head".to_string(), Value::Symbol("Condition".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("expr".to_string(), cond_sub),
+                        ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                        ("result".to_string(), Value::Boolean(res)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("Condition".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
                 res
             };
-            let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+            let ctx = lyra_rewrite::matcher::MatcherCtx {
+                eval_pred: Some(&pred),
+                eval_cond: Some(&cond),
+            };
             let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, target, &rules);
-            if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+            if ev.trace_enabled {
+                ev.trace_steps.extend(trace_drain_steps());
+            }
             return ev.eval(out);
         }
         [expr, rules_v, Value::Integer(n)] => {
@@ -1635,37 +2677,59 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
                 let res = matches!(ev2.eval(call), Value::Boolean(true));
-                let data = Value::Assoc(vec![
-                    ("pred".to_string(), pred.clone()),
-                    ("arg".to_string(), arg.clone()),
-                    ("result".to_string(), Value::Boolean(res)),
-                ].into_iter().collect());
-                trace_push_step(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                    ("head".to_string(), Value::Symbol("PatternTest".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("pred".to_string(), pred.clone()),
+                        ("arg".to_string(), arg.clone()),
+                        ("result".to_string(), Value::Boolean(res)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("PatternTest".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
                 res
             };
             let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
                 let mut ev2 = Evaluator::with_env(env_snapshot.clone());
                 let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
                 let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-                let data = Value::Assoc(vec![
-                    ("expr".to_string(), cond_sub),
-                    ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-                    ("result".to_string(), Value::Boolean(res)),
-                ].into_iter().collect());
-                trace_push_step(Value::Assoc(vec![
-                    ("action".to_string(), Value::String("ConditionEvaluated".into())),
-                    ("head".to_string(), Value::Symbol("Condition".into())),
-                    ("data".to_string(), data),
-                ].into_iter().collect()));
+                let data = Value::Assoc(
+                    vec![
+                        ("expr".to_string(), cond_sub),
+                        ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                        ("result".to_string(), Value::Boolean(res)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("Condition".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
                 res
             };
-            let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
-            let out = lyra_rewrite::engine::rewrite_with_limit_with_ctx(&ctx, target, &rules, limit);
-            if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+            let ctx = lyra_rewrite::matcher::MatcherCtx {
+                eval_pred: Some(&pred),
+                eval_cond: Some(&cond),
+            };
+            let out =
+                lyra_rewrite::engine::rewrite_with_limit_with_ctx(&ctx, target, &rules, limit);
+            if ev.trace_enabled {
+                ev.trace_steps.extend(trace_drain_steps());
+            }
             return ev.eval(out);
         }
         _ => Value::Expr { head: Box::new(Value::Symbol("Replace".into())), args },
@@ -1673,7 +2737,9 @@ fn replace(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceAll".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("ReplaceAll".into())), args };
+    }
     let rules = collect_rules(ev, args[1].clone());
     // HoldFirst semantics
     let target = args[0].clone();
@@ -1682,60 +2748,91 @@ fn replace_all_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
         let res = matches!(ev2.eval(call), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("pred".to_string(), pred.clone()),
-            ("arg".to_string(), arg.clone()),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("PatternTest".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("pred".to_string(), pred.clone()),
+                ("arg".to_string(), arg.clone()),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
         let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("expr".to_string(), cond_sub),
-            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("Condition".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("expr".to_string(), cond_sub),
+                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("Condition".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
     // ReplaceAll: general recursive traversal using matcher
     use lyra_rewrite::matcher::{match_rule_with, substitute_named};
-    fn replace_all_rec(ctx: &lyra_rewrite::matcher::MatcherCtx, v: Value, rules: &[(Value, Value)]) -> Value {
+    fn replace_all_rec(
+        ctx: &lyra_rewrite::matcher::MatcherCtx,
+        v: Value,
+        rules: &[(Value, Value)],
+    ) -> Value {
         // Top-level match
         for (lhs, rhs) in rules {
-            if let Some(b) = match_rule_with(ctx, lhs, &v) { return substitute_named(rhs, &b); }
+            if let Some(b) = match_rule_with(ctx, lhs, &v) {
+                return substitute_named(rhs, &b);
+            }
         }
         match v {
-            Value::List(items) => Value::List(items.into_iter().map(|x| replace_all_rec(ctx, x, rules)).collect()),
-            Value::Assoc(m) => Value::Assoc(m.into_iter().map(|(k,x)| (k, replace_all_rec(ctx, x, rules))).collect()),
+            Value::List(items) => {
+                Value::List(items.into_iter().map(|x| replace_all_rec(ctx, x, rules)).collect())
+            }
+            Value::Assoc(m) => Value::Assoc(
+                m.into_iter().map(|(k, x)| (k, replace_all_rec(ctx, x, rules))).collect(),
+            ),
             Value::Expr { head, args } => {
                 let new_head = replace_all_rec(ctx, *head, rules);
-                let new_args: Vec<Value> = args.into_iter().map(|a| replace_all_rec(ctx, a, rules)).collect();
+                let new_args: Vec<Value> =
+                    args.into_iter().map(|a| replace_all_rec(ctx, a, rules)).collect();
                 Value::Expr { head: Box::new(new_head), args: new_args }
             }
             other => other,
         }
     }
     let out = replace_all_rec(&ctx, target, &rules);
-    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+    if ev.trace_enabled {
+        ev.trace_steps.extend(trace_drain_steps());
+    }
     return ev.eval(out);
 }
 
 fn replace_repeated_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceRepeated".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("ReplaceRepeated".into())), args };
+    }
     let rules = collect_rules(ev, args[1].clone());
     // HoldFirst semantics
     let target = args[0].clone();
@@ -1744,43 +2841,63 @@ fn replace_repeated_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
         let res = matches!(ev2.eval(call), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("pred".to_string(), pred.clone()),
-            ("arg".to_string(), arg.clone()),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("PatternTest".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("pred".to_string(), pred.clone()),
+                ("arg".to_string(), arg.clone()),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
         let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("expr".to_string(), cond_sub),
-            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("Condition".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("expr".to_string(), cond_sub),
+                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("Condition".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
     // ReplaceRepeated: iterate until fixed point
     let out = lyra_rewrite::engine::rewrite_all_with_ctx(&ctx, target, &rules);
-    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+    if ev.trace_enabled {
+        ev.trace_steps.extend(trace_drain_steps());
+    }
     return ev.eval(out);
 }
 
 fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("ReplaceFirst".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("ReplaceFirst".into())), args };
+    }
     let rules = collect_rules(ev, args[1].clone());
     // HoldFirst semantics
     let target = args[0].clone();
@@ -1790,41 +2907,67 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
         let res = matches!(ev2.eval(call), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("pred".to_string(), pred.clone()),
-            ("arg".to_string(), arg.clone()),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("PatternTest".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("pred".to_string(), pred.clone()),
+                ("arg".to_string(), arg.clone()),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
         let mut ev2 = Evaluator::with_env(env_snapshot.clone());
         let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
         let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
-        let data = Value::Assoc(vec![
-            ("expr".to_string(), cond_sub),
-            ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
-            ("result".to_string(), Value::Boolean(res)),
-        ].into_iter().collect());
-        trace_push_step(Value::Assoc(vec![
-            ("action".to_string(), Value::String("ConditionEvaluated".into())),
-            ("head".to_string(), Value::Symbol("Condition".into())),
-            ("data".to_string(), data),
-        ].into_iter().collect()));
+        let data = Value::Assoc(
+            vec![
+                ("expr".to_string(), cond_sub),
+                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("Condition".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         res
     };
     let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
     // ReplaceFirst via recursive traversal with limit 1 (and elementwise fast path handled in ReplaceAll)
     use lyra_rewrite::matcher::{match_rule_with, substitute_named};
-    fn replace_first_rec(ctx: &lyra_rewrite::matcher::MatcherCtx, v: Value, rules: &[(Value, Value)], left: &mut usize) -> Value {
-        if *left == 0 { return v; }
+    fn replace_first_rec(
+        ctx: &lyra_rewrite::matcher::MatcherCtx,
+        v: Value,
+        rules: &[(Value, Value)],
+        left: &mut usize,
+    ) -> Value {
+        if *left == 0 {
+            return v;
+        }
         for (lhs, rhs) in rules {
-            if let Some(b) = match_rule_with(ctx, lhs, &v) { *left = left.saturating_sub(1); return substitute_named(rhs, &b); }
+            if let Some(b) = match_rule_with(ctx, lhs, &v) {
+                *left = left.saturating_sub(1);
+                return substitute_named(rhs, &b);
+            }
         }
         match v {
             Value::List(items) => {
@@ -1832,17 +2975,25 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let mut it = items.into_iter();
                 while let Some(x) = it.next() {
                     out.push(replace_first_rec(ctx, x, rules, left));
-                    if *left == 0 { out.extend(it); break; }
+                    if *left == 0 {
+                        out.extend(it);
+                        break;
+                    }
                 }
                 Value::List(out)
             }
             Value::Assoc(m) => {
                 let mut out_map = std::collections::HashMap::new();
                 let mut it = m.into_iter();
-                while let Some((k,x)) = it.next() {
+                while let Some((k, x)) = it.next() {
                     let val = replace_first_rec(ctx, x, rules, left);
                     out_map.insert(k, val);
-                    if *left == 0 { for (kk,vv) in it { out_map.insert(kk, vv); } break; }
+                    if *left == 0 {
+                        for (kk, vv) in it {
+                            out_map.insert(kk, vv);
+                        }
+                        break;
+                    }
                 }
                 Value::Assoc(out_map)
             }
@@ -1852,7 +3003,10 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 let mut it = args.into_iter();
                 while let Some(a) = it.next() {
                     new_args.push(replace_first_rec(ctx, a, rules, left));
-                    if *left == 0 { new_args.extend(it); break; }
+                    if *left == 0 {
+                        new_args.extend(it);
+                        break;
+                    }
                 }
                 Value::Expr { head: Box::new(new_head), args: new_args }
             }
@@ -1861,43 +3015,74 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     let mut left = 1usize;
     let out = replace_first_rec(&ctx, target, &rules, &mut left);
-    if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+    if ev.trace_enabled {
+        ev.trace_steps.extend(trace_drain_steps());
+    }
     return ev.eval(out);
 }
 
 fn set_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("Set".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Set".into())), args };
+    }
     match &args[0] {
-        Value::Symbol(name) => { let v = ev.eval(args[1].clone()); ev.env.insert(name.clone(), v.clone()); v }
+        Value::Symbol(name) => {
+            let v = ev.eval(args[1].clone());
+            ev.env.insert(name.clone(), v.clone());
+            v
+        }
         _ => Value::Expr { head: Box::new(Value::Symbol("Set".into())), args },
     }
 }
 
 fn unset_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Unset".into())), args } }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Unset".into())), args };
+    }
     match &args[0] {
-        Value::Symbol(name) => { ev.env.remove(name); Value::Symbol("Null".into()) }
+        Value::Symbol(name) => {
+            ev.env.remove(name);
+            Value::Symbol("Null".into())
+        }
         _ => Value::Expr { head: Box::new(Value::Symbol("Unset".into())), args },
     }
 }
 
 fn set_downvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // SetDownValues[symbol, {lhs->rhs, ...}]
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetDownValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetDownValues".into())), args } };
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetDownValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("SetDownValues".into())), args },
+    };
     let rules_pairs = collect_rules(ev, args[1].clone());
     let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Down, &sym);
     rs.0.clear();
-    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    for (lhs, rhs) in rules_pairs {
+        rs.push(Rule::immediate(lhs, rhs));
+    }
     Value::Symbol("Null".into())
 }
 
 fn get_downvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // GetDownValues[symbol]
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetDownValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetDownValues".into())), args } };
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("GetDownValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("GetDownValues".into())), args },
+    };
     if let Some(rs) = ev.defs.rules(DefKind::Down, &sym) {
-        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        let items: Vec<Value> = rs
+            .iter()
+            .map(|r| Value::Expr {
+                head: Box::new(Value::Symbol("Rule".into())),
+                args: vec![r.lhs.clone(), r.rhs.clone()],
+            })
+            .collect();
         Value::List(items)
     } else {
         Value::List(vec![])
@@ -1906,21 +3091,39 @@ fn get_downvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn set_upvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // SetUpValues[symbol, {lhs->rhs, ...}]
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetUpValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetUpValues".into())), args } };
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetUpValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("SetUpValues".into())), args },
+    };
     let rules_pairs = collect_rules(ev, args[1].clone());
     let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Up, &sym);
     rs.0.clear();
-    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    for (lhs, rhs) in rules_pairs {
+        rs.push(Rule::immediate(lhs, rhs));
+    }
     Value::Symbol("Null".into())
 }
 
 fn get_upvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // GetUpValues[symbol]
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetUpValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetUpValues".into())), args } };
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("GetUpValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("GetUpValues".into())), args },
+    };
     if let Some(rs) = ev.defs.rules(DefKind::Up, &sym) {
-        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        let items: Vec<Value> = rs
+            .iter()
+            .map(|r| Value::Expr {
+                head: Box::new(Value::Symbol("Rule".into())),
+                args: vec![r.lhs.clone(), r.rhs.clone()],
+            })
+            .collect();
         Value::List(items)
     } else {
         Value::List(vec![])
@@ -1929,53 +3132,95 @@ fn get_upvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn set_ownvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // SetOwnValues[symbol, {lhs->rhs, ...}]
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args } };
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("SetOwnValues".into())), args },
+    };
     let rules_pairs = collect_rules(ev, args[1].clone());
     let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Own, &sym);
     rs.0.clear();
-    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    for (lhs, rhs) in rules_pairs {
+        rs.push(Rule::immediate(lhs, rhs));
+    }
     Value::Symbol("Null".into())
 }
 
 fn get_ownvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // GetOwnValues[symbol]
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args } };
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("GetOwnValues".into())), args },
+    };
     if let Some(rs) = ev.defs.rules(DefKind::Own, &sym) {
-        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        let items: Vec<Value> = rs
+            .iter()
+            .map(|r| Value::Expr {
+                head: Box::new(Value::Symbol("Rule".into())),
+                args: vec![r.lhs.clone(), r.rhs.clone()],
+            })
+            .collect();
         Value::List(items)
-    } else { Value::List(vec![]) }
+    } else {
+        Value::List(vec![])
+    }
 }
 
 fn set_subvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // SetSubValues[symbol, {lhs->rhs, ...}]
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args } };
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("SetSubValues".into())), args },
+    };
     let rules_pairs = collect_rules(ev, args[1].clone());
     let rs: &mut RuleSet = ev.defs.rules_mut(DefKind::Sub, &sym);
     rs.0.clear();
-    for (lhs, rhs) in rules_pairs { rs.push(Rule::immediate(lhs, rhs)); }
+    for (lhs, rhs) in rules_pairs {
+        rs.push(Rule::immediate(lhs, rhs));
+    }
     Value::Symbol("Null".into())
 }
 
 fn get_subvalues_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // GetSubValues[symbol]
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args } }
-    let sym = match &args[0] { Value::Symbol(s) => s.clone(), _ => return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args } };
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args };
+    }
+    let sym = match &args[0] {
+        Value::Symbol(s) => s.clone(),
+        _ => return Value::Expr { head: Box::new(Value::Symbol("GetSubValues".into())), args },
+    };
     if let Some(rs) = ev.defs.rules(DefKind::Sub, &sym) {
-        let items: Vec<Value> = rs.iter().map(|r| Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![r.lhs.clone(), r.rhs.clone()] }).collect();
+        let items: Vec<Value> = rs
+            .iter()
+            .map(|r| Value::Expr {
+                head: Box::new(Value::Symbol("Rule".into())),
+                args: vec![r.lhs.clone(), r.rhs.clone()],
+            })
+            .collect();
         Value::List(items)
-    } else { Value::List(vec![]) }
+    } else {
+        Value::List(vec![])
+    }
 }
 
 fn with_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("With".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("With".into())), args };
+    }
     let assoc = ev.eval(args[0].clone());
     let body = args[1].clone();
     let mut saved: Vec<(String, Option<Value>)> = Vec::new();
     if let Value::Assoc(m) = assoc {
-        for (k,v) in m {
+        for (k, v) in m {
             let old = ev.env.get(&k).cloned();
             let newv = ev.eval(v);
             saved.push((k.clone(), old));
@@ -1983,35 +3228,58 @@ fn with_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         let result = ev.eval(body);
         // restore
-        for (k,ov) in saved.into_iter() {
-            if let Some(val)=ov { ev.env.insert(k, val); } else { ev.env.remove(&k); }
+        for (k, ov) in saved.into_iter() {
+            if let Some(val) = ov {
+                ev.env.insert(k, val);
+            } else {
+                ev.env.remove(&k);
+            }
         }
         result
-    } else { Value::Expr { head: Box::new(Value::Symbol("With".into())), args } }
+    } else {
+        Value::Expr { head: Box::new(Value::Symbol("With".into())), args }
+    }
 }
 fn set_delayed_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args } }
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args };
+    }
     let lhs = args[0].clone();
     let rhs = args[1].clone();
     // Classify lhs: Own (Symbol), Down (Symbol[...] ), Sub ((Symbol[...])[...])
     match lhs.clone() {
         Value::Symbol(s) => {
             // OwnValues[s, { s -> rhs }]
-            let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![Value::Symbol(s.clone()), rhs] };
+            let rule = Value::Expr {
+                head: Box::new(Value::Symbol("Rule".into())),
+                args: vec![Value::Symbol(s.clone()), rhs],
+            };
             return set_ownvalues_fn(ev, vec![Value::Symbol(s), Value::List(vec![rule])]);
         }
         Value::Expr { head, .. } => {
             match *head {
                 Value::Symbol(ref s) => {
                     // DownValues[s, { lhs -> rhs }]
-                    let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![lhs, rhs] };
-                    return set_downvalues_fn(ev, vec![Value::Symbol(s.clone()), Value::List(vec![rule])]);
+                    let rule = Value::Expr {
+                        head: Box::new(Value::Symbol("Rule".into())),
+                        args: vec![lhs, rhs],
+                    };
+                    return set_downvalues_fn(
+                        ev,
+                        vec![Value::Symbol(s.clone()), Value::List(vec![rule])],
+                    );
                 }
                 Value::Expr { head: inner_head, .. } => {
                     if let Value::Symbol(s) = *inner_head {
                         // SubValues[s, { lhs -> rhs }]
-                        let rule = Value::Expr { head: Box::new(Value::Symbol("Rule".into())), args: vec![lhs, rhs] };
-                        return set_subvalues_fn(ev, vec![Value::Symbol(s), Value::List(vec![rule])]);
+                        let rule = Value::Expr {
+                            head: Box::new(Value::Symbol("Rule".into())),
+                            args: vec![lhs, rhs],
+                        };
+                        return set_subvalues_fn(
+                            ev,
+                            vec![Value::Symbol(s), Value::List(vec![rule])],
+                        );
                     }
                     Value::Expr { head: Box::new(Value::Symbol("SetDelayed".into())), args }
                 }

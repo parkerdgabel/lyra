@@ -1,8 +1,8 @@
-use lyra_parser::Parser;
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
-use lyra_stdlib as stdlib;
+use lyra_parser::Parser;
 use lyra_runtime::set_default_registrar;
+use lyra_runtime::Evaluator;
+use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
     let mut p = Parser::from_source(src);
@@ -46,7 +46,9 @@ fn matcher_sees_namedblank_on_integer() {
     let vals = p.parse_all().expect("parse");
     let rule = vals.last().unwrap().clone();
     let lhs = match rule {
-        lyra_core::value::Value::Expr { head, args } if matches!(*head, lyra_core::value::Value::Symbol(ref s) if s=="Rule") => args[0].clone(),
+        lyra_core::value::Value::Expr { head, args } if matches!(*head, lyra_core::value::Value::Symbol(ref s) if s=="Rule") => {
+            args[0].clone()
+        }
         _ => panic!("no rule"),
     };
     // Inspect shape

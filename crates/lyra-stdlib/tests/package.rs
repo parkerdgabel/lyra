@@ -1,5 +1,5 @@
-use lyra_runtime::Evaluator;
 use lyra_core::value::Value;
+use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
 
 fn eval_str(ev: &mut Evaluator, src: &str) -> Value {
@@ -25,9 +25,12 @@ fn new_package_and_using_path() {
     let pkg_path = tmpdir.join("demo_pkg");
     let new_cmd = format!("NewPackage[\"{}\"]", pkg_path.to_string_lossy());
     let res = eval_str(&mut ev, &new_cmd);
-    match res { Value::Assoc(m) => {
-        assert!(m.get("path").is_some());
-    }, _ => panic!("NewPackage did not return assoc: {:?}", res) }
+    match res {
+        Value::Assoc(m) => {
+            assert!(m.get("path").is_some());
+        }
+        _ => panic!("NewPackage did not return assoc: {:?}", res),
+    }
 
     // Using should find it on $PackagePath
     let using_res = eval_str(&mut ev, "Using[\"demo_pkg\", <|Import->All|>]");
@@ -35,10 +38,13 @@ fn new_package_and_using_path() {
 
     // PackageInfo should reflect name and path
     let info = eval_str(&mut ev, "PackageInfo[\"demo_pkg\"]");
-    match info { Value::Assoc(m) => {
-        assert_eq!(m.get("name"), Some(&Value::String("demo_pkg".into())));
-        assert!(matches!(m.get("path"), Some(Value::String(_))));
-    }, other => panic!("PackageInfo unexpected: {:?}", other) }
+    match info {
+        Value::Assoc(m) => {
+            assert_eq!(m.get("name"), Some(&Value::String("demo_pkg".into())));
+            assert!(matches!(m.get("path"), Some(Value::String(_))));
+        }
+        other => panic!("PackageInfo unexpected: {:?}", other),
+    }
 }
 
 #[test]
@@ -51,9 +57,12 @@ fn module_path_set_get() {
     let res = eval_str(&mut ev, &cmd);
     assert!(matches!(res, Value::Boolean(true)));
     let mp = eval_str(&mut ev, "ModulePath[]");
-    match mp { Value::List(vs) => {
-        assert!(!vs.is_empty());
-    }, other => panic!("ModulePath unexpected: {:?}", other) }
+    match mp {
+        Value::List(vs) => {
+            assert!(!vs.is_empty());
+        }
+        other => panic!("ModulePath unexpected: {:?}", other),
+    }
 }
 
 #[test]
@@ -61,7 +70,21 @@ fn pm_stubs_return_failure() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     for cmd in [
-        "BuildPackage[]","TestPackage[]","LintPackage[]","PackPackage[]","GenerateSBOM[]","SignPackage[]","PublishPackage[]","InstallPackage[]","UpdatePackage[]","RemovePackage[]","LoginRegistry[]","LogoutRegistry[]","WhoAmI[]","PackageAudit[]","PackageVerify[]"
+        "BuildPackage[]",
+        "TestPackage[]",
+        "LintPackage[]",
+        "PackPackage[]",
+        "GenerateSBOM[]",
+        "SignPackage[]",
+        "PublishPackage[]",
+        "InstallPackage[]",
+        "UpdatePackage[]",
+        "RemovePackage[]",
+        "LoginRegistry[]",
+        "LogoutRegistry[]",
+        "WhoAmI[]",
+        "PackageAudit[]",
+        "PackageVerify[]",
     ] {
         let out = eval_str(&mut ev, cmd);
         match out {
@@ -92,8 +115,14 @@ fn import_and_unuse_soft_hide() {
     // Options are recorded and resolved against exports
     let _ = eval_str(&mut ev, "Using[\"dummy_pkg\", <|Import->{\"A\", \"B\"}, Except->{\"B\"}|>]");
     let imp = eval_str(&mut ev, "ImportedSymbols[\"dummy_pkg\"]");
-    match imp { Value::List(vs) => assert_eq!(vs, vec![Value::String("A".into())]), other => panic!("unexpected imported: {:?}", other) }
+    match imp {
+        Value::List(vs) => assert_eq!(vs, vec![Value::String("A".into())]),
+        other => panic!("unexpected imported: {:?}", other),
+    }
     let _ = eval_str(&mut ev, "Unuse[\"dummy_pkg\"]");
     let after = eval_str(&mut ev, "ImportedSymbols[\"dummy_pkg\"]");
-    match after { Value::List(vs) => assert!(vs.is_empty()), other => panic!("unexpected after unuse: {:?}", other) }
+    match after {
+        Value::List(vs) => assert!(vs.is_empty()),
+        other => panic!("unexpected after unuse: {:?}", other),
+    }
 }

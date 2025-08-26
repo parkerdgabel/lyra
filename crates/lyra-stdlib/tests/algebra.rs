@@ -1,8 +1,8 @@
 #![cfg(feature = "algebra")]
 
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
 use lyra_parser::Parser;
+use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
@@ -33,7 +33,10 @@ fn factor_quadratic_and_diff() {
 #[test]
 fn collect_terms_by_multivar() {
     let got = eval_one("CollectTermsBy[x*y + 2*x*y + 3*y^2, {x, y}]");
-    assert!(got=="Plus[Times[3, x, y], Times[3, Power[y, 2]]]" || got=="Plus[Times[3, Power[y, 2]], Times[3, x, y]]");
+    assert!(
+        got == "Plus[Times[3, x, y], Times[3, Power[y, 2]]]"
+            || got == "Plus[Times[3, Power[y, 2]], Times[3, x, y]]"
+    );
 }
 
 #[test]

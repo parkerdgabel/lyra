@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use lyra_core::value::Value;
+use std::collections::HashMap;
 
 // Minimal scaffold for discrimination nets to be implemented in M1.
 // API intentionally small and internal for now.
@@ -16,10 +16,21 @@ pub struct PatternNet {
 }
 
 impl PatternNet {
-    pub fn new() -> Self { Self { size: 0, by_head_arity: HashMap::new(), by_head_any: HashMap::new(), general: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            size: 0,
+            by_head_arity: HashMap::new(),
+            by_head_any: HashMap::new(),
+            general: Vec::new(),
+        }
+    }
 
-    pub fn len(&self) -> usize { self.size }
-    pub fn is_empty(&self) -> bool { self.size == 0 }
+    pub fn len(&self) -> usize {
+        self.size
+    }
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
 
     pub fn insert_rule(&mut self, lhs: &Value, id: usize) {
         self.size += 1;
@@ -39,18 +50,24 @@ impl PatternNet {
 
     pub fn remove_rule(&mut self, _id: usize) -> bool {
         // Simple lazy removal: decrement size; actual compaction not implemented yet.
-        if self.size > 0 { self.size -= 1; }
+        if self.size > 0 {
+            self.size -= 1;
+        }
         // Note: for now, we do not physically remove from buckets.
         true
     }
 
-    pub fn candidates<'a>(&'a self, expr: &'a Value) -> impl Iterator<Item=usize> + 'a {
+    pub fn candidates<'a>(&'a self, expr: &'a Value) -> impl Iterator<Item = usize> + 'a {
         let mut v: Vec<usize> = Vec::new();
         match expr {
             Value::Expr { head, args } => {
                 if let Value::Symbol(h) = &**head {
-                    if let Some(xs) = self.by_head_arity.get(&(h.clone(), args.len())) { v.extend(xs.iter().copied()); }
-                    if let Some(xs) = self.by_head_any.get(h) { v.extend(xs.iter().copied()); }
+                    if let Some(xs) = self.by_head_arity.get(&(h.clone(), args.len())) {
+                        v.extend(xs.iter().copied());
+                    }
+                    if let Some(xs) = self.by_head_any.get(h) {
+                        v.extend(xs.iter().copied());
+                    }
                 }
             }
             _ => {}
@@ -71,7 +88,9 @@ impl PatternNet {
             "Optional",
         ];
         for w in wildcards.iter() {
-            if let Some(xs) = self.by_head_any.get(&w.to_string()) { v.extend(xs.iter().copied()); }
+            if let Some(xs) = self.by_head_any.get(&w.to_string()) {
+                v.extend(xs.iter().copied());
+            }
         }
         v.extend(self.general.iter().copied());
         v.into_iter()

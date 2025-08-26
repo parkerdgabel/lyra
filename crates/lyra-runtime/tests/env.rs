@@ -1,6 +1,6 @@
 use lyra_core::pretty::format_value;
 use lyra_parser::Parser;
-use lyra_runtime::{Evaluator, set_default_registrar};
+use lyra_runtime::{set_default_registrar, Evaluator};
 use lyra_stdlib as stdlib;
 
 fn eval_last(src: &str) -> String {
@@ -18,4 +18,3 @@ fn unset_removes_binding() {
     let out = eval_last("Set[x, 42]; Unset[x]; x");
     assert_eq!(out, "x");
 }
-

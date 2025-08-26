@@ -5,9 +5,13 @@ pub fn schema_of(v: &Value) -> Value {
     match v {
         Value::Assoc(m) => {
             let keys: HashSet<&str> = m.keys().map(|s| s.as_str()).collect();
-            let name = if ["frequencies","magnitudes","method"].iter().all(|k| keys.contains(k)) { "SpectralResult/v1" }
-                       else if keys.contains("filterType") && keys.contains("filteredSignal") { "FilterResult/v1" }
-                       else { "Association/v1" };
+            let name = if ["frequencies", "magnitudes", "method"].iter().all(|k| keys.contains(k)) {
+                "SpectralResult/v1"
+            } else if keys.contains("filterType") && keys.contains("filteredSignal") {
+                "FilterResult/v1"
+            } else {
+                "Association/v1"
+            };
             Value::assoc(vec![
                 ("name", Value::String(name.to_string())),
                 ("keys", Value::List(m.keys().cloned().map(Value::String).collect())),

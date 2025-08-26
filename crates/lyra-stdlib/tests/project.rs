@@ -1,5 +1,5 @@
-use lyra_runtime::Evaluator;
 use lyra_core::value::Value;
+use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
 
 fn eval_str(ev: &mut Evaluator, src: &str) -> Value {
@@ -19,13 +19,19 @@ fn project_init_and_validate_ok() {
     // Init
     let cmd = format!("ProjectInit[<|Name->\"demo\", Dir->\"{}\"|>]", root.to_string_lossy());
     let out = eval_str(&mut ev, &cmd);
-    match out { Value::Assoc(m) => assert_eq!(m.get("ok"), Some(&Value::Boolean(true))), other => panic!("init unexpected: {:?}", other) }
+    match out {
+        Value::Assoc(m) => assert_eq!(m.get("ok"), Some(&Value::Boolean(true))),
+        other => panic!("init unexpected: {:?}", other),
+    }
     // Validate
     let cmd = format!("ProjectValidate[\"{}\"]", root.to_string_lossy());
     let v = eval_str(&mut ev, &cmd);
-    match v { Value::Assoc(m) => {
-        assert_eq!(m.get("ok"), Some(&Value::Boolean(true)));
-    }, other => panic!("validate unexpected: {:?}", other) }
+    match v {
+        Value::Assoc(m) => {
+            assert_eq!(m.get("ok"), Some(&Value::Boolean(true)));
+        }
+        other => panic!("validate unexpected: {:?}", other),
+    }
 }
 
 #[test]
@@ -40,8 +46,10 @@ fn project_validate_missing_module() {
     std::fs::write(root.join("project.lyra"), manifest).expect("write manifest");
     let cmd = format!("ProjectValidate[\"{}\"]", root.to_string_lossy());
     let v = eval_str(&mut ev, &cmd);
-    match v { Value::Assoc(m) => {
-        assert_eq!(m.get("ok"), Some(&Value::Boolean(false)));
-    }, other => panic!("validate unexpected: {:?}", other) }
+    match v {
+        Value::Assoc(m) => {
+            assert_eq!(m.get("ok"), Some(&Value::Boolean(false)));
+        }
+        other => panic!("validate unexpected: {:?}", other),
+    }
 }
-

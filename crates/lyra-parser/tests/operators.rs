@@ -1,5 +1,5 @@
-use lyra_parser::Parser;
 use lyra_core::pretty::format_value;
+use lyra_parser::Parser;
 
 fn fmt(src: &str) -> String {
     let mut p = Parser::from_source(src);

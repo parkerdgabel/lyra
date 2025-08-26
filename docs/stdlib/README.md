@@ -2,6 +2,9 @@
 
 This folder contains focused guides for Lyra's standard library groups.
 
+- Generated API reference per module is available here:
+- docs/stdlib/GENERATED/README.md
+
 - Strings: docs/stdlib/string.md
 - Functional: docs/stdlib/functional.md
 - Data Formats & Encoding: docs/stdlib/data.md

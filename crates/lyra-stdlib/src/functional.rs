@@ -1,9 +1,12 @@
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_core::value::Value;
-use lyra_runtime::{Evaluator};
 use lyra_runtime::attrs::Attributes;
-#[cfg(feature = "tools")] use crate::tools::add_specs;
-#[cfg(feature = "tools")] use crate::tool_spec;
-#[cfg(feature = "tools")] use std::collections::HashMap;
+use lyra_runtime::Evaluator;
+#[cfg(feature = "tools")]
+use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -60,18 +63,36 @@ pub fn register_functional(ev: &mut Evaluator) {
     ]);
 }
 
-pub fn register_functional_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+pub fn register_functional_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "Apply", apply_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "Compose", compose_fn as NativeFn, Attributes::HOLD_ALL);
-    crate::register_if(ev, pred, "RightCompose", right_compose_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(
+        ev,
+        pred,
+        "RightCompose",
+        right_compose_fn as NativeFn,
+        Attributes::HOLD_ALL,
+    );
     crate::register_if(ev, pred, "Nest", nest_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "NestList", nest_list_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "FoldList", fold_list_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "FixedPoint", fixed_point_fn as NativeFn, Attributes::HOLD_ALL);
-    crate::register_if(ev, pred, "FixedPointList", fixed_point_list_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(
+        ev,
+        pred,
+        "FixedPointList",
+        fixed_point_list_fn as NativeFn,
+        Attributes::HOLD_ALL,
+    );
     crate::register_if(ev, pred, "Through", through_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "Identity", identity_fn as NativeFn, Attributes::HOLD_ALL);
-    crate::register_if(ev, pred, "ConstantFunction", constant_function_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(
+        ev,
+        pred,
+        "ConstantFunction",
+        constant_function_fn as NativeFn,
+        Attributes::HOLD_ALL,
+    );
     crate::register_if(ev, pred, "Try", try_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "OnFailure", on_failure_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "Catch", catch_fn as NativeFn, Attributes::HOLD_ALL);
@@ -91,10 +112,12 @@ fn apply_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [f, expr, lvl] => {
             let lvl_ok = match lvl {
                 Value::Integer(n) if *n == 1 => true,
-                Value::List(vs) if vs.len()==1 && matches!(vs[0], Value::Integer(1)) => true,
+                Value::List(vs) if vs.len() == 1 && matches!(vs[0], Value::Integer(1)) => true,
                 _ => false,
             };
-            if !lvl_ok { return uneval("Apply", args); }
+            if !lvl_ok {
+                return uneval("Apply", args);
+            }
             match ev.eval(expr.clone()) {
                 Value::List(items) => {
                     let mut out: Vec<Value> = Vec::with_capacity(items.len());
@@ -112,11 +135,17 @@ fn apply_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let fcl = f.clone();
             match ev.eval(expr.clone()) {
                 Value::List(items) => {
-                    let call = Value::Expr { head: Box::new(fcl), args: items.into_iter().map(|x| ev.eval(x)).collect() };
+                    let call = Value::Expr {
+                        head: Box::new(fcl),
+                        args: items.into_iter().map(|x| ev.eval(x)).collect(),
+                    };
                     ev.eval(call)
                 }
                 Value::Expr { args: expr_args, .. } => {
-                    let call = Value::Expr { head: Box::new(fcl), args: expr_args.into_iter().map(|x| ev.eval(x)).collect() };
+                    let call = Value::Expr {
+                        head: Box::new(fcl),
+                        args: expr_args.into_iter().map(|x| ev.eval(x)).collect(),
+                    };
                     ev.eval(call)
                 }
                 other => uneval("Apply", vec![f.clone(), other]),
@@ -127,14 +156,18 @@ fn apply_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // Compose[f, g, h] => PureFunction composing left-to-right: f[g[h[#]]]&
-fn compose_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn compose_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut fns: Vec<Value> = match args.as_slice() {
         [Value::List(fs)] => fs.clone(),
         _ => args.clone(),
     };
-    if fns.is_empty() { return Value::pure_function(None, Value::Slot(None)); }
+    if fns.is_empty() {
+        return Value::pure_function(None, Value::Slot(None));
+    }
     // Compose normalizes by evaluating function heads minimally (do not apply)
-    for f in &mut fns { *f = f.clone(); }
+    for f in &mut fns {
+        *f = f.clone();
+    }
     // Build nested call: f1[f2[...fn[#]...]]
     let mut body = Value::Slot(None);
     for f in fns.into_iter().rev() {
@@ -149,7 +182,9 @@ fn right_compose_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [Value::List(fs)] => fs.clone(),
         _ => args.clone(),
     };
-    if fns.is_empty() { return Value::pure_function(None, Value::Slot(None)); }
+    if fns.is_empty() {
+        return Value::pure_function(None, Value::Slot(None));
+    }
     // Build nested call: h[g[f[#]]]
     let mut body = Value::Slot(None);
     for f in fns.into_iter() {
@@ -160,23 +195,38 @@ fn right_compose_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // Nest[f, x, n]
 fn nest_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=3 { return uneval("Nest", args); }
+    if args.len() != 3 {
+        return uneval("Nest", args);
+    }
     let f = args[0].clone();
     let mut x = ev.eval(args[1].clone());
-    let n = match ev.eval(args[2].clone()) { Value::Integer(k) if k>=0 => k as usize, other => return uneval("Nest", vec![f, x, other]) };
-    for _ in 0..n { x = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![x] }); }
+    let n = match ev.eval(args[2].clone()) {
+        Value::Integer(k) if k >= 0 => k as usize,
+        other => return uneval("Nest", vec![f, x, other]),
+    };
+    for _ in 0..n {
+        x = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![x] });
+    }
     x
 }
 
 // NestList[f, x, n]
 fn nest_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=3 { return uneval("NestList", args); }
+    if args.len() != 3 {
+        return uneval("NestList", args);
+    }
     let f = args[0].clone();
     let mut x = ev.eval(args[1].clone());
-    let n = match ev.eval(args[2].clone()) { Value::Integer(k) if k>=0 => k as usize, other => return uneval("NestList", vec![f, x, other]) };
-    let mut out = Vec::with_capacity(n+1);
+    let n = match ev.eval(args[2].clone()) {
+        Value::Integer(k) if k >= 0 => k as usize,
+        other => return uneval("NestList", vec![f, x, other]),
+    };
+    let mut out = Vec::with_capacity(n + 1);
     out.push(x.clone());
-    for _ in 0..n { x = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![x] }); out.push(x.clone()); }
+    for _ in 0..n {
+        x = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![x] });
+        out.push(x.clone());
+    }
     Value::List(out)
 }
 
@@ -192,7 +242,8 @@ fn fold_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     out.push(acc.clone());
                     for v in it {
                         let vv = ev.eval(v);
-                        acc = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![acc, vv] });
+                        acc =
+                            ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![acc, vv] });
                         out.push(acc.clone());
                     }
                 }
@@ -202,7 +253,7 @@ fn fold_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         },
         [f, init, list] => match ev.eval(list.clone()) {
             Value::List(items) => {
-                let mut out: Vec<Value> = Vec::with_capacity(items.len()+1);
+                let mut out: Vec<Value> = Vec::with_capacity(items.len() + 1);
                 let mut acc = ev.eval(init.clone());
                 out.push(acc.clone());
                 for v in items {
@@ -218,22 +269,32 @@ fn fold_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn same_value(a: &Value, b: &Value) -> bool { a == b }
+fn same_value(a: &Value, b: &Value) -> bool {
+    a == b
+}
 
 // FixedPoint[f, x, opts?] with MaxIterations
 fn fixed_point_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()<2 { return uneval("FixedPoint", args); }
+    if args.len() < 2 {
+        return uneval("FixedPoint", args);
+    }
     let f = args[0].clone();
     let mut cur = ev.eval(args[1].clone());
     let mut max_iter: usize = 100;
-    if args.len()>=3 {
+    if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxIterations") { if *n>0 { max_iter = *n as usize; } }
+            if let Some(Value::Integer(n)) = m.get("MaxIterations") {
+                if *n > 0 {
+                    max_iter = *n as usize;
+                }
+            }
         }
     }
     for _ in 0..max_iter {
         let next = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![cur.clone()] });
-        if same_value(&next, &cur) { return next; }
+        if same_value(&next, &cur) {
+            return next;
+        }
         cur = next;
     }
     cur
@@ -241,20 +302,28 @@ fn fixed_point_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // FixedPointList[f, x, opts?]
 fn fixed_point_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()<2 { return uneval("FixedPointList", args); }
+    if args.len() < 2 {
+        return uneval("FixedPointList", args);
+    }
     let f = args[0].clone();
     let mut cur = ev.eval(args[1].clone());
     let mut max_iter: usize = 100;
-    if args.len()>=3 {
+    if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxIterations") { if *n>0 { max_iter = *n as usize; } }
+            if let Some(Value::Integer(n)) = m.get("MaxIterations") {
+                if *n > 0 {
+                    max_iter = *n as usize;
+                }
+            }
         }
     }
     let mut out = vec![cur.clone()];
     for _ in 0..max_iter {
         let next = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![cur.clone()] });
         out.push(next.clone());
-        if same_value(&next, &cur) { break; }
+        if same_value(&next, &cur) {
+            break;
+        }
         cur = next;
     }
     Value::List(out)
@@ -265,13 +334,20 @@ fn through_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [Value::List(funcs)] => {
             // Operator form: PureFunction that calls Through[funcs, #]
-            let body = Value::Expr { head: Box::new(Value::Symbol("Through".into())), args: vec![Value::List(funcs.clone()), Value::Slot(None)] };
+            let body = Value::Expr {
+                head: Box::new(Value::Symbol("Through".into())),
+                args: vec![Value::List(funcs.clone()), Value::Slot(None)],
+            };
             Value::pure_function(None, body)
         }
         [Value::List(funcs), x] => {
             let xv = ev.eval(x.clone());
             let mut out: Vec<Value> = Vec::with_capacity(funcs.len());
-            for f in funcs { out.push(ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![xv.clone()] })); }
+            for f in funcs {
+                out.push(
+                    ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![xv.clone()] }),
+                );
+            }
             Value::List(out)
         }
         _ => uneval("Through", args),
@@ -289,51 +365,80 @@ fn identity_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // ConstantFunction[c] => PureFunction[ c ] (ignores inputs)
 fn constant_function_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return uneval("ConstantFunction", args); }
+    if args.len() != 1 {
+        return uneval("ConstantFunction", args);
+    }
     let c = ev.eval(args[0].clone());
     Value::pure_function(None, c)
 }
 
 fn is_failure(v: &Value) -> bool {
-    match v { Value::Assoc(m) => matches!(m.get("message"), Some(Value::String(s)) if s=="Failure" || s=="Time budget exceeded" || s=="Computation cancelled"), _ => false }
+    match v {
+        Value::Assoc(m) => {
+            matches!(m.get("message"), Some(Value::String(s)) if s=="Failure" || s=="Time budget exceeded" || s=="Computation cancelled")
+        }
+        _ => false,
+    }
 }
 
 // Try[expr] => <|ok->True,value->v|> or <|ok->False,error->e|>
 // Try[expr, handlerOrDefault] => v on success; on failure: if handler is PureFunction then handler[e], else return handler as default
 fn try_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return uneval("Try", args); }
+    if args.is_empty() {
+        return uneval("Try", args);
+    }
     let res = ev.eval(args[0].clone());
     if args.len() == 1 {
-        if is_failure(&res) { Value::assoc(vec![("ok", Value::Boolean(false)), ("error", res)]) }
-        else { Value::assoc(vec![("ok", Value::Boolean(true)), ("value", res)]) }
+        if is_failure(&res) {
+            Value::assoc(vec![("ok", Value::Boolean(false)), ("error", res)])
+        } else {
+            Value::assoc(vec![("ok", Value::Boolean(true)), ("value", res)])
+        }
     } else {
         if is_failure(&res) {
             match &args[1] {
                 Value::PureFunction { .. } => ev.eval(Value::expr(args[1].clone(), vec![res])),
                 other => other.clone(),
             }
-        } else { res }
+        } else {
+            res
+        }
     }
 }
 
 // OnFailure[expr, handlerOrDefault] => success: value; failure: handler[e] or default
 fn on_failure_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return uneval("OnFailure", args); }
+    if args.len() != 2 {
+        return uneval("OnFailure", args);
+    }
     let res = ev.eval(args[0].clone());
     if is_failure(&res) {
         match &args[1] {
             Value::PureFunction { .. } => ev.eval(Value::expr(args[1].clone(), vec![res])),
             other => other.clone(),
         }
-    } else { res }
+    } else {
+        res
+    }
 }
 
 // Catch[expr, <|tag->handler, _->default|>] where handler is function or value
 fn catch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return uneval("Catch", args); }
+    if args.len() != 2 {
+        return uneval("Catch", args);
+    }
     let res = ev.eval(args[0].clone());
-    if !is_failure(&res) { return res; }
-    let tag = match &res { Value::Assoc(m) => m.get("tag").and_then(|v| match v { Value::String(s)=>Some(s.clone()), Value::Symbol(s)=>Some(s.clone()), _=>None }), _ => None };
+    if !is_failure(&res) {
+        return res;
+    }
+    let tag = match &res {
+        Value::Assoc(m) => m.get("tag").and_then(|v| match v {
+            Value::String(s) => Some(s.clone()),
+            Value::Symbol(s) => Some(s.clone()),
+            _ => None,
+        }),
+        _ => None,
+    };
     let handlers = ev.eval(args[1].clone());
     // Assoc form: <| tag -> handlerOrValue, _ -> default |> (existing)
     let (mut handler_opt, mut default_opt) = match &handlers {
@@ -342,21 +447,32 @@ fn catch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let d = m.get("_").cloned().or_else(|| m.get("Default").cloned());
             (h, d)
         }
-        _ => (None, None)
+        _ => (None, None),
     };
     // List of Rule[tag, handler] with optional Rule["_", default]
     if handler_opt.is_none() && default_opt.is_none() {
         if let Value::List(items) = handlers.clone() {
             for it in items {
                 if let Value::Expr { head, args } = it {
-                    if matches!(&*head, Value::Symbol(s) if s=="Rule") && args.len()==2 {
+                    if matches!(&*head, Value::Symbol(s) if s=="Rule") && args.len() == 2 {
                         let lhs = &args[0];
                         let rhs = args[1].clone();
-                        let lhs_tag = match lhs { Value::String(s)=>Some(s.clone()), Value::Symbol(s)=>Some(s.clone()), _=>None };
+                        let lhs_tag = match lhs {
+                            Value::String(s) => Some(s.clone()),
+                            Value::Symbol(s) => Some(s.clone()),
+                            _ => None,
+                        };
                         if let Some(t) = &tag {
-                            if let Some(lt) = lhs_tag.as_ref() { if lt==t { handler_opt = Some(rhs); break; } }
+                            if let Some(lt) = lhs_tag.as_ref() {
+                                if lt == t {
+                                    handler_opt = Some(rhs);
+                                    break;
+                                }
+                            }
                         }
-                        if handler_opt.is_none() && matches!(lhs, Value::String(s) if s=="_") { default_opt = Some(rhs); }
+                        if handler_opt.is_none() && matches!(lhs, Value::String(s) if s=="_") {
+                            default_opt = Some(rhs);
+                        }
                     }
                 }
             }
@@ -372,29 +488,48 @@ fn catch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // Throw[tag, data?] => Failure assoc: <|message:"Failure", tag, data? |>
 fn throw_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return uneval("Throw", args); }
-    let tag = match &args[0] { Value::String(s)|Value::Symbol(s) => s.clone(), other => format!("{:?}", other) };
+    if args.is_empty() {
+        return uneval("Throw", args);
+    }
+    let tag = match &args[0] {
+        Value::String(s) | Value::Symbol(s) => s.clone(),
+        other => format!("{:?}", other),
+    };
     let mut m = std::collections::HashMap::new();
     m.insert("message".into(), Value::String("Failure".into()));
     m.insert("tag".into(), Value::String(tag));
-    if args.len() >= 2 { m.insert("data".into(), args[1].clone()); }
+    if args.len() >= 2 {
+        m.insert("data".into(), args[1].clone());
+    }
     Value::Assoc(m)
 }
 
 // Finally[expr, finalizer] => runs finalizer regardless and returns expr result
 fn finally_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return uneval("Finally", args); }
+    if args.len() != 2 {
+        return uneval("Finally", args);
+    }
     let res = ev.eval(args[0].clone());
     match &args[1] {
-        Value::PureFunction { .. } => { let _ = ev.eval(Value::expr(args[1].clone(), vec![res.clone()])); }
-        other => { let _ = ev.eval(other.clone()); }
+        Value::PureFunction { .. } => {
+            let _ = ev.eval(Value::expr(args[1].clone(), vec![res.clone()]));
+        }
+        other => {
+            let _ = ev.eval(other.clone());
+        }
     }
     res
 }
 
 // TryOr[expr, default] => value or default on failure
 fn try_or_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=2 { return uneval("TryOr", args); }
+    if args.len() != 2 {
+        return uneval("TryOr", args);
+    }
     let res = ev.eval(args[0].clone());
-    if is_failure(&res) { args[1].clone() } else { res }
+    if is_failure(&res) {
+        args[1].clone()
+    } else {
+        res
+    }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "lyra-docgen"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-core = { path = "../lyra-core" }
+serde_json = { workspace = true }

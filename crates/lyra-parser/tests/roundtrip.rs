@@ -12,17 +12,27 @@ fn roundtrip_ok(src: &str) {
 }
 
 #[test]
-fn rt_call() { roundtrip_ok("f[1,2,3]"); }
+fn rt_call() {
+    roundtrip_ok("f[1,2,3]");
+}
 
 #[test]
-fn rt_list() { roundtrip_ok("{1, 2, 3}"); }
+fn rt_list() {
+    roundtrip_ok("{1, 2, 3}");
+}
 
 // Association roundtrip disabled pending parser assoc fix
 #[test]
-fn rt_assoc() { roundtrip_ok("<|\"a\"->1, \"b\"->2|>"); }
+fn rt_assoc() {
+    roundtrip_ok("<|\"a\"->1, \"b\"->2|>");
+}
 
 #[test]
-fn rt_alternative() { roundtrip_ok("x_Integer | y_String"); }
+fn rt_alternative() {
+    roundtrip_ok("x_Integer | y_String");
+}
 
 #[test]
-fn rt_lambda() { roundtrip_ok("(x)=>Plus[x,1]"); }
+fn rt_lambda() {
+    roundtrip_ok("(x)=>Plus[x,1]");
+}

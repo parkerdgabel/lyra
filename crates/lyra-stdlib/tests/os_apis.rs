@@ -1,6 +1,6 @@
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
 use lyra_parser::Parser;
+use lyra_runtime::Evaluator;
 use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
@@ -39,4 +39,3 @@ fn process_smoke() {
         assert!(out.contains("hello"));
     }
 }
-

@@ -1,8 +1,13 @@
-use std::collections::HashMap;
 use crate::rule::RuleSet;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DefKind { Own, Down, Up, Sub }
+pub enum DefKind {
+    Own,
+    Down,
+    Up,
+    Sub,
+}
 
 #[derive(Debug, Default)]
 pub struct DefinitionStore {
@@ -13,7 +18,9 @@ pub struct DefinitionStore {
 }
 
 impl DefinitionStore {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn rules(&self, kind: DefKind, sym: &str) -> Option<&RuleSet> {
         match kind {
@@ -34,4 +41,3 @@ impl DefinitionStore {
         map.entry(sym.to_string()).or_insert_with(RuleSet::new)
     }
 }
-

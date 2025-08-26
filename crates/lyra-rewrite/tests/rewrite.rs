@@ -1,9 +1,15 @@
 use lyra_core::value::Value;
 use lyra_rewrite as rw;
 
-fn sym(s: &str) -> Value { Value::Symbol(s.into()) }
-fn int(n: i64) -> Value { Value::Integer(n) }
-fn call(h: &str, args: Vec<Value>) -> Value { Value::expr(sym(h), args) }
+fn sym(s: &str) -> Value {
+    Value::Symbol(s.into())
+}
+fn int(n: i64) -> Value {
+    Value::Integer(n)
+}
+fn call(h: &str, args: Vec<Value>) -> Value {
+    Value::expr(sym(h), args)
+}
 
 #[test]
 fn blank_and_namedblank_match() {
@@ -45,7 +51,8 @@ fn patterntest_evenq_default() {
 #[test]
 fn condition_with_ctx_predicate() {
     // Rule: Condition[x_, IsTwo[x]] -> 42, where IsTwo is evaluated via ctx
-    let lhs = call("Condition", vec![call("NamedBlank", vec![sym("x")]), call("IsTwo", vec![sym("x")])]);
+    let lhs =
+        call("Condition", vec![call("NamedBlank", vec![sym("x")]), call("IsTwo", vec![sym("x")])]);
     let rules = vec![(lhs, int(42))];
     let pred = |_pred: &Value, _arg: &Value| -> bool { true }; // unused
     let cond = |cond: &Value, binds: &rw::matcher::Bindings| -> bool {
@@ -53,7 +60,9 @@ fn condition_with_ctx_predicate() {
         if let Value::Expr { head, args } = cond {
             if matches!(**head, Value::Symbol(ref s) if s=="IsTwo") {
                 if let Some(Value::Symbol(xname)) = args.get(0) {
-                    if let Some(Value::Integer(n)) = binds.get(xname) { return *n == 2; }
+                    if let Some(Value::Integer(n)) = binds.get(xname) {
+                        return *n == 2;
+                    }
                 }
             }
         }
@@ -105,5 +114,7 @@ fn replace_all_like_over_list_with_typed_blank() {
                 _ => panic!("expected Power expr"),
             }
         }
-    } else { panic!("expected list") }
+    } else {
+        panic!("expected list")
+    }
 }

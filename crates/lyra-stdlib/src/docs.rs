@@ -1,0 +1,1059 @@
+use lyra_runtime::Evaluator;
+
+// Seed concise, human-facing summaries and param hints for common builtins.
+// These power REPL `?Symbol`, hover, and completion details via Documentation[].
+pub fn register_docs(ev: &mut Evaluator) {
+    // Core arithmetic
+    ev.set_doc("Plus", "Add numbers; Listable, Flat, Orderless.", &["a", "b", "…"]);
+    ev.set_doc("Times", "Multiply numbers; Listable, Flat, Orderless.", &["a", "b", "…"]);
+    ev.set_doc("Minus", "Subtract or unary negate.", &["a", "b?"]);
+    ev.set_doc("Divide", "Divide two numbers.", &["a", "b"]);
+    ev.set_doc("Power", "Exponentiation (right-associative in parser).", &["a", "b"]);
+    ev.set_doc_examples(
+        "Plus",
+        &["Plus[1, 2]  ==> 3", "Plus[1, 2, 3]  ==> 6", "Plus[{1,2,3}]  ==> {1,2,3} (Listable)"],
+    );
+    ev.set_doc_examples(
+        "Times",
+        &["Times[2, 3]  ==> 6", "Times[2, 3, 4]  ==> 24", "Times[{2,3}, 10]  ==> {20,30}"],
+    );
+    ev.set_doc_examples("Minus", &["Minus[5, 2]  ==> 3", "Minus[5]  ==> -5"]);
+    ev.set_doc_examples("Divide", &["Divide[6, 3]  ==> 2", "Divide[7, 2]  ==> 3.5"]);
+    ev.set_doc_examples("Power", &["Power[2, 8]  ==> 256", "2^3^2 parses as 2^(3^2)"]);
+
+    // Lists and mapping
+    ev.set_doc("Map", "Map a function over a list.", &["f", "list"]);
+    ev.set_doc("Thread", "Thread Sequence and lists into arguments.", &["expr"]);
+    ev.set_doc_examples("Map", &["Map[ToUpper, {\"a\", \"b\"}]  ==> {\"A\", \"B\"}", "Map[#^2 &, {1,2,3}]  ==> {1,4,9}"]);
+    ev.set_doc_examples(
+        "Thread",
+        &["Thread[f[{1,2}, {3,4}]]  ==> {f[1,3], f[2,4]}", "Thread[Plus[Sequence[{1,2},{3,4}]]]  ==> {4,6}"],
+    );
+
+    // Replacement rules
+    ev.set_doc("Replace", "Replace first match by rule(s).", &["expr", "rules"]);
+    ev.set_doc("ReplaceAll", "Replace all matches by rule(s).", &["expr", "rules"]);
+    ev.set_doc("ReplaceFirst", "Replace first element(s) matching pattern.", &["expr", "rule"]);
+    ev.set_doc_examples(
+        "ReplaceAll",
+        &["ReplaceAll[{1,2,1,3}, 1->9]  ==> {9,2,9,3}", "ReplaceAll[\"a-b-a\", \"a\"->\"x\"]  ==> \"x-b-x\""],
+    );
+    ev.set_doc_examples(
+        "Replace",
+        &["Replace[{1,2,1,3}, 1->9]  ==> {9,2,1,3}", "Replace[\"2024-08-01\", DigitCharacter.. -> \"#\"]"],
+    );
+
+    // Assignment and scoping
+    ev.set_doc("Set", "Assignment: Set[symbol, value].", &["symbol", "value"]);
+    ev.set_doc("Unset", "Clear definition: Unset[symbol].", &["symbol"]);
+    ev.set_doc("SetDelayed", "Delayed assignment evaluated on use.", &["symbol", "expr"]);
+    ev.set_doc("With", "Lexically bind symbols within a body.", &["<|vars|>", "body"]);
+    ev.set_doc_examples("Set", &["Set[x, 10]; x  ==> 10"]);
+    ev.set_doc_examples("Unset", &["Set[x, 10]; Unset[x]; x  ==> x"]);
+    ev.set_doc_examples("SetDelayed", &["SetDelayed[now, CurrentTime[]]; now  ==> 1690000000 (changes)"]);
+    ev.set_doc_examples("With", &["With[<|\"x\"->2|>, x^3]  ==> 8"]);
+
+    // Introspection and meta
+    ev.set_doc("Schema", "Return a minimal schema for a value/association.", &["value"]);
+    ev.set_doc("Explain", "Explain evaluation; returns trace steps when enabled.", &["expr"]);
+    ev.set_doc("DescribeBuiltins", "List builtins with attributes (and docs when available).", &[]);
+    ev.set_doc("Documentation", "Documentation card for a builtin.", &["name"]);
+    ev.set_doc_examples("Schema", &["Schema[<|\"a\"->1, \"b\"->\"x\"|>]  ==> <|a->Integer, b->String|>"]);
+    ev.set_doc_examples("Explain", &["Explain[Plus[1,2]]  ==> <|steps->...|>"]);
+
+    // Selected stdlib helpers (non-exhaustive; expand over time)
+    ev.set_doc("StringLength", "Length of string (Unicode scalar count).", &["s"]);
+    ev.set_doc("ToUpper", "Uppercase string.", &["s"]);
+    ev.set_doc("ToLower", "Lowercase string.", &["s"]);
+    ev.set_doc("StringJoin", "Concatenate list of parts.", &["parts"]);
+    ev.set_doc("Length", "Length of a list or string.", &["x"]);
+    ev.set_doc_examples("StringLength", &["StringLength[\"hello\"]  ==> 5"]);
+    ev.set_doc_examples("ToUpper", &["ToUpper[\"hi\"]  ==> \"HI\""]);
+    ev.set_doc_examples("ToLower", &["ToLower[\"Hello\"]  ==> \"hello\""]);
+    ev.set_doc_examples("StringJoin", &["StringJoin[{\"a\",\"b\",\"c\"}]  ==> \"abc\""]);
+    ev.set_doc_examples("Length", &["Length[{1,2,3}]  ==> 3", "Length[\"ok\"]  ==> 2"]);
+
+    // Logic and control
+    ev.set_doc("If", "Conditional: If[cond, then, else?] (held)", &["cond", "then", "else?"]);
+    ev.set_doc("When", "Evaluate body when condition is True (held)", &["cond", "body"]);
+    ev.set_doc("Unless", "Evaluate body when condition is False (held)", &["cond", "body"]);
+    ev.set_doc("Switch", "Multi-way conditional by equals (held)", &["expr", "rules…"]);
+    ev.set_doc("And", "Logical AND (short-circuit)", &["args…"]);
+    ev.set_doc("Or", "Logical OR (short-circuit)", &["args…"]);
+    ev.set_doc("Not", "Logical NOT", &["x"]);
+    ev.set_doc("MatchQ", "Pattern match predicate (held)", &["expr", "pattern"]);
+    ev.set_doc("PatternQ", "Is value a pattern? (held)", &["expr"]);
+    ev.set_doc("Equal", "Test equality across arguments", &["args…"]);
+    ev.set_doc("Less", "Strictly increasing sequence", &["args…"]);
+    ev.set_doc("LessEqual", "Non-decreasing sequence", &["args…"]);
+    ev.set_doc("Greater", "Strictly decreasing sequence", &["args…"]);
+    ev.set_doc("GreaterEqual", "Non-increasing sequence", &["args…"]);
+    ev.set_doc_examples("If", &["If[1<2, \"yes\", \"no\"]  ==> \"yes\""]);
+    ev.set_doc_examples("When", &["When[True, Print[\"ok\"]]"]);
+    ev.set_doc_examples("Unless", &["Unless[False, Print[\"ok\"]]"]);
+    ev.set_doc_examples("And", &["And[True, False]  ==> False"]);
+    ev.set_doc_examples("Or", &["Or[False, True]  ==> True"]);
+    ev.set_doc_examples("Not", &["Not[True]  ==> False"]);
+    ev.set_doc_examples("Equal", &["Equal[1,1,1]  ==> True"]);
+    ev.set_doc_examples("Less", &["Less[1,2,3]  ==> True"]);
+    ev.set_doc_examples("GreaterEqual", &["GreaterEqual[3,2,2]  ==> True"]);
+
+    // Functional
+    ev.set_doc("Apply", "Apply head to list elements: Apply[f, {…}]", &["f", "list"]);
+    ev.set_doc("Compose", "Compose functions left-to-right", &["f", "g", "…"]);
+    ev.set_doc("RightCompose", "Compose functions right-to-left", &["f", "g", "…"]);
+    ev.set_doc("Nest", "Nest function n times: Nest[f, x, n]", &["f", "x", "n"]);
+    ev.set_doc("NestList", "Nest and collect intermediate values", &["f", "x", "n"]);
+    ev.set_doc("FoldList", "Cumulative fold producing intermediates", &["f", "init", "list"]);
+    ev.set_doc("FixedPoint", "Iterate f until convergence", &["f", "x"]);
+    ev.set_doc("FixedPointList", "List of iterates until convergence", &["f", "x"]);
+    ev.set_doc("Through", "Through[{f,g}, x] applies each to x", &["fs", "x"]);
+    ev.set_doc("Identity", "Identity function: returns its argument", &["x"]);
+    ev.set_doc("ConstantFunction", "Constant function returning c", &["c"]);
+    ev.set_doc("Try", "Try body; capture failures (held)", &["body"]);
+    ev.set_doc("OnFailure", "Handle Failure values (held)", &["body", "handler"]);
+    ev.set_doc("Catch", "Catch a thrown value (held)", &["body"]);
+    ev.set_doc("Throw", "Throw a value for Catch", &["x"]);
+    ev.set_doc("Finally", "Ensure cleanup runs (held)", &["body", "cleanup"]);
+    ev.set_doc("TryOr", "Try body else default (held)", &["body", "default"]);
+    ev.set_doc_examples("Apply", &["Apply[Plus, {1,2,3}]  ==> 6"]);
+    ev.set_doc_examples("Compose", &["Compose[f,g][x]  ==> f[g[x]]"]);
+    ev.set_doc_examples("Nest", &["Nest[#*2 &, 1, 3]  ==> 8"]);
+    ev.set_doc_examples("FoldList", &["FoldList[Plus, 0, {1,2,3}]  ==> {0,1,3,6}"]);
+    ev.set_doc_examples("FixedPoint", &["FixedPoint[Cos, 1.0]  ==> 0.739... "]);
+    ev.set_doc_examples("Identity", &["Identity[42]  ==> 42"]);
+    ev.set_doc_examples("TryOr", &["TryOr[1/0, \"fallback\"]  ==> \"fallback\""]);
+
+    // Assoc
+    ev.set_doc("AssocGet", "Get value by key with optional default", &["assoc", "key", "default?"]);
+    ev.set_doc("AssocSet", "Set key to value (returns new assoc)", &["assoc", "key", "value"]);
+    ev.set_doc("AssocSelect", "Filter keys by predicate or list", &["assoc", "pred|keys"]);
+    ev.set_doc("AssocDelete", "Delete keys from association", &["assoc", "keys"]);
+    ev.set_doc("AssocDrop", "Drop keys and return remaining assoc", &["assoc", "keys"]);
+    ev.set_doc("AssocContainsKeyQ", "Does association contain key?", &["assoc", "key"]);
+    ev.set_doc("AssocInvert", "Invert mapping values -> list of keys", &["assoc"]);
+    ev.set_doc("AssocRenameKeys", "Rename keys by mapping or function", &["assoc", "map|f"]);
+    ev.set_doc("AssociationMap", "Map values with f[v]", &["f", "assoc"]);
+    ev.set_doc("AssociationMapKeys", "Map keys with f[k]", &["f", "assoc"]);
+    ev.set_doc("AssociationMapPairs", "Map over (k,v) pairs", &["f", "assoc"]);
+    ev.set_doc_examples("AssocGet", &["AssocGet[<|\"a\"->1|>, \"a\"]  ==> 1", "AssocGet[<||>, \"k\", 0]  ==> 0"]);
+    ev.set_doc_examples("AssocSet", &["AssocSet[<|\"a\"->1|>, \"b\", 2]  ==> <|\"a\"->1, \"b\"->2|>"]);
+    ev.set_doc_examples("AssociationMap", &["AssociationMap[ToUpper, <|\"a\"->\"x\"|>]  ==> <|\"a\"->\"X\"|>"]);
+
+    // Lists (common)
+    ev.set_doc("Range", "Create numeric range", &["a", "b", "step?"]);
+    ev.set_doc("Join", "Concatenate two lists", &["a", "b"]);
+    ev.set_doc("Reverse", "Reverse a list", &["list"]);
+    ev.set_doc("Flatten", "Flatten by levels (default 1)", &["list", "levels?"]);
+    ev.set_doc("Partition", "Partition into fixed-size chunks", &["list", "n", "step?"]);
+    ev.set_doc("Transpose", "Transpose list of lists", &["rows"]);
+    ev.set_doc("Filter", "Keep elements where pred[x] is True", &["pred", "list"]);
+    ev.set_doc("Reject", "Drop elements where pred[x] is True", &["pred", "list"]);
+    ev.set_doc("Any", "True if any matches (optionally with pred)", &["list", "pred?"]);
+    ev.set_doc("All", "True if all match (optionally with pred)", &["list", "pred?"]);
+    ev.set_doc("Find", "First element where pred[x]", &["pred", "list"]);
+    ev.set_doc("Position", "1-based index of first match", &["pred", "list"]);
+    ev.set_doc("Take", "Take first n (last if negative)", &["list", "n"]);
+    ev.set_doc("Drop", "Drop first n (last if negative)", &["list", "n"]);
+    ev.set_doc("TakeWhile", "Take while pred[x] holds", &["pred", "list"]);
+    ev.set_doc("DropWhile", "Drop while pred[x] holds", &["pred", "list"]);
+    ev.set_doc("Zip", "Zip two lists into pairs", &["a", "b"]);
+    ev.set_doc("Unzip", "Unzip pairs into two lists", &["pairs"]);
+    ev.set_doc("Sort", "Sort list by value", &["list"]);
+    ev.set_doc("Unique", "Stable deduplicate list", &["list"]);
+    ev.set_doc("Tally", "Counts by value (assoc)", &["list"]);
+    ev.set_doc("CountBy", "Counts by key function (assoc)", &["f", "list"]);
+    ev.set_doc("Reduce", "Fold list with function", &["f", "init?", "list"]);
+    ev.set_doc("Scan", "Prefix scan with function", &["f", "init?", "list"]);
+    ev.set_doc("MapIndexed", "Map with index (1-based)", &["f", "list"]);
+    ev.set_doc("Slice", "Slice list by start and length", &["list", "start", "len?"]);
+    ev.set_doc_examples("Range", &["Range[1, 5]  ==> {1,2,3,4,5}", "Range[0, 10, 2]  ==> {0,2,4,6,8,10}"]);
+    ev.set_doc_examples("Join", &["Join[{1,2},{3}]  ==> {1,2,3}"]);
+    ev.set_doc_examples("Flatten", &["Flatten[{{1},{2,3}}]  ==> {1,2,3}"]);
+    ev.set_doc_examples("Partition", &["Partition[{1,2,3,4}, 2]  ==> {{1,2},{3,4}}"]);
+    ev.set_doc_examples("Filter", &["Filter[OddQ, {1,2,3,4}]  ==> {1,3}"]);
+    ev.set_doc_examples("Reduce", &["Reduce[Plus, 0, {1,2,3}]  ==> 6"]);
+    ev.set_doc_examples("Scan", &["Scan[Plus, 0, {1,2,3}]  ==> {0,1,3,6}"]);
+    ev.set_doc_examples("MapIndexed", &["MapIndexed[({#1, #2} &), {10,20}]  ==> {{10,1},{20,2}}"]);
+    ev.set_doc_examples("Slice", &["Slice[{10,20,30,40}, 2, 2]  ==> {20,30}"]);
+
+    // Concurrency
+    ev.set_doc("Future", "Create a Future from an expression (held)", &["expr"]);
+    ev.set_doc("Await", "Wait for Future and return value", &["future"]);
+    ev.set_doc("ParallelMap", "Map in parallel over list", &["f", "list"]);
+    ev.set_doc("ParallelTable", "Evaluate list of expressions in parallel (held)", &["exprs"]);
+    ev.set_doc("MapAsync", "Map to Futures over list", &["f", "list"]);
+    ev.set_doc("Gather", "Await Futures in same structure", &["futures"]);
+    ev.set_doc("Cancel", "Request cooperative cancellation", &["future"]);
+    ev.set_doc("Scope", "Run body with resource limits (held)", &["opts", "body"]);
+    ev.set_doc("StartScope", "Start a managed scope (held)", &["opts", "body"]);
+    ev.set_doc("InScope", "Run body inside a scope (held)", &["scope", "body"]);
+    ev.set_doc("CancelScope", "Cancel running scope", &["scope"]);
+    ev.set_doc("EndScope", "End scope and release resources", &["scope"]);
+    ev.set_doc("ParallelEvaluate", "Evaluate expressions concurrently (held)", &["exprs", "opts?"]);
+    ev.set_doc("BoundedChannel", "Create bounded channel", &["n"]);
+    ev.set_doc("Send", "Send value to channel (held)", &["ch", "value"]);
+    ev.set_doc("Receive", "Receive value from channel", &["ch", "opts?"]);
+    ev.set_doc("CloseChannel", "Close channel", &["ch"]);
+    ev.set_doc("TrySend", "Non-blocking send (held)", &["ch", "value"]);
+    ev.set_doc("TryReceive", "Non-blocking receive", &["ch"]);
+    ev.set_doc("Actor", "Create actor with handler (held)", &["handler"]);
+    ev.set_doc("Tell", "Send message to actor (held)", &["actor", "msg"]);
+    ev.set_doc("Ask", "Request/response with actor (held)", &["actor", "msg"]);
+    ev.set_doc("StopActor", "Stop actor", &["actor"]);
+    ev.set_doc_examples("Future", &["f := Future[Range[1,1_000]]; Await[f]  ==> {1,2,...}"]);
+    ev.set_doc_examples("ParallelMap", &["ParallelMap[#^2 &, Range[1,4]]  ==> {1,4,9,16}"]);
+    ev.set_doc_examples("BoundedChannel", &["ch := BoundedChannel[2]; Send[ch, 1]; Receive[ch]  ==> 1"]);
+
+    // File system (core)
+    ev.set_doc("MakeDirectory", "Create a directory (Parents option)", &["path", "opts?"]);
+    ev.set_doc("Remove", "Remove a file or directory (Recursive option)", &["path", "opts?"]);
+    ev.set_doc("Copy", "Copy file or directory (Recursive option)", &["src", "dst", "opts?"]);
+    ev.set_doc("Move", "Move or rename a file/directory", &["src", "dst"]);
+    ev.set_doc("Touch", "Create file if missing (update mtime)", &["path"]);
+    ev.set_doc("Symlink", "Create a symbolic link", &["src", "dst"]);
+    ev.set_doc("Glob", "Expand glob pattern to matching paths", &["pattern"]);
+    ev.set_doc("ReadBytes", "Read entire file as bytes", &["path"]);
+    ev.set_doc("WriteBytes", "Write bytes to file", &["path", "bytes"]);
+    ev.set_doc_examples("Glob", &["Glob[\"**/*.lyra\"]  ==> {\"examples/app.lyra\", ...}"]);
+    ev.set_doc_examples("ReadBytes", &["ReadBytes[\"/etc/hosts\"]  ==> <byte list>"]);
+    ev.set_doc_examples("WriteBytes", &["WriteBytes[\"/tmp/x.bin\", {0,255}]  ==> \"/tmp/x.bin\""]);
+    ev.set_doc("TempFile", "Create a unique temporary file", &[]);
+    ev.set_doc("TempDir", "Create a unique temporary directory", &[]);
+    ev.set_doc(
+        "WatchDirectory",
+        "Watch directory and stream events (held)",
+        &["path", "handler", "opts?"],
+    );
+    ev.set_doc("CancelWatch", "Cancel a directory watch", &["token"]);
+
+    // I/O and paths (high-level; many also auto-seeded)
+    ev.set_doc("ReadFile", "Read entire file as string", &["path"]);
+    ev.set_doc("WriteFile", "Write stringified content to file", &["path", "content"]);
+    ev.set_doc("ReadLines", "Read file into list of lines", &["path"]);
+    ev.set_doc("FileExistsQ", "Does path exist?", &["path"]);
+    ev.set_doc("ListDirectory", "List names in directory", &["path"]);
+    ev.set_doc("Stat", "Basic file metadata as assoc", &["path"]);
+    ev.set_doc("PathJoin", "Join path segments", &["parts"]);
+    ev.set_doc("PathSplit", "Split path into parts", &["path"]);
+    ev.set_doc("CanonicalPath", "Resolve symlinks and normalize", &["path"]);
+    ev.set_doc("ExpandPath", "Expand ~ and env vars", &["path"]);
+    ev.set_doc("PathNormalize", "Normalize path separators", &["path"]);
+    ev.set_doc("PathRelative", "Relative path from base", &["base", "path"]);
+    ev.set_doc("PathResolve", "Resolve against base directory", &["base", "path"]);
+    ev.set_doc("CurrentDirectory", "Get current working directory", &[]);
+    ev.set_doc("SetDirectory", "Change current working directory", &["path"]);
+    ev.set_doc("Basename", "Filename without directories", &["path"]);
+    ev.set_doc("Dirname", "Parent directory path", &["path"]);
+    ev.set_doc("FileStem", "Filename without extension", &["path"]);
+    ev.set_doc("FileExtension", "File extension (no dot)", &["path"]);
+
+    // Process execution
+    ev.set_doc("Run", "Run a process and capture output", &["cmd", "args?", "opts?"]);
+    ev.set_doc("Which", "Resolve command path from PATH", &["cmd"]);
+    ev.set_doc("CommandExistsQ", "Does a command exist in PATH?", &["cmd"]);
+    ev.set_doc("Popen", "Spawn process and return handle", &["cmd", "args?", "opts?"]);
+    ev.set_doc("WriteProcess", "Write to process stdin", &["proc", "data"]);
+    ev.set_doc("ReadProcess", "Read from process stdout/stderr", &["proc", "opts?"]);
+    ev.set_doc("WaitProcess", "Wait for process to exit", &["proc"]);
+    ev.set_doc("KillProcess", "Send signal to process", &["proc", "signal?"]);
+    ev.set_doc("Pipe", "Compose processes via pipes", &["cmds"]);
+
+    // Time & scheduling
+    ev.set_doc("NowMs", "Current UNIX time in milliseconds", &[]);
+    ev.set_doc("MonotonicNow", "Monotonic clock milliseconds since start", &[]);
+    ev.set_doc("Sleep", "Sleep for N milliseconds", &["ms"]);
+    ev.set_doc("DateTime", "Build/parse DateTime assoc (UTC)", &["spec"]);
+    ev.set_doc("DateParse", "Parse date/time string to epochMs", &["s"]);
+    ev.set_doc("DateFormat", "Format DateTime or epochMs to string", &["dt", "fmt?"]);
+    ev.set_doc("Duration", "Build Duration assoc from ms or fields", &["spec"]);
+    ev.set_doc("DurationParse", "Parse human duration (e.g., 1h30m)", &["s"]);
+    ev.set_doc("AddDuration", "Add duration to DateTime/epochMs", &["dt", "dur"]);
+    ev.set_doc("DiffDuration", "Difference between DateTimes", &["a", "b"]);
+    ev.set_doc("StartOf", "Start of unit (day/week/month)", &["dt", "unit"]);
+    ev.set_doc("EndOf", "End of unit (day/week/month)", &["dt", "unit"]);
+    ev.set_doc("TimeZoneConvert", "Convert DateTime to another timezone", &["dt", "tz"]);
+    ev.set_doc("ScheduleEvery", "Schedule recurring task (held)", &["ms", "body"]);
+    ev.set_doc("Cron", "Schedule with cron expression (held)", &["expr", "body"]);
+    ev.set_doc("CancelSchedule", "Cancel scheduled task", &["token"]);
+
+    // Logging
+    ev.set_doc("ConfigureLogging", "Configure log level/format/output", &["opts"]);
+    ev.set_doc("Log", "Emit a log message with level and meta", &["level", "msg", "meta?"]);
+    ev.set_doc(
+        "WithLogger",
+        "Add contextual metadata while evaluating body (held)",
+        &["meta", "body"],
+    );
+    ev.set_doc("SetLogLevel", "Set global log level", &["level"]);
+    ev.set_doc("GetLogger", "Get current logger configuration", &[]);
+}
+
+// Best-effort auto population from ToolsDescribe specs exposed by modules.
+// This sweeps all builtins and, when a spec exists, seeds the Evaluator docs registry.
+pub fn autoseed_from_tools(ev: &mut Evaluator) {
+    // Get names via DescribeBuiltins
+    let names = match ev.eval(lyra_core::value::Value::Expr {
+        head: Box::new(lyra_core::value::Value::Symbol("DescribeBuiltins".into())),
+        args: vec![],
+    }) {
+        lyra_core::value::Value::List(vs) => vs,
+        _ => vec![],
+    };
+    for v in names {
+        if let lyra_core::value::Value::Assoc(m) = v {
+            if let Some(lyra_core::value::Value::String(name)) = m.get("name") {
+                // Skip if already has a non-empty summary
+                if let Some((sum, _p)) = ev.get_doc(name) {
+                    if !sum.is_empty() {
+                        continue;
+                    }
+                }
+                // Ask ToolsDescribe; many modules publish specs via tool_spec! macros
+                let spec = ev.eval(lyra_core::value::Value::Expr {
+                    head: Box::new(lyra_core::value::Value::Symbol("ToolsDescribe".into())),
+                    args: vec![lyra_core::value::Value::String(name.clone())],
+                });
+                if let lyra_core::value::Value::Assoc(sm) = spec {
+                    let summary = match sm.get("summary") {
+                        Some(lyra_core::value::Value::String(s)) => s.clone(),
+                        _ => String::new(),
+                    };
+                    let params: Vec<String> = match sm.get("params") {
+                        Some(lyra_core::value::Value::List(vs)) => vs
+                            .iter()
+                            .filter_map(|x| match x {
+                                lyra_core::value::Value::String(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => vec![],
+                    };
+                    if !summary.is_empty() || !params.is_empty() {
+                        ev.set_doc(
+                            name,
+                            summary,
+                            &params.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                        );
+                    }
+                    if let Some(lyra_core::value::Value::List(vs)) = sm.get("examples") {
+                        let exs: Vec<String> = vs
+                            .iter()
+                            .filter_map(|x| match x {
+                                lyra_core::value::Value::String(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        if !exs.is_empty() {
+                            ev.set_doc_examples(
+                                name,
+                                &exs.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Additional broad coverage seeds for modules without inline tool specs.
+pub fn register_docs_extra(ev: &mut Evaluator) {
+    // Database (connections, SQL, cursors)
+    ev.set_doc("Connect", "Open database connection (mock/sqlite/duckdb)", &["dsn|opts"]);
+    ev.set_doc("Disconnect", "Close a database connection", &["conn"]);
+    ev.set_doc("Ping", "Check connectivity for a database connection", &["conn"]);
+    ev.set_doc("ListTables", "List tables on a connection", &["conn"]);
+    ev.set_doc(
+        "RegisterTable",
+        "Register in-memory rows as a table (mock)",
+        &["conn", "name", "rows"],
+    );
+    ev.set_doc("Table", "Reference a table as a Dataset", &["conn", "name"]);
+    ev.set_doc("SQL", "Run a SELECT query and return rows", &["conn", "sql", "params?"]);
+    ev.set_doc("Exec", "Execute DDL/DML (non-SELECT)", &["conn", "sql", "params?"]);
+    ev.set_doc("SQLCursor", "Run a query and return a cursor handle", &["conn", "sql", "params?"]);
+    ev.set_doc("Fetch", "Fetch next batch of rows from a cursor", &["cursor", "limit?"]);
+    ev.set_doc("Close", "Close a cursor", &["cursor"]);
+    ev.set_doc(
+        "InsertRows",
+        "Insert multiple rows (assoc list) into a table",
+        &["conn", "table", "rows"],
+    );
+    ev.set_doc(
+        "UpsertRows",
+        "Upsert rows (assoc list) into a table",
+        &["conn", "table", "rows", "keys?"],
+    );
+    ev.set_doc(
+        "WriteDataset",
+        "Write a Dataset into a table",
+        &["conn", "table", "dataset", "opts?"],
+    );
+    ev.set_doc("Begin", "Begin a transaction", &["conn"]);
+    ev.set_doc("Commit", "Commit the current transaction", &["conn"]);
+    ev.set_doc("Rollback", "Rollback the current transaction", &["conn"]);
+    // DB examples
+    ev.set_doc_examples("Connect", &["conn := Connect[\"mock://\"]", "Ping[conn]  ==> True"]);
+    ev.set_doc_examples(
+        "RegisterTable",
+        &[
+            "rows := {<|\"id\"->1, \"name\"->\"a\"|>, <|\"id\"->2, \"name\"->\"b\"|>}",
+            "conn := Connect[\"mock://\"]; RegisterTable[conn, \"t\", rows]  ==> True",
+        ],
+    );
+    ev.set_doc_examples("ListTables", &["ListTables[conn]  ==> {\"t\"}"]);
+    ev.set_doc_examples("Table", &["ds := Table[conn, \"t\"]; Head[ds,1]  ==> {<|...|>}"]);
+    ev.set_doc_examples("SQL", &["SQL[conn, \"SELECT * FROM t\"]  ==> Dataset[...] "]);
+    ev.set_doc_examples("Exec", &["Exec[conn, \"CREATE TABLE x(id INT)\"]  ==> <|Status->0|>"]);
+    ev.set_doc_examples("Begin", &["Begin[conn]; Exec[conn, \"INSERT ...\"]; Commit[conn]"]);
+
+    // Datasets (declarative transformations)
+    ev.set_doc("DatasetFromRows", "Create dataset from list of row assocs", &["rows"]);
+    ev.set_doc("Collect", "Materialize dataset rows as a list", &["ds", "limit?", "opts?"]);
+    ev.set_doc("Columns", "List column names for a dataset", &["ds"]);
+    ev.set_doc("DatasetSchema", "Describe schema for a dataset", &["ds"]);
+    ev.set_doc("ShowDataset", "Pretty-print a dataset table to string", &["ds", "opts?"]);
+    ev.set_doc("ReadCSVDataset", "Read a CSV file into a dataset", &["path", "opts?"]);
+    ev.set_doc("ReadJsonLinesDataset", "Read a JSONL file into a dataset", &["path", "opts?"]);
+    ev.set_doc("Select", "Select/compute columns", &["ds", "cols"]);
+    ev.set_doc("SelectCols", "Select subset of columns by name", &["ds", "cols"]);
+    ev.set_doc("RenameCols", "Rename columns via mapping", &["ds", "mapping"]);
+    ev.set_doc("FilterRows", "Filter rows by predicate (held)", &["ds", "pred"]);
+    ev.set_doc("LimitRows", "Limit number of rows", &["ds", "n"]);
+    ev.set_doc("Offset", "Skip first n rows", &["ds", "n"]);
+    ev.set_doc("Head", "Take first n rows", &["ds", "n"]);
+    ev.set_doc("Tail", "Take last n rows", &["ds", "n"]);
+    ev.set_doc("WithColumns", "Add/compute new columns (held)", &["ds", "defs"]);
+    ev.set_doc("GroupBy", "Group rows by key(s)", &["ds", "keys"]);
+    ev.set_doc("Agg", "Aggregate groups to single rows", &["ds", "aggs"]);
+    ev.set_doc("Sort", "Sort rows by columns", &["ds", "by", "opts?"]);
+    ev.set_doc("Distinct", "Drop duplicate rows (optionally by columns)", &["ds", "cols?"]);
+    ev.set_doc(
+        "DistinctOn",
+        "Keep one row per key with order policy",
+        &["ds", "keys", "orderBy?", "keepLast?"],
+    );
+    ev.set_doc("Join", "Join two datasets on keys", &["left", "right", "on", "how?"]);
+    ev.set_doc("Union", "Union multiple datasets (by columns)", &["inputs", "byColumns?"]);
+    ev.set_doc("Concat", "Concatenate datasets by rows (schema-union)", &["inputs"]);
+    ev.set_doc("ExplainDataset", "Inspect logical plan for a dataset", &["ds"]);
+    ev.set_doc("ExplainSQL", "Render SQL for pushdown-capable parts", &["ds"]);
+    ev.set_doc_examples("ReadCSVDataset", &["ds := ReadCSVDataset[\"people.csv\"]", "Head[ds, 3]  ==> {{...},{...},{...}}"]);
+    ev.set_doc_examples("Select", &["Select[ds, <|\"name\"->name, \"age2\"->age*2|>]  ==> ds'"]);
+    ev.set_doc_examples("FilterRows", &["FilterRows[ds, age > 30]  ==> ds'"]);
+    ev.set_doc_examples("GroupBy", &["GroupBy[ds, dept]  ==> grouped"]);
+    ev.set_doc_examples("Agg", &["Agg[grouped, <|\"n\"->Count[], \"avg\"->Mean[salary]|>]  ==> ds'"]);
+    ev.set_doc_examples("ExplainDataset", &["ExplainDataset[ds]  ==> <|plan->...|>"]);
+
+    // Containers
+    ev.set_doc("ConnectContainers", "Connect to container runtime", &["opts?"]);
+    ev.set_doc("DisconnectContainers", "Disconnect from container runtime", &[]);
+    ev.set_doc("RuntimeInfo", "Runtime version and info", &[]);
+    ev.set_doc("RuntimeCapabilities", "Supported features and APIs", &[]);
+    ev.set_doc("PullImage", "Pull an image", &["ref", "opts?"]);
+    ev.set_doc("BuildImage", "Build image from context", &["context", "opts?"]);
+    ev.set_doc("TagImage", "Tag an image", &["src", "dest"]);
+    ev.set_doc("PushImage", "Push an image to registry", &["ref", "opts?"]);
+    ev.set_doc("RemoveImage", "Remove local image", &["ref"]);
+    ev.set_doc("PruneImages", "Remove unused images", &["opts?"]);
+    ev.set_doc("SaveImage", "Save image to tar", &["ref", "path"]);
+    ev.set_doc("LoadImage", "Load image from tar", &["path"]);
+    ev.set_doc("ListImages", "List local images", &["opts?"]);
+    ev.set_doc("InspectImage", "Inspect image details", &["ref"]);
+    ev.set_doc("SearchImages", "Search registry images", &["query", "opts?"]);
+    ev.set_doc("InspectRegistryImage", "Inspect remote registry image", &["ref", "opts?"]);
+    ev.set_doc("ExportImages", "Export images to an archive", &["refs", "path"]);
+
+    ev.set_doc("CreateContainer", "Create a container", &["image", "opts?"]);
+    ev.set_doc("StartContainer", "Start a container", &["id"]);
+    ev.set_doc("StopContainer", "Stop a container", &["id", "opts?"]);
+    ev.set_doc("RestartContainer", "Restart a container", &["id"]);
+    ev.set_doc("RemoveContainer", "Remove a container", &["id", "opts?"]);
+    ev.set_doc("PauseContainer", "Pause a container", &["id"]);
+    ev.set_doc("UnpauseContainer", "Unpause a container", &["id"]);
+    ev.set_doc("RenameContainer", "Rename a container", &["id", "name"]);
+    ev.set_doc("ExecInContainer", "Run a command inside a container", &["id", "cmd", "opts?"]);
+    ev.set_doc("CopyToContainer", "Copy file/dir into container", &["id", "src", "dst"]);
+    ev.set_doc("CopyFromContainer", "Copy file/dir from container", &["id", "src", "dst"]);
+    ev.set_doc("InspectContainer", "Inspect container", &["id"]);
+    ev.set_doc("WaitContainer", "Wait for container to stop", &["id", "opts?"]);
+    ev.set_doc("ListContainers", "List containers", &["opts?"]);
+    ev.set_doc("Logs", "Stream container logs", &["id", "opts?"]);
+    ev.set_doc("Stats", "Stream container stats", &["id", "opts?"]);
+    ev.set_doc("Events", "Subscribe to runtime events", &["opts?"]);
+    ev.set_doc("ContainersFetch", "Fetch external resources for build", &["paths", "opts?"]);
+    ev.set_doc("ContainersClose", "Close open fetch handles", &[]);
+
+    ev.set_doc("ListVolumes", "List volumes", &[]);
+    ev.set_doc("CreateVolume", "Create volume", &["opts?"]);
+    ev.set_doc("RemoveVolume", "Remove volume", &["name"]);
+    ev.set_doc("InspectVolume", "Inspect volume", &["name"]);
+    ev.set_doc("ListNetworks", "List networks", &[]);
+    ev.set_doc("CreateNetwork", "Create network", &["opts?"]);
+    ev.set_doc("RemoveNetwork", "Remove network", &["name"]);
+    ev.set_doc("InspectNetwork", "Inspect network", &["name"]);
+    ev.set_doc("AddRegistryAuth", "Add registry credentials", &["server", "user", "password"]);
+    ev.set_doc("ListRegistryAuth", "List stored registry credentials", &[]);
+    ev.set_doc("ExplainContainers", "Explain container runtime configuration", &[]);
+    ev.set_doc("DescribeContainers", "Describe available container APIs", &[]);
+    ev.set_doc_examples("PullImage", &["PullImage[\"alpine:latest\"]  ==> <|id->..., size->...|>"]);
+    ev.set_doc_examples("CreateContainer", &["cid := CreateContainer[\"alpine\", <|\"cmd\"->\"echo hi\"|>]", "StartContainer[cid]"]);
+    ev.set_doc_examples("ExecInContainer", &["ExecInContainer[cid, {\"ls\", \"/\"}]  ==> <|code->0, out->..., err->...|>"]);
+
+    // Graphs
+    ev.set_doc("GraphCreate", "Create a graph handle", &["opts?"]);
+    ev.set_doc("DropGraph", "Drop a graph handle", &["graph"]);
+    ev.set_doc("GraphInfo", "Summary and counts for graph", &["graph"]);
+    ev.set_doc("AddNodes", "Add nodes by id and attributes", &["graph", "nodes"]);
+    ev.set_doc("UpsertNodes", "Insert or update nodes", &["graph", "nodes"]);
+    ev.set_doc("AddEdges", "Add edges with optional keys and weights", &["graph", "edges"]);
+    ev.set_doc("UpsertEdges", "Insert or update edges", &["graph", "edges"]);
+    ev.set_doc("RemoveNodes", "Remove nodes by id", &["graph", "ids"]);
+    ev.set_doc("RemoveEdges", "Remove edges by id or (src,dst,key)", &["graph", "edges"]);
+    ev.set_doc("ListNodes", "List nodes", &["graph", "opts?"]);
+    ev.set_doc("ListEdges", "List edges", &["graph", "opts?"]);
+    ev.set_doc("HasNode", "Does graph contain node?", &["graph", "id"]);
+    ev.set_doc("HasEdge", "Does graph contain edge?", &["graph", "spec"]);
+    ev.set_doc("Neighbors", "Neighbor node ids for a node", &["graph", "id", "opts?"]);
+    ev.set_doc("IncidentEdges", "Edges incident to a node", &["graph", "id", "opts?"]);
+    ev.set_doc("Subgraph", "Induced subgraph from node set", &["graph", "ids"]);
+    ev.set_doc("SampleNodes", "Sample k nodes uniformly", &["graph", "k"]);
+    ev.set_doc("SampleEdges", "Sample k edges uniformly", &["graph", "k"]);
+    ev.set_doc("BFS", "Breadth-first search order", &["graph", "start", "opts?"]);
+    ev.set_doc("DFS", "Depth-first search order", &["graph", "start", "opts?"]);
+    ev.set_doc("ShortestPaths", "Shortest path distances from start", &["graph", "start", "opts?"]);
+    ev.set_doc("ConnectedComponents", "Weakly connected components", &["graph"]);
+    ev.set_doc("StronglyConnectedComponents", "Strongly connected components", &["graph"]);
+    ev.set_doc("TopologicalSort", "Topologically sort DAG nodes", &["graph"]);
+    ev.set_doc("PageRank", "PageRank centrality scores", &["graph", "opts?"]);
+    ev.set_doc("DegreeCentrality", "Per-node degree centrality", &["graph"]);
+    ev.set_doc("ClosenessCentrality", "Per-node closeness centrality", &["graph"]);
+    ev.set_doc("LocalClustering", "Per-node clustering coefficient", &["graph"]);
+    ev.set_doc("GlobalClustering", "Global clustering coefficient", &["graph"]);
+    ev.set_doc("KCoreDecomposition", "K-core index per node", &["graph"]);
+    ev.set_doc("KCore", "Induced subgraph with k-core", &["graph", "k"]);
+    ev.set_doc("MinimumSpanningTree", "Edges in a minimum spanning tree", &["graph"]);
+    ev.set_doc("MaxFlow", "Maximum flow value and cut", &["graph", "src", "dst"]);
+    ev.set_doc_examples("GraphCreate", &["g := GraphCreate[]; AddNodes[g, {\"a\",\"b\"}]"]);
+    ev.set_doc_examples("AddEdges", &["AddEdges[g, {{\"a\",\"b\"}}]"]);
+    ev.set_doc_examples("BFS", &["BFS[g, \"a\"]  ==> {\"a\",\"b\"}"]);
+
+    // NDArray (numerical arrays)
+    ev.set_doc("NDArray", "Create NDArray from list/shape/data (held)", &["spec"]);
+    ev.set_doc("NDShape", "Shape of an NDArray", &["a"]);
+    ev.set_doc("NDReshape", "Reshape array to new shape", &["a", "shape"]);
+    ev.set_doc("NDTranspose", "Transpose array axes", &["a", "perm?"]);
+    ev.set_doc("NDPermuteDims", "Permute dimensions by order", &["a", "perm"]);
+    ev.set_doc("NDConcat", "Concatenate arrays along axis", &["arrays", "axis?"]);
+    ev.set_doc("NDSlice", "Slice array by ranges per axis", &["a", "slices"]);
+    ev.set_doc("NDMap", "Map function elementwise (held)", &["f", "a"]);
+    ev.set_doc("NDReduce", "Reduce over axes with function (held)", &["f", "a", "axes?"]);
+    ev.set_doc("NDMatMul", "Matrix multiply A x B", &["a", "b"]);
+    ev.set_doc("NDSum", "Sum over all elements or axes", &["a", "axes?"]);
+    ev.set_doc("NDMean", "Mean over all elements or axes", &["a", "axes?"]);
+    ev.set_doc("NDArgMax", "Argmax index per axis or flattened", &["a", "axis?"]);
+    ev.set_doc("NDType", "Element type (f64/i64/...) of array", &["a"]);
+    ev.set_doc("NDAsType", "Cast array to a new element type", &["a", "type"]);
+    ev.set_doc("NDAdd", "Elementwise addition with broadcast", &["a", "b"]);
+    ev.set_doc("NDSub", "Elementwise subtraction with broadcast", &["a", "b"]);
+    ev.set_doc("NDMul", "Elementwise multiplication with broadcast", &["a", "b"]);
+    ev.set_doc("NDDiv", "Elementwise division with broadcast", &["a", "b"]);
+    ev.set_doc("NDEltwise", "Apply custom elementwise op (held)", &["f", "a", "b?"]);
+    ev.set_doc("NDPow", "Elementwise exponentiation with broadcast", &["a", "b"]);
+    ev.set_doc("NDClip", "Clip array values to [min,max]", &["a", "min", "max"]);
+    ev.set_doc("NDRelu", "ReLU activation (max(0, x))", &["a"]);
+    ev.set_doc("NDExp", "Elementwise exp", &["a"]);
+    ev.set_doc("NDSqrt", "Elementwise sqrt", &["a"]);
+    ev.set_doc("NDLog", "Elementwise natural log", &["a"]);
+    ev.set_doc("NDSin", "Elementwise sin", &["a"]);
+    ev.set_doc("NDCos", "Elementwise cos", &["a"]);
+    ev.set_doc("NDTanh", "Elementwise tanh", &["a"]);
+    ev.set_doc_examples("NDArray", &["a := NDArray[<|\"shape\"->{2,2}, \"data\"->{1,2,3,4}|>]"]);
+    ev.set_doc_examples("NDShape", &["NDShape[a]  ==> {2,2}"]);
+    ev.set_doc_examples("NDMatMul", &["NDMatMul[NDArray[{{1,2},{3,4}}], NDArray[{{5,6},{7,8}}]]  ==> NDArray[...] "]);
+
+    // IO examples
+    ev.set_doc_examples("ReadFile", &["WriteFile[\"/tmp/x.txt\", \"hi\"]; ReadFile[\"/tmp/x.txt\"]  ==> \"hi\""]);
+    ev.set_doc_examples("WriteFile", &["WriteFile[\"/tmp/y.txt\", <|\"a\"->1|>]  ==> True"]);
+    ev.set_doc_examples("ReadLines", &["ReadLines[\"/etc/hosts\"]  ==> {\"127.0.0.1 localhost\", ...}"]);
+    ev.set_doc_examples("FileExistsQ", &["FileExistsQ[\"/etc/passwd\"]  ==> True"]);
+    ev.set_doc_examples("PathJoin", &["PathJoin[{\"/tmp\", \"dir\", \"file.txt\"}]  ==> \"/tmp/dir/file.txt\""]);
+    ev.set_doc_examples("Basename", &["Basename[\"/a/b/c.txt\"]  ==> \"c.txt\""]);
+    ev.set_doc_examples("ToJson", &["ToJson[<|\"a\"->1|>]  ==> \"{\\\"a\\\":1}\""]);
+    ev.set_doc_examples("FromJson", &["FromJson[\"{\\\"a\\\":1}\"]  ==> <|\"a\"->1|>"]);
+    ev.set_doc_examples("ParseCSV", &["ParseCSV[\"a,b\\n1,2\\n\"]  ==> {{\"a\",\"b\"},{\"1\",\"2\"}}"]);
+    ev.set_doc_examples("RenderCSV", &["RenderCSV[{{\"a\",\"b\"},{1,2}}]  ==> \"a,b\\n1,2\\n\""]);
+
+    // IO docs (terminal formatting and primitives)
+    ev.set_doc("Puts", "Write string to file (overwrite)", &["content", "path"]);
+    ev.set_doc("PutsAppend", "Append string to file", &["content", "path"]);
+    ev.set_doc("Gets", "Read entire stdin or file as string", &["path?"]);
+    ev.set_doc("TermSize", "Current terminal width/height", &[]);
+    ev.set_doc("AnsiStyle", "Style text with ANSI codes", &["text", "opts?"]);
+    ev.set_doc("AnsiEnabled", "Are ANSI colors enabled?", &[]);
+    ev.set_doc("StripAnsi", "Remove ANSI escape codes from string", &["text"]);
+    ev.set_doc("AlignLeft", "Pad right to width", &["text", "width", "pad?"]);
+    ev.set_doc("AlignRight", "Pad left to width", &["text", "width", "pad?"]);
+    ev.set_doc("AlignCenter", "Pad on both sides to center", &["text", "width", "pad?"]);
+    ev.set_doc("Truncate", "Truncate to width with ellipsis", &["text", "width", "ellipsis?"]);
+    ev.set_doc("Wrap", "Wrap text to width", &["text", "width"]);
+    ev.set_doc("TableSimple", "Render a simple table from rows", &["rows", "opts?"]);
+    ev.set_doc("Rule", "Format a rule (k->v) as a string", &["k", "v"]);
+    ev.set_doc("BoxText", "Draw a box around text", &["text", "opts?"]);
+    ev.set_doc("Columnize", "Align lines in columns", &["lines", "opts?"]);
+    ev.set_doc("PathExtname", "File extension without dot", &["path"]);
+    ev.set_doc_examples("Puts", &["Puts[\"hello\", \"/tmp/hi.txt\"]  ==> True"]);
+    ev.set_doc_examples("PutsAppend", &["PutsAppend[\"!\", \"/tmp/hi.txt\"]  ==> True"]);
+    ev.set_doc_examples("Gets", &["Gets[\"/tmp/hi.txt\"]  ==> \"hello!\""]);
+    ev.set_doc_examples("AnsiStyle", &["AnsiStyle[\"hi\", <|\"Color\"->\"green\", \"Bold\"->True|>]"]);
+    ev.set_doc_examples("AlignCenter", &["AlignCenter[\"ok\", 6, \"-\"]  ==> \"--ok--\""]);
+    ev.set_doc_examples("Truncate", &["Truncate[\"abcdef\", 4]  ==> \"abc…\""]);
+    ev.set_doc_examples("Wrap", &["Wrap[\"aaaa bbbb cccc\", 5]  ==> \"aaaa\\nbbbb\\ncccc\""]);
+
+    // Net examples
+    ev.set_doc_examples("HttpGet", &["HttpGet[\"https://example.com\"]  ==> <|\"Status\"->200, ...|>"]);
+    ev.set_doc_examples(
+        "Download",
+        &["Download[\"https://example.com\", \"/tmp/index.html\"]  ==> \"/tmp/index.html\""]);
+    ev.set_doc_examples(
+        "HttpServe",
+        &[
+            "srv := HttpServe[(req) => RespondText[\"ok\"], <|\"Port\"->0|>]",
+            "HttpServerAddr[srv]  ==> \"127.0.0.1:PORT\"",
+            "HttpServerStop[srv]",
+        ],
+    );
+
+    // Compression + Net docs sweep
+    // Compression
+    ev.set_doc("ZipCreate", "Create a .zip archive from files/directories.", &["dest", "inputs"]);
+    ev.set_doc_examples(
+        "ZipCreate",
+        &[
+            "ZipCreate[\"/tmp/bundle.zip\", {\"/tmp/a.txt\", \"/tmp/dir\"}]  ==> <|\"path\"->\"/tmp/bundle.zip\", ...|>",
+        ],
+    );
+    ev.set_doc("ZipExtract", "Extract a .zip archive into a directory.", &["src", "dest"]);
+    ev.set_doc_examples(
+        "ZipExtract",
+        &[
+            "ZipExtract[\"/tmp/bundle.zip\", \"/tmp/unzipped\"]  ==> <|\"path\"->\"/tmp/unzipped\", \"files\"->...|>",
+        ],
+    );
+    ev.set_doc("TarCreate", "Create a .tar (optionally .tar.gz) archive from inputs.", &["dest", "inputs", "opts?"]);
+    ev.set_doc_examples(
+        "TarCreate",
+        &[
+            "TarCreate[\"/tmp/bundle.tar\", {\"/tmp/data\"}]  ==> <|\"path\"->\"/tmp/bundle.tar\"|>",
+            "TarCreate[\"/tmp/bundle.tar.gz\", {\"/tmp/data\"}, <|\"Gzip\"->True|>]  ==> <|\"path\"->...|>",
+        ],
+    );
+    ev.set_doc("TarExtract", "Extract a .tar or .tar.gz archive into a directory.", &["src", "dest"]);
+    ev.set_doc_examples(
+        "TarExtract",
+        &[
+            "TarExtract[\"/tmp/bundle.tar\", \"/tmp/untar\"]  ==> <|\"path\"->\"/tmp/untar\"|>",
+        ],
+    );
+    ev.set_doc("Gzip", "Gzip-compress a string or a file; optionally write to path.", &["dataOrPath", "opts?"]);
+    ev.set_doc_examples(
+        "Gzip",
+        &[
+            "Gzip[\"hello\"]  ==> <compressed bytes as string>",
+            "Gzip[\"/tmp/a.txt\", <|\"Out\"->\"/tmp/a.txt.gz\"|>]  ==> <|\"path\"->\"/tmp/a.txt.gz\", \"bytes_written\"->...|>",
+        ],
+    );
+    ev.set_doc("Gunzip", "Gunzip-decompress a string or a .gz file; optionally write to path.", &["dataOrPath", "opts?"]);
+    ev.set_doc_examples(
+        "Gunzip",
+        &[
+            "Gunzip[Gzip[\"hello\"]]  ==> \"hello\"",
+            "Gunzip[\"/tmp/a.txt.gz\", <|\"Out\"->\"/tmp/a.txt\"|>]  ==> <|\"path\"->\"/tmp/a.txt\", \"bytes_written\"->...|>",
+        ],
+    );
+
+    // Net (streaming + caching + retry)
+    ev.set_doc(
+        "HttpStreamRequest",
+        "Start a streaming HTTP request; returns headers, status, and a stream handle.",
+        &["method", "url", "opts?"],
+    );
+    ev.set_doc_examples(
+        "HttpStreamRequest",
+        &[
+            "r := HttpStreamRequest[\"GET\", \"https://example.com/large.bin\"]",
+            "While[! Part[r2, \"done\"], r2 := HttpStreamRead[Part[r, \"stream\"], 8192]]",
+            "HttpStreamClose[Part[r, \"stream\"]]",
+        ],
+    );
+    ev.set_doc(
+        "HttpStreamRead",
+        "Read a chunk from a streaming HTTP handle; returns <|\"chunk\"->bytes, \"done\"->bool|>.",
+        &["streamId", "maxBytes?"],
+    );
+    ev.set_doc_examples(
+        "HttpStreamRead",
+        &[
+            "HttpStreamRead[handle, 16384]  ==> <|\"chunk\"->{...}, \"done\"->False|>",
+        ],
+    );
+    ev.set_doc("HttpStreamClose", "Close a streaming HTTP handle.", &["streamId"]);
+    ev.set_doc_examples("HttpStreamClose", &["HttpStreamClose[handle]  ==> True"]);
+
+    ev.set_doc(
+        "HttpDownloadCached",
+        "Download a URL to a file with ETag/TTL caching; returns path and bytes written.",
+        &["url", "path", "opts?"],
+    );
+    ev.set_doc_examples(
+        "HttpDownloadCached",
+        &[
+            "HttpDownloadCached[\"https://httpbin.org/get\", \"/tmp/get.json\", <|\"TtlMs\"->60000|>]  ==> <|\"path\"->..., \"from_cache\"->True|>",
+        ],
+    );
+    ev.set_doc(
+        "HttpRetry",
+        "Retry a generic HTTP request map until success or attempts exhausted.",
+        &["request", "opts?"],
+    );
+    ev.set_doc_examples(
+        "HttpRetry",
+        &[
+            "HttpRetry[<|\"Method\"->\"GET\", \"Url\"->\"https://example.com\"|>, <|\"Attempts\"->3, \"BackoffMs\"->200|>]  ==> <|\"status\"->200,...|>",
+        ],
+    );
+
+    // Process examples
+    ev.set_doc_examples("Run", &["Run[\"echo\", {\"hi\"}]  ==> <|\"Status\"->0, \"Stdout\"->\"hi\\n\",...|>"]);
+    ev.set_doc_examples("Which", &["Which[\"sh\"]  ==> \"/bin/sh\""]);
+    ev.set_doc_examples(
+        "Pipe",
+        &["Pipe[{{\"echo\",\"hello\"},{\"wc\",\"-c\"}}]  ==> <|\"Stdout\"->\"6\\n\"|>"]);
+
+    // Time examples
+    ev.set_doc_examples("NowMs", &["NowMs[]  ==> 1710000000000"]);
+    ev.set_doc_examples("Sleep", &["Sleep[100]  ==> Null"]);
+    ev.set_doc_examples(
+        "DateTime",
+        &["DateTime[\"2024-08-01T00:00:00Z\"]  ==> <|\"epochMs\"->...|>"]);
+    ev.set_doc_examples(
+        "DateFormat",
+        &["DateFormat[DateTime[<|\"Year\"->2024,\"Month\"->8,\"Day\"->1|>], \"%Y-%m-%d\"]  ==> \"2024-08-01\""]);
+    ev.set_doc_examples("DurationParse", &["DurationParse[\"2h30m\"]  ==> <|...|>"]);
+
+    // Logging examples
+    ev.set_doc_examples("ConfigureLogging", &["ConfigureLogging[<|\"Level\"->\"debug\"|>]  ==> True"]);
+    ev.set_doc_examples("Log", &["Log[\"info\", \"service started\", <|\"port\"->8080|>]  ==> True"]);
+    ev.set_doc_examples(
+        "WithLogger",
+        &["WithLogger[<|\"requestId\"->\"abc\"|>, Log[\"info\", \"ok\"]]  ==> True"],
+    );
+
+    // Image examples
+    ev.set_doc_examples(
+        "ImageCanvas",
+        &["png := ImageCanvas[<|\"Width\"->64, \"Height\"->64, \"Background\"->\"#ff0000\"|>]"]);
+    ev.set_doc_examples(
+        "ImageResize",
+        &["out := ImageResize[png, <|\"Width\"->32, \"Height\"->32|>]  ==> base64url"]);
+    ev.set_doc_examples("ImageInfo", &["ImageInfo[png]  ==> <|\"width\"->64, \"height\"->64|>"]);
+
+    // Audio examples
+    ev.set_doc_examples(
+        "AudioConvert",
+        &["wav := AudioConvert[<|\"Path\"->\"ding.mp3\"|>, \"wav\"]  ==> base64url"]);
+    ev.set_doc_examples("AudioInfo", &["AudioInfo[wav]  ==> <|\"sampleRate\"->..., \"channels\"->...|>"]);
+
+    // String and text utilities
+    ev.set_doc("StringQ", "Is value a string?", &["x"]);
+    ev.set_doc("StringChars", "Split string into list of characters", &["s"]);
+    ev.set_doc("StringFromChars", "Join list of characters into string", &["chars"]);
+    ev.set_doc("StringContains", "Does string contain substring?", &["s", "substr"]);
+    ev.set_doc("StringJoinWith", "Join strings with a separator", &["parts", "sep"]);
+    ev.set_doc("StringPadLeft", "Pad left to width with char", &["s", "width", "pad?"]);
+    ev.set_doc("StringPadRight", "Pad right to width with char", &["s", "width", "pad?"]);
+    ev.set_doc("StringRepeat", "Repeat string n times", &["s", "n"]);
+    ev.set_doc("StringReplace", "Replace all substring matches", &["s", "from", "to"]);
+    ev.set_doc("StringReplaceFirst", "Replace first substring match", &["s", "from", "to"]);
+    ev.set_doc("StringReverse", "Reverse characters in a string", &["s"]);
+    ev.set_doc("StringSlice", "Slice by start and optional length", &["s", "start", "len?"]);
+    ev.set_doc("StringSplit", "Split string by separator", &["s", "sep"]);
+    ev.set_doc("StringTrim", "Trim whitespace from both ends", &["s"]);
+    ev.set_doc("StringTrimLeft", "Trim from left", &["s"]);
+    ev.set_doc("StringTrimRight", "Trim from right", &["s"]);
+    ev.set_doc("StringTrimPrefix", "Remove prefix if present", &["s", "prefix"]);
+    ev.set_doc("StringTrimSuffix", "Remove suffix if present", &["s", "suffix"]);
+    ev.set_doc("StringTrimChars", "Trim characters from ends", &["s", "chars"]);
+    ev.set_doc("StringTruncate", "Truncate string to length", &["s", "len", "ellipsis?"]);
+    ev.set_doc("StringFormat", "Format using placeholders: {0}, {name}", &["fmt", "args"]);
+    ev.set_doc("StringFormatMap", "Format using map placeholders", &["fmt", "map"]);
+    ev.set_doc("StringInterpolate", "Interpolate ${var} from env or map", &["fmt", "map?"]);
+    ev.set_doc("StringInterpolateWith", "Interpolate with custom resolver", &["fmt", "resolver"]);
+    ev.set_doc("JoinLines", "Join list into lines with \n", &["lines"]);
+    ev.set_doc("SplitLines", "Split string on \n into lines", &["s"]);
+    ev.set_doc("CamelCase", "Convert to camelCase", &["s"]);
+    ev.set_doc("SnakeCase", "Convert to snake_case", &["s"]);
+    ev.set_doc("KebabCase", "Convert to kebab-case", &["s"]);
+    ev.set_doc("Slugify", "Slugify for URLs", &["s"]);
+    ev.set_doc("TitleCase", "Convert to Title Case", &["s"]);
+    ev.set_doc("Capitalize", "Capitalize first letter", &["s"]);
+    ev.set_doc("EqualsIgnoreCase", "Case-insensitive string equality", &["a", "b"]);
+    ev.set_doc_examples("StringChars", &["StringChars[\"abc\"]  ==> {\"a\",\"b\",\"c\"}"]);
+    ev.set_doc_examples("StringFromChars", &["StringFromChars[{\"a\",\"b\"}]  ==> \"ab\""]);
+    ev.set_doc_examples("StringContains", &["StringContains[\"hello\", \"ell\"]  ==> True"]);
+    ev.set_doc_examples("StringJoinWith", &["StringJoinWith[{\"a\",\"b\"}, \"-\"]  ==> \"a-b\""]);
+    ev.set_doc_examples("StringPadLeft", &["StringPadLeft[\"7\", 3, \"0\"]  ==> \"007\""]);
+    ev.set_doc_examples("StringReplace", &["StringReplace[\"foo bar\", \"o\", \"0\"]  ==> \"f00 bar\""]);
+    ev.set_doc_examples("StringReverse", &["StringReverse[\"abc\"]  ==> \"cba\""]);
+    ev.set_doc_examples("StringSplit", &["StringSplit[\"a,b,c\", \",\"]  ==> {\"a\",\"b\",\"c\"}"]);
+    ev.set_doc_examples("StringTrim", &["StringTrim[\"  hi  \"]  ==> \"hi\""]);
+    ev.set_doc_examples("CamelCase", &["CamelCase[\"hello world\"]  ==> \"helloWorld\""]);
+    ev.set_doc_examples("SnakeCase", &["SnakeCase[\"HelloWorld\"]  ==> \"hello_world\""]);
+    ev.set_doc_examples("KebabCase", &["KebabCase[\"HelloWorld\"]  ==> \"hello-world\""]);
+    ev.set_doc_examples("Slugify", &["Slugify[\"Hello, World!\"]  ==> \"hello-world\""]);
+    ev.set_doc_examples("TitleCase", &["TitleCase[\"hello world\"]  ==> \"Hello World\""]);
+
+    // Regex utilities
+    ev.set_doc("RegexIsMatch", "Test if regex matches string", &["s", "pattern"]);
+    ev.set_doc("RegexMatch", "Return first regex match", &["s", "pattern"]);
+    ev.set_doc("RegexFind", "Find first regex capture groups", &["s", "pattern"]);
+    ev.set_doc("RegexFindAll", "Find all regex capture groups", &["s", "pattern"]);
+    ev.set_doc("RegexReplace", "Replace matches using regex", &["s", "pattern", "repl"]);
+    ev.set_doc_examples("RegexIsMatch", &[r#"RegexIsMatch[\"abc123\", \"\\d+\"]  ==> True"#]);
+    ev.set_doc_examples("RegexFindAll", &[r#"RegexFindAll[\"a1 b22\", \"\\d+\"]  ==> {\"1\",\"22\"}"#]);
+
+    // URL utils
+    ev.set_doc("UrlEncode", "Percent-encode string for URLs", &["s"]);
+    ev.set_doc("UrlDecode", "Decode percent-encoded string", &["s"]);
+    ev.set_doc("UrlFormEncode", "application/x-www-form-urlencoded from assoc", &["params"]);
+    ev.set_doc("UrlFormDecode", "Parse form-encoded string to assoc", &["s"]);
+    ev.set_doc_examples("UrlEncode", &["UrlEncode[\"a b\"]  ==> \"a%20b\""]);
+    ev.set_doc_examples("UrlFormEncode", &["UrlFormEncode[<|\"a\"->\"b\"|>]  ==> \"a=b\""]);
+
+    // Math and stats
+    ev.set_doc("Sin", "Sine (radians)", &["x"]);
+    ev.set_doc("Cos", "Cosine (radians)", &["x"]);
+    ev.set_doc("Tan", "Tangent (radians)", &["x"]);
+    ev.set_doc("Exp", "Natural exponential e^x", &["x"]);
+    ev.set_doc("Sqrt", "Square root", &["x"]);
+    ev.set_doc("Log", "Natural logarithm", &["x"]);
+    ev.set_doc("Signum", "Sign of number (-1,0,1)", &["x"]);
+    ev.set_doc("Mod", "Modulo remainder ((a mod n) >= 0)", &["a", "n"]);
+    ev.set_doc("DivMod", "Quotient and remainder", &["a", "n"]);
+    ev.set_doc("Quotient", "Integer division quotient", &["a", "n"]);
+    ev.set_doc("Remainder", "Integer division remainder", &["a", "n"]);
+    ev.set_doc("Round", "Round to nearest integer", &["x"]);
+    ev.set_doc("Floor", "Largest integer <= x", &["x"]);
+    ev.set_doc("Ceiling", "Smallest integer >= x", &["x"]);
+    ev.set_doc("GCD", "Greatest common divisor", &["a", "b", "…"]);
+    ev.set_doc("LCM", "Least common multiple", &["a", "b", "…"]);
+    ev.set_doc("Factorial", "n! (product 1..n)", &["n"]);
+    ev.set_doc("Binomial", "Binomial coefficient nCk", &["n", "k"]);
+    ev.set_doc("Mean", "Arithmetic mean of list", &["list"]);
+    ev.set_doc("Median", "Median of list", &["list"]);
+    ev.set_doc("StandardDeviation", "Standard deviation of list", &["list"]);
+    ev.set_doc("Variance", "Variance of list", &["list"]);
+    ev.set_doc_examples("Mod", &["Mod[7, 3]  ==> 1"]);
+    ev.set_doc_examples("DivMod", &["DivMod[7, 3]  ==> {2, 1}"]);
+    ev.set_doc_examples("Round", &["Round[2.6]  ==> 3"]);
+    ev.set_doc_examples("GCD", &["GCD[18, 24]  ==> 6"]);
+    ev.set_doc_examples("LCM", &["LCM[6, 8]  ==> 24"]);
+    ev.set_doc_examples("Factorial", &["Factorial[5]  ==> 120"]);
+    ev.set_doc_examples("Binomial", &["Binomial[5, 2]  ==> 10"]);
+
+    // More math
+    ev.set_doc("ASin", "Arc-sine (inverse sine)", &["x"]);
+    ev.set_doc("ACos", "Arc-cosine (inverse cosine)", &["x"]);
+    ev.set_doc("ATan", "Arc-tangent (inverse tangent)", &["x"]);
+    ev.set_doc("ATan2", "Arc-tangent of y/x (quadrant aware)", &["y", "x"]);
+    ev.set_doc("Clip", "Clamp value to [min,max]", &["x", "min", "max"]);
+    ev.set_doc("Coalesce", "First non-null value", &["values…"]);
+    ev.set_doc_examples("Clip", &["Clip[10, 0, 5]  ==> 5"]);
+    ev.set_doc_examples("Coalesce", &["Coalesce[Null, 0, 42]  ==> 0"]);
+
+    // Collections: sets, stacks, queues, bags, priority queues
+    ev.set_doc("SetCreate", "Create a set from values", &["values"]);
+    ev.set_doc("SetInsert", "Insert value into set", &["set", "value"]);
+    ev.set_doc("SetRemove", "Remove value from set", &["set", "value"]);
+    ev.set_doc("SetMemberQ", "Is value a member of set?", &["set", "value"]);
+    ev.set_doc("SetEmptyQ", "Is set empty?", &["set"]);
+    ev.set_doc("SetSize", "Number of elements in set", &["set"]);
+    ev.set_doc("SetToList", "Convert set to list", &["set"]);
+    ev.set_doc("SetFromList", "Create set from list", &["list"]);
+    ev.set_doc("SetUnion", "Union of two sets", &["a", "b"]);
+    ev.set_doc("SetIntersection", "Intersection of two sets", &["a", "b"]);
+    ev.set_doc("SetDifference", "Elements in a not in b", &["a", "b"]);
+    ev.set_doc("SetEqualQ", "Are two sets equal?", &["a", "b"]);
+    ev.set_doc("SetSubsetQ", "Is a subset of b?", &["a", "b"]);
+    ev.set_doc("StackCreate", "Create a stack", &[]);
+    ev.set_doc("StackSize", "Size of a stack", &["stack"]);
+    ev.set_doc("StackEmptyQ", "Is stack empty?", &["stack"]);
+    ev.set_doc("Peek", "Peek top of stack/queue", &["handle"]);
+    ev.set_doc("Push", "Push onto stack", &["stack", "value"]);
+    ev.set_doc("Pop", "Pop from stack", &["stack"]);
+    ev.set_doc("QueueCreate", "Create a FIFO queue", &[]);
+    ev.set_doc("QueueSize", "Size of queue", &["queue"]);
+    ev.set_doc("QueueEmptyQ", "Is queue empty?", &["queue"]);
+    ev.set_doc("Enqueue", "Enqueue value", &["queue", "value"]);
+    ev.set_doc("Dequeue", "Dequeue value", &["queue"]);
+    ev.set_doc("BagCreate", "Create a multiset bag", &[]);
+    ev.set_doc("BagAdd", "Add item to bag", &["bag", "value"]);
+    ev.set_doc("BagRemove", "Remove one item from bag", &["bag", "value"]);
+    ev.set_doc("BagCount", "Count occurrences of value", &["bag", "value"]);
+    ev.set_doc("BagSize", "Total items in bag", &["bag"]);
+    ev.set_doc("BagUnion", "Union of two bags", &["a", "b"]);
+    ev.set_doc("BagIntersection", "Intersection of two bags", &["a", "b"]);
+    ev.set_doc("BagDifference", "Difference of two bags", &["a", "b"]);
+    ev.set_doc("PQCreate", "Create a priority queue", &[]);
+    ev.set_doc("PQInsert", "Insert with priority", &["pq", "priority", "value"]);
+    ev.set_doc("PQPeek", "Peek min (or max) priority", &["pq"]);
+    ev.set_doc("PQPop", "Pop min (or max) priority", &["pq"]);
+    ev.set_doc("PQSize", "Size of priority queue", &["pq"]);
+    ev.set_doc("PQEmptyQ", "Is priority queue empty?", &["pq"]);
+
+    // List utilities (set-like)
+    ev.set_doc("ListUnion", "Union of lists (dedup)", &["a", "b"]);
+    ev.set_doc("ListIntersection", "Intersection of lists", &["a", "b"]);
+    ev.set_doc("ListDifference", "Elements in a not in b", &["a", "b"]);
+
+    // Predicates (Q)
+    ev.set_doc("BooleanQ", "Is value Boolean?", &["x"]);
+    ev.set_doc("IntegerQ", "Is value an integer?", &["x"]);
+    ev.set_doc("RealQ", "Is value a real number?", &["x"]);
+    ev.set_doc("NumberQ", "Is value numeric (int/real)?", &["x"]);
+    ev.set_doc("ListQ", "Is value a list?", &["x"]);
+    ev.set_doc("AssocQ", "Is value an association (map)?", &["x"]);
+    ev.set_doc("SymbolQ", "Is value a symbol?", &["x"]);
+    ev.set_doc("PositiveQ", "Is number > 0?", &["x"]);
+    ev.set_doc("NegativeQ", "Is number < 0?", &["x"]);
+    ev.set_doc("NonNegativeQ", "Is number >= 0?", &["x"]);
+    ev.set_doc("NonPositiveQ", "Is number <= 0?", &["x"]);
+    ev.set_doc("NonEmptyQ", "Is list/string/assoc non-empty?", &["x"]);
+
+    // Counting
+    ev.set_doc("Count", "Count elements equal to value or matching predicate", &["list", "value|pred"]);
+    ev.set_doc_examples("Count", &["Count[{1,2,1,1}, 1]  ==> 3"]);
+
+    // Date/time helpers
+    ev.set_doc("DateDiff", "Difference between two DateTime in ms", &["a", "b"]);
+    ev.set_doc("ParseDate", "Parse date string into DateTime", &["s"]);
+    ev.set_doc("FormatDate", "Format DateTime with strftime pattern", &["dt", "fmt"]);
+
+    // CLI helpers
+    ev.set_doc("ArgsParse", "Parse CLI-like args to assoc", &["list"]);
+    ev.set_doc("Prompt", "Prompt user for input (TTY)", &["text", "opts?"]);
+    ev.set_doc("Confirm", "Ask yes/no question (TTY)", &["text", "opts?"]);
+    ev.set_doc("PasswordPrompt", "Prompt for password without echo", &["text", "opts?"]);
+    ev.set_doc_examples("Confirm", &["Confirm[\"Proceed?\"]  ==> True|False"]);
+
+    // JSON/HTML utils
+    ev.set_doc("JsonEscape", "Escape string for JSON", &["s"]);
+    ev.set_doc("JsonUnescape", "Unescape JSON-escaped string", &["s"]);
+    ev.set_doc("HtmlEscape", "Escape string for HTML", &["s"]);
+    ev.set_doc("HtmlUnescape", "Unescape HTML-escaped string", &["s"]);
+
+    // HTTP helpers (server)
+    ev.set_doc("Cors", "CORS middleware builder", &["opts"]);
+    ev.set_doc("CorsApply", "Apply CORS to request/response", &["cors", "req"]);
+    ev.set_doc("OpenApiGenerate", "Generate OpenAPI from routes", &["routes", "opts?"]);
+
+    // ---------------- Git ----------------
+    ev.set_doc("GitVersion", "Get git client version string", &[]);
+    ev.set_doc("GitRoot", "Path to repository root (Null if absent)", &[]);
+    ev.set_doc("GitInit", "Initialize a new git repository", &["opts?"]);
+    ev.set_doc("GitStatus", "Status (porcelain) with branch/ahead/behind/changes", &["opts?"]);
+    ev.set_doc("GitAdd", "Stage files for commit", &["paths", "opts?"]);
+    ev.set_doc("GitCommit", "Create a commit with message", &["message", "opts?"]);
+    ev.set_doc("GitCurrentBranch", "Current branch name", &[]);
+    ev.set_doc("GitBranchList", "List local branches", &[]);
+    ev.set_doc("GitBranchCreate", "Create a new branch", &["name", "opts?"]);
+    ev.set_doc("GitSwitch", "Switch to branch (optionally create)", &["name", "opts?"]);
+    ev.set_doc("GitDiff", "Diff against base and optional paths", &["opts?"]);
+    ev.set_doc("GitApply", "Apply a patch (or check only)", &["patch", "opts?"]);
+    ev.set_doc("GitLog", "List commits with formatting options", &["opts?"]);
+    ev.set_doc("GitRemoteList", "List remotes", &[]);
+    ev.set_doc("GitFetch", "Fetch from remote", &["remote?"]);
+    ev.set_doc("GitPull", "Pull from remote", &["remote?", "opts?"]);
+    ev.set_doc("GitPush", "Push to remote", &["opts?"]);
+    ev.set_doc("GitEnsureRepo", "Ensure Cwd is a git repo (init if needed)", &["opts?"]);
+    ev.set_doc("GitStatusSummary", "Summarize status counts and branch", &["opts?"]);
+    ev.set_doc("GitSmartCommit", "Stage + conventional commit (auto msg option)", &["opts?"]);
+    ev.set_doc("GitCreateFeatureBranch", "Create and switch to a feature branch", &["opts?"]);
+    ev.set_doc("GitSyncUpstream", "Fetch, rebase (or merge), and push upstream", &["opts?"]);
+    ev.set_doc_examples("GitVersion", &["GitVersion[]  ==> \"git version ...\""]);
+    ev.set_doc_examples("GitRoot", &["GitRoot[]  ==> \"/path/to/repo\" | Null"]);
+    ev.set_doc_examples("GitStatus", &["GitStatus[]  ==> <|Branch->..., Ahead->0, Behind->0, Changes->{...}|>"]);
+    ev.set_doc_examples("GitAdd", &["GitAdd[\"src/main.rs\"]  ==> True"]);
+    ev.set_doc_examples("GitCommit", &["GitCommit[\"feat: add api\"]  ==> <|Sha->..., Message->...|>"]);
+    ev.set_doc_examples("GitBranchCreate", &["GitBranchCreate[\"feature/x\"]  ==> True"]);
+    ev.set_doc_examples("GitSwitch", &["GitSwitch[\"feature/x\"]  ==> True"]);
+    ev.set_doc_examples("GitDiff", &["GitDiff[<|\"Base\"->\"HEAD~1\"|>]  ==> \"diff...\""]);
+    ev.set_doc_examples("GitLog", &["GitLog[<|\"Limit\"->5|>]  ==> {\"<sha>|<author>|...\", ...}"]);
+
+    // ---------------- Package ----------------
+    ev.set_doc("Using", "Load a package by name with import options", &["name", "opts?"]);
+    ev.set_doc("Unuse", "Unload a package; hide imported symbols", &["name"]);
+    ev.set_doc("ReloadPackage", "Reload a package", &["name"]);
+    ev.set_doc("WithPackage", "Temporarily add a path to $PackagePath", &["name", "expr"]);
+    ev.set_doc("BeginModule", "Start a module scope (record exports)", &["name"]);
+    ev.set_doc("EndModule", "End current module scope", &[]);
+    ev.set_doc("Export", "Mark symbol(s) as public", &["symbols"]);
+    ev.set_doc("Private", "Mark symbol(s) as private", &["symbols"]);
+    ev.set_doc("CurrentModule", "Current module path/name", &[]);
+    ev.set_doc("ModulePath", "Get module search path", &[]);
+    ev.set_doc("SetModulePath", "Set module search path", &["path"]);
+    ev.set_doc("PackageInfo", "Read package metadata (name, version, path)", &["name"]);
+    ev.set_doc("PackageVersion", "Read version from manifest", &["pkgPath"]);
+    ev.set_doc("PackagePath", "Get current $PackagePath", &[]);
+    ev.set_doc("ListInstalledPackages", "List packages available on $PackagePath", &[]);
+    ev.set_doc("NewPackage", "Scaffold a new package directory", &["name", "opts?"]);
+    ev.set_doc("NewModule", "Scaffold a new module file in a package", &["pkgPath", "name"]);
+    ev.set_doc("ImportedSymbols", "Assoc of package -> imported symbols", &[]);
+    ev.set_doc("LoadedPackages", "Assoc of loaded packages", &[]);
+    ev.set_doc("RegisterExports", "Register exports for a package (internal)", &["name", "exports"]);
+    ev.set_doc("PackageExports", "Get exports list for a package", &["name"]);
+    // PM stubs
+    ev.set_doc("BuildPackage", "Build a package (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("TestPackage", "Run package tests (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("LintPackage", "Lint a package (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("PackPackage", "Pack artifacts for distribution (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("GenerateSBOM", "Generate SBOM (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("SignPackage", "Sign package (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("PublishPackage", "Publish to registry (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("InstallPackage", "Install a package (requires lyra-pm)", &["name", "opts?"]);
+    ev.set_doc("UpdatePackage", "Update a package (requires lyra-pm)", &["name", "opts?"]);
+    ev.set_doc("RemovePackage", "Remove a package (requires lyra-pm)", &["name", "opts?"]);
+    ev.set_doc("LoginRegistry", "Login to package registry (requires lyra-pm)", &["opts?"]);
+    ev.set_doc("LogoutRegistry", "Logout from package registry (requires lyra-pm)", &["opts?"]);
+    ev.set_doc("WhoAmI", "Show current registry identity (requires lyra-pm)", &[]);
+    ev.set_doc("PackageAudit", "Audit dependencies (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc("PackageVerify", "Verify signatures (requires lyra-pm)", &["path?", "opts?"]);
+    ev.set_doc_examples("Using", &["Using[\"lyra/math\", <|\"Import\"->\"All\"|>]  ==> True"]);
+    ev.set_doc_examples("BeginModule", &["BeginModule[\"Main\"]  ==> \"Main\""]);
+    ev.set_doc_examples("Export", &["Export[{\"Foo\", \"Bar\"}]"]);
+    ev.set_doc_examples("NewPackage", &["NewPackage[<|\"Name\"->\"acme.tools\", \"Path\"->\"./packages\"|>]  ==> <|path->...|>"]);
+    ev.set_doc_examples("NewModule", &["NewModule[\"./packages/acme.tools\", \"Util\"]  ==> \".../src/Util.lyra\""]);
+
+    // ---------------- Project ----------------
+    ev.set_doc("ProjectDiscover", "Search upwards for project.lyra", &["start?"]);
+    ev.set_doc("ProjectRoot", "Return project root path (or Null)", &[]);
+    ev.set_doc("ProjectLoad", "Load and evaluate project.lyra (normalized)", &["root?"]);
+    ev.set_doc("ProjectInfo", "Summarize project (name, version, paths)", &["root?"]);
+    ev.set_doc("ProjectValidate", "Validate project manifest and structure", &["root?"]);
+    ev.set_doc("ProjectInit", "Initialize new project (scaffold)", &["path", "opts?"]);
+    ev.set_doc_examples("ProjectDiscover", &["ProjectDiscover[]  ==> \"/path/to/project\" | Null"]);
+    ev.set_doc_examples("ProjectInfo", &["ProjectInfo[]  ==> <|name->..., version->..., modules->...|>"]);
+
+    // ---------------- Workflow ----------------
+    ev.set_doc("Workflow", "Run a list of steps sequentially (held)", &["steps"]);
+    ev.set_doc_examples(
+        "Workflow",
+        &[
+            "Workflow[{Print[\"a\"], Print[\"b\"]}]  ==> {Null, Null}",
+            "Workflow[{<|\"name\"->\"echo\", \"run\"->Run[\"echo\", {\"hi\"}]|>}]  ==> {...}",
+        ],
+    );
+}
+
+// End of register_docs_extra

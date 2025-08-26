@@ -1,8 +1,12 @@
+#[cfg(feature = "tools")]
+use crate::tools::{add_specs, schema_object_value};
+#[cfg(feature = "tools")]
+use crate::{schema_bool, schema_int, tool_spec};
+#[cfg(feature = "tools")]
+use lyra_core::value::Value;
 use lyra_runtime::Evaluator;
-#[cfg(feature = "tools")] use crate::tools::{add_specs, schema_object_value};
-#[cfg(feature = "tools")] use crate::{tool_spec, schema_int, schema_bool};
-#[cfg(feature = "tools")] use lyra_core::value::Value;
-#[cfg(feature = "tools")] use std::collections::HashMap;
+#[cfg(feature = "tools")]
+use std::collections::HashMap;
 
 pub fn register_concurrency(ev: &mut Evaluator) {
     lyra_runtime::eval::register_concurrency(ev);
@@ -88,6 +92,6 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ]);
 }
 
-pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
+pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     lyra_runtime::eval::register_concurrency_filtered(ev, pred);
 }

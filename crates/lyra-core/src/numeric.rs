@@ -20,7 +20,9 @@ pub struct Complex<T> {
 }
 
 impl<T> Complex<T> {
-    pub fn new(re: T, im: T) -> Self { Self { re, im } }
+    pub fn new(re: T, im: T) -> Self {
+        Self { re, im }
+    }
 }
 
 // BigReal placeholder: actual big-float backend to be feature-gated in M2.
@@ -30,6 +32,7 @@ pub struct BigReal {
 }
 
 impl BigReal {
-    pub fn from_str(s: &str) -> Self { Self { digits: s.to_string() } }
+    pub fn from_str(s: &str) -> Self {
+        Self { digits: s.to_string() }
+    }
 }
-

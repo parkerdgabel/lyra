@@ -4,7 +4,11 @@ pub fn format_value(v: &Value) -> String {
     match v {
         Value::Integer(n) => n.to_string(),
         Value::Real(f) => {
-            if f.fract() == 0.0 { format!("{:.1}", f) } else { f.to_string() }
+            if f.fract() == 0.0 {
+                format!("{:.1}", f)
+            } else {
+                f.to_string()
+            }
         }
         Value::BigReal(s) => s.clone(),
         Value::Rational { num, den } => format!("{}/{}", num, den),
@@ -15,7 +19,13 @@ pub fn format_value(v: &Value) -> String {
         }
         Value::String(s) => format!("\"{}\"", s),
         Value::Symbol(s) => s.clone(),
-        Value::Boolean(b) => if *b { "True".into() } else { "False".into() },
+        Value::Boolean(b) => {
+            if *b {
+                "True".into()
+            } else {
+                "False".into()
+            }
+        }
         Value::List(items) => {
             let inner: Vec<String> = items.iter().map(format_value).collect();
             format!("{{{}}}", inner.join(", "))
@@ -23,7 +33,10 @@ pub fn format_value(v: &Value) -> String {
         Value::Assoc(map) => {
             let mut keys: Vec<&String> = map.keys().collect();
             keys.sort();
-            let parts: Vec<String> = keys.into_iter().map(|k| format!("\"{}\" -> {}", k, format_value(map.get(k).unwrap()))).collect();
+            let parts: Vec<String> = keys
+                .into_iter()
+                .map(|k| format!("\"{}\" -> {}", k, format_value(map.get(k).unwrap())))
+                .collect();
             format!("<|{}|>", parts.join(", "))
         }
         Value::Expr { head, args } => {
@@ -31,7 +44,10 @@ pub fn format_value(v: &Value) -> String {
             let a: Vec<String> = args.iter().map(format_value).collect();
             format!("{}[{}]", h, a.join(", "))
         }
-        Value::Slot(n) => match n { Some(k) => format!("#{}", k), None => "#".into() },
+        Value::Slot(n) => match n {
+            Some(k) => format!("#{}", k),
+            None => "#".into(),
+        },
         Value::PureFunction { params, body } => {
             if let Some(ps) = params {
                 let inside = ps.join(", ");

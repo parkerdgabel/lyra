@@ -13,5 +13,7 @@ bitflags::bitflags! {
 }
 
 impl Default for Attributes {
-    fn default() -> Self { Attributes::empty() }
+    fn default() -> Self {
+        Attributes::empty()
+    }
 }

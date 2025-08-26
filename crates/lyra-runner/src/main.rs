@@ -1,8 +1,8 @@
+use lyra_runtime::{set_default_registrar, Evaluator};
+use lyra_stdlib as stdlib;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
-use lyra_runtime::{Evaluator, set_default_registrar};
-use lyra_stdlib as stdlib;
 
 // This file is generated once; the KEEP list is injected by lyra-compiler build command
 // It should define: pub static KEEP: &[&str]
@@ -16,13 +16,15 @@ fn main() {
     if keep_only {
         set_default_registrar(|ev: &mut Evaluator| {
             let mut set: HashSet<&str> = HashSet::new();
-            for &s in KEEP.iter() { set.insert(s); }
+            for &s in KEEP.iter() {
+                set.insert(s);
+            }
             stdlib::register_selected(ev, &set);
         });
     } else {
         set_default_registrar(stdlib::register_all);
     }
-    if args.is_empty() || args.iter().any(|a| a=="-h"||a=="--help") {
+    if args.is_empty() || args.iter().any(|a| a == "-h" || a == "--help") {
         eprintln!("lyra-runner
 USAGE:
   lyra-runner [--keep-only] [--models mock|auto] --eval <expr>
@@ -40,24 +42,45 @@ OPTIONS:
     let mut models_mode: Option<String> = None;
     while i < args.len() {
         match args[i].as_str() {
-            "--keep-only" => { /* handled above; skip */ },
-            "--eval" => { i+=1; if i<args.len() { eval_src = Some(args[i].clone()); } },
-            "--file" => { i+=1; if i<args.len() { file = Some(PathBuf::from(&args[i])); } },
-            "--models" => { i+=1; if i<args.len() { models_mode = Some(args[i].clone()); } },
+            "--keep-only" => { /* handled above; skip */ }
+            "--eval" => {
+                i += 1;
+                if i < args.len() {
+                    eval_src = Some(args[i].clone());
+                }
+            }
+            "--file" => {
+                i += 1;
+                if i < args.len() {
+                    file = Some(PathBuf::from(&args[i]));
+                }
+            }
+            "--models" => {
+                i += 1;
+                if i < args.len() {
+                    models_mode = Some(args[i].clone());
+                }
+            }
             _ => {}
         }
-        i+=1;
+        i += 1;
     }
 
     let mut ev = Evaluator::new();
     // Ensure model mode is visible to stdlib (defaults to mock for offline safety)
-    ev.set_env("ModelsMode", lyra_core::value::Value::String(models_mode.unwrap_or_else(|| "mock".into())));
+    ev.set_env(
+        "ModelsMode",
+        lyra_core::value::Value::String(models_mode.unwrap_or_else(|| "mock".into())),
+    );
     if let Some(src) = eval_src {
         run_src(&mut ev, &src, None);
     } else if let Some(p) = file {
         match fs::read_to_string(&p) {
             Ok(src) => run_src(&mut ev, &src, Some(&p)),
-            Err(e) => { eprintln!("error: {}", e); std::process::exit(1); }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                std::process::exit(1);
+            }
         }
     } else {
         eprintln!("No input provided. Use --eval or --file.");
@@ -69,7 +92,9 @@ fn find_project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut p = Some(start);
     while let Some(cur) = p {
         let cand = cur.join("lyra.project");
-        if std::path::Path::new(&cand).exists() { return Some(cur.to_path_buf()); }
+        if std::path::Path::new(&cand).exists() {
+            return Some(cur.to_path_buf());
+        }
         p = cur.parent();
     }
     None
@@ -77,21 +102,43 @@ fn find_project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
 
 fn run_src(ev: &mut Evaluator, src: &str, file_path: Option<&std::path::Path>) {
     if let Some(p) = file_path {
-        let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join(p) };
+        let abs = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join(p)
+        };
         let dir = abs.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
-        ev.set_env("CurrentFile", lyra_core::value::Value::String(abs.to_string_lossy().to_string()));
-        ev.set_env("CurrentDir", lyra_core::value::Value::String(dir.to_string_lossy().to_string()));
+        ev.set_env(
+            "CurrentFile",
+            lyra_core::value::Value::String(abs.to_string_lossy().to_string()),
+        );
+        ev.set_env(
+            "CurrentDir",
+            lyra_core::value::Value::String(dir.to_string_lossy().to_string()),
+        );
         let root = find_project_root(&dir).unwrap_or(dir);
-        ev.set_env("ProjectRoot", lyra_core::value::Value::String(root.to_string_lossy().to_string()));
+        ev.set_env(
+            "ProjectRoot",
+            lyra_core::value::Value::String(root.to_string_lossy().to_string()),
+        );
     } else {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        ev.set_env("CurrentDir", lyra_core::value::Value::String(cwd.to_string_lossy().to_string()));
+        ev.set_env(
+            "CurrentDir",
+            lyra_core::value::Value::String(cwd.to_string_lossy().to_string()),
+        );
     }
     let mut parser = lyra_parser::Parser::from_source(src);
     match parser.parse_all() {
         Ok(exprs) => {
-            for e in exprs { let out = ev.eval(e); println!("{}", lyra_core::pretty::format_value(&out)); }
+            for e in exprs {
+                let out = ev.eval(e);
+                println!("{}", lyra_core::pretty::format_value(&out));
+            }
         }
-        Err(e) => { eprintln!("parse error: {:?}", e); std::process::exit(2); }
+        Err(e) => {
+            eprintln!("parse error: {:?}", e);
+            std::process::exit(2);
+        }
     }
 }

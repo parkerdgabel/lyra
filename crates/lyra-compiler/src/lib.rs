@@ -1,6 +1,6 @@
 pub mod analyzer;
-pub mod registry;
 pub mod manifest;
+pub mod registry;
 
-pub use analyzer::{Analyzer, AnalysisResult};
-pub use manifest::{Manifest, Capability};
+pub use analyzer::{AnalysisResult, Analyzer};
+pub use manifest::{Capability, Manifest};

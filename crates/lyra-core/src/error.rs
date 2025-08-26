@@ -11,4 +11,3 @@ pub enum LyraError {
     #[error("Runtime error: {0}")]
     Runtime(String),
 }
-

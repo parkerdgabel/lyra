@@ -1,8 +1,8 @@
-use lyra_parser::Parser;
-use lyra_runtime::Evaluator;
 use lyra_core::pretty::format_value;
-use lyra_stdlib as stdlib;
+use lyra_parser::Parser;
 use lyra_runtime::set_default_registrar;
+use lyra_runtime::Evaluator;
+use lyra_stdlib as stdlib;
 
 fn eval_one(src: &str) -> String {
     let mut p = Parser::from_source(src);
@@ -116,7 +116,10 @@ fn stdlib_string_templating() {
     // Format with positional args
     assert_eq!(eval_one("StringFormat[\"\\{0\\}-\\{1\\}\", {\"a\", 123}]"), "\"a-123\"");
     // Format with map
-    assert_eq!(eval_one("StringFormatMap[\"\\{a\\}:\\{b\\}\", <|\"a\"->1, \"b\"->\"x\"|>]"), "\"1:x\"");
+    assert_eq!(
+        eval_one("StringFormatMap[\"\\{a\\}:\\{b\\}\", <|\"a\"->1, \"b\"->\"x\"|>]"),
+        "\"1:x\""
+    );
 }
 
 #[test]
@@ -147,7 +150,10 @@ fn replace_first_in_list_on_items() {
 
 #[test]
 fn merge_with_combiner() {
-    assert_eq!(eval_one("Merge[<|\"a\"->1|>, <|\"a\"->10, \"b\"->2|>, (xs)=>Total[xs]]"), "<|\"a\" -> 11, \"b\" -> 2|>");
+    assert_eq!(
+        eval_one("Merge[<|\"a\"->1|>, <|\"a\"->10, \"b\"->2|>, (xs)=>Total[xs]]"),
+        "<|\"a\" -> 11, \"b\" -> 2|>"
+    );
 }
 
 #[test]
@@ -186,7 +192,8 @@ fn tools_dry_run_and_export_openai() {
     let _ = eval_one("ToolsRegister[<|\"id\"->\"net.http.get@1\", \"name\"->\"http.get\", \"impl\"->\"HttpGet\", \"params\"->{\"url\", \"retries\"}, \"summary\"->\"Fetch a URL\", \"tags\"->{\"http\", \"json\"}, \"effects\"->{\"net\"}, \"input_schema\"-><|\"type\"->\"object\", \"properties\"-><|\"url\"-><|\"type\"->\"string\"|>, \"retries\"-><|\"type\"->\"integer\"|>|>, \"required\"->{\"url\"}|> |>]");
 
     // Missing required "retries" should be ok (since only url required), but wrong type should fail
-    let res = eval_one("ToolsDryRun[\"net.http.get@1\", <|\"url\"->\"https://a\", \"retries\"->\"x\"|>]");
+    let res =
+        eval_one("ToolsDryRun[\"net.http.get@1\", <|\"url\"->\"https://a\", \"retries\"->\"x\"|>]");
     assert!(res.contains("\"ok\" -> False") || res.contains("\"ok\"->False"));
     assert!(res.contains("\"errors\""));
 
