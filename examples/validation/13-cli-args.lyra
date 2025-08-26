@@ -1,0 +1,12 @@
+(*
+  13-cli-args.lyra — CLI ArgsParse and simple options
+  Example: lyra-runner --file examples/validation/13-cli-args.lyra -- --name Ann --count 2
+  Everything after -- is passed to the script as argv.
+*)
+
+args := ArgsParse[{"--name", "--count"}];
+args;                                         (* show parsed assoc: <|Options->..., Flags->..., Rest->...|> *)
+
+name := Lookup[Part[args, "Options"], "name"];  (* string or Null *)
+greet := (n_) => "Hello, " <> n <> "!";
+greet[name];

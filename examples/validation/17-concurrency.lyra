@@ -1,0 +1,11 @@
+(*
+  17-concurrency.lyra — Futures, Await, ParallelMap (requires concurrency feature enabled)
+*)
+
+(* Future and Await *)
+f := Future[(#^2)&[21]];
+Await[f];                          (* => 441 *)
+
+(* ParallelMap over a small list *)
+ParallelMap[(#*2)&, {1,2,3}, <|"MaxThreads"->2|>];
+

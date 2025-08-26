@@ -19,6 +19,13 @@ pub fn register_functional(ev: &mut Evaluator) {
     ev.register("Through", through_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Identity", identity_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("ConstantFunction", constant_function_fn as NativeFn, Attributes::HOLD_ALL);
+    // Error handling helpers
+    ev.register("Try", try_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("OnFailure", on_failure_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Catch", catch_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Throw", throw_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Finally", finally_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("TryOr", try_or_fn as NativeFn, Attributes::HOLD_ALL);
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -65,6 +72,12 @@ pub fn register_functional_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->boo
     crate::register_if(ev, pred, "Through", through_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "Identity", identity_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "ConstantFunction", constant_function_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Try", try_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "OnFailure", on_failure_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Catch", catch_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Throw", throw_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "Finally", finally_fn as NativeFn, Attributes::HOLD_ALL);
+    crate::register_if(ev, pred, "TryOr", try_or_fn as NativeFn, Attributes::HOLD_ALL);
 }
 
 fn uneval(head: &str, args: Vec<Value>) -> Value {
@@ -279,4 +292,109 @@ fn constant_function_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len()!=1 { return uneval("ConstantFunction", args); }
     let c = ev.eval(args[0].clone());
     Value::pure_function(None, c)
+}
+
+fn is_failure(v: &Value) -> bool {
+    match v { Value::Assoc(m) => matches!(m.get("message"), Some(Value::String(s)) if s=="Failure" || s=="Time budget exceeded" || s=="Computation cancelled"), _ => false }
+}
+
+// Try[expr] => <|ok->True,value->v|> or <|ok->False,error->e|>
+// Try[expr, handlerOrDefault] => v on success; on failure: if handler is PureFunction then handler[e], else return handler as default
+fn try_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return uneval("Try", args); }
+    let res = ev.eval(args[0].clone());
+    if args.len() == 1 {
+        if is_failure(&res) { Value::assoc(vec![("ok", Value::Boolean(false)), ("error", res)]) }
+        else { Value::assoc(vec![("ok", Value::Boolean(true)), ("value", res)]) }
+    } else {
+        if is_failure(&res) {
+            match &args[1] {
+                Value::PureFunction { .. } => ev.eval(Value::expr(args[1].clone(), vec![res])),
+                other => other.clone(),
+            }
+        } else { res }
+    }
+}
+
+// OnFailure[expr, handlerOrDefault] => success: value; failure: handler[e] or default
+fn on_failure_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return uneval("OnFailure", args); }
+    let res = ev.eval(args[0].clone());
+    if is_failure(&res) {
+        match &args[1] {
+            Value::PureFunction { .. } => ev.eval(Value::expr(args[1].clone(), vec![res])),
+            other => other.clone(),
+        }
+    } else { res }
+}
+
+// Catch[expr, <|tag->handler, _->default|>] where handler is function or value
+fn catch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return uneval("Catch", args); }
+    let res = ev.eval(args[0].clone());
+    if !is_failure(&res) { return res; }
+    let tag = match &res { Value::Assoc(m) => m.get("tag").and_then(|v| match v { Value::String(s)=>Some(s.clone()), Value::Symbol(s)=>Some(s.clone()), _=>None }), _ => None };
+    let handlers = ev.eval(args[1].clone());
+    // Assoc form: <| tag -> handlerOrValue, _ -> default |> (existing)
+    let (mut handler_opt, mut default_opt) = match &handlers {
+        Value::Assoc(m) => {
+            let h = tag.clone().and_then(|t| m.get(&t).cloned());
+            let d = m.get("_").cloned().or_else(|| m.get("Default").cloned());
+            (h, d)
+        }
+        _ => (None, None)
+    };
+    // List of Rule[tag, handler] with optional Rule["_", default]
+    if handler_opt.is_none() && default_opt.is_none() {
+        if let Value::List(items) = handlers.clone() {
+            for it in items {
+                if let Value::Expr { head, args } = it {
+                    if matches!(&*head, Value::Symbol(s) if s=="Rule") && args.len()==2 {
+                        let lhs = &args[0];
+                        let rhs = args[1].clone();
+                        let lhs_tag = match lhs { Value::String(s)=>Some(s.clone()), Value::Symbol(s)=>Some(s.clone()), _=>None };
+                        if let Some(t) = &tag {
+                            if let Some(lt) = lhs_tag.as_ref() { if lt==t { handler_opt = Some(rhs); break; } }
+                        }
+                        if handler_opt.is_none() && matches!(lhs, Value::String(s) if s=="_") { default_opt = Some(rhs); }
+                    }
+                }
+            }
+        }
+    }
+    let chosen = handler_opt.or(default_opt);
+    match chosen {
+        Some(Value::PureFunction { .. }) => ev.eval(Value::expr(chosen.unwrap(), vec![res])),
+        Some(v) => v,
+        None => res,
+    }
+}
+
+// Throw[tag, data?] => Failure assoc: <|message:"Failure", tag, data? |>
+fn throw_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return uneval("Throw", args); }
+    let tag = match &args[0] { Value::String(s)|Value::Symbol(s) => s.clone(), other => format!("{:?}", other) };
+    let mut m = std::collections::HashMap::new();
+    m.insert("message".into(), Value::String("Failure".into()));
+    m.insert("tag".into(), Value::String(tag));
+    if args.len() >= 2 { m.insert("data".into(), args[1].clone()); }
+    Value::Assoc(m)
+}
+
+// Finally[expr, finalizer] => runs finalizer regardless and returns expr result
+fn finally_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return uneval("Finally", args); }
+    let res = ev.eval(args[0].clone());
+    match &args[1] {
+        Value::PureFunction { .. } => { let _ = ev.eval(Value::expr(args[1].clone(), vec![res.clone()])); }
+        other => { let _ = ev.eval(other.clone()); }
+    }
+    res
+}
+
+// TryOr[expr, default] => value or default on failure
+fn try_or_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return uneval("TryOr", args); }
+    let res = ev.eval(args[0].clone());
+    if is_failure(&res) { args[1].clone() } else { res }
 }

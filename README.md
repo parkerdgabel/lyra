@@ -530,6 +530,37 @@ Lyra includes several performance optimization strategies:
 ### Enterprise Integration
 - **Module System**: Dependency management and tree-shaking
 - **Package Manager**: Central repository for reusable components
+
+### Package Management (preview)
+
+Lyra includes early stdlib + CLI support to develop and consume packages ahead of the full `lyra-pm` resolver rollout.
+
+- Core stdlib APIs:
+  - `Using["name", <|Import->All|{sym..}, Except->{sym..}|>]` loads a package from `$PackagePath` and records effective imports.
+  - `Unuse["name"]` soft-unloads by unsetting imported symbols.
+  - `RegisterExports[<|name, exports|>]` declares a package’s public symbols; `PackageExports[name?]` queries them.
+  - `ImportedSymbols[name?]`, `LoadedPackages[]`, `ModulePath[]`, `SetModulePath[...]` for introspection and path control.
+
+- CLI `lyra-pm` (skeleton):
+  - Scaffolding: `lyra-pm new <name>`; `lyra-pm new-module <pkg-path> <name>`
+  - Path: `lyra-pm path` / `lyra-pm set-path <p1[,p2,...]>`
+  - Imports/exports: `lyra-pm register-exports <name> a,b`; `lyra-pm using <name> [--all] [--import a,b] [--except x,y]`; `lyra-pm imports <name>`; `lyra-pm exports <name>`; `lyra-pm loaded`
+  - JSON output: add `--json` (and `--pretty`) to any command for machine-friendly output.
+
+Example:
+
+```bash
+# Create a package and put current dir on search path
+lyra-pm new demo
+lyra-pm set-path .
+
+# Declare public API, then load and check imports
+lyra-pm register-exports demo A,B
+lyra-pm using demo --all --except B
+lyra-pm imports demo --json --pretty
+```
+
+Note: Build/publish/install commands are stubbed and return a Failure until the `lyra-pm` resolver lands (Phase 4). See docs/DESIGN.md §8/§14 for the plan.
 - **Foreign Function Interface**: Integration with existing C/C++/Python code
 - **Database Connectors**: Native support for PostgreSQL, MySQL, MongoDB
 

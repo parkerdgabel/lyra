@@ -1,0 +1,12 @@
+[package]
+name = "lyra-pm-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-parser = { path = "../lyra-parser" }
+lyra-core = { path = "../lyra-core" }
+

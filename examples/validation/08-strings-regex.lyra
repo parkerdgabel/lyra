@@ -1,0 +1,15 @@
+(*
+  08-strings-regex.lyra — String helpers and regex utils
+*)
+
+ToUpper["lyra"];                              (* => "LYRA" *)
+StringJoin[{"a","b","c"}];                  (* => "abc" *)
+StringJoinWith[",", {"a","b"}];              (* => "a,b" *)
+
+RegexIsMatch["ab123", "^ab\\d+"];             (* => True *)
+RegexFind["key:42", "\\d+"];                   (* => "42" *)
+RegexFindAll["a1b22c333", "\\d+"];             (* => {"1","22","333"} *)
+RegexReplace["a1b2", "\\d", "x"];              (* => "axb2" with global replacement per implementation *)
+
+FormatDate[1692931200];                        (* example epoch -> formatted date *)
+

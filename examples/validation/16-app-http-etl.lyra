@@ -1,0 +1,18 @@
+(*
+  16-app-http-etl.lyra — Mini ETL: fetch JSON via HTTP, transform, write CSV
+  Requires network. Writes output under target/tmp.
+*)
+
+tmp := "target/tmp/etl"; _ := Run["mkdir", "-p", tmp];
+url := "https://httpbin.org/json";
+
+raw := HttpDownloadCached[url, <|"Ttl"->60|>];
+data := JsonParse[raw];
+
+(* Project some fields if present; defensive Map *)
+items := Lookup[data, "slideshow"] // Lookup[#, "slides"] &;
+rows := Map[(<|"title"->Lookup[#, "title"], "type"->Lookup[#, "type"]|>)&, items];
+csv := RenderCSV[rows];
+out := tmp<>"/slides.csv"; WriteCSV[out, rows];
+out;
+

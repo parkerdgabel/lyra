@@ -1,0 +1,21 @@
+(*
+  05-rules-patterns.lyra — Patterns: blanks, named/typed blanks, PatternTest, Alternatives, Rule/Condition
+*)
+
+(* Basic ReplaceAll with rules *)
+{a,b,a,b} /. a -> 1;                      (* => {1,b,1,b} *)
+
+(* ReplaceRepeated to normalize until fixed point *)
+{a->b, b->c, c->c} //.
+  (x_ -> y_ /; x != y);                   (* => {c->c} *)
+
+(* Named blank and typed blank examples (type symbols are just symbols here) *)
+f[1] /. f[x_Integer] -> x + 1;            (* => 2 *)
+g["a"] /. g[x_String?RegexIsMatch[#, "^a"]&] -> "starts-with-a";  (* => "starts-with-a" *)
+
+(* Alternatives in patterns and expressions *)
+{h[a], h[b], h[c]} /. h[a|b] -> 0;        (* => {0,0,h[c]} *)
+
+(* Condition /; inside a rule *)
+{2,3,4} /. x_ /; x%2==0 -> x*10;          (* => {20,3,40} *)
+

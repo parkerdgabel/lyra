@@ -480,6 +480,10 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
             Value::Assoc(HashMap::from([ ("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("abc123".into())), ("pattern".into(), Value::String("[a-z]+\\d+".into())) ]))), ("result".into(), Value::Boolean(true)) ]))
         ]
     )); }
+    if names.contains("RegexIsMatch") { specs.push(tool_spec!(
+        "RegexIsMatch", summary: "Alias: regex match predicate", params: ["s","pattern"], tags: ["string","regex"],
+        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()) ], vec!["s".into(), "pattern".into()]), output_schema: schema_bool!()
+    )); }
     if names.contains("RegexFind") { specs.push(tool_spec!(
         "RegexFind", summary: "Find first regex match", params: ["s","pattern"], tags: ["string","regex"],
         input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("pattern".into(), schema_str!()) ], vec!["s".into(), "pattern".into()]), output_schema: schema_str!(), examples: [

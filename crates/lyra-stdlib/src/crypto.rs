@@ -37,6 +37,9 @@ pub fn register_crypto(ev: &mut Evaluator) {
     // JOSE (JWT)
     ev.register("JwtSign", jwt_sign as NativeFn, Attributes::empty());
     ev.register("JwtVerify", jwt_verify as NativeFn, Attributes::empty());
+    // UUIDs
+    ev.register("UuidV4", uuid_v4 as NativeFn, Attributes::empty());
+    ev.register("UuidV7", uuid_v7 as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -76,6 +79,8 @@ pub fn register_crypto_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
     register_if(ev, pred, "PasswordVerify", password_verify_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "JwtSign", jwt_sign as NativeFn, Attributes::empty());
     register_if(ev, pred, "JwtVerify", jwt_verify as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UuidV4", uuid_v4 as NativeFn, Attributes::empty());
+    register_if(ev, pred, "UuidV7", uuid_v7 as NativeFn, Attributes::empty());
 }
 
 fn failure(tag: &str, msg: &str) -> Value {
@@ -399,6 +404,19 @@ fn hmac_verify(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     } else { return Value::Boolean(false); };
     use subtle::ConstantTimeEq;
     Value::Boolean(mac.ct_eq(&sig).unwrap_u8() == 1)
+}
+
+// UUIDs
+fn uuid_v4(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("UuidV4".into())), args } }
+    let id = uuid::Uuid::new_v4();
+    Value::String(id.to_string())
+}
+
+fn uuid_v7(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("UuidV7".into())), args } }
+    let id = uuid::Uuid::now_v7();
+    Value::String(id.to_string())
 }
 
 // HKDF (SHA-256 / SHA-512)

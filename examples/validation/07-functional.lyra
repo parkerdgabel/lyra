@@ -1,0 +1,18 @@
+(*
+  07-functional.lyra — Apply, Map, FoldList, Nest, Compose, Try/Catch/Finally
+*)
+
+(* Apply and Map *)
+Apply[Times, {2,3,4}];                  (* => 24 *)
+Map[(#^2)&, {1,2,3}];                    (* => {1,4,9} *)
+
+(* FoldList and Nest *)
+FoldList[(#1+#2)&, 0, {1,2,3,4}];       (* => {0,1,3,6,10} *)
+Nest[(#*2)&, 3, 4];                      (* => 48 *)
+
+(* Compose pipelines *)
+Through[{ToUpper, ("X"<>#)&}, "ab"];     (* => {"AB", "Xab"} *)
+
+(* Try/Catch/Finally style *)
+Try[1/0, "oops"];                        (* => "oops" *)
+

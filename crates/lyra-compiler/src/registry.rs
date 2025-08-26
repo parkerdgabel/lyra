@@ -76,7 +76,13 @@ lazy_static! {
         }
 
         // Algebra, Math, Logic
-        for s in ["Plus","Times","Power","Minus","Divide","Max","Min","Abs"] { m.insert(s, E { features: &["math"], effects: &[] }); }
+        for s in [
+            "Plus","Times","Power","Minus","Divide","Max","Min","Abs",
+            "Floor","Ceiling","Round","Trunc","Mod","Quotient","Remainder","DivMod",
+            "Sqrt","Exp","Log","Sin","Cos","Tan","ASin","ACos","ATan","ATan2","NthRoot",
+            "Total","Mean","Median","Variance","StandardDeviation","GCD","LCM","Factorial","Binomial",
+            "Clip","Signum","ToDegrees","ToRadians",
+        ] { m.insert(s, E { features: &["math"], effects: &[] }); }
         for s in ["Simplify","Expand","ExpandAll","Factor","CollectTerms","CollectTermsBy","Solve","Roots","D","Apart","CancelRational"] { m.insert(s, E { features: &["algebra"], effects: &[] }); }
         for s in ["And","Or","Not","Equal","Less","LessEqual","Greater","GreaterEqual","If","Switch","When","Unless","EvenQ","OddQ"] { m.insert(s, E { features: &["logic"], effects: &[] }); }
 
@@ -94,6 +100,20 @@ lazy_static! {
         for s in ["FuzzyFindInList","FuzzyFindInText"] { m.insert(s, E { features: &["text_fuzzy"], effects: &[] }); }
         for s in ["FuzzyFindInFiles"] { m.insert(s, E { features: &["text_fuzzy"], effects: &["fs"] }); }
         for s in ["IndexCreate","IndexAdd","IndexSearch","IndexInfo"] { m.insert(s, E { features: &["text_index"], effects: &["db","fs"] }); }
+
+        // Package management (stdlib shims)
+        for s in [
+            "Unuse","ReloadPackage","WithPackage","BeginModule","EndModule","Export","Private","CurrentModule","ModulePath","SetModulePath","PackageVersion","PackagePath","ImportedSymbols","LoadedPackages","RegisterExports","PackageExports",
+        ] { m.insert(s, E { features: &["package"], effects: &[] }); }
+        for s in [
+            "Using","PackageInfo","ListInstalledPackages","NewPackage","NewModule",
+        ] { m.insert(s, E { features: &["package"], effects: &["fs"] }); }
+        for s in [
+            "BuildPackage","TestPackage","LintPackage","PackPackage","GenerateSBOM","SignPackage","UpdatePackage","RemovePackage","PackageVerify",
+        ] { m.insert(s, E { features: &["package"], effects: &["fs"] }); }
+        for s in [
+            "PublishPackage","InstallPackage","LoginRegistry","LogoutRegistry","WhoAmI","PackageAudit",
+        ] { m.insert(s, E { features: &["package"], effects: &["net"] }); }
 
         // Collections
         for s in [

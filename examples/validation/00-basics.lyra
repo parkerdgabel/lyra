@@ -1,0 +1,23 @@
+(*
+  00-basics.lyra — Core literals, operators, grouping, comments
+  Run: lyra-runner --file examples/validation/00-basics.lyra
+*)
+
+(* Numbers and arithmetic precedence *)
+1 + 2 * 3;            (* => 7 *)
+(1 + 2) * 3;          (* => 9 *)
+2 ^ 3 ^ 2;            (* right-assoc => 512 *)
+
+(* Booleans and comparisons *)
+True && False;        (* => False *)
+True || False;        (* => True *)
+1 == 1;               (* => True *)
+1 != 2;               (* => True *)
+2 < 3 && 3 >= 3;      (* => True *)
+
+(* Grouping and semicolons (multiple expressions) *)
+(1 + 2); (3 + 4);     (* prints 3 then 7 *)
+
+(* Comments: (* nested comment style *) *)
+42;                   (* => 42 *)
+

@@ -22,6 +22,23 @@ pub fn register_logic(ev: &mut Evaluator) {
     ev.register("Not", not_fn as NativeFn, Attributes::empty());
     ev.register("EvenQ", even_q as NativeFn, Attributes::LISTABLE);
     ev.register("OddQ", odd_q as NativeFn, Attributes::LISTABLE);
+    ev.register("MatchQ", match_q as NativeFn, Attributes::HOLD_ALL);
+    ev.register("PatternQ", pattern_q as NativeFn, Attributes::HOLD_ALL);
+    // General predicates
+    ev.register("NumberQ", number_q as NativeFn, Attributes::empty());
+    ev.register("IntegerQ", integer_q as NativeFn, Attributes::empty());
+    ev.register("RealQ", real_q as NativeFn, Attributes::empty());
+    ev.register("StringQ", string_q as NativeFn, Attributes::empty());
+    ev.register("BooleanQ", boolean_q as NativeFn, Attributes::empty());
+    ev.register("SymbolQ", symbol_q as NativeFn, Attributes::empty());
+    ev.register("ListQ", list_q as NativeFn, Attributes::empty());
+    ev.register("AssocQ", assoc_q as NativeFn, Attributes::empty());
+    ev.register("EmptyQ", empty_q as NativeFn, Attributes::empty());
+    ev.register("NonEmptyQ", nonempty_q as NativeFn, Attributes::empty());
+    ev.register("PositiveQ", positive_q as NativeFn, Attributes::empty());
+    ev.register("NegativeQ", negative_q as NativeFn, Attributes::empty());
+    ev.register("NonPositiveQ", nonpositive_q as NativeFn, Attributes::empty());
+    ev.register("NonNegativeQ", nonnegative_q as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -53,6 +70,22 @@ pub fn register_logic_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
     register_if(ev, pred, "Not", not_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "EvenQ", even_q as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "OddQ", odd_q as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "MatchQ", match_q as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "PatternQ", pattern_q as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "NumberQ", number_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "IntegerQ", integer_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RealQ", real_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "StringQ", string_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BooleanQ", boolean_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SymbolQ", symbol_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ListQ", list_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "AssocQ", assoc_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "EmptyQ", empty_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NonEmptyQ", nonempty_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PositiveQ", positive_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NegativeQ", negative_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NonPositiveQ", nonpositive_q as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NonNegativeQ", nonnegative_q as NativeFn, Attributes::empty());
 }
 
 fn equal(_ev: &mut Evaluator, args: Vec<Value>) -> Value { Value::Boolean(args.windows(2).all(|w| w[0]==w[1])) }
@@ -93,6 +126,99 @@ fn odd_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         [other] => Value::Boolean(matches!(other, Value::List(_)) == false && false),
         _ => Value::Expr { head: Box::new(Value::Symbol("OddQ".into())), args },
     }
+}
+
+fn match_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("MatchQ".into())), args } }
+    let expr = ev.eval(args[0].clone());
+    let pat = args[1].clone(); // pattern is held (not evaluated)
+    // Build matcher ctx that can evaluate PatternTest and Condition using current env
+    let env_snapshot = ev.env_keys().into_iter().map(|k| (k.clone(), ev.eval(Value::Symbol(k)))).collect::<std::collections::HashMap<String, Value>>();
+    let pred = |pred: &Value, arg: &Value| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+        matches!(ev2.eval(call), Value::Boolean(true))
+    };
+    let condf = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+        matches!(ev2.eval(cond_sub), Value::Boolean(true))
+    };
+    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&condf) };
+    let ok = lyra_rewrite::matcher::match_rule_with(&ctx, &pat, &expr).is_some();
+    Value::Boolean(ok)
+}
+
+fn pattern_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("PatternQ".into())), args } }
+    let v = args[0].clone();
+    Value::Boolean(contains_pattern(&v))
+}
+
+fn contains_pattern(v: &Value) -> bool {
+    match v {
+        Value::Symbol(s) => s.contains('_'),
+        Value::Expr { head, args } => {
+            if let Value::Symbol(hs) = &**head {
+                match hs.as_str() {
+                    "Blank"|"NamedBlank"|"BlankSequence"|"BlankNullSequence"|"NamedBlankSequence"|"NamedBlankNullSequence"|
+                    "PatternTest"|"Condition"|"Alternative"|"Repeated"|"RepeatedNull"|"Optional" => return true,
+                    _ => {}
+                }
+            }
+            contains_pattern(head) || args.iter().any(contains_pattern)
+        }
+        Value::List(items) => items.iter().any(contains_pattern),
+        Value::Assoc(m) => m.values().any(contains_pattern),
+        _ => false,
+    }
+}
+
+// General predicate helpers
+fn number_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Integer(_)|Value::Real(_)|Value::Rational{..}|Value::BigReal(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("NumberQ".into())), args } }
+}
+fn integer_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Integer(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("IntegerQ".into())), args } }
+}
+fn real_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Real(_)|Value::Integer(_)|Value::Rational{..}|Value::BigReal(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("RealQ".into())), args } }
+}
+fn string_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::String(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("StringQ".into())), args } }
+}
+fn boolean_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Boolean(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("BooleanQ".into())), args } }
+}
+fn symbol_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Symbol(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("SymbolQ".into())), args } }
+}
+fn list_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::List(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("ListQ".into())), args } }
+}
+fn assoc_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Assoc(_) => Value::Boolean(true), _ => Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("AssocQ".into())), args } }
+}
+fn empty_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [x] => match ev.eval(x.clone()) { Value::List(v)=>Value::Boolean(v.is_empty()), Value::Assoc(m)=>Value::Boolean(m.is_empty()), Value::String(s)=>Value::Boolean(s.is_empty()), _=>Value::Boolean(false) },
+        _ => Value::Expr{ head:Box::new(Value::Symbol("EmptyQ".into())), args }
+    }
+}
+fn nonempty_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match empty_q(ev, args) { Value::Boolean(b)=>Value::Boolean(!b), other=>other }
+}
+fn positive_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Integer(n)=>Value::Boolean(n>0), Value::Real(f)=>Value::Boolean(f>0.0), Value::Rational{num,den}=>Value::Boolean(num>0 && den>0), _=>Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("PositiveQ".into())), args } }
+}
+fn negative_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() { [x] => match ev.eval(x.clone()) { Value::Integer(n)=>Value::Boolean(n<0), Value::Real(f)=>Value::Boolean(f<0.0), Value::Rational{num,den}=>Value::Boolean(num<0 && den>0), _=>Value::Boolean(false) }, _ => Value::Expr{ head:Box::new(Value::Symbol("NegativeQ".into())), args } }
+}
+fn nonpositive_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match positive_q(ev, args) { Value::Boolean(b)=>Value::Boolean(!b), other=>other }
+}
+fn nonnegative_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match negative_q(ev, args) { Value::Boolean(b)=>Value::Boolean(!b), other=>other }
 }
 
 // -------- Control flow --------

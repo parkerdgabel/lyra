@@ -13,6 +13,8 @@ lyra-runtime = { path = "../lyra-runtime" }
 lyra-stdlib = { path = "../lyra-stdlib" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+strsim = "0.11"
+terminal_size = "0.3"
 
 [[bin]]
 name = "lyra"

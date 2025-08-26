@@ -1,0 +1,17 @@
+(*
+  01-strings-interpolation.lyra — Strings, escaping, and interpolation
+  Note: `{ ... }` inside a string interpolates a Lyra expression at parse time.
+*)
+
+"Hello, world!";                     (* => "Hello, world!" *)
+"sum={1+2+3}";                       (* => "sum=6" *)
+
+(* Escapes inside strings *)
+"quote=\"x\" slash=\\";            (* => "quote=\"x\" slash=\\" *)
+
+(* Interpolating more complex expressions *)
+"pow={2^5}, list={StringJoin[{"a","b"}]}";  (* => "pow=32, list=ab" *)
+
+(* To pass literal braces to runtime templating funcs, escape as \{ and \} in source *)
+TemplateRender["Hello, \{\{name\}\}!", <|"name"->"Lyra"|>];  (* => "Hello, Lyra!" (HTML-escaped by default) *)
+

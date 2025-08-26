@@ -1,0 +1,30 @@
+(*
+  03-calls-operators.lyra — Calls, pipelines, prefix/postfix/infix, part selection
+*)
+
+(* Normal call form *)
+Plus[1, Times[2,3]];          (* => 7 *)
+
+(* Prefix application: f @ x  ==> f[x] *)
+ToUpper @ "lyra";              (* => "LYRA" *)
+
+(* Postfix application: expr // f  ==> f[expr] *)
+"lyra" // ToUpper;             (* => "LYRA" *)
+
+(* Pipeline: a |> f or a |> f[args] *)
+"lyra" |> ToUpper;             (* => "LYRA" *)
+" abc " |> StringTrim[#, <|"Chars"->" "|>] &;  (* using slot & pipeline *)
+
+(* Infix application: a ~ f ~ b  ==> f[a,b] *)
+1 ~ Plus ~ 2;                   (* => 3 *)
+
+(* Apply operators: @@ and @@@ *)
+Apply[Plus, {1,2,3}];          (* => 6 *)
+Plus @@ {1,2,3};               (* => 6 *)
+
+(* Map operator: f /@ list => Map[f,list] *)
+ToUpper /@ {"a","b"};          (* => {"A","B"} *)
+
+(* Part selection with [[ ]] *)
+{10,20,30}[[3]];               (* => 30 *)
+

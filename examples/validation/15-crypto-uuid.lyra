@@ -1,0 +1,6 @@
+(*
+  15-crypto-uuid.lyra — UUID helpers (v4 and v7 if available), simple hashing if present
+*)
+
+UuidV4[];              (* => random UUID string *)
+

@@ -1,0 +1,19 @@
+(*
+  06-assignments-and-defs.lyra — Set (=), SetDelayed (:=), definitions with patterns
+*)
+
+(* Simple variables *)
+x = 41; x + 1;                  (* => 42 *)
+
+(* SetDelayed binds a definition evaluated on use *)
+tick := DateNow[];              (* prints a PureFunction/date expr; value changes over time *)
+tick;                           (* different instant on each eval *)
+
+(* Function definition with SetDelayed and pattern *)
+fact[0] = 1;
+fact[n_Integer /; n>0] := n * fact[n-1];
+fact[6];                        (* => 720 *)
+
+(* Multiple upvalues via alternatives *)
+f[a] = 1; f[b] = 2; f[a|b];     (* => {1,2} // depending on evaluation ordering printed separately *)
+

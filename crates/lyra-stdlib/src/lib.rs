@@ -16,6 +16,10 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "testing")] pub mod testing;
 #[cfg(feature = "io")] pub mod io;
 #[cfg(feature = "net")] pub mod net;
+#[cfg(feature = "time")] pub mod time;
+#[cfg(feature = "logging")] pub mod logging;
+#[cfg(feature = "process")] pub mod process;
+#[cfg(feature = "fs")] pub mod fs;
 #[cfg(feature = "dataset")] pub mod dataset;
 #[cfg(feature = "db")] pub mod db;
 #[cfg(feature = "containers")] pub mod containers;
@@ -32,6 +36,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "ml")] pub mod ml;
 #[cfg(feature = "nn")] pub mod nn;
 #[cfg(feature = "functional")] pub mod functional;
+#[cfg(feature = "package")] pub mod package;
 mod dispatch;
 
 // Conditional registration helper used by filtered registrars
@@ -62,6 +67,10 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "explain")] explain::register_explain(ev);
     #[cfg(feature = "io")] io::register_io(ev);
     #[cfg(feature = "net")] net::register_net(ev);
+    #[cfg(feature = "time")] time::register_time(ev);
+    #[cfg(feature = "logging")] logging::register_logging(ev);
+    #[cfg(feature = "process")] process::register_process(ev);
+    #[cfg(feature = "fs")] fs::register_fs(ev);
     #[cfg(feature = "dataset")] dataset::register_dataset(ev);
     #[cfg(feature = "db")] db::register_db(ev);
     #[cfg(feature = "containers")] containers::register_containers(ev);
@@ -78,6 +87,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "ml")] ml::register_ml(ev);
     #[cfg(feature = "nn")] nn::register_nn(ev);
     #[cfg(feature = "functional")] functional::register_functional(ev);
+    #[cfg(feature = "package")] package::register_package(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
     // Register dispatchers last to resolve name conflicts (Join, etc.)
     dispatch::register_dispatch(ev);
@@ -98,6 +108,10 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "explain" => { #[cfg(feature = "explain")] explain::register_explain(ev) }
             "io" => { #[cfg(feature = "io")] io::register_io(ev) }
             "net" => { #[cfg(feature = "net")] net::register_net(ev) }
+            "time" => { #[cfg(feature = "time")] time::register_time(ev) }
+            "logging" => { #[cfg(feature = "logging")] logging::register_logging(ev) }
+            "process" => { #[cfg(feature = "process")] process::register_process(ev) }
+            "fs" => { #[cfg(feature = "fs")] fs::register_fs(ev) }
             "dataset" => { #[cfg(feature = "dataset")] dataset::register_dataset(ev) }
             "db" => { #[cfg(feature = "db")] db::register_db(ev) }
             "containers" => { #[cfg(feature = "containers")] containers::register_containers(ev) }
@@ -113,6 +127,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "ml" => { #[cfg(feature = "ml")] ml::register_ml(ev) }
             "nn" => { #[cfg(feature = "nn")] nn::register_nn(ev) }
             "functional" => { #[cfg(feature = "functional")] functional::register_functional(ev) }
+            "package" => { #[cfg(feature = "package")] package::register_package(ev) }
             _ => {}
         }
     }
@@ -136,6 +151,10 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "explain")] crate::explain::register_explain_filtered(ev, &predicate);
     #[cfg(feature = "io")] crate::io::register_io_filtered(ev, &predicate);
     #[cfg(feature = "net")] crate::net::register_net_filtered(ev, &predicate);
+    #[cfg(feature = "time")] crate::time::register_time_filtered(ev, &predicate);
+    #[cfg(feature = "logging")] crate::logging::register_logging_filtered(ev, &predicate);
+    #[cfg(feature = "process")] crate::process::register_process_filtered(ev, &predicate);
+    #[cfg(feature = "fs")] crate::fs::register_fs_filtered(ev, &predicate);
     #[cfg(feature = "dataset")] crate::dataset::register_dataset_filtered(ev, &predicate);
     #[cfg(feature = "db")] crate::db::register_db_filtered(ev, &predicate);
     #[cfg(feature = "containers")] crate::containers::register_containers_filtered(ev, &predicate);
@@ -152,6 +171,7 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     #[cfg(feature = "ml")] crate::ml::register_ml_filtered(ev, &predicate);
     #[cfg(feature = "nn")] crate::nn::register_nn_filtered(ev, &predicate);
     #[cfg(feature = "functional")] crate::functional::register_functional_filtered(ev, &predicate);
+    #[cfg(feature = "package")] crate::package::register_package_filtered(ev, &predicate);
     #[cfg(feature = "testing")] crate::testing::register_testing_filtered(ev, &predicate);
 
     // Dispatchers last

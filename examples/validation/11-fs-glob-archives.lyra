@@ -1,0 +1,24 @@
+(*
+  11-fs-glob-archives.lyra — Glob, Zip/Tar/Gzip create/extract
+  Uses ./target/tmp for sandboxed files.
+*)
+
+tmp := "target/tmp/fs";
+_ := Run["rm", "-rf", tmp];
+_ := Run["mkdir", "-p", tmp <> "/sub"];
+WriteFile[tmp<>"/a.txt", "A"];
+WriteFile[tmp<>"/sub/b.log", "B"];
+
+Glob[tmp<>"/**/*.txt"];                (* => list of .txt paths *)
+
+zip := tmp<>"/bundle.zip";
+ZipCreate[zip, {tmp<>"/a.txt", tmp<>"/sub"}];
+ZipExtract[zip, tmp<>"/unz"];           (* contents extracted *)
+
+tar := tmp<>"/bundle.tar";
+TarCreate[tar, {tmp}];
+TarExtract[tar, tmp<>"/untar"];
+
+gz := tmp<>"/a.txt.gz";
+Gzip[tmp<>"/a.txt", gz];
+

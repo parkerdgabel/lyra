@@ -1,0 +1,19 @@
+(*
+  12-net-http.lyra — HTTP streaming, cached download, retry
+  Note: Requires network. Adjust URL if offline.
+*)
+
+url := "https://httpbin.org/get";
+
+(* Cached download with TTL (seconds) example *)
+HttpDownloadCached[url, <|"Ttl"->30|>];
+
+(* Simple retry wrapper: attempts=3 *)
+HttpRetry[(#&), <|"Attempts"->3|>][HttpDownloadCached[url]];
+
+(* Streaming request (GET) and reading chunk(s) *)
+handle := HttpStreamRequest[<|"Method"->"GET", "Url"->url|>];
+part1 := HttpStreamRead[handle, <|"MaxBytes"->4096|>];
+_ := HttpStreamClose[handle];
+part1;  (* prints first chunk of response body *)
+

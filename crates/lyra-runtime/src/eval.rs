@@ -537,6 +537,7 @@ pub fn evaluate(v: Value) -> Value { Evaluator::new().eval(v) }
 #[cfg(feature = "core")]
 pub fn register_core(ev: &mut Evaluator) {
     ev.register("Set", set_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Unset", unset_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("SetDelayed", set_delayed_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("With", with_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Replace", replace as NativeFn, Attributes::HOLD_ALL);
@@ -1832,6 +1833,14 @@ fn set_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match &args[0] {
         Value::Symbol(name) => { let v = ev.eval(args[1].clone()); ev.env.insert(name.clone(), v.clone()); v }
         _ => Value::Expr { head: Box::new(Value::Symbol("Set".into())), args },
+    }
+}
+
+fn unset_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Unset".into())), args } }
+    match &args[0] {
+        Value::Symbol(name) => { ev.env.remove(name); Value::Symbol("Null".into()) }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Unset".into())), args },
     }
 }
 

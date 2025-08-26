@@ -19,6 +19,11 @@ pub fn register_net(ev: &mut Evaluator) {
     ev.register("Download", download as NativeFn, Attributes::empty());
     ev.register("DownloadStream", download_stream as NativeFn, Attributes::empty());
     ev.register("HttpRequest", http_request_generic as NativeFn, Attributes::empty());
+    ev.register("HttpStreamRequest", http_stream_request as NativeFn, Attributes::empty());
+    ev.register("HttpStreamRead", http_stream_read as NativeFn, Attributes::empty());
+    ev.register("HttpStreamClose", http_stream_close as NativeFn, Attributes::empty());
+    ev.register("HttpDownloadCached", http_download_cached as NativeFn, Attributes::empty());
+    ev.register("HttpRetry", http_retry as NativeFn, Attributes::empty());
     ev.register("HttpServe", http_serve as NativeFn, Attributes::HOLD_ALL);
     ev.register("HttpServerStop", http_server_stop as NativeFn, Attributes::empty());
     ev.register("HttpServerAddr", http_server_addr as NativeFn, Attributes::empty());
@@ -78,6 +83,11 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
     register_if(ev, pred, "Download", download as NativeFn, Attributes::empty());
     register_if(ev, pred, "DownloadStream", download_stream as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpRequest", http_request_generic as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpStreamRequest", http_stream_request as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpStreamRead", http_stream_read as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpStreamClose", http_stream_close as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpDownloadCached", http_download_cached as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HttpRetry", http_retry as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpServe", http_serve as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "HttpServerStop", http_server_stop as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpServerAddr", http_server_addr as NativeFn, Attributes::empty());
@@ -645,6 +655,120 @@ fn form_urlencode(pairs: &Vec<(String, String)>) -> String {
     pairs.iter().map(|(k,v)| format!("{}={}", percent_encode_component(k,false), percent_encode_component(v,true))).collect::<Vec<_>>().join("&")
 }
 
+// ---- Streaming client registry (requires net_https) ----
+use std::sync::{OnceLock as OnceLock2, Mutex as Mutex2};
+use std::sync::atomic::AtomicI64 as AtomicI64_2;
+static STREAM_REG: OnceLock2<Mutex2<std::collections::HashMap<i64, Box<dyn std::io::Read + Send>>>> = OnceLock2::new();
+static STREAM_NEXT: OnceLock2<AtomicI64_2> = OnceLock2::new();
+fn sreg() -> &'static Mutex2<std::collections::HashMap<i64, Box<dyn std::io::Read + Send>>> { STREAM_REG.get_or_init(|| Mutex2::new(std::collections::HashMap::new())) }
+fn snext() -> i64 { STREAM_NEXT.get_or_init(|| AtomicI64_2::new(1)).fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+
+fn http_stream_request(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("HttpStreamRequest".into())), args } }
+    let method = to_string_arg(ev, args[0].clone());
+    let url = to_string_arg(ev, args[1].clone());
+    let opts = http_opts_from(ev, args.get(2).cloned());
+    #[cfg(feature = "net_https")]
+    {
+        use reqwest::blocking::ClientBuilder; use reqwest::{Method, redirect};
+        let mut cb = ClientBuilder::new();
+        if let Some(ms) = opts.timeout_ms { cb = cb.timeout(std::time::Duration::from_millis(ms)); }
+        if opts.tls_insecure { cb = cb.danger_accept_invalid_certs(true).danger_accept_invalid_hostnames(true); }
+        if let Some(n) = opts.follow_redirects { cb = if n==0 { cb.redirect(redirect::Policy::none()) } else { cb.redirect(redirect::Policy::limited(n)) } }
+        let client = match cb.build() { Ok(c)=>c, Err(e)=> return failure("HTTP::stream", &e.to_string()) };
+        let m = match Method::from_bytes(method.as_bytes()) { Ok(m)=>m, Err(e)=> return failure("HTTP::stream", &e.to_string()) };
+        let mut url_final = url.clone();
+        if !opts.query.is_empty() { url_final = append_query(&url_final, &opts.query); }
+        let mut req = client.request(m, &url_final);
+        for (k, v) in &opts.headers { req = req.header(k, v); }
+        let resp = match req.send() { Ok(r)=>r, Err(e)=> return failure("HTTP::stream", &e.to_string()) };
+        let status = resp.status();
+        let status_code = status.as_u16();
+        let mut headers_vec: Vec<(String, Value)> = Vec::new();
+        for (k, v) in resp.headers().iter() { headers_vec.push((k.as_str().to_string(), Value::String(v.to_str().unwrap_or("").to_string()))); }
+        let reader: Box<dyn std::io::Read + Send> = Box::new(resp);
+        let id = snext(); sreg().lock().unwrap().insert(id, reader);
+        return Value::Assoc(vec![
+            ("status".into(), Value::Integer(status_code as i64)),
+            ("url".into(), Value::String(url_final)),
+            ("headers".into(), Value::Assoc(headers_vec.into_iter().collect())),
+            ("stream".into(), Value::Integer(id)),
+        ].into_iter().collect());
+    }
+    #[allow(unreachable_code)]
+    failure("HTTP::stream", "HTTPS client not enabled")
+}
+
+fn http_stream_read(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("HttpStreamRead".into())), args } }
+    let id = match ev.eval(args[0].clone()) { Value::Integer(n)=>n, _=>0 };
+    let max = if args.len()>1 { match ev.eval(args[1].clone()) { Value::Integer(n) if n>0=> n as usize, _=> 65536 } } else { 65536 };
+    let mut guard = sreg().lock().unwrap();
+    if let Some(reader) = guard.get_mut(&id) {
+        let mut buf = vec![0u8; max];
+        match reader.read(&mut buf) { Ok(n)=> { buf.truncate(n); Value::Assoc(vec![("chunk".into(), Value::List(buf.into_iter().map(|b| Value::Integer(b as i64)).collect())), ("done".into(), Value::Boolean(n==0))].into_iter().collect()) }, Err(e)=> failure("HTTP::stream", &e.to_string()) }
+    } else { failure("HTTP::stream", "Invalid stream handle") }
+}
+
+fn http_stream_close(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("HttpStreamClose".into())), args } }
+    let id = match ev.eval(args[0].clone()) { Value::Integer(n)=>n, _=>0 };
+    sreg().lock().unwrap().remove(&id);
+    Value::Boolean(true)
+}
+
+fn http_download_cached(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("HttpDownloadCached".into())), args } }
+    let url = to_string_arg(ev, args[0].clone());
+    let dest = to_string_arg(ev, args[1].clone());
+    let opts = http_opts_from(ev, args.get(2).cloned());
+    let _cache_dir = match args.get(2).and_then(|v| if let Value::Assoc(m)=ev.eval(v.clone()) { m.get("CacheDir").cloned() } else { None }) { Some(Value::String(s))|Some(Value::Symbol(s)) => Some(s), _ => None };
+    let ttl_ms = match args.get(2).and_then(|v| if let Value::Assoc(m)=ev.eval(v.clone()) { m.get("TtlMs").cloned() } else { None }) { Some(Value::Integer(n)) if n>0 => Some(n as i64), _ => None };
+    let meta_path = format!("{}.etag", &dest);
+    let mut etag_old: Option<String> = None;
+    if let (Some(ttl), Ok(md)) = (ttl_ms, std::fs::metadata(&dest)) {
+        let age = std::time::SystemTime::now().duration_since(md.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH)).map(|d| d.as_millis() as i64).unwrap_or(i64::MAX);
+        if age < ttl { if let Ok(s) = std::fs::read_to_string(&meta_path) { etag_old = Some(s.trim().to_string()); } }
+    }
+    #[cfg(feature = "net_https")]
+    {
+        use reqwest::blocking::ClientBuilder; use reqwest::{Method, redirect};
+        let mut cb = ClientBuilder::new();
+        if let Some(ms) = opts.timeout_ms { cb = cb.timeout(std::time::Duration::from_millis(ms)); }
+        if opts.tls_insecure { cb = cb.danger_accept_invalid_certs(true).danger_accept_invalid_hostnames(true); }
+        if let Some(n) = opts.follow_redirects { cb = if n==0 { cb.redirect(redirect::Policy::none()) } else { cb.redirect(redirect::Policy::limited(n)) } }
+        let client = match cb.build() { Ok(c)=>c, Err(e)=> return failure("HTTP::cache", &e.to_string()) };
+        let mut url_final = url.clone();
+        if !opts.query.is_empty() { url_final = append_query(&url_final, &opts.query); }
+        let mut req = client.request(Method::GET, &url_final);
+        for (k, v) in &opts.headers { req = req.header(k, v); }
+        if let Some(et) = &etag_old { req = req.header("If-None-Match", et); }
+        let mut resp = match req.send() { Ok(r)=>r, Err(e)=> return failure("HTTP::cache", &e.to_string()) };
+        if resp.status()==reqwest::StatusCode::NOT_MODIFIED { return Value::Assoc(vec![("path".into(), Value::String(dest)), ("bytes_written".into(), Value::Integer(0)), ("from_cache".into(), Value::Boolean(true)), ("etag".into(), Value::String(etag_old.unwrap_or_default()))].into_iter().collect()); }
+        let mut file = match std::fs::File::create(&dest) { Ok(f)=>f, Err(e)=> return failure("HTTP::cache", &e.to_string()) };
+        let n = match std::io::copy(&mut resp, &mut file) { Ok(n)=>n, Err(e)=> return failure("HTTP::cache", &e.to_string()) } as i64;
+        if let Some(et) = resp.headers().get("ETag").and_then(|v| v.to_str().ok()) { let _ = std::fs::write(&meta_path, et.as_bytes()); }
+        return Value::Assoc(vec![("path".into(), Value::String(dest)), ("bytes_written".into(), Value::Integer(n)), ("from_cache".into(), Value::Boolean(false))].into_iter().collect());
+    }
+    #[allow(unreachable_code)]
+    failure("HTTP::cache", "HTTPS client not enabled")
+}
+
+fn http_retry(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("HttpRetry".into())), args } }
+    let req_map = match ev.eval(args[0].clone()) { Value::Assoc(m)=>m, _ => return failure("HTTP::retry", "Request map required") };
+    let opts = if args.len()>1 { if let Value::Assoc(m)=ev.eval(args[1].clone()) { m } else { std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    let attempts = opts.get("Attempts").and_then(|v| if let Value::Integer(n)=v { Some(*n as i32) } else { None }).unwrap_or(3).max(1);
+    let backoff_min = opts.get("BackoffMs").and_then(|v| if let Value::Integer(n)=v { Some(*n as i64) } else { None }).unwrap_or(200);
+    let mut last_resp: Option<Value> = None;
+    for i in 0..attempts {
+        let resp = http_request_generic(ev, vec![Value::Assoc(req_map.clone())]);
+        if let Value::Assoc(m) = &resp { if let Some(Value::Integer(code)) = m.get("status") { if *code>=200 && *code<300 { return resp; } } }
+        last_resp = Some(resp);
+        if i < attempts-1 { std::thread::sleep(std::time::Duration::from_millis((backoff_min * (i as i64 + 1)) as u64)); }
+    }
+    last_resp.unwrap_or_else(|| failure("HTTP::retry", "No attempts"))
+}
 // --- HTTPS capable implementation via reqwest (feature net_https) ---
 #[cfg(feature = "net_https")]
 fn http_request_reqwest(method: &str, url: &str, body: Option<&[u8]>, opts: &HttpOpts) -> Result<Value, String> {

@@ -1,0 +1,20 @@
+(*
+  14-config-env-path.lyra — Config/env helpers and path ops
+  Creates a temporary .env file and demonstrates expansion.
+*)
+
+tmp := "target/tmp/env";
+_ := Run["mkdir", "-p", tmp];
+dotenv := tmp<>"/.env";
+WriteFile[dotenv, "FOO=bar\nHOME_ALIAS=${HOME}\n"];
+
+DotenvLoad[dotenv];                    (* loads into process env *)
+EnvExpand["$FOO-$HOME_ALIAS"];
+
+XdgDirs[];                              (* platform XDG dirs assoc *)
+
+PathNormalize["./."];                   (* => absolute canonical path *)
+PathResolve["a/b", "/root"];          (* => "/root/a/b" *)
+PathRelative["/root/a/b", "/root"];   (* => "a/b" *)
+PathExtname["/foo/bar.txt"];            (* => ".txt" *)
+

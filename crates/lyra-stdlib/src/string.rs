@@ -57,6 +57,7 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
     // Regex helpers
     ev.register("RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("RegexIsMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
     ev.register("RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     ev.register("RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     ev.register("RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
@@ -118,6 +119,7 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
     register_if(ev, pred, "SnakeCase", snake_case_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "RegexIsMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());

@@ -1,0 +1,20 @@
+(*
+  04-lambdas-and-pure-functions.lyra — Lambdas, slots (#), pure functions (&), immediate call
+*)
+
+(* Slot-based pure function *)
+(# + 1) & [41];        (* => 42 *)
+
+(* Multi-slot function *)
+(#1 * #2 + 1) & [6,7]; (* => 43 *)
+
+(* Named-parameter lambda *)
+(x)=>x+2;              (* prints a PureFunction *)
+((x)=>x+2)[40];        (* => 42 (immediate call) *)
+
+(* Lambda with two params *)
+((x,y)=>x*y)[6,7];     (* => 42 *)
+
+(* Map with pure function shortcut: (#*2)& /@ list *)
+(#*2)& /@ {1,2,3};     (* => {2,4,6} *)
+
