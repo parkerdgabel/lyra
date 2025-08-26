@@ -11,6 +11,8 @@ pub fn register_rag(ev: &mut Evaluator) {
     ev.register("RAGRetrieve", rag_retrieve as NativeFn, Attributes::empty());
     ev.register("RAGAssembleContext", rag_assemble_context as NativeFn, Attributes::empty());
     ev.register("RAGAnswer", rag_answer as NativeFn, Attributes::empty());
+    ev.register("HybridSearch", hybrid_search as NativeFn, Attributes::empty());
+    ev.register("Cite", cite as NativeFn, Attributes::empty());
 }
 
 pub fn register_rag_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
@@ -138,3 +140,39 @@ fn rag_answer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ]))
 }
 
+
+
+fn hybrid_search(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // HybridSearch[store, query, <|K->n, Alpha->a|>]
+    let mut opts = std::collections::HashMap::new();
+    if let Some(Value::Assoc(m)) = args.get(2) { opts = m.clone(); }
+    opts.insert("Hybrid".into(), Value::String("true".into()));
+    let mut a2 = Vec::new(); a2.push(args.get(0).cloned().unwrap_or(Value::String("mem".into()))); a2.push(args.get(1).cloned().unwrap_or(Value::String(String::new()))); a2.push(Value::Assoc(opts));
+    super::vector::vs_query(ev, a2)
+}
+
+fn cite(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Cite[matches_or_answer, Style->"markdown"]
+    let mut matches = Vec::new();
+    let mut style = "markdown".to_string();
+    if let Some(v) = args.get(0) {
+        match v {
+            Value::Assoc(m) => { if let Some(Value::List(ms)) = m.get("matches") { matches = ms.clone(); } },
+            Value::List(ms) => { matches = ms.clone(); },
+            _=>{}
+        }
+    }
+    if let Some(Value::Assoc(m)) = args.get(1) { if let Some(Value::String(s)) = m.get("Style") { style = s.clone(); } }
+    let mut out = String::new();
+    for m in matches.into_iter() {
+        if let Value::Assoc(am) = m {
+            let id = am.get("id").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| "doc".into());
+            let snippet = am.get("meta").and_then(|mv| match mv { Value::Assoc(mm)=> mm.get("text").and_then(|t| if let Value::String(s)=t { Some(s.clone()) } else { None }), Value::String(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
+            match style.as_str() {
+                "markdown" => { out.push_str(&format!("- [{}] {}\n", id, snippet)); },
+                _ => { out.push_str(&format!("{}\t{}\n", id, snippet)); }
+            }
+        }
+    }
+    Value::String(out)
+}

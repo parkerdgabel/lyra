@@ -139,7 +139,7 @@ fn complete(ev: &mut Evaluator, mut args: Vec<Value>) -> Value {
 }
 
 pub fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // Embed[Model[...], Text->list|string]
+    // Embed[Text->list|string] (auto mode may call providers)
     let mut texts: Vec<String> = Vec::new();
     for a in &args {
         match a {
@@ -158,7 +158,12 @@ pub fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             _ => {}
         }
     }
-    // Return simple numeric vectors: length and hash-like indicator (mock)
+    // Provider routing (auto): use OpenAI embeddings if key present
+    let mode = _ev.get_env("ModelsMode").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s), _=>None }).unwrap_or_else(|| "mock".into());
+    #[cfg(feature = "net_https")]
+    if mode=="auto" { if let Some(v) = openai_embed(&texts) { return v; } }
+
+    // Fallback mock: simple numeric vectors: length and hash-like indicator
     Value::List(texts.into_iter().map(|t| {
         let n = t.len() as i64;
         Value::List(vec![ Value::Real(n as f64), Value::Real((n % 7) as f64), Value::Real(((n*3) % 11) as f64) ])
@@ -184,4 +189,25 @@ fn chat_openai(model_id: &str, messages: &Vec<(String,String)>) -> Option<Value>
         ("content".into(), Value::String(content)),
         ("model".into(), Value::String(model_id.to_string())),
     ])))
+}
+
+#[cfg(feature = "net_https")]
+fn openai_embed(texts: &Vec<String>) -> Option<Value> {
+    if texts.is_empty() { return Some(Value::List(vec![])); }
+    let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+    let client = Client::new();
+    let model = "text-embedding-3-small";
+    let body = serde_json::json!({"model": model, "input": texts});
+    let resp = client.post("https://api.openai.com/v1/embeddings")
+        .header(AUTHORIZATION, format!("Bearer {}", api_key))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&body)
+        .send().ok()?;
+    let js: serde_json::Value = resp.json().ok()?;
+    let arr = js["data"].as_array()?;
+    let out: Vec<Value> = arr.iter().map(|row| {
+        let v = row["embedding"].as_array().cloned().unwrap_or_else(|| Vec::new());
+        Value::List(v.into_iter().filter_map(|x| x.as_f64()).map(Value::Real).collect())
+    }).collect();
+    Some(Value::List(out))
 }

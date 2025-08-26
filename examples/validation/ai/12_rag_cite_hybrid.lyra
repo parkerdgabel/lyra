@@ -1,0 +1,16 @@
+(*
+  12_rag_cite_hybrid.lyra — HybridSearch helper + Cite formatting
+  Run: lyra-runner --file examples/validation/ai/12_rag_cite_hybrid.lyra
+*)
+
+VSNew[<|"Name"->"mem", "Dims"->8|>];
+docs := {
+  <|"id"->"a1", "text"->"Apples are tasty."|>,
+  <|"id"->"b2", "text"->"Bananas are yellow."|>,
+  <|"id"->"c3", "text"->"Cherries are red."|>
+};
+RAGIndex["mem", docs, <||>];
+
+matches := HybridSearch["mem", "red", <|"K"->2|>];
+Cite[matches, <|"Style"->"markdown"|>];
+
