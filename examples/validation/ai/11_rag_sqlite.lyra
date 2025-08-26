@@ -3,7 +3,7 @@
   Run: lyra-runner --file examples/validation/ai/11_rag_sqlite.lyra
 *)
 
-store := VSNew["sqlite://target/tmp/vs.db"];
+store := VectorStore["sqlite://target/tmp/vs.db"];
 
 docs := {
   <|"id"->"d1", "text"->"Lyra ships with an AI-native stdlib."|>,
@@ -14,5 +14,5 @@ docs := {
 RAGIndex["sqlite://target/tmp/vs.db", docs, <||>];
 
 q := "What improves retrieval?";
-matches := VSQuery["sqlite://target/tmp/vs.db", q, <|"K"->3, "Hybrid"->"true", "Alpha"->0.5|>];
+matches := VectorSearch["sqlite://target/tmp/vs.db", q, <|"K"->3, "Hybrid"->"true", "Alpha"->0.5|>];
 RAGAnswer["sqlite://target/tmp/vs.db", q, <|"K"->2|>];

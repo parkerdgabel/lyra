@@ -91,13 +91,13 @@ fn rag_index(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
         }
     }
-    super::vector::vs_upsert(ev, vec![store, Value::List(upserts)])
+    super::vector::vector_upsert(ev, vec![store, Value::List(upserts)])
 }
 
 fn rag_retrieve(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // RAGRetrieve[store, query, <|K->n, Filter->...|>]
     if args.len()<2 { return Value::Expr { head: Box::new(Value::Symbol("RAGRetrieve".into())), args } }
-    super::vector::vs_query(ev, args)
+    super::vector::vector_search(ev, args)
 }
 
 fn rag_assemble_context(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -151,7 +151,7 @@ fn hybrid_search(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Some(Value::Assoc(m)) = args.get(2) { opts = m.clone(); }
     opts.insert("Hybrid".into(), Value::String("true".into()));
     let mut a2 = Vec::new(); a2.push(args.get(0).cloned().unwrap_or(Value::String("mem".into()))); a2.push(args.get(1).cloned().unwrap_or(Value::String(String::new()))); a2.push(Value::Assoc(opts));
-    super::vector::vs_query(ev, a2)
+    super::vector::vector_search(ev, a2)
 }
 
 fn cite(_ev: &mut Evaluator, args: Vec<Value>) -> Value {

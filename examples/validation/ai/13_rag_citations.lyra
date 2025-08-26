@@ -3,7 +3,7 @@
   Run: lyra-runner --file examples/validation/ai/13_rag_citations.lyra
 *)
 
-VSNew[<|"Name"->"mem", "Dims"->8|>];
+VectorStore[<|"Name"->"mem", "Dims"->8|>];
 docs := {
   <|"id"->"p1", "text"->"Postgres pgvector stores embedding vectors."|>,
   <|"id"->"q1", "text"->"Qdrant is a vector database."|>

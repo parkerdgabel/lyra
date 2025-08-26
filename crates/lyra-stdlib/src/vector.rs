@@ -17,21 +17,21 @@ static STORES: OnceLock<Mutex<HashMap<String, Store>>> = OnceLock::new();
 fn stores() -> &'static Mutex<HashMap<String, Store>> { STORES.get_or_init(|| Mutex::new(HashMap::new())) }
 
 pub fn register_vector(ev: &mut Evaluator) {
-    ev.register("VSNew", vs_new as NativeFn, Attributes::empty());
-    ev.register("VSUpsert", vs_upsert as NativeFn, Attributes::LISTABLE);
-    ev.register("VSQuery", vs_query as NativeFn, Attributes::empty());
-    ev.register("VSDelete", vs_delete as NativeFn, Attributes::LISTABLE);
-    ev.register("VSCount", vs_count as NativeFn, Attributes::empty());
-    ev.register("VSReset", vs_reset as NativeFn, Attributes::empty());
+    ev.register("VectorStore", vector_store as NativeFn, Attributes::empty());
+    ev.register("VectorUpsert", vector_upsert as NativeFn, Attributes::LISTABLE);
+    ev.register("VectorSearch", vector_search as NativeFn, Attributes::empty());
+    ev.register("VectorDelete", vector_delete as NativeFn, Attributes::LISTABLE);
+    ev.register("VectorCount", vector_count as NativeFn, Attributes::empty());
+    ev.register("VectorReset", vector_reset as NativeFn, Attributes::empty());
 }
 
 pub fn register_vector_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    super::register_if(ev, pred, "VSNew", vs_new as NativeFn, Attributes::empty());
-    super::register_if(ev, pred, "VSUpsert", vs_upsert as NativeFn, Attributes::LISTABLE);
-    super::register_if(ev, pred, "VSQuery", vs_query as NativeFn, Attributes::empty());
-    super::register_if(ev, pred, "VSDelete", vs_delete as NativeFn, Attributes::LISTABLE);
-    super::register_if(ev, pred, "VSCount", vs_count as NativeFn, Attributes::empty());
-    super::register_if(ev, pred, "VSReset", vs_reset as NativeFn, Attributes::empty());
+    super::register_if(ev, pred, "VectorStore", vector_store as NativeFn, Attributes::empty());
+    super::register_if(ev, pred, "VectorUpsert", vector_upsert as NativeFn, Attributes::LISTABLE);
+    super::register_if(ev, pred, "VectorSearch", vector_search as NativeFn, Attributes::empty());
+    super::register_if(ev, pred, "VectorDelete", vector_delete as NativeFn, Attributes::LISTABLE);
+    super::register_if(ev, pred, "VectorCount", vector_count as NativeFn, Attributes::empty());
+    super::register_if(ev, pred, "VectorReset", vector_reset as NativeFn, Attributes::empty());
 }
 
 fn assoc_str(m: &HashMap<String, Value>, k: &str) -> Option<String> {
@@ -74,7 +74,7 @@ fn cosine(a: &[f64], b: &[f64]) -> f64 {
     if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na * nb) }
 }
 
-fn vs_new(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // VSNew[<|Name->"default", Dims->n|>] or VSNew["sqlite://path.db"]
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("VSNew".into())), args };
@@ -116,7 +116,7 @@ fn vs_new(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ]))
 }
 
-fn vs_count(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn vector_count(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let name = store_name_arg(args.get(0));
     if name.starts_with("sqlite://") {
         #[cfg(feature = "db_sqlite")]
@@ -134,7 +134,7 @@ fn vs_count(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Some(s) = guard.get(&name) { Value::Integer(s.items.len() as i64) } else { Value::Integer(0) }
 }
 
-fn vs_reset(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn vector_reset(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let name = store_name_arg(args.get(0));
     if name.starts_with("sqlite://") {
         #[cfg(feature = "db_sqlite")]
@@ -152,7 +152,7 @@ fn vs_reset(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-pub fn vs_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub fn vector_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // VSUpsert[store, {<|id, vector, meta?|>, ...}]
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("VSUpsert".into())), args };
@@ -193,7 +193,7 @@ pub fn vs_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         }
                     }
                 }
-                if let Value::Integer(n) = vs_count(_ev, vec![Value::String(name.clone())]) { return Value::Integer(n); }
+                if let Value::Integer(n) = vector_count(_ev, vec![Value::String(name.clone())]) { return Value::Integer(n); }
             }
         }
         return Value::Integer(0);
@@ -223,7 +223,7 @@ pub fn vs_upsert(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-pub fn vs_query(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub fn vector_search(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // VSQuery[store, vector|text, <|K->n, Filter->assoc, Hybrid->..., Alpha->...|>]
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("VSQuery".into())), args };
@@ -338,7 +338,7 @@ fn vectorize_from_value(v: &Value, dims: usize) -> Vec<f64> {
     }
 }
 
-fn vs_delete(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn vector_delete(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // VSDelete[store, {ids...}]
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("VSDelete".into())), args };
