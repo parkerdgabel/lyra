@@ -55,6 +55,35 @@ Route[req_] := Module[{},
       <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>];
     Return[JsonResp[<|"ok"->True|>]]
   ];
+  (* Card update/delete *)
+  mmc := pm["/cards/:id", path];
+  If[Part[mmc, "ok"]==True,
+    cid2 := Part[Part[mmc, "params"], "id"];
+    If[m=="DELETE", ( Exec[conn, StringJoin[{"DELETE FROM cards WHERE id=", cid2}]]; Return[JsonResp[<|"ok"->True|>]] )];
+    If[m=="PATCH",
+      body := ParseJsonBody[req];
+      sets := {};
+      If[Lookup[body, "title"] != Null, sets = Append[sets, StringJoin[{"title=", JsonStringify[Lookup[body, "title"]]}]]];
+      If[Lookup[body, "desc"] != Null, sets = Append[sets, StringJoin[{"desc=", JsonStringify[Lookup[body, "desc"]]}]]];
+      If[Lookup[body, "prio"] != Null, sets = Append[sets, StringJoin[{"prio=", JsonStringify[Lookup[body, "prio"]]}]]];
+      If[Lookup[body, "column_id"] != Null, sets = Append[sets, StringJoin[{"column_id=", JsonStringify[Lookup[body, "column_id"]]}]]];
+      If[Length[sets] > 0, sqlu := StringJoin[{"UPDATE cards SET ", StringJoin[Riffle[sets, ", "]], " WHERE id=", cid2}]; Exec[conn, sqlu]];
+      Return[JsonResp[<|"ok"->True|>]]
+    ]
+  ];
+  (* Column update/delete *)
+  mmcol := pm["/columns/:id", path];
+  If[Part[mmcol, "ok"]==True,
+    colid := Part[Part[mmcol, "params"], "id"];
+    If[m=="PATCH",
+      body := ParseJsonBody[req]; sets := {};
+      If[Lookup[body, "name"] != Null, sets = Append[sets, StringJoin[{"name=", JsonStringify[Lookup[body, "name"]]}]]];
+      If[Lookup[body, "pos"] != Null, sets = Append[sets, StringJoin[{"pos=", JsonStringify[Lookup[body, "pos"]]}]]];
+      If[Length[sets] > 0, Exec[conn, StringJoin[{"UPDATE columns SET ", StringJoin[Riffle[sets, ", "]], " WHERE id=", colid}]]];
+      Return[JsonResp[<|"ok"->True|>]]
+    ];
+    If[m=="DELETE", ( Exec[conn, StringJoin[{"DELETE FROM columns WHERE id=", colid}]]; Return[JsonResp[<|"ok"->True|>]] )]
+  ];
   (* Tags *)
   mm3 := pm["/cards/:id/tags", path];
   If[Part[mm3, "ok"]==True,
@@ -87,10 +116,20 @@ Route[req_] := Module[{},
     obj := <|"project"->prj, "columns"->cols, "cards"->cards, "tags"->tags|>;
     Return[JsonResp[obj]]
   ];
+  (* Import *)
+  mmimp := pm["/projects/:id/import", path];
+  If[m=="POST" && Part[mmimp, "ok"]==True,
+    pid := Part[Part[mmimp, "params"], "id"];
+    body := ParseJsonBody[req];
+    cols := Lookup[body, "columns"]; crds := Lookup[body, "cards"]; tgs := Lookup[body, "tags"]; Exec[conn, "BEGIN"];
+    If[cols != Null, Map[(c_)=> Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid,$name,$pos)", <|"pid"->pid, "name"->Lookup[c_, "name"], "pos"->Lookup[c_, "pos"]|>], cols]];
+    If[crds != Null, Map[(c_)=> Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid,$cid,$title,$desc,$prio,$created)", <|"pid"->pid, "cid"->Lookup[c_, "column_id"], "title"->Lookup[c_, "title"], "desc"->Lookup[c_, "desc"], "prio"->Lookup[c_, "prio"], "created"->Lookup[c_, "created_at"]|>], crds]];
+    If[tgs != Null, Map[(t_)=> Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid,$tag)", <|"cid"->Lookup[t_, "card_id"], "tag"->Lookup[t_, "tag"]|>], tgs]];
+    Exec[conn, "COMMIT"]; Return[JsonResp[<|"ok"->True|>]]
+  ];
   NotFound[]
 ];
 
 port := 8080; srv := HttpServe[Route, <|"Host"->"127.0.0.1", "Port"->port|>];
 Puts[StringJoin[{"Kanban server listening on http://127.0.0.1:", JsonStringify[port]}]];
 srv
-

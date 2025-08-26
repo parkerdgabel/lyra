@@ -41,6 +41,11 @@ If[cmd=="help", ShowHelp[],
             Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid, $name, $pos)", <|"pid"->pid, "name"->nm, "pos"->pos|>];
             Puts["Column added."]
           ]
+        ),
+        If[sub2=="rename", (
+          If[Length[Rest] < cmdIdx+3, Puts["Usage: column rename <column_id> <new name>"],
+            cid := Part[Rest, cmdIdx+2]; newn := Part[Rest, cmdIdx+3]; Exec[conn, "UPDATE columns SET name=$name WHERE id=$id", <|"id"->cid, "name"->newn|>]; Puts["Column renamed."]
+          ]
         ), ShowHelp[]]
       ),
         If[cmd=="card", (
@@ -51,17 +56,32 @@ If[cmd=="help", ShowHelp[],
               Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid, $cid, $title, '', $prio, strftime('%s','now'))",
                 <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>]; Puts["Card added."]
             ]
-          ), ShowHelp[]]
+          ),
+          If[sub3=="move", (
+            If[Length[Rest] < cmdIdx+3, Puts["Usage: card move <card_id> <to_column_id>"],
+              card := Part[Rest, cmdIdx+2]; to := Part[Rest, cmdIdx+3]; Exec[conn, "UPDATE cards SET column_id=$to WHERE id=$id", <|"id"->card, "to"->to|>]; Puts["Moved."]
+            ]
+          ),
+          If[sub3=="tag", (
+            If[Length[Rest] < cmdIdx+4, Puts["Usage: card tag <card_id> add <tag>"],
+              card := Part[Rest, cmdIdx+2]; action := Part[Rest, cmdIdx+3];
+              If[action=="add", (
+                tg := Part[Rest, cmdIdx+4]; Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid,$tag)", <|"cid"->card, "tag"->tg|>]; Puts["Tagged."]
+              ), Puts["Unknown tag action"]]
+            ]
+          ), ShowHelp[]]]
         ),
           If[cmd=="board", (
             If[Length[Rest] < cmdIdx+1, Puts["Usage: board <project_id>"],
               pid2 := Part[Rest, cmdIdx+1];
               header := StringJoin[{AnsiStyle["Board ", <|"Bold"->True|>], JsonStringify[pid2]}]; Puts[header]; Puts[Rule["-", 60]];
               cols := Collect[SQL[conn, StringJoin[{"SELECT id, name, pos FROM columns WHERE project_id=", JsonStringify[pid2], " ORDER BY pos"}]]];
+              width := Part[TermSize[], "width"]; colWidth := Max[20, Divide[width, 1]];
               Map[(col_)=> (
                 colId := Part[col, "id"]; colName := Part[col, "name"]; Puts[StringJoin[{AnsiStyle[colName, <|"Bold"->True|>], " (", JsonStringify[colId], ")"}]];
                 cards := Collect[SQL[conn, StringJoin[{"SELECT id, title, prio, datetime(created_at,'unixepoch') AS created FROM cards WHERE column_id=", JsonStringify[colId], " ORDER BY prio DESC, created_at DESC"}]]];
-                Puts[TableSimple[cards, <|"Columns"->{"id","title","prio","created"}|>]];
+                cards2 := Map[(r_)=> <|"id"->Part[r_, "id"], "title"->Truncate[Part[r_, "title"], colWidth], "prio"->Part[r_, "prio"], "created"->Part[r_, "created"]|>, cards];
+                Puts[TableSimple[cards2, <|"Columns"->{"id","title","prio","created"}|>]];
               ), cols]
             ]
           ), ShowHelp[]]
@@ -70,4 +90,3 @@ If[cmd=="help", ShowHelp[],
     ]
   ]
 ]
-
