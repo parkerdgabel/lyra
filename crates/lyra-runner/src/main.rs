@@ -25,28 +25,33 @@ fn main() {
     if args.is_empty() || args.iter().any(|a| a=="-h"||a=="--help") {
         eprintln!("lyra-runner
 USAGE:
-  lyra-runner [--keep-only] --eval <expr>
-  lyra-runner [--keep-only] --file <file.lyra>
+  lyra-runner [--keep-only] [--models mock|auto] --eval <expr>
+  lyra-runner [--keep-only] [--models mock|auto] --file <file.lyra>
 
 OPTIONS:
   --keep-only    Register only symbols listed in keep_symbols.in.rs (tree-shaken mode).\n    Default is full stdlib registration.
+  --models       Model providers mode. Use 'mock' (default) for offline validation.
 ");
         return;
     }
     let mut eval_src: Option<String> = None;
     let mut file: Option<PathBuf> = None;
     let mut i = 0;
+    let mut models_mode: Option<String> = None;
     while i < args.len() {
         match args[i].as_str() {
             "--keep-only" => { /* handled above; skip */ },
             "--eval" => { i+=1; if i<args.len() { eval_src = Some(args[i].clone()); } },
             "--file" => { i+=1; if i<args.len() { file = Some(PathBuf::from(&args[i])); } },
+            "--models" => { i+=1; if i<args.len() { models_mode = Some(args[i].clone()); } },
             _ => {}
         }
         i+=1;
     }
 
     let mut ev = Evaluator::new();
+    // Ensure model mode is visible to stdlib (defaults to mock for offline safety)
+    ev.set_env("ModelsMode", lyra_core::value::Value::String(models_mode.unwrap_or_else(|| "mock".into())));
     if let Some(src) = eval_src {
         run_src(&mut ev, &src, None);
     } else if let Some(p) = file {

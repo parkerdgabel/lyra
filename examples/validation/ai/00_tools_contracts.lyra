@@ -1,0 +1,29 @@
+(*
+  00_tools_contracts.lyra — Register, list, dry-run, and invoke tools
+  Run: lyra-runner --file examples/validation/ai/00_tools_contracts.lyra
+*)
+
+(* List any builtin/default tool cards *)
+ToolsList[];
+
+(* Register a simple echo tool that joins parts using existing StringJoin *)
+spec := <|
+  "id"->"echo",
+  "name"->"echo",
+  "impl"->"StringJoin",
+  "summary"->"Join list of parts into a single string",
+  "params"->{"parts"},
+  (* schema omitted for brevity *)
+|>; 
+ToolsRegister[spec];
+
+(* Validate args and show normalization *)
+ToolsDryRun["echo", <|"parts"->{"A","I","-native"}|>];
+
+(* Invoke the tool *)
+ToolsInvoke["echo", <|"parts"->{"Lyra"," rocks"}|>];
+
+(* Export in OpenAI function-call format *)
+ToolsExportOpenAI[];
+
+1+2;

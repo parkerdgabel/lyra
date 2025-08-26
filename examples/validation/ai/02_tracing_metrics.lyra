@@ -1,0 +1,16 @@
+(*
+  02_tracing_metrics.lyra — Spans, metrics, and trace export (mock)
+  Run: lyra-runner --file examples/validation/ai/02_tracing_metrics.lyra
+*)
+
+MetricsReset[];
+Span["demo", <|"Attrs"-><|"foo"->"bar"|>|>];
+Puts["doing work..."];  (* simulated work *)
+SpanEnd[];
+
+Metrics[];
+CostAdd[0.01];
+CostSoFar[];
+
+TraceGet[];
+

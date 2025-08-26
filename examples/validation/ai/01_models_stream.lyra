@@ -1,0 +1,18 @@
+(*
+  01_models_stream.lyra — Model abstraction and simple chat/embed (mock)
+  Run: lyra-runner --file examples/validation/ai/01_models_stream.lyra
+*)
+
+m := Model["mock:echo"];
+m;
+
+msgs := {
+  <|"role"->"system", "content"->"You are helpful."|>,
+  <|"role"->"user", "content"->"Say hi"|>
+};
+
+Chat[m, <|"Messages"->msgs|>];
+
+(* Embeddings mock *)
+Embed[m, <|"Text"->{"cat", "dog"}|>];
+

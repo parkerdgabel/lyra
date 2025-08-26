@@ -4,14 +4,22 @@ use lyra_runtime::attrs::Attributes;
 use std::collections::HashMap;
 use std::sync::{OnceLock, Mutex};
 use crate::register_if;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 // Minimal in-memory tool registry storing self-describing specs as Assoc Values
 static TOOL_REG: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
 static CAPABILITIES: OnceLock<Mutex<Option<std::collections::HashSet<String>>>> = OnceLock::new();
+static TOOL_CACHE: OnceLock<Mutex<HashMap<u64, Value>>> = OnceLock::new();
+static IDEMP_SEQ: OnceLock<std::sync::atomic::AtomicI64> = OnceLock::new();
 
 fn tool_reg() -> &'static Mutex<HashMap<String, Value>> {
     TOOL_REG.get_or_init(|| Mutex::new(HashMap::new()))
 }
+fn tool_cache() -> &'static Mutex<HashMap<u64, Value>> {
+    TOOL_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn next_idemp() -> i64 { let a = IDEMP_SEQ.get_or_init(|| std::sync::atomic::AtomicI64::new(1)); a.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 
 // Inline registration helper for stdlib/native code to attach specs at definition time
 #[allow(dead_code)]
@@ -102,6 +110,8 @@ pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsExportBundle", tools_export_bundle as NativeFn, Attributes::empty());
     ev.register("ToolsSetCapabilities", tools_set_capabilities as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsGetCapabilities", tools_get_capabilities as NativeFn, Attributes::empty());
+    ev.register("ToolsCacheClear", tools_cache_clear as NativeFn, Attributes::empty());
+    ev.register("IdempotencyKey", idempotency_key as NativeFn, Attributes::empty());
 }
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
@@ -813,6 +823,7 @@ fn tools_invoke(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ToolsInvoke".into())), args } }
     let key = match &args[0] { Value::String(s)|Value::Symbol(s)=>s.clone(), other=> match ev.eval(other.clone()) { Value::String(s)|Value::Symbol(s)=>s, _=>String::new() } };
     let provided = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(HashMap::new()) };
+    let opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
     let (name, params): (String, Vec<String>) = {
         let reg = tool_reg().lock().unwrap();
         if let Some(Value::Assoc(m)) = reg.get(&key) {
@@ -840,7 +851,30 @@ fn tools_invoke(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         other => vec![other.clone()],
     };
-    let expr = Value::Expr { head: Box::new(Value::Symbol(name)), args: call_args };
+    let expr = Value::Expr { head: Box::new(Value::Symbol(name.clone())), args: call_args.clone() };
+
+    // Cache policy: options may include <|"Cache"->"session", "IdempotencyKey"->"..."|>
+    let mut cache_enabled = false;
+    let mut id_key: Option<String> = None;
+    if let Value::Assoc(m) = &opts {
+        if let Some(Value::String(s)) = m.get("Cache") { if s=="session" { cache_enabled = true; } }
+        if let Some(Value::String(s)) = m.get("IdempotencyKey") { id_key = Some(s.clone()); }
+    }
+    if cache_enabled || id_key.is_some() {
+        let mut hasher = DefaultHasher::new();
+        if let Some(idk) = id_key.clone() { idk.hash(&mut hasher); } else {
+            name.hash(&mut hasher);
+            // Include provided assoc/list as part of key by pretty formatting (session-only stability acceptable)
+            let key_v = if let Value::Assoc(_) = provided { provided.clone() } else { Value::List(call_args.clone()) };
+            let s = lyra_core::pretty::format_value(&key_v);
+            s.hash(&mut hasher);
+        }
+        let h = hasher.finish();
+        if let Some(v) = tool_cache().lock().unwrap().get(&h) { return v.clone(); }
+        let out = ev.eval(expr);
+        tool_cache().lock().unwrap().insert(h, out.clone());
+        return out;
+    }
     ev.eval(expr)
 }
 
@@ -958,6 +992,15 @@ fn tools_export_bundle(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::List(out)
+}
+
+fn tools_cache_clear(_ev: &mut Evaluator, _args: Vec<Value>) -> Value {
+    tool_cache().lock().unwrap().clear();
+    Value::Boolean(true)
+}
+
+fn idempotency_key(_ev: &mut Evaluator, _args: Vec<Value>) -> Value {
+    Value::String(format!("idemp-{}", next_idemp()))
 }
 
 

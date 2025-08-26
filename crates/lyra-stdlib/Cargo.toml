@@ -52,7 +52,13 @@ hound = { version = "3", optional = true }
 symphonia = { version = "0.5", optional = true, default-features = false, features = ["aac","mp3","flac","vorbis","isomp4","ogg","wav","pcm"] }
 
 [features]
-default = ["core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text", "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs", "time_cron", "fs_watch", "fs_archive", "module", "project"]
+default = [
+  "core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain",
+  "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text",
+  "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs",
+  "time_cron", "fs_watch", "fs_archive", "module", "project",
+  "model", "trace", "metrics", "memory", "policy", "workflow"
+]
 module = []
 project = []
 core = []
@@ -70,6 +76,12 @@ testing = []
 simd_kernels = []
 big-real-rug = ["rug"]
 io = []
+model = []
+trace = []
+metrics = []
+memory = []
+policy = []
+workflow = []
 net = []
 time = []
 logging = []

@@ -1,0 +1,16 @@
+(*
+  03_stream_cache.lyra — Streaming chat and tool caching/idempotency
+  Run: lyra-runner --file examples/validation/ai/03_stream_cache.lyra
+*)
+
+(* Streaming mock chat — prints each token on a line, then returns message assoc *)
+m := Model["mock:echo"];
+msgs := {<|"role"->"user", "content"->"stream these words"|>};
+Chat[m, <|"Messages"->msgs, "Stream"->"true"|>];
+
+(* Tool caching — register simple add tool, call twice with cache *)
+ToolsRegister[<|"id"->"add2", "impl"->"Plus", "params"->{"a","b"}|>];
+idk := IdempotencyKey[];
+ToolsInvoke["add2", <|"a"->2, "b"->3|>, <|"Cache"->"session", "IdempotencyKey"->idk|>];
+(* Second call should hit cache and return instantly *)
+ToolsInvoke["add2", <|"a"->2, "b"->3|>, <|"Cache"->"session", "IdempotencyKey"->idk|>];
