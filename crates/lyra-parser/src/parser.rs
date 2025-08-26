@@ -63,6 +63,7 @@ impl Parser {
         let mut v = self.parse_rule()?;
         self.skip_ws();
         if self.peekc()==Some('&') {
+            if self.starts_with("&&") { return Ok(v); }
             self.nextc();
             v = Value::pure_function(None, v);
             // Allow immediate map operator with pure function: (#... )& /@ rhs

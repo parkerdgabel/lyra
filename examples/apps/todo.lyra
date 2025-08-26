@@ -40,25 +40,25 @@ ShowHelp[] := Puts[StringJoin[{
   "  clear-done\n"
 }]];
 
-FormatRow[row_] := Module[{},
+FormatRow[row_] := (
   id := Part[row, "id"]; title := Part[row, "title"]; pr := Part[row, "prio"]; proj := Part[row, "project"]; dn := Part[row, "done"]; cr := Part[row, "created"];
   mark := If[dn==1, "[x]", "[ ]"];
-  StringJoin[{ToString[id], " ", mark, " ", title,
+  StringJoin[{JsonStringify[id], " ", mark, " ", title,
     If[proj==Null || proj=="", "", StringJoin[{"  (", proj, ")"}]],
-    If[pr==Null || pr==0, "", StringJoin[{"  prio:", ToString[pr]}]],
+    If[pr==Null || pr==0, "", StringJoin[{"  prio:", JsonStringify[pr]}]],
     "  ", cr
   }]
-];
+);
 
-ListTodos[conn_, opts_] := (
-  filter := If[AssocContainsKeyQ[opts, "done"], "done", If[AssocContainsKeyQ[opts, "all"], "all", "open"]];
+ListTodos[conn_, opts_, flags_] := (
+  filter := If[AssocContainsKeyQ[flags, "done"], "done", If[AssocContainsKeyQ[flags, "all"], "all", "open"]];
   project := Lookup[opts, "project"];
   where := If[filter=="all", "1=1", If[filter=="done", "done=1", "done=0"]];
   where2 := If[project==Null, where, StringJoin[{where, " AND (project = '", project, "')"}]];
   sql := StringJoin[{"SELECT id, title, done, coalesce(project,'') AS project, coalesce(prio,0) AS prio, datetime(created_at,'unixepoch') AS created FROM todos WHERE ", where2, " ORDER BY done, prio DESC, created_at DESC"}];
   rowsDs := SQL[conn, sql];
   rows := Collect[rowsDs];
-  ForEach[rows, (Puts[FormatRow[#]])&];
+  Map[(Puts[FormatRow[#]])&, rows];
 );
 
 AddTodo[conn_, title_, opts_] := (
@@ -68,17 +68,17 @@ AddTodo[conn_, title_, opts_] := (
 );
 
 MarkDone[conn_, id_, done_] := (
-  Exec[conn, "UPDATE todos SET done=$done WHERE id=$id", <|"id"->ToInteger[id], "done"->If[done, 1, 0]|>];
+  Exec[conn, "UPDATE todos SET done=$done WHERE id=$id", <|"id"->id, "done"->If[done, 1, 0]|>];
   Puts[If[done, "Marked done.", "Marked open."]]
 );
 
 EditTodo[conn_, id_, title_] := (
-  Exec[conn, "UPDATE todos SET title=$title WHERE id=$id", <|"id"->ToInteger[id], "title"->title|>];
+  Exec[conn, "UPDATE todos SET title=$title WHERE id=$id", <|"id"->id, "title"->title|>];
   Puts["Updated."]
 );
 
 DeleteTodo[conn_, id_] := (
-  Exec[conn, "DELETE FROM todos WHERE id=$id", <|"id"->ToInteger[id]|>];
+  Exec[conn, "DELETE FROM todos WHERE id=$id", <|"id"->id|>];
   Puts["Deleted."]
 );
 
@@ -93,33 +93,25 @@ Rest := Part[Args, "Rest"]; Opts := Part[Args, "Options"]; Flags := Part[Args, "
 MakeDirectory[dbDir, <|"Parents"->True|>];
 conn := Connect[dsn]; EnsureSchema[conn];
 
-cmd := If[Length[Rest] >= 1, Part[Rest, 1], "help"];
-
-Switch[cmd,
-  "help", ShowHelp[],
-  "init", (EnsureSchema[conn]; Puts["Initialized."]),
-  "add", (
-    If[Length[Rest] < 2, Puts["Usage: add <title> [--project P] [--prio N]"],
-      title := Part[Rest, 2];
-      AddTodo[conn, title, Opts]
+cmdIdx := If[Length[Rest] >= 1 && RegexIsMatch[Part[Rest,1], ".*\\.lyra$"], 2, 1];
+cmd := If[Length[Rest] >= cmdIdx, Part[Rest, cmdIdx], "help"];
+If[cmd=="help", ShowHelp[],
+  If[cmd=="init", (EnsureSchema[conn]; Puts["Initialized."]),
+    If[cmd=="add", (
+      If[Length[Rest] < cmdIdx+1, Puts["Usage: add <title> [--project P] [--prio N]"],
+        title := Part[Rest, cmdIdx+1]; AddTodo[conn, title, Opts]
+      ]),
+      If[cmd=="list", (ListTodos[conn, Opts, Flags]),
+        If[cmd=="done", (If[Length[Rest] < cmdIdx+1, Puts["Usage: done <id>"], MarkDone[conn, Part[Rest, cmdIdx+1], True]]),
+          If[cmd=="undone", (If[Length[Rest] < cmdIdx+1, Puts["Usage: undone <id>"], MarkDone[conn, Part[Rest, cmdIdx+1], False]]),
+            If[cmd=="edit", (If[Length[Rest] < cmdIdx+2, Puts["Usage: edit <id> <new title>"], EditTodo[conn, Part[Rest, cmdIdx+1], Part[Rest, cmdIdx+2]]]),
+              If[cmd=="delete", (If[Length[Rest] < cmdIdx+1, Puts["Usage: delete <id>"], DeleteTodo[conn, Part[Rest, cmdIdx+1]]]),
+                If[cmd=="clear-done", ClearDone[conn], ShowHelp[])
+              )
+            )
+          )
+        ]
+      ]
     ]
-  ),
-  "list", (
-    ListTodos[conn, Merge[Opts, Flags, (a_, b_)=>a]]
-  ),
-  "done", (
-    If[Length[Rest] < 2, Puts["Usage: done <id>"], MarkDone[conn, Part[Rest, 2], True]]
-  ),
-  "undone", (
-    If[Length[Rest] < 2, Puts["Usage: undone <id>"], MarkDone[conn, Part[Rest, 2], False]]
-  ),
-  "edit", (
-    If[Length[Rest] < 3, Puts["Usage: edit <id> <new title>"], EditTodo[conn, Part[Rest, 2], Part[Rest, 3]]]
-  ),
-  "delete", (
-    If[Length[Rest] < 2, Puts["Usage: delete <id>"], DeleteTodo[conn, Part[Rest, 2]]]
-  ),
-  "clear-done", ClearDone[conn],
-  _, ShowHelp[]
+  ]
 ]
-

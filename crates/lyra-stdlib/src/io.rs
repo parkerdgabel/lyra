@@ -1,5 +1,6 @@
 use lyra_core::value::Value;
 use lyra_runtime::{Evaluator};
+use std::io::Read;
 use lyra_runtime::attrs::Attributes;
 use serde_json as sj;
 use serde_json::ser::{PrettyFormatter, Serializer};
@@ -20,6 +21,7 @@ pub fn register_io(ev: &mut Evaluator) {
     ev.register("WriteFile", write_file as NativeFn, Attributes::empty());
     ev.register("Puts", puts as NativeFn, Attributes::empty());
     ev.register("Gets", gets as NativeFn, Attributes::empty());
+    ev.register("PutsAppend", puts_append as NativeFn, Attributes::empty());
     ev.register("ReadLines", read_lines as NativeFn, Attributes::empty());
     ev.register("FileExistsQ", file_exists_q as NativeFn, Attributes::empty());
     ev.register("ListDirectory", list_directory as NativeFn, Attributes::empty());
@@ -219,9 +221,22 @@ fn puts(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 // Gets[path] -> reads entire file as string
 // Future: Gets[] could read stdin
 fn gets(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len()!=1 { return Value::Expr { head: Box::new(Value::Symbol("Gets".into())), args } }
-    let path = to_string_arg(ev, args[0].clone());
-    match std::fs::read_to_string(&path) { Ok(s)=> Value::String(s), Err(e)=> failure("IO::gets", &e.to_string()) }
+    if args.is_empty() {
+        let mut s = String::new();
+        match std::io::stdin().read_to_string(&mut s) { Ok(_)=> Value::String(s), Err(e)=> failure("IO::gets", &e.to_string()) }
+    } else if args.len()==1 {
+        let path = to_string_arg(ev, args[0].clone());
+        match std::fs::read_to_string(&path) { Ok(s)=> Value::String(s), Err(e)=> failure("IO::gets", &e.to_string()) }
+    } else {
+        Value::Expr { head: Box::new(Value::Symbol("Gets".into())), args }
+    }
+}
+
+fn puts_append(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len()!=2 { return Value::Expr { head: Box::new(Value::Symbol("PutsAppend".into())), args } }
+    let s = to_string_arg(ev, args[0].clone());
+    let path = to_string_arg(ev, args[1].clone());
+    match std::fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut f| std::io::Write::write_all(&mut f, s.as_bytes())) { Ok(_)=> Value::Boolean(true), Err(e)=> failure("IO::puts", &e.to_string()) }
 }
 
 fn read_lines(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
