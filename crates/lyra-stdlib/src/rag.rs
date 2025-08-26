@@ -13,6 +13,7 @@ pub fn register_rag(ev: &mut Evaluator) {
     ev.register("RAGAnswer", rag_answer as NativeFn, Attributes::empty());
     ev.register("HybridSearch", hybrid_search as NativeFn, Attributes::empty());
     ev.register("Cite", cite as NativeFn, Attributes::empty());
+    ev.register("Citations", citations as NativeFn, Attributes::empty());
 }
 
 pub fn register_rag_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str)->bool) {
@@ -134,9 +135,11 @@ fn rag_answer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Value::Assoc(HashMap::from([(String::from("role"), Value::String(String::from("user"))), (String::from("content"), Value::String(format!("Context:\n{}\n\nQuestion: {}", match &context { Value::String(s)=>s.clone(), _=>String::new() }, match &query { Value::String(s)=>s.clone(), Value::Symbol(s)=>s.clone(), _=>String::new() })))])),
     ]);
     let reply = super::model::chat(ev, vec![Value::Assoc(HashMap::from([(String::from("Messages"), messages)]))]);
+    let cites = citations(ev, vec![matches.clone()]);
     Value::Assoc(HashMap::from([
         ("answer".into(), reply),
         ("matches".into(), matches),
+        ("citations".into(), cites),
     ]))
 }
 
@@ -152,27 +155,84 @@ fn hybrid_search(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn cite(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // Cite[matches_or_answer, Style->"markdown"]
+    // Cite[matches_or_answer, <|Style->"markdown", WithScores->False, Max->n|>]
+    let c = citations(_ev, vec![args.get(0).cloned().unwrap_or(Value::List(vec![]))]);
+    let mut style = String::from("markdown");
+    let mut with_scores = false;
+    let mut max: Option<usize> = None;
+    if let Some(Value::Assoc(m)) = args.get(1) {
+        if let Some(Value::String(s)) = m.get("Style") { style = s.clone(); }
+        if let Some(Value::Boolean(b)) = m.get("WithScores") { with_scores = *b; }
+        if let Some(Value::String(s)) = m.get("WithScores") { let ls = s.to_lowercase(); if ls=="true"||ls=="on"||ls=="1" { with_scores = true; } }
+        if let Some(Value::Integer(n)) = m.get("Max") { if *n>0 { max = Some(*n as usize); } }
+    }
+    let list = match &c { Value::List(vs)=>vs.clone(), _=>vec![] };
+    let iter = list.into_iter().take(max.unwrap_or(usize::MAX));
+    match style.as_str() {
+        "markdown" => {
+            let mut out = String::new();
+            for v in iter { if let Value::Assoc(m) = v {
+                let id = m.get("id").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| String::from("doc"));
+                let text = m.get("text").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or_default();
+                let score_s = if with_scores { match m.get("score") { Some(Value::Real(r))=> format!(" (score: {:.3})", r), Some(Value::Integer(i))=> format!(" (score: {})", i), _=> String::new() } } else { String::new() };
+                out.push_str(&format!("- [{}] {}{}
+", id, text, score_s));
+            }}
+            Value::String(out)
+        }
+        "json" => c,
+        _ => {
+            let mut out = String::new();
+            for v in iter { if let Value::Assoc(m) = v {
+                let id = m.get("id").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| String::from("doc"));
+                let text = m.get("text").and_then(|v| if let Value::String(s)=v { Some(s.clone()) } else { None }).unwrap_or_default();
+                let score_s = if with_scores { match m.get("score") { Some(Value::Real(r))=> format!("	{:.3}", r), Some(Value::Integer(i))=> format!("	{}", i), _=> String::new() } } else { String::new() };
+                out.push_str(&format!("{}	{}{}
+", id, text, score_s));
+            }}
+            Value::String(out)
+        }
+    }
+}
+
+fn citations(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Citations[matches_or_answer] -> normalized list of <|id,text,score?,url?|>
     let mut matches = Vec::new();
-    let mut style = "markdown".to_string();
     if let Some(v) = args.get(0) {
         match v {
-            Value::Assoc(m) => { if let Some(Value::List(ms)) = m.get("matches") { matches = ms.clone(); } },
-            Value::List(ms) => { matches = ms.clone(); },
-            _=>{}
+            Value::Assoc(m) => {
+                if let Some(Value::List(ms)) = m.get("matches") { matches = ms.clone(); }
+                else if let Some(Value::List(cs)) = m.get("citations") { matches = cs.clone(); }
+            }
+            Value::List(ms) => matches = ms.clone(),
+            _ => {}
         }
     }
-    if let Some(Value::Assoc(m)) = args.get(1) { if let Some(Value::String(s)) = m.get("Style") { style = s.clone(); } }
-    let mut out = String::new();
+    let mut out: Vec<Value> = Vec::new();
     for m in matches.into_iter() {
         if let Value::Assoc(am) = m {
-            let id = am.get("id").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| "doc".into());
-            let snippet = am.get("meta").and_then(|mv| match mv { Value::Assoc(mm)=> mm.get("text").and_then(|t| if let Value::String(s)=t { Some(s.clone()) } else { None }), Value::String(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
-            match style.as_str() {
-                "markdown" => { out.push_str(&format!("- [{}] {}\n", id, snippet)); },
-                _ => { out.push_str(&format!("{}\t{}\n", id, snippet)); }
+            let id = am.get("id").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| String::from("doc"));
+            let mut text = String::new();
+            let mut score: Option<Value> = None;
+            let mut url: Option<String> = None;
+            if let Some(Value::Real(r)) = am.get("score") { score = Some(Value::Real(*r)); }
+            if let Some(Value::Integer(i)) = am.get("score") { score = Some(Value::Integer(*i)); }
+            match am.get("meta") {
+                Some(Value::Assoc(mm)) => {
+                    if let Some(Value::String(s)) = mm.get("text") { text = s.clone(); }
+                    if let Some(Value::String(u)) = mm.get("url") { url = Some(u.clone()); }
+                }
+                Some(Value::String(s)) => { text = s.clone(); }
+                _ => {}
             }
+            let mut m2 = HashMap::new();
+            m2.insert("id".into(), Value::String(id));
+            m2.insert("text".into(), Value::String(text));
+            if let Some(sc) = score { m2.insert("score".into(), sc); }
+            if let Some(u) = url { m2.insert("url".into(), Value::String(u)); }
+            out.push(Value::Assoc(m2));
         }
     }
-    Value::String(out)
+    Value::List(out)
 }
+
