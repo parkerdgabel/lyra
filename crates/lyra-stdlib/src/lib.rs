@@ -38,6 +38,7 @@ use lyra_runtime::attrs::Attributes;
 #[cfg(feature = "functional")] pub mod functional;
 #[cfg(feature = "package")] pub mod package;
 #[cfg(feature = "module")] pub mod module;
+#[cfg(feature = "project")] pub mod project;
 mod dispatch;
 
 // Conditional registration helper used by filtered registrars
@@ -90,6 +91,7 @@ pub fn register_all(ev: &mut Evaluator) {
     #[cfg(feature = "functional")] functional::register_functional(ev);
     #[cfg(feature = "package")] package::register_package(ev);
     #[cfg(feature = "module")] module::register_module(ev);
+    #[cfg(feature = "project")] project::register_project(ev);
     #[cfg(feature = "testing")] testing::register_testing(ev);
     // Register dispatchers last to resolve name conflicts (Join, etc.)
     dispatch::register_dispatch(ev);
@@ -131,6 +133,7 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             "functional" => { #[cfg(feature = "functional")] functional::register_functional(ev) }
             "package" => { #[cfg(feature = "package")] package::register_package(ev) }
             "module" => { #[cfg(feature = "module")] module::register_module(ev) }
+            "project" => { #[cfg(feature = "project")] project::register_project(ev) }
             _ => {}
         }
     }

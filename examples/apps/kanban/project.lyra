@@ -1,0 +1,17 @@
+Exported[{}];
+
+<|
+  "Project" -> <| "Name"->"kanban", "Version"->"0.1.0", "Description"->"Demo Kanban app" |>,
+  "Modules" -> <|
+    "db"     -> ResolveRelative["examples/apps/kanban/db.lyra"],
+    "cli"    -> ResolveRelative["examples/apps/kanban/cli.lyra"],
+    "server" -> ResolveRelative["examples/apps/kanban/server.lyra"]
+  |>,
+  "Scripts" -> <|
+    "serve" -> <| "Module"->"server", "Entry"->"Main" |>
+  |>,
+  "Env" -> <| "LOG_LEVEL"->"info" |>,
+  "Config" -> <| "Ports"-><| "Http"->8080 |> |>,
+  "Workspace" -> Null,
+  "Deps" -> <||>
+|>
