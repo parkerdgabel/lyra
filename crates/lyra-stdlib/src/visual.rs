@@ -121,8 +121,11 @@ struct Canvas {
 
 impl Canvas {
     fn new(width: u32, height: u32, bg: image::Rgba<u8>) -> Self {
-        let mut img = image::RgbaImage::from_pixel(width, height, bg);
+        let img = image::RgbaImage::from_pixel(width, height, bg);
         Canvas { img, w: width, h: height, left: 40, right: 20, top: 20, bottom: 40, fg: image::Rgba([0,0,0,255]), bg }
+    }
+    fn with_margins(mut self, left: u32, right: u32, top: u32, bottom: u32) -> Self {
+        self.left = left; self.right = right; self.top = top; self.bottom = bottom; self
     }
     fn plot_area(&self) -> (u32,u32,u32,u32) { (self.left, self.top, self.w-self.right, self.h-self.bottom) }
     fn put_px(&mut self, x: i32, y: i32, c: image::Rgba<u8>) {
@@ -170,6 +173,83 @@ impl Canvas {
             self.draw_line(l as i32, ty as i32, l as i32 + 4, ty as i32, self.fg);
         }
         let _ = (xr, yr); // reserved for future labeled ticks
+    }
+    fn draw_char(&mut self, x: i32, y: i32, ch: char, color: image::Rgba<u8>, scale: u32) {
+        let g = glyph_5x7(ch);
+        let sx = scale.max(1) as i32; let sy = scale.max(1) as i32;
+        for (col, bits) in g.iter().enumerate() {
+            for row in 0..7 {
+                if (bits >> row) & 1 == 1 {
+                    let px = x + (col as i32)*sx;
+                    let py = y + (row as i32)*sy;
+                    // fill scaled block
+                    self.fill_rect(px, py, px + sx - 1, py + sy - 1, color);
+                }
+            }
+        }
+    }
+    fn draw_text(&mut self, x: i32, y: i32, text: &str, color: image::Rgba<u8>, scale: u32) {
+        let mut cx = x;
+        let advance = (6 * scale) as i32; // 5px + 1px space
+        for ch in text.chars() {
+            self.draw_char(cx, y, ch, color, scale);
+            cx += advance;
+        }
+    }
+    fn draw_text_vert(&mut self, x: i32, y: i32, text: &str, color: image::Rgba<u8>, scale: u32) {
+        let mut cy = y;
+        let advance = (8 * scale) as i32; // 7px + 1px space
+        for ch in text.chars() {
+            self.draw_char(x, cy, ch, color, scale);
+            cy += advance;
+        }
+    }
+}
+
+// 5x7 bitmap font for ASCII subset. Each u8 is a column, LSB at top (row 0)
+fn glyph_5x7(ch: char) -> [u8; 5] {
+    match ch {
+        'A'|'a' => [0x1E,0x05,0x05,0x1E,0x00],
+        'B'|'b' => [0x1F,0x15,0x15,0x0A,0x00],
+        'C'|'c' => [0x0E,0x11,0x11,0x0A,0x00],
+        'D'|'d' => [0x1F,0x11,0x11,0x0E,0x00],
+        'E'|'e' => [0x1F,0x15,0x15,0x11,0x00],
+        'F'|'f' => [0x1F,0x05,0x05,0x01,0x00],
+        'G'|'g' => [0x0E,0x11,0x15,0x1D,0x00],
+        'H'|'h' => [0x1F,0x04,0x04,0x1F,0x00],
+        'I'|'i' => [0x11,0x1F,0x11,0x00,0x00],
+        'J'|'j' => [0x08,0x10,0x10,0x0F,0x00],
+        'K'|'k' => [0x1F,0x04,0x0A,0x11,0x00],
+        'L'|'l' => [0x1F,0x10,0x10,0x10,0x00],
+        'M'|'m' => [0x1F,0x02,0x04,0x02,0x1F],
+        'N'|'n' => [0x1F,0x02,0x04,0x08,0x1F],
+        'O'|'o' => [0x0E,0x11,0x11,0x0E,0x00],
+        'P'|'p' => [0x1F,0x05,0x05,0x02,0x00],
+        'Q'|'q' => [0x0E,0x11,0x19,0x1E,0x10],
+        'R'|'r' => [0x1F,0x05,0x0D,0x12,0x00],
+        'S'|'s' => [0x12,0x15,0x15,0x09,0x00],
+        'T'|'t' => [0x01,0x1F,0x01,0x01,0x00],
+        'U'|'u' => [0x0F,0x10,0x10,0x0F,0x00],
+        'V'|'v' => [0x07,0x08,0x10,0x08,0x07],
+        'W'|'w' => [0x1F,0x08,0x04,0x08,0x1F],
+        'X'|'x' => [0x11,0x0A,0x04,0x0A,0x11],
+        'Y'|'y' => [0x03,0x04,0x18,0x04,0x03],
+        'Z'|'z' => [0x11,0x19,0x15,0x13,0x00],
+        '0' => [0x0E,0x19,0x15,0x13,0x0E],
+        '1' => [0x00,0x02,0x1F,0x00,0x00],
+        '2' => [0x12,0x19,0x15,0x12,0x00],
+        '3' => [0x11,0x15,0x15,0x0A,0x00],
+        '4' => [0x07,0x04,0x1F,0x04,0x00],
+        '5' => [0x17,0x15,0x15,0x09,0x00],
+        '6' => [0x0E,0x15,0x15,0x08,0x00],
+        '7' => [0x01,0x01,0x1D,0x03,0x00],
+        '8' => [0x0A,0x15,0x15,0x0A,0x00],
+        '9' => [0x02,0x15,0x15,0x0E,0x00],
+        '-' => [0x04,0x04,0x04,0x00,0x00],
+        '.' => [0x10,0x00,0x00,0x00,0x00],
+        ':' => [0x0A,0x00,0x00,0x00,0x00],
+        ' ' => [0x00,0x00,0x00,0x00,0x00],
+        _ => [0x1F,0x15,0x15,0x1F,0x00], // default block
     }
 }
 
@@ -271,7 +351,7 @@ fn parse_encoded_line_or_scatter(
     data: &Value,
     enc: &std::collections::HashMap<String, Value>,
     sample: usize,
-) -> Option<Vec<Vec<(f64,f64)>>> {
+) -> Option<(Vec<Vec<(f64,f64)>>, Vec<String>)> {
     let rows = collect_rows_from_data(ev, data, sample);
     if rows.is_empty() { return None; }
     let x_key = enc_str(enc, "X");
@@ -290,7 +370,12 @@ fn parse_encoded_line_or_scatter(
             idx += 1;
         }
     }
-    if groups.is_empty() { None } else { Some(groups.into_iter().map(|(_g, s)| s).collect()) }
+    if groups.is_empty() { None } else {
+        let mut series: Vec<Vec<(f64,f64)>> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        for (g,s) in groups.into_iter() { names.push(g); series.push(s); }
+        Some((series, names))
+    }
 }
 
 fn parse_encoded_histogram(
@@ -347,10 +432,17 @@ fn encoding_format(opts: &std::collections::HashMap<String, Value>) -> (String, 
 
 // -------- Renderers --------
 
-fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, opts: &std::collections::HashMap<String, Value>, scatter_only: bool) -> Value {
+fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, names: Option<Vec<String>>, opts: &std::collections::HashMap<String, Value>, scatter_only: bool) -> Value {
     let (w,h) = parse_size_from_opts(opts);
     let bg = parse_color(opts.get("Background"), [255,255,255,255]);
-    let mut c = Canvas::new(w,h,bg);
+    let title = enc_str(opts, "Title");
+    let xlabel = enc_str(opts, "XLabel");
+    let ylabel = enc_str(opts, "YLabel");
+    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
+    if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
+    if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
+    let mut c = Canvas::new(w,h,bg).with_margins(left, right, top, bottom);
     c.draw_axes();
     // Combined ranges
     let mut all: Vec<(f64,f64)> = Vec::new();
@@ -372,6 +464,23 @@ fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, opts: &std::collections::
         }
     }
     c.draw_ticks((xmin,xmax),(ymin,ymax));
+    // Labels & legend
+    if let Some(t) = title { c.draw_text((w as i32)/2 - (t.len() as i32*3), (c.top as i32)/2 - 4, &t, c.fg, 1); }
+    if let Some(xl) = xlabel { c.draw_text((w as i32)/2 - (xl.len() as i32*3), (h as i32) - (c.bottom as i32)/2 - 4, &xl, c.fg, 1); }
+    if let Some(yl) = ylabel { c.draw_text_vert((c.left as i32)/2 - 3, (h as i32)/2 - ((yl.len() as i32*8)/2), &yl, c.fg, 1); }
+    if let Some(ns) = names.as_ref() {
+        if !ns.is_empty() {
+            let pal = pick_palette(series.len());
+            let (l,t,r,_b) = c.plot_area();
+            let mut x = r as i32 - 100; let mut y = t as i32 + 4;
+            for (i, name) in ns.iter().enumerate() {
+                let col = pal[i % pal.len()];
+                c.fill_rect(x, y, x+7, y+7, col);
+                c.draw_text(x+10, y, name, c.fg, 1);
+                y += 12;
+            }
+        }
+    }
     let dynimg = image::DynamicImage::ImageRgba8(c.img);
     let (fmt,q) = encoding_format(opts);
     match encode_image(&dynimg, &fmt, q) { Ok(bytes)=>wrap_bytes_output(bytes, Some(opts)), Err(e)=>failure("Visual::encode", &e) }
@@ -380,7 +489,14 @@ fn render_line_or_scatter(series: Vec<Vec<(f64,f64)>>, opts: &std::collections::
 fn render_bar(values: &std::collections::HashMap<String, f64>, opts: &std::collections::HashMap<String, Value>) -> Value {
     let (w,h) = parse_size_from_opts(opts);
     let bg = parse_color(opts.get("Background"), [255,255,255,255]);
-    let mut c = Canvas::new(w,h,bg);
+    let title = enc_str(opts, "Title");
+    let xlabel = enc_str(opts, "XLabel");
+    let ylabel = enc_str(opts, "YLabel");
+    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
+    if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
+    if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
+    let mut c = Canvas::new(w,h,bg).with_margins(left, right, top, bottom);
     c.draw_axes();
     if values.is_empty() { let dynimg = image::DynamicImage::ImageRgba8(c.img); let (fmt,q)=encoding_format(opts); return match encode_image(&dynimg,&fmt,q){Ok(b)=>wrap_bytes_output(b,Some(opts)), Err(e)=>failure("Visual::encode", &e)} }
     let mut items: Vec<(&String,f64)> = values.iter().map(|(k,v)| (k, *v)).collect();
@@ -403,6 +519,10 @@ fn render_bar(values: &std::collections::HashMap<String, f64>, opts: &std::colle
         let (px1,py1) = to_pixel(x1, *v, (xmin,xmax), (ymin,ymax), area);
         c.fill_rect(px0, py1, px1, py0, col);
     }
+    // Labels
+    if let Some(t) = title { c.draw_text((w as i32)/2 - (t.len() as i32*3), (c.top as i32)/2 - 4, &t, c.fg, 1); }
+    if let Some(xl) = xlabel { c.draw_text((w as i32)/2 - (xl.len() as i32*3), (h as i32) - (c.bottom as i32)/2 - 4, &xl, c.fg, 1); }
+    if let Some(yl) = ylabel { c.draw_text_vert((c.left as i32)/2 - 3, (h as i32)/2 - ((yl.len() as i32*8)/2), &yl, c.fg, 1); }
     let dynimg = image::DynamicImage::ImageRgba8(c.img);
     let (fmt,q) = encoding_format(opts);
     match encode_image(&dynimg, &fmt, q) { Ok(bytes)=>wrap_bytes_output(bytes, Some(opts)), Err(e)=>failure("Visual::encode", &e) }
@@ -420,7 +540,14 @@ fn render_histogram(vals: &[f64], opts: &std::collections::HashMap<String, Value
     // Render as bar chart on numeric x
     let (w,h) = parse_size_from_opts(opts);
     let bg = parse_color(opts.get("Background"), [255,255,255,255]);
-    let mut c = Canvas::new(w,h,bg);
+    let title = enc_str(opts, "Title");
+    let xlabel = enc_str(opts, "XLabel");
+    let ylabel = enc_str(opts, "YLabel");
+    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
+    if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
+    if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
+    let mut c = Canvas::new(w,h,bg).with_margins(left, right, top, bottom);
     c.draw_axes();
     let area = c.plot_area();
     let pal = pick_palette(1);
@@ -433,6 +560,125 @@ fn render_histogram(vals: &[f64], opts: &std::collections::HashMap<String, Value
         c.fill_rect(px0, py1, px1, py0, col);
     }
     c.draw_ticks((vmin,vmax),(0.0,maxc));
+    // Labels
+    if let Some(t) = title { c.draw_text((w as i32)/2 - (t.len() as i32*3), (c.top as i32)/2 - 4, &t, c.fg, 1); }
+    if let Some(xl) = xlabel { c.draw_text((w as i32)/2 - (xl.len() as i32*3), (h as i32) - (c.bottom as i32)/2 - 4, &xl, c.fg, 1); }
+    if let Some(yl) = ylabel { c.draw_text_vert((c.left as i32)/2 - 3, (h as i32)/2 - ((yl.len() as i32*8)/2), &yl, c.fg, 1); }
+    let dynimg = image::DynamicImage::ImageRgba8(c.img);
+    let (fmt,q) = encoding_format(opts);
+    match encode_image(&dynimg, &fmt, q) { Ok(bytes)=>wrap_bytes_output(bytes, Some(opts)), Err(e)=>failure("Visual::encode", &e) }
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
+
+fn heat_color(v: f64, vmin: f64, vmax: f64, palette: &str) -> image::Rgba<u8> {
+    let t = if vmax>vmin { ((v - vmin)/(vmax - vmin)).clamp(0.0, 1.0) } else { 0.0 } as f32;
+    match palette.to_lowercase().as_str() {
+        "magma" => {
+            // simple black->purple->orange
+            let r = lerp(0.0, 1.0, t).powf(1.2);
+            let g = (t * 0.8).powf(1.5);
+            let b = (1.0 - t * 0.7).powf(1.0);
+            image::Rgba([ (r*255.0) as u8, (g*255.0) as u8, (b*255.0) as u8, 255 ])
+        }
+        _ => {
+            // viridis-ish: blue -> green -> yellow
+            let r = lerp(0.2, 1.0, t);
+            let g = lerp(0.1, 1.0, t*t);
+            let b = lerp(0.5, 0.0, t);
+            image::Rgba([ (r*255.0) as u8, (g*255.0) as u8, (b*255.0) as u8, 255 ])
+        }
+    }
+}
+
+fn render_heatmap(matrix: &Vec<Vec<f64>>, opts: &std::collections::HashMap<String, Value>) -> Value {
+    let rows = matrix.len(); if rows==0 { return failure("Visual::heatmap", "Empty matrix"); }
+    let cols = matrix[0].len(); if cols==0 { return failure("Visual::heatmap", "Empty matrix"); }
+    let (w,h) = parse_size_from_opts(opts);
+    let bg = parse_color(opts.get("Background"), [255,255,255,255]);
+    let title = enc_str(opts, "Title");
+    let xlabel = enc_str(opts, "XLabel");
+    let ylabel = enc_str(opts, "YLabel");
+    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
+    if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
+    if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
+    let mut c = Canvas::new(w,h,bg).with_margins(left, right, top, bottom);
+    c.draw_axes();
+    let mut vmin = f64::INFINITY; let mut vmax = f64::NEG_INFINITY;
+    for r in matrix { for v in r { if *v<vmin { vmin=*v; } if *v>vmax { vmax=*v; } } }
+    let vmin = opts.get("Min").and_then(|v| if let Value::Real(x)=v { Some(*x) } else if let Value::Integer(i)=v { Some(*i as f64) } else { None }).unwrap_or(vmin);
+    let vmax = opts.get("Max").and_then(|v| if let Value::Real(x)=v { Some(*x) } else if let Value::Integer(i)=v { Some(*i as f64) } else { None }).unwrap_or(vmax);
+    let palette = enc_str(opts, "Palette").unwrap_or_else(|| "viridis".into());
+    let (l,t,r,b) = c.plot_area();
+    let pw = (r - l).max(1) as f32 / (cols as f32);
+    let ph = (b - t).max(1) as f32 / (rows as f32);
+    for yi in 0..rows {
+        for xi in 0..cols {
+            let v = matrix[yi][xi];
+            let color = heat_color(v, vmin, vmax, &palette);
+            let x0 = l as i32 + (xi as f32 * pw).round() as i32;
+            let x1 = l as i32 + (((xi+1) as f32 * pw).round() as i32) - 1;
+            let y0 = t as i32 + (yi as f32 * ph).round() as i32;
+            let y1 = t as i32 + (((yi+1) as f32 * ph).round() as i32) - 1;
+            c.fill_rect(x0, y0, x1, y1, color);
+        }
+    }
+    if let Some(ti) = title { c.draw_text((w as i32)/2 - (ti.len() as i32*3), (c.top as i32)/2 - 4, &ti, c.fg, 1); }
+    if let Some(xl) = xlabel { c.draw_text((w as i32)/2 - (xl.len() as i32*3), (h as i32) - (c.bottom as i32)/2 - 4, &xl, c.fg, 1); }
+    if let Some(yl) = ylabel { c.draw_text_vert((c.left as i32)/2 - 3, (h as i32)/2 - ((yl.len() as i32*8)/2), &yl, c.fg, 1); }
+    let dynimg = image::DynamicImage::ImageRgba8(c.img);
+    let (fmt,q) = encoding_format(opts);
+    match encode_image(&dynimg, &fmt, q) { Ok(bytes)=>wrap_bytes_output(bytes, Some(opts)), Err(e)=>failure("Visual::encode", &e) }
+}
+
+fn render_area(series: Vec<Vec<(f64,f64)>>, stacked: bool, opts: &std::collections::HashMap<String, Value>) -> Value {
+    // Use index-based x for now
+    if series.is_empty() { return failure("Visual::area", "Empty series"); }
+    let n = series[0].len(); if n==0 { return failure("Visual::area", "Empty series"); }
+    let (w,h) = parse_size_from_opts(opts);
+    let bg = parse_color(opts.get("Background"), [255,255,255,255]);
+    let title = enc_str(opts, "Title");
+    let xlabel = enc_str(opts, "XLabel");
+    let ylabel = enc_str(opts, "YLabel");
+    let mut left = 40u32; let mut right = 20u32; let mut top = 20u32; let mut bottom = 40u32;
+    if title.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { top += 16; }
+    if xlabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { bottom += 16; }
+    if ylabel.as_deref().map(|s| !s.is_empty()).unwrap_or(false) { left += 16; }
+    let mut c = Canvas::new(w,h,bg).with_margins(left, right, top, bottom);
+    c.draw_axes();
+    // build y ranges
+    let mut ymax = 0.0f64;
+    if stacked {
+        for i in 0..n {
+            let mut sum = 0.0; for s in &series { if i < s.len() { sum += s[i].1; } }
+            if sum>ymax { ymax=sum; }
+        }
+    } else {
+        for s in &series { for (_x,y) in s { if *y>ymax { ymax=*y; } } }
+    }
+    let ymin = 0.0f64; if ymax<=0.0 { ymax = 1.0; }
+    let xr = (0.5, n as f64 + 0.5);
+    let yr = (ymin, ymax);
+    let area = c.plot_area();
+    let pal = pick_palette(series.len());
+    let mut prev_stack: Vec<f64> = vec![0.0; n];
+    for (si, s) in series.iter().enumerate() {
+        let col = pal[si];
+        for i in 0..n.min(s.len()) {
+            let x0 = i as f64 + 0.0; let x1 = i as f64 + 1.0;
+            let base = if stacked { prev_stack[i] } else { 0.0 };
+            let yv = base + s[i].1;
+            let (px0,py0) = to_pixel(x0+0.5, base, xr, yr, area);
+            let (px1,py1) = to_pixel(x1+0.5, yv, xr, yr, area);
+            c.fill_rect(px0, py1, px1, py0, col);
+            if stacked { prev_stack[i] = yv; }
+        }
+    }
+    // labels
+    if let Some(t) = title { c.draw_text((w as i32)/2 - (t.len() as i32*3), (c.top as i32)/2 - 4, &t, c.fg, 1); }
+    if let Some(xl) = xlabel { c.draw_text((w as i32)/2 - (xl.len() as i32*3), (h as i32) - (c.bottom as i32)/2 - 4, &xl, c.fg, 1); }
+    if let Some(yl) = ylabel { c.draw_text_vert((c.left as i32)/2 - 3, (h as i32)/2 - ((yl.len() as i32*8)/2), &yl, c.fg, 1); }
     let dynimg = image::DynamicImage::ImageRgba8(c.img);
     let (fmt,q) = encoding_format(opts);
     match encode_image(&dynimg, &fmt, q) { Ok(bytes)=>wrap_bytes_output(bytes, Some(opts)), Err(e)=>failure("Visual::encode", &e) }
@@ -454,22 +700,22 @@ fn chart(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match typ.as_str() {
         "line" => {
             if let (Some(data), Some(enc)) = (data_val.clone(), enc_map.clone()) {
-                if let Some(ms) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_line_or_scatter(ms, &opts, false); }
+                if let Some((ms, names)) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_line_or_scatter(ms, Some(names), &opts, false); }
             }
             if let Some(ms) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_multi_series(d)) {
-                return render_line_or_scatter(ms, &opts, false);
+                return render_line_or_scatter(ms, None, &opts, false);
             }
-            if let Some(s) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_series(d)) { return render_line_or_scatter(vec![s], &opts, false); }
+            if let Some(s) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_series(d)) { return render_line_or_scatter(vec![s], None, &opts, false); }
             failure("Visual::data", "Unsupported data shape for line plot")
         }
         "scatter" => {
             if let (Some(data), Some(enc)) = (data_val.clone(), enc_map.clone()) {
-                if let Some(ms) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_line_or_scatter(ms, &opts, true); }
+                if let Some((ms, names)) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_line_or_scatter(ms, Some(names), &opts, true); }
             }
             if let Some(ms) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_multi_series(d)) {
-                return render_line_or_scatter(ms, &opts, true);
+                return render_line_or_scatter(ms, None, &opts, true);
             }
-            if let Some(s) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_series(d)) { return render_line_or_scatter(vec![s], &opts, true); }
+            if let Some(s) = spec.get("data").or_else(|| spec.get("Data")).and_then(|d| normalize_series(d)) { return render_line_or_scatter(vec![s], None, &opts, true); }
             failure("Visual::data", "Unsupported data shape for scatter plot")
         }
         "bar" => {
@@ -504,6 +750,53 @@ fn chart(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
             failure("Visual::data", "Unsupported data shape for histogram")
         }
+        "heatmap" => {
+            if let Some(Value::List(rows)) = data_val.clone() {
+                // Expect List of List numeric
+                let mut mat: Vec<Vec<f64>> = Vec::new();
+                for r in rows {
+                    if let Value::List(cs) = r { let mut row: Vec<f64> = Vec::new(); for v in cs { if let Some(x)=as_f64(&v) { row.push(x); } } if !row.is_empty() { mat.push(row); } }
+                }
+                if !mat.is_empty() { return render_heatmap(&mat, &opts); }
+            }
+            // Encoded path: X,Y,Z columns
+            if let (Some(data), Some(enc)) = (data_val.clone(), enc_map.clone()) {
+                let rows_v = collect_rows_from_data(ev, &data, sample);
+                let xk = enc_str(&enc, "X"); let yk = enc_str(&enc, "Y"); let zk = enc_str(&enc, "Z");
+                if let (Some(xk), Some(yk), Some(zk)) = (xk, yk, zk) {
+                    let mut xs: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+                    let mut ys: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+                    let mut vals: std::collections::HashMap<(i64,i64), f64> = std::collections::HashMap::new();
+                    for r in rows_v {
+                        if let Value::Assoc(m) = r {
+                            let xi = m.get(&xk).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None });
+                            let yi = m.get(&yk).and_then(|v| if let Value::Integer(i)=v { Some(*i) } else { None });
+                            let zv = m.get(&zk).and_then(|v| as_f64(v));
+                            if let (Some(ix), Some(iy), Some(z)) = (xi, yi, zv) { xs.insert(ix); ys.insert(iy); vals.insert((ix,iy), z); }
+                        }
+                    }
+                    if !xs.is_empty() && !ys.is_empty() {
+                        let xlist: Vec<i64> = xs.into_iter().collect();
+                        let ylist: Vec<i64> = ys.into_iter().collect();
+                        let mut mat: Vec<Vec<f64>> = Vec::new();
+                        for &yy in &ylist { let mut row: Vec<f64> = Vec::new(); for &xx in &xlist { row.push(*vals.get(&(xx,yy)).unwrap_or(&0.0)); } mat.push(row); }
+                        return render_heatmap(&mat, &opts);
+                    }
+                }
+            }
+            failure("Visual::data", "Unsupported data shape for heatmap")
+        }
+        "area" => {
+            if let Some(ms) = data_val.as_ref().and_then(|d| normalize_multi_series(d)) { return render_area(ms, false, &opts); }
+            if let Some(s) = data_val.as_ref().and_then(|d| normalize_series(d)) { return render_area(vec![s], false, &opts); }
+            if let (Some(data), Some(enc)) = (data_val.clone(), enc_map.clone()) { if let Some((ms,_)) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_area(ms, false, &opts); } }
+            failure("Visual::data", "Unsupported data shape for area plot")
+        }
+        "stackedarea" => {
+            if let Some(ms) = data_val.as_ref().and_then(|d| normalize_multi_series(d)) { return render_area(ms, true, &opts); }
+            if let (Some(data), Some(enc)) = (data_val.clone(), enc_map.clone()) { if let Some((ms,_)) = parse_encoded_line_or_scatter(ev, &data, &enc, sample) { return render_area(ms, true, &opts); } }
+            failure("Visual::data", "Unsupported data shape for stacked area plot")
+        }
         other => failure("Visual::type", &format!("Unsupported chart type: {}", other)),
     }
 }
@@ -512,8 +805,8 @@ fn line_plot(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("LinePlot".into())), args } }
     let data = ev.eval(args[0].clone());
     let opts = if args.len()>1 { match ev.eval(args[1].clone()) { Value::Assoc(m)=>m, _=>std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
-    if let Some(ms) = normalize_multi_series(&data) { return render_line_or_scatter(ms, &opts, false); }
-    if let Some(s) = normalize_series(&data) { return render_line_or_scatter(vec![s], &opts, false); }
+    if let Some(ms) = normalize_multi_series(&data) { return render_line_or_scatter(ms, None, &opts, false); }
+    if let Some(s) = normalize_series(&data) { return render_line_or_scatter(vec![s], None, &opts, false); }
     Value::Expr { head: Box::new(Value::Symbol("LinePlot".into())), args: vec![data] }
 }
 
@@ -521,8 +814,8 @@ fn scatter_plot(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ScatterPlot".into())), args } }
     let data = ev.eval(args[0].clone());
     let opts = if args.len()>1 { match ev.eval(args[1].clone()) { Value::Assoc(m)=>m, _=>std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
-    if let Some(ms) = normalize_multi_series(&data) { return render_line_or_scatter(ms, &opts, true); }
-    if let Some(s) = normalize_series(&data) { return render_line_or_scatter(vec![s], &opts, true); }
+    if let Some(ms) = normalize_multi_series(&data) { return render_line_or_scatter(ms, None, &opts, true); }
+    if let Some(s) = normalize_series(&data) { return render_line_or_scatter(vec![s], None, &opts, true); }
     Value::Expr { head: Box::new(Value::Symbol("ScatterPlot".into())), args: vec![data] }
 }
 
