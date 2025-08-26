@@ -53,6 +53,7 @@ symphonia = { version = "0.5", optional = true, default-features = false, featur
 
 [features]
 default = ["core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain", "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "audio", "media", "text", "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs", "time_cron", "fs_watch", "fs_archive"]
+module = []
 core = []
 string = []
 math = []

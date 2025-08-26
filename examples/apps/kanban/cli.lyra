@@ -3,8 +3,8 @@
   See README.md for usage.
 *)
 
-(* import db helpers by evaluating the file *)
-<< "examples/apps/kanban/db.lyra";
+(* import db helpers *)
+Using["examples/apps/kanban/db.lyra"];
 conn := ConnectKanban[];
 
 ShowHelp[] := Puts[StringJoin[{

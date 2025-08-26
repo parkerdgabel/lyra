@@ -171,6 +171,18 @@ impl Evaluator {
         self.env.keys().cloned().collect()
     }
 
+    pub fn set_env(&mut self, key: &str, v: lyra_core::value::Value) {
+        self.env.insert(key.to_string(), v);
+    }
+
+    pub fn get_env(&self, key: &str) -> Option<lyra_core::value::Value> {
+        self.env.get(key).cloned()
+    }
+
+    pub fn unset_env(&mut self, key: &str) {
+        self.env.remove(key);
+    }
+
     pub fn eval(&mut self, v: Value) -> Value {
         if let Some(tok) = &self.cancel_token { if tok.load(Ordering::Relaxed) { return cancelled_failure(); } }
         if let Some(dl) = self.deadline { if Instant::now() > dl { return time_budget_failure(); } }
