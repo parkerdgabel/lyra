@@ -1008,7 +1008,39 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"",
         ],
     );
-    ev.set_doc_examples("HtmlTemplate", &["HtmlTemplate[\"<b>{{name}}</b>\", <|name->\"X\"|>]  ==> \"<b>X</b>\""]);
+    ev.set_doc_examples(
+        "HtmlTemplate",
+        &[
+            // basic interpolation
+            "HtmlTemplate[\"<b>{{name}}</b>\", <|name->\"X\"|>]  ==> \"<b>X</b>\"",
+            // partial with props
+            "HtmlTemplate[\"{{> Header <|title->\\\"Docs\\\"|>}}\", <||>, <|Partials-><|\"Header\"->\"<header>{{title}}</header>\"|>|>]  ==> \"<header>Docs</header>\"",
+            // component with props + UrlEncode filter
+            "HtmlTemplate[\"{{< Button <|label->\\\"Go\\\", href->\\\"/a?b=1&c=2\\\"|>}}\", <||>, <|Components-><|\"Button\"->\"<a href=\\\"{{href|UrlEncode}}\\\" class=\\\"btn\\\">{{label}}</a>\"|>|>]  ==> \"<a href=\\\"/a%3Fb%3D1%26c%3D2\\\" class=\\\"btn\\\">Go</a>\"",
+            // layout + blocks + yield
+            "HtmlTemplate[\"{{#block \\\"content\\\"}}<p>Hello</p>{{/block}}\", <|title->\"Home\"|>, <|Layout->\"<html><head><title>{{title}}</title></head><body>{{yield \\\"content\\\"}}</body></html>\"|>]  ==> \"<html><head><title>Home</title></head><body><p>Hello</p></body></html>\"",
+            // SafeHtml bypasses escaping
+            "HtmlTemplate[\"<div>{{{bio}}}</div>\", <|bio->SafeHtml[\"<em>writer</em>\"]|>]  ==> \"<div><em>writer</em></div>\"",
+        ],
+    );
+    ev.set_doc_examples(
+        "HtmlTemplateRender",
+        &[
+            "t := HtmlTemplateCompile[\"<i>{{msg}}</i>\"]; HtmlTemplateRender[t, <|msg->\"hi\"|>]  ==> \"<i>hi</i>\"",
+        ],
+    );
+    ev.set_doc_examples(
+        "HtmlAttr",
+        &[
+            "HtmlAttr[\"a&b\"]  ==> \"a&amp;b\"",
+        ],
+    );
+    ev.set_doc_examples(
+        "SafeHtml",
+        &[
+            "SafeHtml[\"<strong>x</strong>\"]  ==> <|__type->\"SafeHtml\"|>",
+        ],
+    );
 
     // Regex utilities
     ev.set_doc("RegexIsMatch", "Test if regex matches string", &["s", "pattern"]);

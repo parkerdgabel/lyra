@@ -77,6 +77,14 @@
 - Examples:
   - `EndsWith["foobar", "bar"]  ==> True`
 
+## `HtmlAttr`
+
+- Usage: `HtmlAttr[s]`
+- Summary: Escape string for HTML attribute context
+- Tags: string, html
+- Examples:
+  - `HtmlAttr["a&b"]  ==> "a&amp;b"`
+
 ## `HtmlTemplate`
 
 - Usage: `HtmlTemplate[templateOrPath, data, opts?]`
@@ -84,6 +92,18 @@
 - Tags: string, template, html, xml
 - Examples:
   - `HtmlTemplate["<b>{{name}}</b>", <|name->"X"|>]  ==> "<b>X</b>"`
+  - `HtmlTemplate["{{> Header <|title->\"Docs\"|>}}", <||>, <|Partials-><|"Header"->"<header>{{title}}</header>"|>|>]  ==> "<header>Docs</header>"`
+  - `HtmlTemplate["{{< Button <|label->\"Go\", href->\"/a?b=1&c=2\"|>}}", <||>, <|Components-><|"Button"->"<a href=\"{{href|UrlEncode}}\" class=\"btn\">{{label}}</a>"|>|>]  ==> "<a href=\"/a%3Fb%3D1%26c%3D2\" class=\"btn\">Go</a>"`
+  - `HtmlTemplate["{{#block \"content\"}}<p>Hello</p>{{/block}}", <|title->"Home"|>, <|Layout->"<html><head><title>{{title}}</title></head><body>{{yield \"content\"}}</body></html>"|>]  ==> "<html><head><title>Home</title></head><body><p>Hello</p></body></html>"`
+  - `HtmlTemplate["<div>{{{bio}}}</div>", <|bio->SafeHtml["<em>writer</em>"]|>]  ==> "<div><em>writer</em></div>"`
+
+## `HtmlTemplateRender`
+
+- Usage: `HtmlTemplateRender[handle, data, opts?]`
+- Summary: Render compiled HTML template with data
+- Tags: string, template, html
+- Examples:
+  - `t := HtmlTemplateCompile["<i>{{msg}}</i>"]; HtmlTemplateRender[t, <|msg->"hi"|>]  ==> "<i>hi</i>"`
 
 ## `RegexFindAll`
 
@@ -92,6 +112,14 @@
 - Tags: string, regex
 - Examples:
   - `RegexFindAll[\"a1 b22\", \"\\d+\"]  ==> {\"1\",\"22\"}`
+
+## `SafeHtml`
+
+- Usage: `SafeHtml[s]`
+- Summary: Mark string as safe HTML (no escaping)
+- Tags: string, html
+- Examples:
+  - `SafeHtml["<strong>x</strong>"]  ==> <|__type->"SafeHtml"|>`
 
 ## `Slugify`
 
