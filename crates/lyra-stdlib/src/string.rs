@@ -107,11 +107,16 @@ pub fn register_string(ev: &mut Evaluator) {
         tool_spec!("RegexFindAll", summary: "Find all regex matches", params: ["pattern","s"], tags: ["string","regex"]),
         tool_spec!("RegexReplace", summary: "Replace by regex (fn or string)", params: ["pattern","s","repl"], tags: ["string","regex"]),
         tool_spec!("TemplateRender", summary: "Render Mustache-like template", params: ["template","data","opts?"], tags: ["string","template"], examples: [Value::String("TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"".into())]),
-        tool_spec!("HtmlTemplate", summary: "Render HTML/XML template with data and options", params: ["templateOrPath","data","opts?"], tags: ["string","template","html","xml"], examples: [Value::String("HtmlTemplate[\"<b>{{name}}</b>\", <|name->\"x\"|>]".into())]),
+        tool_spec!("HtmlTemplate", summary: "Render HTML/XML template with data and options", params: ["templateOrPath","data","opts?"], tags: ["string","template","html","xml"], examples: [
+            Value::String("HtmlTemplate[\\\"<b>{{name}}</b>\\\", <|name->\\\"X\\\"|>]  ==> \\\"<b>X</b>\\\"".into()),
+            Value::String("HtmlTemplate[\\\"{{> Header <|title->\\\\\\\"Docs\\\\\\\"|>}}\\\", <||>, <|Partials-><|\\\"Header\\\"->\\\"<header>{{title}}</header>\\\"|>|>]".into()),
+            Value::String("HtmlTemplate[\\\"{{< Button <|label->\\\\\\\"Go\\\\\\\", href->\\\\\\\"/a?b=1&c=2\\\\\\\"|>}}\\\", <||>, <|Components-><|\\\"Button\\\"->\\\"<a href=\\\\\\\"{{href|UrlEncode}}\\\\\\\" class=\\\\\\\"btn\\\\\\\">{{label}}</a>\\\"|>|>]".into()),
+            Value::String("HtmlTemplate[\\\"{{#block \\\\\\\"content\\\\\\\"}}<p>Hello</p>{{/block}}\\\", <|title->\\\"Home\\\"|>, <|Layout->\\\"<html><head><title>{{title}}</title></head><body>{{yield \\\\\\\"content\\\\\\\"}}</body></html>\\\"|>]".into()),
+        ]),
         tool_spec!("HtmlTemplateCompile", summary: "Precompile template (returns handle)", params: ["templateOrPath","opts?"], tags: ["string","template","html"], examples: [Value::String("t := HtmlTemplateCompile[\"<i>{{msg}}</i>\"]; HtmlTemplateRender[t, <|msg->\"hi\"|>]".into())]),
         tool_spec!("HtmlTemplateRender", summary: "Render compiled template with data", params: ["handle","data","opts?"], tags: ["string","template","html"]),
-        tool_spec!("HtmlAttr", summary: "Escape for HTML attribute context", params: ["s"], tags: ["string","html"]),
-        tool_spec!("SafeHtml", summary: "Mark string as safe HTML (no escaping)", params: ["s"], tags: ["string","html"]),
+        tool_spec!("HtmlAttr", summary: "Escape for HTML attribute context", params: ["s"], tags: ["string","html"], examples: [Value::String("HtmlAttr[\\\"a&b\\\"]  ==> \\\"a&amp;b\\\"".into())]),
+        tool_spec!("SafeHtml", summary: "Mark string as safe HTML (no escaping)", params: ["s"], tags: ["string","html"], examples: [Value::String("SafeHtml[\\\"<strong>x</strong>\\\"]  ==> <|__type->\\\"SafeHtml\\\"|>".into())]),
         tool_spec!("Slugify", summary: "URL-friendly slug from string", params: ["s"], tags: ["string","url"]),
     ]);
 }
@@ -2432,11 +2437,21 @@ fn html_render_block(
                     let mut pushed = false;
                     let mut local = std::collections::HashMap::new();
                     if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
-                    let inner_rendered = html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html);
+                    // Collect named slots: {{#slot "name"}}...{{/slot}} inside inner
+                    let (default_slot_html, slots_map) = collect_named_slots(ev, &inner, stack, partials, components, loader, blocks_lookup, escape_html);
                     local.insert("slot".to_string(), Value::Assoc(std::collections::HashMap::from([
                         ("__type".into(), Value::String("SafeHtml".into())),
-                        ("value".into(), Value::String(inner_rendered)),
+                        ("value".into(), Value::String(default_slot_html)),
                     ])));
+                    // Provide Slots assoc for named slots
+                    let mut slots_assoc = std::collections::HashMap::new();
+                    for (k, v) in slots_map.into_iter() {
+                        slots_assoc.insert(k, Value::Assoc(std::collections::HashMap::from([
+                            ("__type".into(), Value::String("SafeHtml".into())),
+                            ("value".into(), Value::String(v)),
+                        ])));
+                    }
+                    local.insert("Slots".to_string(), Value::Assoc(slots_assoc));
                     stack.push(Value::Assoc(local));
                     out.push_str(&html_render_block(ev, &ctpl, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html));
                     stack.pop();
@@ -2620,4 +2635,76 @@ fn html_template_render(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::Expr { head: Box::new(Value::Symbol("HtmlTemplateRender".into())), args }
+}
+
+// Helper: collect named slot blocks and render them; return (default_html, slots)
+fn collect_named_slots(
+    ev: &mut Evaluator,
+    src: &str,
+    stack: &mut Vec<Value>,
+    partials: &std::collections::HashMap<String, String>,
+    components: &std::collections::HashMap<String, String>,
+    loader: Option<&Value>,
+    blocks_lookup: Option<&std::collections::HashMap<String, String>>,
+    escape_html: bool,
+) -> (String, std::collections::HashMap<String, String>) {
+    let chars: Vec<char> = src.chars().collect();
+    let mut i = 0usize;
+    let mut ranges: Vec<(usize, usize, usize, usize, String)> = Vec::new(); // (block_start, block_end, inner_start, inner_end, name)
+    while i < chars.len() {
+        if chars[i] == '{' && i + 1 < chars.len() && chars[i + 1] == '{' {
+            let triple = i + 2 < chars.len() && chars[i + 2] == '{';
+            let start = i + if triple { 3 } else { 2 };
+            let mut j = start;
+            while j < chars.len() {
+                if !triple && j + 1 < chars.len() && chars[j] == '}' && chars[j + 1] == '}' { break; }
+                if triple && j + 2 < chars.len() && chars[j] == '}' && chars[j + 1] == '}' && chars[j + 2] == '}' { break; }
+                j += 1;
+            }
+            let tag: String = chars[start..j].iter().collect();
+            i = j + if triple { 3 } else { 2 };
+            let t = tag.trim();
+            if t.starts_with("#slot") {
+                // parse name within quotes
+                let name = t[5..].trim().trim_matches('"').to_string();
+                // find closing {{/slot}}
+                let mut depth = 1i32; let mut k = i; let mut inner_start = i; let mut inner_end = i; let mut end_pos = i;
+                while k < chars.len() {
+                    if chars[k] == '{' && k + 1 < chars.len() && chars[k + 1] == '{' {
+                        let triple2 = k + 2 < chars.len() && chars[k + 2] == '{';
+                        let start2 = k + if triple2 { 3 } else { 2 };
+                        let mut j2 = start2;
+                        while j2 < chars.len() { if !triple2 && j2 + 1 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' { break; } if triple2 && j2 + 2 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' && chars[j2 + 2] == '}' { break; } j2 += 1; }
+                        let tag2: String = chars[start2..j2].iter().collect();
+                        let tt = tag2.trim();
+                        if tt.starts_with("#slot") { depth += 1; }
+                        else if tt.starts_with("/slot") { depth -= 1; if depth == 0 { inner_end = k; end_pos = j2 + if triple2 { 3 } else { 2 }; i = end_pos; break; } }
+                        k = j2 + if triple2 { 3 } else { 2 };
+                        continue;
+                    }
+                    k += 1;
+                }
+                let block_start = start - if triple { 3 } else { 2 };
+                ranges.push((block_start, end_pos, inner_start, inner_end, name));
+                continue;
+            }
+        }
+        // proceed
+    }
+    // Render each slot and build output with slots removed
+    let mut slots: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    // Build a string with slot blocks removed
+    let mut out = String::new();
+    let mut cursor = 0usize;
+    for (s, e, is, ie, name) in ranges.iter() {
+        if *s > cursor { let seg: String = chars[cursor..*s].iter().collect(); out.push_str(&seg); }
+        let inner_block: String = chars[*is..*ie].iter().collect();
+        let rendered = html_render_block(ev, &inner_block, stack, partials, components, loader, &mut None, blocks_lookup, escape_html);
+        slots.insert(name.clone(), rendered);
+        cursor = *e;
+    }
+    if cursor < chars.len() { let tail: String = chars[cursor..].iter().collect(); out.push_str(&tail); }
+    // Now out contains template without slot blocks; render default slot
+    let default_html = html_render_block(ev, &out, stack, partials, components, loader, &mut None, blocks_lookup, escape_html);
+    (default_html, slots)
 }
