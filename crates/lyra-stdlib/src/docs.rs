@@ -989,6 +989,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     );
     ev.set_doc("IsBlank", "True if string is empty or whitespace", &["s"]);
     ev.set_doc("TemplateRender", "Render Mustache-like template with assoc data.", &["template", "data", "opts?"]);
+    ev.set_doc("HtmlTemplate", "Render HTML/XML template with data and options.", &["templateOrPath", "data", "opts?"]);
+    ev.set_doc("HtmlTemplateCompile", "Precompile HTML template (returns handle)", &["templateOrPath", "opts?"]);
+    ev.set_doc("HtmlTemplateRender", "Render compiled HTML template with data", &["handle", "data", "opts?"]);
+    ev.set_doc("HtmlAttr", "Escape string for HTML attribute context", &["s"]);
+    ev.set_doc("SafeHtml", "Mark string as safe HTML (no escaping)", &["s"]);
     ev.set_doc_examples("StartsWith", &["StartsWith[\"foobar\", \"foo\"]  ==> True"]);
     ev.set_doc_examples("EndsWith", &["EndsWith[\"foobar\", \"bar\"]  ==> True"]);
     ev.set_doc_examples("IndexOf", &["IndexOf[\"banana\", \"na\"]  ==> 2", "IndexOf[\"banana\", \"x\"]  ==> -1"]);
@@ -1003,6 +1008,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"",
         ],
     );
+    ev.set_doc_examples("HtmlTemplate", &["HtmlTemplate[\"<b>{{name}}</b>\", <|name->\"X\"|>]  ==> \"<b>X</b>\""]);
 
     // Regex utilities
     ev.set_doc("RegexIsMatch", "Test if regex matches string", &["s", "pattern"]);

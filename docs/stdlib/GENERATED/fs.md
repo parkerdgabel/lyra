@@ -19,7 +19,6 @@
 | `RemoveVolume` | `RemoveVolume[name]` | Remove volume |
 | `Tar` | `Tar[dest, inputs, opts?]` | Create a .tar (optionally .tar.gz) archive from inputs. |
 | `TarExtract` | `TarExtract[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
-| `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 | `WatchDirectory` | `WatchDirectory[path, handler, opts?]` | Watch directory and stream events (held) |
 | `Zip` | `Zip[dest, inputs]` | Create a .zip archive from files/directories. |
 | `ZipExtract` | `ZipExtract[src, dest]` | Extract a .zip archive into a directory. |
@@ -87,13 +86,6 @@
 - Tags: fs, archive
 - Examples:
   - `TarExtract["/tmp/bundle.tar", "/tmp/untar"]  ==> <|"path"->"/tmp/untar"|>`
-
-## `TemplateRender`
-
-- Usage: `TemplateRender[template, data, opts?]`
-- Summary: Render Mustache-like template with assoc data.
-- Examples:
-  - `TemplateRender["Hello {{name}}!", <|"name"->"Lyra"|>]  ==> "Hello Lyra!"`
 
 ## `Zip`
 

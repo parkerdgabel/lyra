@@ -3,7 +3,11 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
+| `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
+| `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `JsonEscape` | `JsonEscape[s]` | Escape string for JSON |
 | `JsonUnescape` | `JsonUnescape[s]` | Unescape JSON-escaped string |
@@ -12,6 +16,7 @@
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `SafeHtml` | `SafeHtml[s]` | Mark string as safe HTML (no escaping) |
 | `Slugify` | `Slugify[s]` | Slugify for URLs |
 | `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `StringChars` | `StringChars[s]` | Split string into list of characters |
@@ -40,6 +45,7 @@
 | `StringTrimRight` | `StringTrimRight[s]` | Trim from right |
 | `StringTrimSuffix` | `StringTrimSuffix[s, suffix]` | Remove suffix if present |
 | `StringTruncate` | `StringTruncate[s, len, ellipsis?]` | Truncate string to length |
+| `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 | `ToDegrees` | `ToDegrees[x]` | Convert radians to degrees (Listable) |
 | `ToLower` | `ToLower[s]` | Lowercase string. |
 | `ToRadians` | `ToRadians[x]` | Convert degrees to radians (Listable) |
@@ -70,6 +76,14 @@
 - Tags: string, predicate
 - Examples:
   - `EndsWith["foobar", "bar"]  ==> True`
+
+## `HtmlTemplate`
+
+- Usage: `HtmlTemplate[templateOrPath, data, opts?]`
+- Summary: Render HTML/XML template with data and options.
+- Tags: string, template, html, xml
+- Examples:
+  - `HtmlTemplate["<b>{{name}}</b>", <|name->"X"|>]  ==> "<b>X</b>"`
 
 ## `RegexFindAll`
 
@@ -177,6 +191,14 @@
 - Tags: string, text
 - Examples:
   - `StringTrim["  hi  "]  ==> "hi"`
+
+## `TemplateRender`
+
+- Usage: `TemplateRender[template, data, opts?]`
+- Summary: Render Mustache-like template with assoc data.
+- Tags: string, template
+- Examples:
+  - `TemplateRender["Hello {{name}}!", <|"name"->"Lyra"|>]  ==> "Hello Lyra!"`
 
 ## `ToDegrees`
 

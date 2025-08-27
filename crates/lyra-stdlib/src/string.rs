@@ -50,6 +50,12 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("StringFormat", string_format as NativeFn, Attributes::empty());
     ev.register("StringFormatMap", string_format_map as NativeFn, Attributes::empty());
     ev.register("TemplateRender", template_render as NativeFn, Attributes::empty());
+    // HTML/XML templating helpers
+    ev.register("HtmlTemplate", html_template as NativeFn, Attributes::empty());
+    ev.register("HtmlTemplateCompile", html_template_compile as NativeFn, Attributes::empty());
+    ev.register("HtmlTemplateRender", html_template_render as NativeFn, Attributes::empty());
+    ev.register("HtmlAttr", html_attr_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("SafeHtml", safe_html_fn as NativeFn, Attributes::LISTABLE);
     ev.register("HtmlEscape", html_escape_fn as NativeFn, Attributes::LISTABLE);
     ev.register("HtmlUnescape", html_unescape_fn as NativeFn, Attributes::LISTABLE);
     ev.register("UrlEncode", url_encode_fn as NativeFn, Attributes::LISTABLE);
@@ -100,6 +106,12 @@ pub fn register_string(ev: &mut Evaluator) {
         tool_spec!("RegexFind", summary: "Find first regex match", params: ["pattern","s"], tags: ["string","regex"]),
         tool_spec!("RegexFindAll", summary: "Find all regex matches", params: ["pattern","s"], tags: ["string","regex"]),
         tool_spec!("RegexReplace", summary: "Replace by regex (fn or string)", params: ["pattern","s","repl"], tags: ["string","regex"]),
+        tool_spec!("TemplateRender", summary: "Render Mustache-like template", params: ["template","data","opts?"], tags: ["string","template"], examples: [Value::String("TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"".into())]),
+        tool_spec!("HtmlTemplate", summary: "Render HTML/XML template with data and options", params: ["templateOrPath","data","opts?"], tags: ["string","template","html","xml"], examples: [Value::String("HtmlTemplate[\"<b>{{name}}</b>\", <|name->\"x\"|>]".into())]),
+        tool_spec!("HtmlTemplateCompile", summary: "Precompile template (returns handle)", params: ["templateOrPath","opts?"], tags: ["string","template","html"], examples: [Value::String("t := HtmlTemplateCompile[\"<i>{{msg}}</i>\"]; HtmlTemplateRender[t, <|msg->\"hi\"|>]".into())]),
+        tool_spec!("HtmlTemplateRender", summary: "Render compiled template with data", params: ["handle","data","opts?"], tags: ["string","template","html"]),
+        tool_spec!("HtmlAttr", summary: "Escape for HTML attribute context", params: ["s"], tags: ["string","html"]),
+        tool_spec!("SafeHtml", summary: "Mark string as safe HTML (no escaping)", params: ["s"], tags: ["string","html"]),
         tool_spec!("Slugify", summary: "URL-friendly slug from string", params: ["s"], tags: ["string","url"]),
     ]);
 }
@@ -163,6 +175,11 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "StringFormat", string_format as NativeFn, Attributes::empty());
     register_if(ev, pred, "StringFormatMap", string_format_map as NativeFn, Attributes::empty());
     register_if(ev, pred, "TemplateRender", template_render as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HtmlTemplate", html_template as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HtmlTemplateCompile", html_template_compile as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HtmlTemplateRender", html_template_render as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HtmlAttr", html_attr_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "SafeHtml", safe_html_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "HtmlEscape", html_escape_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "HtmlUnescape", html_unescape_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "UrlEncode", url_encode_fn as NativeFn, Attributes::LISTABLE);
@@ -2275,4 +2292,270 @@ fn template_render(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut stack: Vec<Value> = vec![ctx0];
     let rendered = render_block(ev, &template, &mut stack, &partials, escape_html);
     Value::String(rendered)
+}
+
+// -------------- HTML templating --------------
+
+fn is_safe_html(v: &Value) -> Option<String> {
+    if let Value::Assoc(m) = v {
+        if let Some(Value::String(t)) = m.get("__type") {
+            if t == "SafeHtml" {
+                if let Some(Value::String(s)) = m.get("value") {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn html_attr_escape(s: &str) -> String { html_escape(s) }
+
+fn html_attr_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::String(html_attr_escape(s)),
+        [other] => match ev.eval(other.clone()) {
+            Value::String(s) => Value::String(html_attr_escape(&s)),
+            v => Value::Expr { head: Box::new(Value::Symbol("HtmlAttr".into())), args: vec![v] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("HtmlAttr".into())), args },
+    }
+}
+
+fn safe_html_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::String(s)] => Value::Assoc(std::collections::HashMap::from([
+            ("__type".into(), Value::String("SafeHtml".into())),
+            ("value".into(), Value::String(s.clone())),
+        ])),
+        [other] => match ev.eval(other.clone()) {
+            Value::String(s) => Value::Assoc(std::collections::HashMap::from([
+                ("__type".into(), Value::String("SafeHtml".into())),
+                ("value".into(), Value::String(s.clone())),
+            ])),
+            v => Value::Expr { head: Box::new(Value::Symbol("SafeHtml".into())), args: vec![v] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("SafeHtml".into())), args },
+    }
+}
+
+fn html_render_block(
+    ev: &mut Evaluator,
+    tpl: &str,
+    stack: &mut Vec<Value>,
+    partials: &std::collections::HashMap<String, String>,
+    components: &std::collections::HashMap<String, String>,
+    escape_html: bool,
+) -> String {
+    let mut out = String::new();
+    let chars: Vec<char> = tpl.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i] == '{' && i + 1 < chars.len() && chars[i + 1] == '{' {
+            let triple = i + 2 < chars.len() && chars[i + 2] == '{';
+            let start = i + if triple { 3 } else { 2 };
+            let mut j = start;
+            while j < chars.len() {
+                if !triple && j + 1 < chars.len() && chars[j] == '}' && chars[j + 1] == '}' { break; }
+                if triple && j + 2 < chars.len() && chars[j] == '}' && chars[j + 1] == '}' && chars[j + 2] == '}' { break; }
+                j += 1;
+            }
+            let content: String = chars[start..j].iter().collect();
+            i = j + if triple { 3 } else { 2 };
+            let tag = content.trim();
+            if tag.starts_with('!') { continue; }
+            // Partials with optional props: {{> name}} or {{> name propsPath}}
+            if tag.starts_with('>') {
+                let body = tag[1..].trim();
+                let mut it = body.split_whitespace();
+                let name = it.next().unwrap_or("").trim();
+                let props_path = it.next().map(|s| s.trim());
+                if let Some(ptpl) = partials.get(name) {
+                    let mut pushed = false;
+                    if let Some(p) = props_path {
+                        if let Some(val) = resolve_path(stack, p) {
+                            stack.push(val);
+                            pushed = true;
+                        }
+                    }
+                    out.push_str(&html_render_block(ev, ptpl, stack, partials, components, escape_html));
+                    if pushed { stack.pop(); }
+                }
+                continue;
+            }
+            // Components: {{< Name propsPath?}} ... {{/Name}}
+            if tag.starts_with('<') {
+                let body = tag[1..].trim();
+                let mut it = body.split_whitespace();
+                let name = it.next().unwrap_or("").trim();
+                let props_path = it.next().map(|s| s.trim());
+                // find matching closing {{/Name}}
+                let mut depth = 1i32;
+                let mut k = i;
+                let mut inner_start = i;
+                let close_tag = format!("/{}", name);
+                while k < chars.len() {
+                    if chars[k] == '{' && k + 1 < chars.len() && chars[k + 1] == '{' {
+                        let triple2 = k + 2 < chars.len() && chars[k + 2] == '{';
+                        let start2 = k + if triple2 { 3 } else { 2 };
+                        let mut j2 = start2;
+                        while j2 < chars.len() {
+                            if !triple2 && j2 + 1 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' { break; }
+                            if triple2 && j2 + 2 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' && chars[j2 + 2] == '}' { break; }
+                            j2 += 1;
+                        }
+                        let tag2: String = chars[start2..j2].iter().collect();
+                        let tag2t = tag2.trim();
+                        if tag2t.starts_with('<') && tag2t[1..].trim().starts_with(name) { depth += 1; }
+                        else if tag2t.starts_with('/') && tag2t[1..].trim() == name { depth -= 1; if depth == 0 { inner_start = i; i = j2 + if triple2 { 3 } else { 2 }; break; } }
+                        k = j2 + if triple2 { 3 } else { 2 };
+                        continue;
+                    }
+                    k += 1;
+                }
+                let inner: String = chars[inner_start..(i)].iter().collect();
+                if let Some(ctpl) = components.get(name) {
+                    let mut pushed = false;
+                    let mut local = std::collections::HashMap::new();
+                    if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
+                    let inner_rendered = html_render_block(ev, &inner, stack, partials, components, escape_html);
+                    local.insert("slot".to_string(), Value::Assoc(std::collections::HashMap::from([
+                        ("__type".into(), Value::String("SafeHtml".into())),
+                        ("value".into(), Value::String(inner_rendered)),
+                    ])));
+                    stack.push(Value::Assoc(local));
+                    out.push_str(&html_render_block(ev, ctpl, stack, partials, components, escape_html));
+                    stack.pop();
+                    if pushed { stack.pop(); }
+                }
+                continue;
+            }
+            if tag.starts_with('#') || tag.starts_with('^') {
+                // Reuse section logic from TemplateRender: copy minimal implementation
+                let inverted = tag.starts_with('^');
+                let key = tag[1..].trim();
+                let mut depth = 1i32;
+                let mut k = i;
+                let mut inner_start = i;
+                while k < chars.len() {
+                    if chars[k] == '{' && k + 1 < chars.len() && chars[k + 1] == '{' {
+                        let triple2 = k + 2 < chars.len() && chars[k + 2] == '{';
+                        let start2 = k + if triple2 { 3 } else { 2 };
+                        let mut j2 = start2;
+                        while j2 < chars.len() {
+                            if !triple2 && j2 + 1 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' { break; }
+                            if triple2 && j2 + 2 < chars.len() && chars[j2] == '}' && chars[j2 + 1] == '}' && chars[j2 + 2] == '}' { break; }
+                            j2 += 1;
+                        }
+                        let tag2: String = chars[start2..j2].iter().collect();
+                        let tag2t = tag2.trim();
+                        if tag2t.starts_with('#') && tag2t[1..].trim() == key { depth += 1; }
+                        else if tag2t.starts_with('/') && tag2t[1..].trim() == key { depth -= 1; if depth == 0 { inner_start = i; i = j2 + if triple2 { 3 } else { 2 }; break; } }
+                        k = j2 + if triple2 { 3 } else { 2 };
+                        continue;
+                    }
+                    k += 1;
+                }
+                let inner: String = chars[inner_start..(i)].iter().collect();
+                let val = resolve_path(stack, key).unwrap_or(Value::Symbol("Null".into()));
+                if inverted {
+                    if !truthy(&val) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); }
+                } else {
+                    match val {
+                        Value::List(xs) => {
+                            for item in xs { stack.push(item); out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); stack.pop(); }
+                        }
+                        Value::Assoc(_) => { stack.push(val); out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); stack.pop(); }
+                        other => { if truthy(&other) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); } }
+                    }
+                }
+                continue;
+            }
+            if tag.starts_with('/') { continue; }
+            // variable with optional filter: name|Filter
+            let mut parts = tag.split('|');
+            let name = parts.next().unwrap().trim();
+            let filt = parts.next().map(|s| s.trim()).filter(|s| !s.is_empty());
+            let mut val = resolve_path(stack, name).unwrap_or(Value::String(String::new()));
+            if let Some(f) = filt { val = apply_filter(ev, f, val); }
+            if let Some(safe) = is_safe_html(&val) {
+                out.push_str(&safe);
+            } else {
+                let s = match val { Value::String(s) => s, other => lyra_core::pretty::format_value(&other), };
+                if triple || !escape_html { out.push_str(&s); } else { out.push_str(&html_escape(&s)); }
+            }
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn read_template_source(s: &str) -> Option<String> {
+    let p = std::path::Path::new(s);
+    if p.exists() && p.is_file() { std::fs::read_to_string(p).ok() } else { None }
+}
+
+fn html_template(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplate".into())), args } }
+    let tpl_in = match ev.eval(args[0].clone()) { Value::String(s) | Value::Symbol(s) => s, v => return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplate".into())), args: vec![v, args[1].clone()] } };
+    let data = ev.eval(args[1].clone());
+    let opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(std::collections::HashMap::new()) };
+    let mut partials: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut components: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut layout: Option<String> = None;
+    let mut escape_html_opt = true;
+    if let Value::Assoc(m) = &opts {
+        if let Some(Value::Assoc(p)) = m.get("Partials") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { partials.insert(k.clone(), fs); } else { partials.insert(k.clone(), s.clone()); } } } }
+        if let Some(Value::Assoc(p)) = m.get("Components") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { components.insert(k.clone(), fs); } else { components.insert(k.clone(), s.clone()); } } } }
+        if let Some(Value::String(s)) = m.get("Layout") { layout = Some(read_template_source(s).unwrap_or_else(|| s.clone())); }
+        if let Some(Value::Boolean(b)) = m.get("EscapeHtml") { escape_html_opt = *b; }
+    }
+    let tpl = read_template_source(&tpl_in).unwrap_or(tpl_in);
+    // Render page/body
+    let mut stack: Vec<Value> = vec![data.clone()];
+    let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, escape_html_opt);
+    if let Some(layout_tpl) = layout {
+        // Provide PAGE_CONTENT as SafeHtml
+        let mut top = match data { Value::Assoc(m) => m, other => std::collections::HashMap::from([(String::from("."), other)]) };
+        top.insert("PAGE_CONTENT".into(), Value::Assoc(std::collections::HashMap::from([(String::from("__type"), Value::String("SafeHtml".into())), (String::from("value"), Value::String(body))])));
+        let mut stack2 = vec![Value::Assoc(top)];
+        let out = html_render_block(ev, &layout_tpl, &mut stack2, &partials, &components, escape_html_opt);
+        Value::String(out)
+    } else {
+        Value::String(body)
+    }
+}
+
+fn html_template_compile(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 1 { return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplateCompile".into())), args } }
+    let tpl_in = match ev.eval(args[0].clone()) { Value::String(s) | Value::Symbol(s) => s, v => return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplateCompile".into())), args: vec![v] } };
+    let tpl = read_template_source(&tpl_in).unwrap_or(tpl_in);
+    let opts = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(std::collections::HashMap::new()) };
+    Value::Assoc(std::collections::HashMap::from([
+        ("__type".into(), Value::String("HtmlTemplate".into())),
+        ("template".into(), Value::String(tpl)),
+        ("opts".into(), opts),
+    ]))
+}
+
+fn html_template_render(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplateRender".into())), args } }
+    let handle = ev.eval(args[0].clone());
+    let data = ev.eval(args[1].clone());
+    let extra_opts = if args.len()>=3 { ev.eval(args[2].clone()) } else { Value::Assoc(std::collections::HashMap::new()) };
+    if let Value::Assoc(m) = handle {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="HtmlTemplate") {
+            let tpl = match m.get("template") { Some(Value::String(s)) => s.clone(), _ => String::new() };
+            let base_opts = match m.get("opts") { Some(Value::Assoc(mm)) => Value::Assoc(mm.clone()), _ => Value::Assoc(std::collections::HashMap::new()) };
+            // Merge opts: extra overrides
+            let merged = match (base_opts, extra_opts) {
+                (Value::Assoc(mut a), Value::Assoc(b)) => { for (k,v) in b { a.insert(k,v); } Value::Assoc(a) },
+                (a, _) => a,
+            };
+            return html_template(ev, vec![Value::String(tpl), data, merged]);
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("HtmlTemplateRender".into())), args }
 }

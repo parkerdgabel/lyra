@@ -66,7 +66,7 @@
 | `graphs` | 1 |
 | `groupby` | 1 |
 | `hash` | 1 |
-| `html` | 3 |
+| `html` | 8 |
 | `http` | 25 |
 | `image` | 12 |
 | `import` | 4 |
@@ -139,11 +139,12 @@
 | `status` | 2 |
 | `stdio` | 1 |
 | `store` | 1 |
-| `string` | 23 |
+| `string` | 29 |
 | `sum` | 1 |
 | `sync` | 1 |
 | `table` | 1 |
 | `temp` | 2 |
+| `template` | 4 |
 | `testing` | 1 |
 | `text` | 6 |
 | `time` | 16 |
@@ -163,6 +164,7 @@
 | `viz` | 6 |
 | `watch` | 2 |
 | `write` | 3 |
+| `xml` | 1 |
 | `yaml` | 2 |
 | `zip` | 1 |
 
@@ -870,9 +872,14 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
+| `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `RespondHtml` | `RespondHtml[html, opts]` | Build an HTML response for HttpServe |
+| `SafeHtml` | `SafeHtml[s]` | Mark string as safe HTML (no escaping) |
 
 ## `http`
 
@@ -1680,7 +1687,11 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
+| `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
+| `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `JsonEscape` | `JsonEscape[s]` | Escape string for JSON |
 | `JsonUnescape` | `JsonUnescape[s]` | Unescape JSON-escaped string |
@@ -1689,6 +1700,7 @@
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `SafeHtml` | `SafeHtml[s]` | Mark string as safe HTML (no escaping) |
 | `Slugify` | `Slugify[s]` | Slugify for URLs |
 | `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `StringContains` | `StringContains[s, substr]` | Does string contain substring? |
@@ -1698,6 +1710,7 @@
 | `StringReplaceFirst` | `StringReplaceFirst[s, from, to]` | Replace first substring match |
 | `StringSplit` | `StringSplit[s, sep]` | Split string by separator |
 | `StringTrim` | `StringTrim[s]` | Trim whitespace from both ends |
+| `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 | `ToLower` | `ToLower[s]` | Lowercase string. |
 | `ToUpper` | `ToUpper[s]` | Uppercase string. |
 | `UrlDecode` | `UrlDecode[s]` | Decode percent-encoded string |
@@ -1727,6 +1740,15 @@
 |---|---|---|
 | `TempDir` | `TempDir[]` | Create a unique temporary directory |
 | `TempFile` | `TempFile[]` | Create a unique temporary file |
+
+## `template`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
+| `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
+| `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 
 ## `testing`
 
@@ -1892,6 +1914,12 @@
 | `InsertRows` | `InsertRows[conn, table, rows]` | Insert multiple rows (assoc list) into a table |
 | `UpsertRows` | `UpsertRows[conn, table, rows, keys?]` | Upsert rows (assoc list) into a table |
 | `WriteDataset` | `WriteDataset[conn, table, dataset, opts?]` | Write a Dataset into a table |
+
+## `xml`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
 
 ## `yaml`
 
