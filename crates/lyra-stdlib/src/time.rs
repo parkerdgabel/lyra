@@ -1,4 +1,8 @@
 use lyra_core::value::Value;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
@@ -36,6 +40,26 @@ pub fn register_time(ev: &mut Evaluator) {
     ev.register("ScheduleEvery", schedule_every as NativeFn, Attributes::HOLD_ALL);
     ev.register("Cron", cron_schedule as NativeFn, Attributes::HOLD_ALL);
     ev.register("CancelSchedule", cancel_schedule as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("NowMs", summary: "Current UNIX time in milliseconds", params: [], tags: ["time","clock"], examples: [Value::String("NowMs[]  ==> 1690000000000".into())]),
+        tool_spec!("MonotonicNow", summary: "Monotonic milliseconds since start", params: [], tags: ["time","clock"]),
+        tool_spec!("Sleep", summary: "Sleep for N milliseconds", params: ["ms"], tags: ["time","sleep"]),
+        tool_spec!("DateTime", summary: "Build/parse DateTime assoc (UTC)", params: ["spec"], tags: ["time","datetime"]),
+        tool_spec!("DateParse", summary: "Parse date/time string to epochMs", params: ["s"], tags: ["time","datetime"]),
+        tool_spec!("DateFormat", summary: "Format DateTime or epochMs to string", params: ["dt","fmt?"], tags: ["time","datetime"]),
+        tool_spec!("Duration", summary: "Build Duration assoc from ms or fields", params: ["spec"], tags: ["time","duration"]),
+        tool_spec!("DurationParse", summary: "Parse human duration (e.g., 1h30m)", params: ["s"], tags: ["time","duration"]),
+        tool_spec!("AddDuration", summary: "Add duration to DateTime/epochMs", params: ["dt","dur"], tags: ["time","duration"]),
+        tool_spec!("DiffDuration", summary: "Difference between DateTimes", params: ["a","b"], tags: ["time","duration"]),
+        tool_spec!("StartOf", summary: "Start of unit (day/week/month)", params: ["dt","unit"], tags: ["time","calendar"]),
+        tool_spec!("EndOf", summary: "End of unit (day/week/month)", params: ["dt","unit"], tags: ["time","calendar"]),
+        tool_spec!("TimeZoneConvert", summary: "Convert DateTime to another timezone", params: ["dt","tz"], tags: ["time","tz"]),
+        tool_spec!("ScheduleEvery", summary: "Schedule recurring task (held)", params: ["ms","body"], tags: ["time","schedule"], effects: ["schedule"]),
+        tool_spec!("Cron", summary: "Schedule with cron expression (held)", params: ["expr","body"], tags: ["time","schedule","cron"], effects: ["schedule"]),
+        tool_spec!("CancelSchedule", summary: "Cancel scheduled task", params: ["token"], tags: ["time","schedule"]),
+    ]);
 }
 
 pub fn register_time_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {

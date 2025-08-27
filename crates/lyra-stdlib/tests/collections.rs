@@ -103,7 +103,7 @@ fn queue_stack_pq() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     // Queue
-    let q = ev.eval(Value::expr(Value::Symbol("QueueCreate".into()), vec![]));
+    let q = ev.eval(Value::expr(Value::Symbol("Queue".into()), vec![]));
     let q = ev.eval(Value::Expr {
         head: Box::new(Value::Symbol("Enqueue".into())),
         args: vec![q.clone(), Value::Integer(1)],
@@ -118,7 +118,7 @@ fn queue_stack_pq() {
     });
     assert_eq!(x1, Value::Integer(1));
     // Stack
-    let s = ev.eval(Value::expr(Value::Symbol("StackCreate".into()), vec![]));
+    let s = ev.eval(Value::expr(Value::Symbol("Stack".into()), vec![]));
     let s = ev.eval(Value::Expr {
         head: Box::new(Value::Symbol("Push".into())),
         args: vec![s.clone(), Value::Integer(5)],
@@ -134,7 +134,7 @@ fn queue_stack_pq() {
         ev.eval(Value::Expr { head: Box::new(Value::Symbol("Pop".into())), args: vec![s.clone()] });
     assert_eq!(p, Value::Integer(7));
     // PQ min
-    let pq = ev.eval(Value::expr(Value::Symbol("PQCreate".into()), vec![]));
+    let pq = ev.eval(Value::expr(Value::Symbol("PriorityQueue".into()), vec![]));
     let pq = ev.eval(Value::Expr {
         head: Box::new(Value::Symbol("PQInsert".into())),
         args: vec![pq.clone(), Value::Integer(10)],

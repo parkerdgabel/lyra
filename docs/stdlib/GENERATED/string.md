@@ -2,9 +2,18 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
+| `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
+| `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `JsonEscape` | `JsonEscape[s]` | Escape string for JSON |
 | `JsonUnescape` | `JsonUnescape[s]` | Unescape JSON-escaped string |
-| `Length` | `Length[x]` | Length of a list or string. |
+| `RegexFind` | `RegexFind[s, pattern]` | Find first regex capture groups |
+| `RegexFindAll` | `RegexFindAll[s, pattern]` | Find all regex capture groups |
+| `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
+| `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
+| `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `Slugify` | `Slugify[s]` | Slugify for URLs |
+| `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `StringChars` | `StringChars[s]` | Split string into list of characters |
 | `StringContains` | `StringContains[s, substr]` | Does string contain substring? |
 | `StringFormat` | `StringFormat[fmt, args]` | Format using placeholders: {0}, {name} |
@@ -51,15 +60,40 @@
 | `ToolsUnregister` | `ToolsUnregister[id|name]` | Unregister a tool by id or name. |
 | `Top` | `Top[list, k, opts?]` | Take top-k items (optionally by key). |
 | `TopologicalSort` | `TopologicalSort[graph]` | Topologically sort DAG nodes |
-| `Touch` | `Touch[path]` | Create file if missing (update mtime) |
+| `UrlDecode` | `UrlDecode[s]` | Decode percent-encoded string |
+| `UrlEncode` | `UrlEncode[s]` | Percent-encode string for URLs |
 
-## `Length`
+## `EndsWith`
 
-- Usage: `Length[x]`
-- Summary: Length of a list or string.
+- Usage: `EndsWith[s, suffix]`
+- Summary: True if string ends with suffix
+- Tags: string, predicate
 - Examples:
-  - `Length[{1,2,3}]  ==> 3`
-  - `Length["ok"]  ==> 2`
+  - `EndsWith["foobar", "bar"]  ==> True`
+
+## `RegexFindAll`
+
+- Usage: `RegexFindAll[s, pattern]`
+- Summary: Find all regex capture groups
+- Tags: string, regex
+- Examples:
+  - `RegexFindAll[\"a1 b22\", \"\\d+\"]  ==> {\"1\",\"22\"}`
+
+## `Slugify`
+
+- Usage: `Slugify[s]`
+- Summary: Slugify for URLs
+- Tags: string, url
+- Examples:
+  - `Slugify["Hello, World!"]  ==> "hello-world"`
+
+## `StartsWith`
+
+- Usage: `StartsWith[s, prefix]`
+- Summary: True if string starts with prefix
+- Tags: string, predicate
+- Examples:
+  - `StartsWith["foobar", "foo"]  ==> True`
 
 ## `StringChars`
 
@@ -72,6 +106,7 @@
 
 - Usage: `StringContains[s, substr]`
 - Summary: Does string contain substring?
+- Tags: string, predicate
 - Examples:
   - `StringContains["hello", "ell"]  ==> True`
 
@@ -86,6 +121,7 @@
 
 - Usage: `StringJoin[parts]`
 - Summary: Concatenate list of parts.
+- Tags: string, text
 - Examples:
   - `StringJoin[{"a","b","c"}]  ==> "abc"`
 
@@ -100,6 +136,7 @@
 
 - Usage: `StringLength[s]`
 - Summary: Length of string (Unicode scalar count).
+- Tags: string, text
 - Examples:
   - `StringLength["hello"]  ==> 5`
 
@@ -114,6 +151,7 @@
 
 - Usage: `StringReplace[s, from, to]`
 - Summary: Replace all substring matches
+- Tags: string, replace
 - Examples:
   - `StringReplace["foo bar", "o", "0"]  ==> "f00 bar"`
 
@@ -128,6 +166,7 @@
 
 - Usage: `StringSplit[s, sep]`
 - Summary: Split string by separator
+- Tags: string, text
 - Examples:
   - `StringSplit["a,b,c", ","]  ==> {"a","b","c"}`
 
@@ -135,6 +174,7 @@
 
 - Usage: `StringTrim[s]`
 - Summary: Trim whitespace from both ends
+- Tags: string, text
 - Examples:
   - `StringTrim["  hi  "]  ==> "hi"`
 
@@ -149,6 +189,7 @@
 
 - Usage: `ToLower[s]`
 - Summary: Lowercase string.
+- Tags: string, text
 - Examples:
   - `ToLower["Hello"]  ==> "hello"`
 
@@ -163,6 +204,7 @@
 
 - Usage: `ToUpper[s]`
 - Summary: Uppercase string.
+- Tags: string, text
 - Examples:
   - `ToUpper["hi"]  ==> "HI"`
 
@@ -180,3 +222,11 @@
 - Examples:
   - `ToolsRegister[<|"id"->"Hello", "summary"->"Say hi", "params"->{"name"}|>]  ==> <|...|>`
   - `ToolsList[]  ==> {...}`
+
+## `UrlEncode`
+
+- Usage: `UrlEncode[s]`
+- Summary: Percent-encode string for URLs
+- Tags: string, url
+- Examples:
+  - `UrlEncode["a b"]  ==> "a%20b"`

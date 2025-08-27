@@ -1,4 +1,8 @@
 use lyra_core::value::Value;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
@@ -23,6 +27,8 @@ fn failure(tag: &str, msg: &str) -> Value {
 pub fn register_fs(ev: &mut Evaluator) {
     ev.register("MakeDirectory", mkdir as NativeFn, Attributes::empty());
     ev.register("Remove", remove as NativeFn, Attributes::empty());
+    // Explicit alias for dispatch fallback to avoid name shadowing
+    ev.register("PathRemove", remove as NativeFn, Attributes::empty());
     ev.register("Copy", copy as NativeFn, Attributes::empty());
     ev.register("Move", move_fn as NativeFn, Attributes::empty());
     ev.register("Touch", touch as NativeFn, Attributes::empty());
@@ -36,13 +42,39 @@ pub fn register_fs(ev: &mut Evaluator) {
     ev.register("CancelWatch", cancel_watch as NativeFn, Attributes::empty());
     #[cfg(feature = "fs_archive")]
     {
-        ev.register("ZipCreate", zip_create as NativeFn, Attributes::empty());
+        ev.register("Zip", zip_create as NativeFn, Attributes::empty());
         ev.register("ZipExtract", zip_extract as NativeFn, Attributes::empty());
-        ev.register("TarCreate", tar_create as NativeFn, Attributes::empty());
+        ev.register("Tar", tar_create as NativeFn, Attributes::empty());
         ev.register("TarExtract", tar_extract as NativeFn, Attributes::empty());
         ev.register("Gzip", gzip_fn as NativeFn, Attributes::empty());
         ev.register("Gunzip", gunzip_fn as NativeFn, Attributes::empty());
     }
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("MakeDirectory", summary: "Create a directory (optionally Parents)", params: ["path","opts?"], tags: ["fs","path","io"]),
+        tool_spec!("Remove", summary: "Remove file or directory", params: ["path","opts?"], tags: ["fs","path","io","delete"]),
+        tool_spec!("PathRemove", summary: "Alias: remove file or directory", params: ["path","opts?"], tags: ["fs","path","io","delete"]),
+        tool_spec!("Copy", summary: "Copy file or directory", params: ["src","dst","opts?"], tags: ["fs","path","io","copy"]),
+        tool_spec!("Move", summary: "Move/rename file or directory", params: ["src","dst"], tags: ["fs","path","io","move"]),
+        tool_spec!("Touch", summary: "Create file if missing (update mtime)", params: ["path"], tags: ["fs","path","io"]),
+        tool_spec!("Symlink", summary: "Create a symbolic link", params: ["src","dst"], tags: ["fs","path","io","link"]),
+        tool_spec!("Glob", summary: "Expand glob pattern to matching paths", params: ["pattern"], tags: ["fs","path","glob"]),
+        tool_spec!("ReadBytes", summary: "Read entire file as bytes", params: ["path"], tags: ["fs","io","bytes"]),
+        tool_spec!("WriteBytes", summary: "Write bytes to file", params: ["path","bytes"], tags: ["fs","io","bytes"]),
+        tool_spec!("TempFile", summary: "Create a unique temporary file", params: [], tags: ["fs","io","temp"]),
+        tool_spec!("TempDir", summary: "Create a unique temporary directory", params: [], tags: ["fs","io","temp"]),
+        tool_spec!("WatchDirectory", summary: "Watch directory and stream events", params: ["path","handler","opts?"], tags: ["fs","watch"]),
+        tool_spec!("CancelWatch", summary: "Cancel a directory watch", params: ["token"], tags: ["fs","watch"]),
+        
+        // Archive utils
+        tool_spec!("Zip", summary: "Create a zip archive", params: ["opts"], tags: ["fs","archive"]),
+        tool_spec!("ZipExtract", summary: "Extract a zip archive", params: ["zip","dst","opts?"], tags: ["fs","archive"]),
+        tool_spec!("Tar", summary: "Create a tar archive", params: ["opts"], tags: ["fs","archive"]),
+        tool_spec!("TarExtract", summary: "Extract a tar archive", params: ["tar","dst","opts?"], tags: ["fs","archive"]),
+        tool_spec!("Gzip", summary: "Compress data or file with gzip", params: ["input","opts?"], tags: ["fs","archive","compress"]),
+        tool_spec!("Gunzip", summary: "Decompress gzip data or file", params: ["input","opts?"], tags: ["fs","archive","compress"]),
+    ]);
 }
 
 pub fn register_fs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -67,9 +99,9 @@ pub fn register_fs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "CancelWatch", cancel_watch as NativeFn, Attributes::empty());
     #[cfg(feature = "fs_archive")]
     {
-        crate::register_if(ev, pred, "ZipCreate", zip_create as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Zip", zip_create as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "ZipExtract", zip_extract as NativeFn, Attributes::empty());
-        crate::register_if(ev, pred, "TarCreate", tar_create as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Tar", tar_create as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "TarExtract", tar_extract as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "Gzip", gzip_fn as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "Gunzip", gunzip_fn as NativeFn, Attributes::empty());
@@ -687,7 +719,7 @@ fn zip_add_path(
 #[cfg(feature = "fs_archive")]
 fn zip_create(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("ZipCreate".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Zip".into())), args };
     }
     let dest = to_string(ev, args[0].clone());
     let inputs = ev.eval(args[1].clone());
@@ -785,7 +817,7 @@ fn zip_extract(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 #[cfg(feature = "fs_archive")]
 fn tar_create(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("TarCreate".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Tar".into())), args };
     }
     let dest = to_string(ev, args[0].clone());
     let inputs = ev.eval(args[1].clone());

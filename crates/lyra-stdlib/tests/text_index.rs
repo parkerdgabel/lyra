@@ -11,8 +11,7 @@ fn index_create_add_search() {
 
     let dir = format!("{}/target/test_index/basic", env!("CARGO_MANIFEST_DIR"));
     // Create index
-    let _ =
-        ev.eval(Value::expr(Value::Symbol("IndexCreate".into()), vec![Value::String(dir.clone())]));
+    let _ = ev.eval(Value::expr(Value::Symbol("Index".into()), vec![Value::String(dir.clone())]));
     // Add docs
     let _ = ev.eval(Value::expr(
         Value::Symbol("IndexAdd".into()),

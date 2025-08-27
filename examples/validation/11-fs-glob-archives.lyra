@@ -13,11 +13,11 @@ MakeDirectory[PathJoin[{tmp, "sub"}], <|"Parents"->True|>];
 Glob[PathJoin[{tmp, "**", "*.txt"}]];   (* => list of .txt paths *)
 
 zip := PathJoin[{tmp, "bundle.zip"}];
-ZipCreate[zip, {PathJoin[{tmp, "a.txt"}], PathJoin[{tmp, "sub"}]}];
+Zip[zip, {PathJoin[{tmp, "a.txt"}], PathJoin[{tmp, "sub"}]}];
 ZipExtract[zip, PathJoin[{tmp, "unz"}]]; (* contents extracted *)
 
 tar := PathJoin[{tmp, "bundle.tar"}];
-TarCreate[tar, {tmp}];
+Tar[tar, {tmp}];
 TarExtract[tar, PathJoin[{tmp, "untar"}]];
 
 gz := PathJoin[{tmp, "a.txt.gz"}];

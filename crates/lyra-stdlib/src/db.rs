@@ -4,6 +4,10 @@ use base64;
 #[cfg(feature = "db_sqlite")]
 use base64::Engine;
 use lyra_core::value::Value;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
@@ -685,6 +689,36 @@ fn close_cursor(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Expr { head: Box::new(Value::Symbol("Close".into())), args }
 }
 
+fn cursor_info(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("CursorInfo".into())), args };
+    }
+    let a0 = ev.eval(args[0].clone());
+    let id = match get_cursor(&a0) {
+        Some(i) => i,
+        None => return Value::Expr { head: Box::new(Value::Symbol("CursorInfo".into())), args: vec![a0] },
+    };
+    let reg = cur_reg().lock().unwrap();
+    if let Some(st) = reg.get(&id) {
+        let kind = match st.kind {
+            ConnectorKind::Mock => "Mock",
+            #[cfg(feature = "db_sqlite")]
+            ConnectorKind::Sqlite => "Sqlite",
+            #[cfg(feature = "db_duckdb")]
+            ConnectorKind::DuckDb => "DuckDb",
+        };
+        return Value::Assoc(HashMap::from([
+            ("Type".into(), Value::String("Cursor".into())),
+            ("Dsn".into(), Value::String(st.dsn.clone())),
+            ("Kind".into(), Value::String(kind.into())),
+            ("Offset".into(), Value::Integer(st.offset)),
+            ("FetchSize".into(), Value::Integer(st.fetch_size)),
+            ("Sql".into(), Value::String(st.sql.clone())),
+        ]));
+    }
+    Value::Expr { head: Box::new(Value::Symbol("CursorInfo".into())), args: vec![a0] }
+}
+
 // ---------- Writes ----------
 fn insert_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 3 {
@@ -1181,7 +1215,9 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
     ev.register("SQLCursor", sql_cursor as NativeFn, Attributes::empty());
     ev.register("Fetch", fetch_cursor as NativeFn, Attributes::empty());
-    ev.register("Close", close_cursor as NativeFn, Attributes::empty());
+    ev.register("__DBClose", close_cursor as NativeFn, Attributes::empty());
+    ev.register("ConnectionInfo", connection_info as NativeFn, Attributes::empty());
+    ev.register("CursorInfo", cursor_info as NativeFn, Attributes::empty());
     // Writes and transactions
     ev.register("InsertRows", insert_rows as NativeFn, Attributes::empty());
     ev.register("UpsertRows", upsert_rows as NativeFn, Attributes::empty());
@@ -1189,12 +1225,46 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("Begin", begin_tx as NativeFn, Attributes::empty());
     ev.register("Commit", commit_tx as NativeFn, Attributes::empty());
     ev.register("Rollback", rollback_tx as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("Connect", summary: "Open database connection (mock/sqlite/duckdb)", params: ["dsn|opts"], tags: ["db","sql","conn"], examples: [Value::String("conn := Connect[\"mock://\"]".into())]),
+        tool_spec!("Disconnect", summary: "Close a database connection", params: ["conn"], tags: ["db","sql","conn"]),
+        tool_spec!("Ping", summary: "Check connectivity for a connection", params: ["conn"], tags: ["db","sql","conn"]),
+        tool_spec!("ListTables", summary: "List tables on a connection", params: ["conn"], tags: ["db","sql","schema"], examples: [Value::String("ListTables[conn]  ==> {\"t\"}".into())]),
+        tool_spec!("RegisterTable", summary: "Register in-memory rows as a table (mock)", params: ["conn","name","rows"], tags: ["db","sql","table"], examples: [Value::String("RegisterTable[conn, \"t\", {<|\"id\"->1|>}]".into())]),
+        tool_spec!("Table", summary: "Reference a table as a Dataset", params: ["conn","name"], tags: ["db","sql","dataset"], examples: [Value::String("ds := Table[conn, \"t\"]".into())]),
+        tool_spec!("SQL", summary: "Run a SELECT query and return rows", params: ["conn","sql","params?"], tags: ["db","sql","query"], examples: [Value::String("SQL[conn, \"select 1 as x\"]  ==> {<|x->1|>}".into())]),
+        tool_spec!("Exec", summary: "Execute DDL/DML (non-SELECT)", params: ["conn","sql","params?"], tags: ["db","sql","query"], examples: [Value::String("Exec[conn, \"create table t(id int)\"]".into())]),
+        tool_spec!("SQLCursor", summary: "Run a query and return a cursor handle", params: ["conn","sql","params?"], tags: ["db","sql","cursor"], examples: [Value::String("cur := SQLCursor[conn, \"select 1\"]".into())]),
+        tool_spec!("Fetch", summary: "Fetch next batch of rows from a cursor", params: ["cursor","limit?"], tags: ["db","sql","cursor"], examples: [Value::String("Fetch[cur, 100]".into())]),
+        tool_spec!("Begin", summary: "Begin a transaction", params: ["conn"], tags: ["db","sql","tx"], examples: [Value::String("Begin[conn]".into())]),
+        tool_spec!("Commit", summary: "Commit the current transaction", params: ["conn"], tags: ["db","sql","tx"], examples: [Value::String("Commit[conn]".into())]),
+        tool_spec!("Rollback", summary: "Rollback the current transaction", params: ["conn"], tags: ["db","sql","tx"], examples: [Value::String("Rollback[conn]".into())]),
+        tool_spec!("InsertRows", summary: "Insert multiple rows (assoc list) into a table", params: ["conn","table","rows"], tags: ["db","sql","write"], examples: [Value::String("InsertRows[conn, \"t\", {<|\"id\"->1|>}]".into())]),
+        tool_spec!("UpsertRows", summary: "Upsert rows (assoc list) into a table", params: ["conn","table","rows","keys?"], tags: ["db","sql","write"], examples: [Value::String("UpsertRows[conn, \"t\", {<|\"id\"->1|>} , {\"id\"}]".into())]),
+        tool_spec!("WriteDataset", summary: "Write a Dataset into a table", params: ["conn","table","dataset","opts?"], tags: ["db","sql","write","dataset"], examples: [Value::String("WriteDataset[conn, \"t\", ds]".into())]),
+        tool_spec!(
+            "ConnectionInfo",
+            summary: "Inspect connection details (dsn, kind, tx)",
+            params: ["conn"],
+            tags: ["db","conn","introspect"],
+            examples: [ Value::String("conn := Connect[\\\"mock://\\\"]; ConnectionInfo[conn]".into()) ]
+        ),
+        tool_spec!(
+            "CursorInfo",
+            summary: "Inspect cursor details (dsn, kind, sql, offset)",
+            params: ["cursor"],
+            tags: ["db","cursor","introspect"],
+            examples: [ Value::String("cur := SQLCursor[conn, \\\"select 1\\\"]; CursorInfo[cur]".into()) ]
+        ),
+    ]);
 }
 
 pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Connect", connect as NativeFn, Attributes::empty());
     register_if(ev, pred, "Disconnect", disconnect as NativeFn, Attributes::empty());
-    register_if(ev, pred, "Close", close_cursor as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DBClose", close_cursor as NativeFn, Attributes::empty());
     register_if(ev, pred, "Begin", begin_tx as NativeFn, Attributes::empty());
     register_if(ev, pred, "Commit", commit_tx as NativeFn, Attributes::empty());
     register_if(ev, pred, "Rollback", rollback_tx as NativeFn, Attributes::empty());
@@ -1210,6 +1280,8 @@ pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "SQL", sql_query as NativeFn, Attributes::empty());
     register_if(ev, pred, "SQLCursor", sql_cursor as NativeFn, Attributes::empty());
     register_if(ev, pred, "__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ConnectionInfo", connection_info as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CursorInfo", cursor_info as NativeFn, Attributes::empty());
 }
 
 // Exec[conn, sql, params?] -> executes non-SELECT (DDL/DML); returns Boolean success
@@ -1507,4 +1579,26 @@ fn fetch_duckdb_rows_prepared(
     // Placeholder: use literal substitution for now; future: true bound params when API stabilizes
     let sql2 = substitute_params(sql, params);
     fetch_duckdb_rows(dsn, &sql2)
+}
+fn connection_info(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("ConnectionInfo".into())), args }; }
+    let a0 = ev.eval(args[0].clone());
+    let id = match get_conn(&a0) { Some(i) => i, None => return Value::Expr { head: Box::new(Value::Symbol("ConnectionInfo".into())), args: vec![a0] } };
+    let reg = conn_reg().lock().unwrap();
+    if let Some(st) = reg.get(&id) {
+        let kind = match st.kind {
+            ConnectorKind::Mock => "Mock",
+            #[cfg(feature = "db_sqlite")]
+            ConnectorKind::Sqlite => "Sqlite",
+            #[cfg(feature = "db_duckdb")]
+            ConnectorKind::DuckDb => "DuckDb",
+        };
+        return Value::Assoc(HashMap::from([
+            ("Type".into(), Value::String("Connection".into())),
+            ("Dsn".into(), Value::String(st.dsn.clone())),
+            ("Kind".into(), Value::String(kind.into())),
+            ("InTransaction".into(), Value::Boolean(st.in_tx)),
+        ]));
+    }
+    Value::Expr { head: Box::new(Value::Symbol("ConnectionInfo".into())), args: vec![a0] }
 }

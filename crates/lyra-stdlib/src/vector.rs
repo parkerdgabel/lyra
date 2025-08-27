@@ -40,12 +40,56 @@ pub fn register_vector(ev: &mut Evaluator) {
     {
         use crate::{tool_spec, tools::add_specs};
         let specs = vec![
-            tool_spec!("VectorStore", summary: "Create/open a vector store (memory or DSN)", params: ["optsOrDsn"], tags: ["vector","store"]),
-            tool_spec!("VectorUpsert", summary: "Insert or update vectors with metadata", params: ["store","rows"], tags: ["vector","upsert"]),
-            tool_spec!("VectorSearch", summary: "Search by vector or text (hybrid supported)", params: ["store","query","opts"], tags: ["vector","search"]),
-            tool_spec!("VectorDelete", summary: "Delete items by ids", params: ["store","ids"], tags: ["vector","delete"]),
-            tool_spec!("VectorCount", summary: "Count items in store", params: ["store"], tags: ["vector","info"]),
-            tool_spec!("VectorReset", summary: "Clear all items in store", params: ["store"], tags: ["vector","admin"]),
+            tool_spec!(
+                "VectorStore",
+                summary: "Create/open a vector store (memory or DSN)",
+                params: ["optsOrDsn"],
+                tags: ["vector","store"],
+                examples: [
+                    Value::String("vs := VectorStore[<|Name->\"vs\", Dims->3|>]".into())
+                ]
+            ),
+            tool_spec!(
+                "VectorUpsert",
+                summary: "Insert or update vectors with metadata",
+                params: ["store","rows"],
+                tags: ["vector","upsert"],
+                examples: [
+                    Value::String("VectorUpsert[vs, {<|Id->\"a\", Vec->{0.1,0.2,0.3}|>}]".into())
+                ]
+            ),
+            tool_spec!(
+                "VectorSearch",
+                summary: "Search by vector or text (hybrid supported)",
+                params: ["store","query","opts"],
+                tags: ["vector","search"],
+                examples: [
+                    Value::String("VectorSearch[vs, {0.1,0.2,0.3}]".into())
+                ]
+            ),
+            tool_spec!(
+                "VectorDelete",
+                summary: "Delete items by ids",
+                params: ["store","ids"],
+                tags: ["vector","delete"],
+                examples: [
+                    Value::String("VectorDelete[vs, {\"a\"}]".into())
+                ]
+            ),
+            tool_spec!(
+                "VectorCount",
+                summary: "Count items in store",
+                params: ["store"],
+                tags: ["vector","info"],
+                examples: [ Value::String("VectorCount[vs]".into()) ]
+            ),
+            tool_spec!(
+                "VectorReset",
+                summary: "Clear all items in store",
+                params: ["store"],
+                tags: ["vector","admin"],
+                examples: [ Value::String("VectorReset[vs]".into()) ]
+            ),
         ];
         add_specs(specs);
     }

@@ -1,4 +1,8 @@
 use crate::register_if;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
@@ -1076,7 +1080,7 @@ fn limit_rows(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ds_handle(new_id)
 }
 
-fn count_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+pub(crate) fn count_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("Count".into())), args };
     }
@@ -2490,6 +2494,9 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Collect", collect_ds as NativeFn, Attributes::empty());
     ev.register("SelectCols", select_cols as NativeFn, Attributes::empty());
     ev.register("Select", select_general as NativeFn, Attributes::empty());
+    // Internal alias to allow dispatchers to delegate without recursion
+    ev.register("__DatasetSelect", select_general as NativeFn, Attributes::empty());
+    ev.register("__DatasetDescribe", describe_general as NativeFn, Attributes::empty());
     ev.register("FilterRows", filter_rows as NativeFn, Attributes::HOLD_ALL);
     ev.register("LimitRows", limit_rows as NativeFn, Attributes::empty());
     ev.register("WithColumns", with_columns as NativeFn, Attributes::HOLD_ALL);
@@ -2507,19 +2514,58 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("Agg", agg as NativeFn, Attributes::empty());
     ev.register("Join", join_ds as NativeFn, Attributes::empty());
     ev.register("Sort", sort_ds as NativeFn, Attributes::empty());
+    ev.register("__DatasetSort", sort_ds as NativeFn, Attributes::empty());
     ev.register("Distinct", distinct_ds as NativeFn, Attributes::empty());
+    ev.register("__DatasetDistinct", distinct_ds as NativeFn, Attributes::empty());
     ev.register("DistinctOn", distinct_on as NativeFn, Attributes::empty());
     ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
     ev.register("Union", union_general as NativeFn, Attributes::empty());
     ev.register("Concat", concat_general as NativeFn, Attributes::empty());
     ev.register("UnionByPosition", union_by_position as NativeFn, Attributes::empty());
     ev.register("Offset", offset_general as NativeFn, Attributes::empty());
+    ev.register("__DatasetOffset", offset_general as NativeFn, Attributes::empty());
     ev.register("Head", head_general as NativeFn, Attributes::empty());
+    ev.register("__DatasetHead", head_general as NativeFn, Attributes::empty());
     ev.register("Tail", tail_general as NativeFn, Attributes::empty());
+    ev.register("__DatasetTail", tail_general as NativeFn, Attributes::empty());
     ev.register("Describe", describe_general as NativeFn, Attributes::empty());
     ev.register("col", col_fn as NativeFn, Attributes::empty());
     ev.register("Cast", cast_fn as NativeFn, Attributes::empty());
     ev.register("Coalesce", coalesce_fn as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("DatasetFromRows", summary: "Create a Dataset from assoc rows", params: ["rows"], tags: ["dataset","create"], examples: [Value::String("ds := DatasetFromRows[{<|a->1|>,<|a->2|>} ]".into())]),
+        tool_spec!("ReadCSVDataset", summary: "Read CSV file(s) into a Dataset", params: ["path","opts?"], tags: ["dataset","io","csv"], examples: [Value::String("ds := ReadCSVDataset[\"data.csv\"]".into())]),
+        tool_spec!("ReadJsonLinesDataset", summary: "Read JSON Lines file(s) into a Dataset", params: ["path","opts?"], tags: ["dataset","io","json"], examples: [Value::String("ds := ReadJsonLinesDataset[\"data.jsonl\"]".into())]),
+        tool_spec!("Collect", summary: "Materialize Dataset to list of rows", params: ["dataset"], tags: ["dataset","io"], examples: [Value::String("Collect[ds]  ==> {<|...|>,...}".into())]),
+        tool_spec!("Select", summary: "Select a subset/rename of columns", params: ["dataset","cols"], tags: ["dataset","transform","select"], examples: [Value::String("Select[ds, {\"a\"}]".into())]),
+        tool_spec!("SelectCols", summary: "Select columns by names", params: ["dataset","cols"], tags: ["dataset","transform","select"]),
+        tool_spec!("RenameCols", summary: "Rename columns by mapping", params: ["dataset","mapping"], tags: ["dataset","transform","select"]),
+        tool_spec!("FilterRows", summary: "Filter rows by predicate function", params: ["dataset","pred"], tags: ["dataset","transform","filter"], examples: [Value::String("FilterRows[ds, #a > 1 &]".into())]),
+        tool_spec!("WithColumns", summary: "Add/derive columns", params: ["dataset","defs"], tags: ["dataset","transform"], examples: [Value::String("WithColumns[ds, <|\"b\"->(#a*2 &)|>]".into())]),
+        tool_spec!("GroupBy", summary: "Group rows by keys", params: ["dataset","keys"], tags: ["dataset","groupby"], examples: [Value::String("GroupBy[ds, {\"a\"}]".into())]),
+        tool_spec!("Agg", summary: "Aggregate with functions", params: ["dataset","aggs"], tags: ["dataset","aggregate"], examples: [Value::String("Agg[ds, <|\"count\"->Count|>]".into())]),
+        tool_spec!("Join", summary: "Join datasets (inner/left/right/outer)", params: ["left","right","on","opts?"], tags: ["dataset","join"], examples: [Value::String("Join[left, right, {\"id\"}]".into())]),
+        tool_spec!("Sort", summary: "Sort rows by columns", params: ["dataset","by"], tags: ["dataset","sort"], examples: [Value::String("Sort[ds, {<|\"col\"->\"a\", \"Asc\"->True|>}]".into())]),
+        tool_spec!("Distinct", summary: "Distinct rows (optional subset of columns)", params: ["dataset","cols?"], tags: ["dataset","distinct"]),
+        tool_spec!("DistinctOn", summary: "Distinct on keys with order/keep-last", params: ["dataset","keys","opts?"], tags: ["dataset","distinct"]),
+        tool_spec!("Union", summary: "Union datasets (auto union by columns)", params: ["datasets"], tags: ["dataset","set"]),
+        tool_spec!("Concat", summary: "Concatenate rows (append) without de-dupe", params: ["datasets"], tags: ["dataset","set"]),
+        tool_spec!("UnionByPosition", summary: "Union lists row-wise by position", params: ["lists"], tags: ["dataset","set"]),
+        tool_spec!("Offset", summary: "Skip first n rows", params: ["dataset","n"], tags: ["dataset","transform"]),
+        tool_spec!("Head", summary: "Take first n rows", params: ["dataset","n"], tags: ["dataset","inspect"]),
+        tool_spec!("Tail", summary: "Take last n rows", params: ["dataset","n"], tags: ["dataset","inspect"]),
+        tool_spec!("Count", summary: "Row count (Dataset-aware)", params: ["dataset"], tags: ["dataset","info"], examples: [Value::String("Count[ds]".into())]),
+        tool_spec!("Columns", summary: "List of column names", params: ["dataset"], tags: ["dataset","schema"], examples: [Value::String("Columns[ds]  ==> {\"a\",\"b\"}".into())]),
+        tool_spec!("DatasetSchema", summary: "Infer schema for Dataset", params: ["dataset"], tags: ["dataset","schema"]),
+        tool_spec!("ExplainDataset", summary: "Explain logical plan", params: ["dataset"], tags: ["dataset","explain"], examples: [Value::String("ExplainDataset[ds]".into())]),
+        tool_spec!("ExplainSQL", summary: "Explain pushdown and rendered SQL", params: ["dataset"], tags: ["dataset","explain","sql"], examples: [Value::String("ExplainSQL[ds]".into())]),
+        tool_spec!("Describe", summary: "Quick stats by columns", params: ["dataset","opts?"], tags: ["dataset","stats"]),
+        tool_spec!("Cast", summary: "Cast value to a type", params: ["value","type"], tags: ["dataset","types"]),
+        tool_spec!("Coalesce", summary: "Coalesce to first non-null", params: ["values"], tags: ["dataset","types"]),
+        tool_spec!("col", summary: "Column reference helper in expressions", params: ["name"], tags: ["dataset","expr"]),
+    ]);
 }
 
 pub fn register_dataset_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -2527,6 +2573,8 @@ pub fn register_dataset_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool
     register_if(ev, pred, "Collect", collect_ds as NativeFn, Attributes::empty());
     register_if(ev, pred, "SelectCols", select_cols as NativeFn, Attributes::empty());
     register_if(ev, pred, "Select", select_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetSelect", select_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetDescribe", describe_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "FilterRows", filter_rows as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "LimitRows", limit_rows as NativeFn, Attributes::empty());
     register_if(ev, pred, "WithColumns", with_columns as NativeFn, Attributes::HOLD_ALL);
@@ -2555,15 +2603,20 @@ pub fn register_dataset_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool
     register_if(ev, pred, "Agg", agg as NativeFn, Attributes::empty());
     register_if(ev, pred, "Join", join_ds as NativeFn, Attributes::empty());
     register_if(ev, pred, "Sort", sort_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetSort", sort_ds as NativeFn, Attributes::empty());
     register_if(ev, pred, "Distinct", distinct_ds as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetDistinct", distinct_ds as NativeFn, Attributes::empty());
     register_if(ev, pred, "DistinctOn", distinct_on as NativeFn, Attributes::empty());
     register_if(ev, pred, "RenameCols", rename_cols as NativeFn, Attributes::empty());
     register_if(ev, pred, "Union", union_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "Concat", concat_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "UnionByPosition", union_by_position as NativeFn, Attributes::empty());
     register_if(ev, pred, "Offset", offset_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetOffset", offset_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "Head", head_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetHead", head_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "Tail", tail_general as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__DatasetTail", tail_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "Describe", describe_general as NativeFn, Attributes::empty());
     register_if(ev, pred, "col", col_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "Cast", cast_fn as NativeFn, Attributes::empty());

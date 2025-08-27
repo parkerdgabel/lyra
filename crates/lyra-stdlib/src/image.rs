@@ -30,17 +30,17 @@ pub fn register_image(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        tool_spec!("ImageInfo", summary: "Read basic image info", params: ["input","opts"], tags: ["image"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
-        tool_spec!("ImageCanvas", summary: "Create a blank canvas (PNG)", params: ["opts"], tags: ["image"], output_schema: schema_str!()),
+        tool_spec!("ImageInfo", summary: "Read basic image info", params: ["input","opts"], tags: ["image"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("ImageInfo[<|Path->\"in.png\"|>]".into())]),
+        tool_spec!("ImageCanvas", summary: "Create a blank canvas (PNG)", params: ["opts"], tags: ["image"], output_schema: schema_str!(), examples: [Value::String("ImageCanvas[<|Width->64, Height->64, Bg->\"#ffffff\"|>]".into())]),
         tool_spec!("ImageDecode", summary: "Decode image to raw or reencoded bytes", params: ["input","opts"], tags: ["image","decode"], output_schema: schema_str!()),
         tool_spec!("ImageEncode", summary: "Encode raw pixels or reencode bytes", params: ["input","encoding"], tags: ["image","encode"], output_schema: schema_str!()),
-        tool_spec!("ImageResize", summary: "Resize image (contain/cover)", params: ["input","opts"], tags: ["image","transform"], output_schema: schema_str!()),
+        tool_spec!("ImageResize", summary: "Resize image (contain/cover)", params: ["input","opts"], tags: ["image","transform"], output_schema: schema_str!(), examples: [Value::String("ImageResize[<|Path->\"in.png\"|>, <|Width->128|>]".into())]),
         tool_spec!("ImageCrop", summary: "Crop image by rect or gravity", params: ["input","opts"], tags: ["image","transform"], output_schema: schema_str!()),
         tool_spec!("ImagePad", summary: "Pad image to target size", params: ["input","opts"], tags: ["image","transform"], output_schema: schema_str!()),
         tool_spec!("ImageConvert", summary: "Convert image format", params: ["input","format","opts"], tags: ["image"], output_schema: schema_str!()),
         tool_spec!("ImageThumbnail", summary: "Create thumbnail (cover)", params: ["input","opts"], tags: ["image","optimize"], output_schema: schema_str!()),
         tool_spec!("ImageTransform", summary: "Apply pipeline of operations", params: ["input","pipeline"], tags: ["image","pipeline"], output_schema: schema_str!()),
-        tool_spec!("ImageSave", summary: "Encode and write image to path", params: ["input","output","encoding"], tags: ["image","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
+        tool_spec!("ImageSave", summary: "Encode and write image to path", params: ["input","output","encoding"], tags: ["image","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("ImageSave[<|Path->\"in.png\"|>, \"out.jpg\", <|Format->\"jpeg\"|>]".into())]),
     ]);
 }
 

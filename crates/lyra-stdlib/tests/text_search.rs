@@ -63,8 +63,7 @@ fn text_search_index_mode() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let idx = format!("{}/target/test_index/searchwrap.sqlite", env!("CARGO_MANIFEST_DIR"));
-    let _ =
-        ev.eval(Value::expr(Value::Symbol("IndexCreate".into()), vec![Value::String(idx.clone())]));
+    let _ = ev.eval(Value::expr(Value::Symbol("Index".into()), vec![Value::String(idx.clone())]));
     let _ = ev.eval(Value::expr(
         Value::Symbol("IndexAdd".into()),
         vec![

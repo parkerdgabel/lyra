@@ -55,7 +55,7 @@ symphonia = { version = "0.5", optional = true, default-features = false, featur
 default = [
   "core", "string", "math", "algebra", "list", "assoc", "logic", "concurrency", "schema", "explain",
   "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "visual", "audio", "media", "text",
-  "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs",
+  "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs", "frame",
   "time_cron", "fs_watch", "fs_archive", "module", "project", "git",
   "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https", "dev"
 ]
@@ -96,6 +96,7 @@ time_cron = ["dep:cron", "time"]
 fs_watch = ["dep:notify", "fs"]
 net_https = ["net", "reqwest", "rustls", "rustls-pemfile"]
 dataset = []
+frame = []
 db = []
 db_sqlite = ["dep:rusqlite"]
 db_duckdb = ["dep:duckdb"]

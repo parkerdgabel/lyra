@@ -1,4 +1,8 @@
 use lyra_core::value::Value;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
@@ -29,6 +33,73 @@ pub fn register_process(ev: &mut Evaluator) {
     ev.register("WaitProcess", wait_process as NativeFn, Attributes::empty());
     ev.register("KillProcess", kill_process as NativeFn, Attributes::empty());
     ev.register("Pipe", pipe as NativeFn, Attributes::empty());
+    ev.register("ProcessInfo", process_info as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!(
+            "Run",
+            summary: "Run a process and capture output",
+            params: ["cmd","args?","opts?"],
+            tags: ["process","proc","os"],
+            examples: [ Value::String("Run[\"echo\", {\"hi\"}]".into()) ]
+        ),
+        tool_spec!(
+            "Which",
+            summary: "Resolve command path from PATH",
+            params: ["cmd"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "CommandExistsQ",
+            summary: "Does a command exist in PATH?",
+            params: ["cmd"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "Popen",
+            summary: "Spawn process and return handle",
+            params: ["cmd","args?","opts?"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "WriteProcess",
+            summary: "Write to process stdin",
+            params: ["proc","data"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "ReadProcess",
+            summary: "Read from process stdout/stderr",
+            params: ["proc","opts?"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "WaitProcess",
+            summary: "Wait for process to exit",
+            params: ["proc"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "KillProcess",
+            summary: "Send signal to process",
+            params: ["proc","signal?"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "Pipe",
+            summary: "Compose processes via pipes",
+            params: ["cmds"],
+            tags: ["process","proc","os"]
+        ),
+        tool_spec!(
+            "ProcessInfo",
+            summary: "Inspect process handle (pid, running, exit)",
+            params: ["proc"],
+            tags: ["process","proc","introspect"],
+            examples: [ Value::String("p := Popen[\"sleep\", {\"0.1\"}]; ProcessInfo[p]".into()) ]
+        ),
+    ]);
 }
 
 pub fn register_process_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -47,6 +118,7 @@ pub fn register_process_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool
     crate::register_if(ev, pred, "WaitProcess", wait_process as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "KillProcess", kill_process as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "Pipe", pipe as NativeFn, Attributes::empty());
+    crate::register_if(ev, pred, "ProcessInfo", process_info as NativeFn, Attributes::empty());
 }
 
 fn to_string_arg(ev: &mut Evaluator, v: Value) -> String {
@@ -241,6 +313,44 @@ fn popen(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
         Err(e) => failure("Process::spawn", &e.to_string()),
     }
+}
+
+fn process_info(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("ProcessInfo".into())), args };
+    }
+    let a0 = &args[0];
+    let id = match get_pid(a0) { Some(i) => i, None => return Value::Expr { head: Box::new(Value::Symbol("ProcessInfo".into())), args: vec![a0.clone()] } };
+    let mut reg = preg().lock().unwrap();
+    if let Some(st) = reg.get_mut(&id) {
+        let mut running = false;
+        let mut exit_code: Option<i64> = None;
+        if let Some(ch) = st.child.as_mut() {
+            match ch.try_wait() {
+                Ok(Some(status)) => {
+                    running = false;
+                    exit_code = status.code().map(|c| c as i64);
+                }
+                Ok(None) => { running = true; }
+                Err(_) => {}
+            }
+        }
+        let pid = match a0 {
+            Value::Assoc(m) => match m.get("pid") { Some(Value::Integer(p)) => *p, _ => -1 },
+            _ => -1,
+        };
+        let mut m: HashMap<String, Value> = HashMap::new();
+        m.insert("Type".into(), Value::String("Process".into()));
+        m.insert("Id".into(), Value::Integer(id));
+        m.insert("Pid".into(), Value::Integer(pid));
+        m.insert("Running".into(), Value::Boolean(running));
+        match exit_code {
+            Some(c) => { m.insert("ExitCode".into(), Value::Integer(c)); },
+            None => {},
+        }
+        return Value::Assoc(m);
+    }
+    Value::Expr { head: Box::new(Value::Symbol("ProcessInfo".into())), args: vec![a0.clone()] }
 }
 
 fn write_process(ev: &mut Evaluator, args: Vec<Value>) -> Value {

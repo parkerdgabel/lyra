@@ -1,4 +1,8 @@
 use crate::register_if;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
@@ -145,7 +149,7 @@ fn parse_edge(ev: &mut Evaluator, v: Value) -> Option<(String, String, Edge)> {
 
 // ---------- API ----------
 fn graph_create(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // GraphCreate[opts: Assoc]
+    // Graph[opts: Assoc]
     let (directed, multigraph, allow_self_loops) = match args.get(0).cloned() {
         Some(v) => match ev.eval(v) {
             Value::Assoc(m) => {
@@ -2148,7 +2152,7 @@ fn max_flow(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 pub fn register_graphs(ev: &mut Evaluator) {
-    ev.register("GraphCreate", graph_create as NativeFn, Attributes::empty());
+    ev.register("Graph", graph_create as NativeFn, Attributes::empty());
     ev.register("DropGraph", drop_graph as NativeFn, Attributes::empty());
     ev.register("GraphInfo", graph_info as NativeFn, Attributes::empty());
 
@@ -2189,10 +2193,124 @@ pub fn register_graphs(ev: &mut Evaluator) {
     ev.register("KCore", kcore as NativeFn, Attributes::empty());
     ev.register("MinimumSpanningTree", mst as NativeFn, Attributes::empty());
     ev.register("MaxFlow", max_flow as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    {
+        use lyra_core::value::Value;
+        use std::collections::HashMap;
+        add_specs(vec![
+            tool_spec!(
+                "Graph",
+                summary: "Create a graph handle",
+                params: ["opts?"],
+                tags: ["graph","graphs","lifecycle"],
+                examples: [
+                    Value::String("g := Graph[]".into()),
+                    Value::String("Graph[<|Directed->True|>]".into()),
+                ]
+            ),
+            tool_spec!(
+                "GraphInfo",
+                summary: "Summary and counts for graph",
+                params: ["graph"],
+                tags: ["graph","introspect"],
+                examples: [ Value::String("GraphInfo[g]".into()) ]
+            ),
+            tool_spec!(
+                "AddNodes",
+                summary: "Add nodes to graph",
+                params: ["graph","nodes"],
+                tags: ["graph","mutate"],
+                examples: [ Value::String("AddNodes[g, {\"a\", \"b\"}]".into()) ]
+            ),
+            tool_spec!(
+                "AddEdges",
+                summary: "Add edges to graph",
+                params: ["graph","edges"],
+                tags: ["graph","mutate"],
+                examples: [ Value::String("AddEdges[g, {<|Src->\"a\",Dst->\"b\"|>}]".into()) ]
+            ),
+            tool_spec!(
+                "RemoveNodes",
+                summary: "Remove nodes from graph",
+                params: ["graph","nodes"],
+                tags: ["graph","remove"],
+                examples: [ Value::String("RemoveNodes[g, {\"a\"}]".into()) ]
+            ),
+            tool_spec!(
+                "RemoveEdges",
+                summary: "Remove edges from graph",
+                params: ["graph","edges"],
+                tags: ["graph","remove"],
+                examples: [ Value::String("RemoveEdges[g, {<|Src->\"a\",Dst->\"b\"|>}]".into()) ]
+            ),
+            tool_spec!(
+                "ListNodes",
+                summary: "List node ids",
+                params: ["graph"],
+                tags: ["graph","list"]
+            ),
+            tool_spec!(
+                "ListEdges",
+                summary: "List edges as associations",
+                params: ["graph"],
+                tags: ["graph","list"]
+            ),
+            tool_spec!(
+                "Neighbors",
+                summary: "Neighbor nodes for a given node",
+                params: ["graph","node","opts?"],
+                tags: ["graph","query"],
+                examples: [ Value::String("Neighbors[g, \"a\"]".into()) ]
+            ),
+            tool_spec!(
+                "BFS",
+                summary: "Breadth-first traversal",
+                params: ["graph","source","opts?"],
+                tags: ["graph","traversal"]
+            ),
+            tool_spec!(
+                "DFS",
+                summary: "Depth-first traversal",
+                params: ["graph","source","opts?"],
+                tags: ["graph","traversal"]
+            ),
+            tool_spec!(
+                "ShortestPaths",
+                summary: "Shortest path distances",
+                params: ["graph","source","opts?"],
+                tags: ["graph","paths"]
+            ),
+            tool_spec!(
+                "PageRank",
+                summary: "PageRank centrality",
+                params: ["graph","opts?"],
+                tags: ["graph","centrality"]
+            ),
+            tool_spec!(
+                "KCore",
+                summary: "k-core subgraph nodes",
+                params: ["graph","k"],
+                tags: ["graph","decomposition"]
+            ),
+            tool_spec!(
+                "MinimumSpanningTree",
+                summary: "Minimum spanning tree",
+                params: ["graph","opts?"],
+                tags: ["graph","mst"]
+            ),
+            tool_spec!(
+                "MaxFlow",
+                summary: "Maximum flow value",
+                params: ["graph","source","sink","opts?"],
+                tags: ["graph","flow"]
+            ),
+        ]);
+    }
 }
 
 pub fn register_graphs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    register_if(ev, pred, "GraphCreate", graph_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Graph", graph_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "DropGraph", drop_graph as NativeFn, Attributes::empty());
     register_if(ev, pred, "GraphInfo", graph_info as NativeFn, Attributes::empty());
     register_if(ev, pred, "AddNodes", add_nodes as NativeFn, Attributes::empty());

@@ -30,17 +30,17 @@ pub fn register_audio(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        tool_spec!("AudioInfo", summary: "Probe audio metadata", params: ["input"], tags: ["audio"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
-        tool_spec!("AudioDecode", summary: "Decode audio to raw (s16le) or WAV", params: ["input","opts"], tags: ["audio","decode"], output_schema: schema_str!()),
+        tool_spec!("AudioInfo", summary: "Probe audio metadata", params: ["input"], tags: ["audio"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioInfo[<|Path->\"in.wav\"|>]".into())]),
+        tool_spec!("AudioDecode", summary: "Decode audio to raw (s16le) or WAV", params: ["input","opts"], tags: ["audio","decode"], output_schema: schema_str!(), examples: [Value::String("AudioDecode[<|Path->\"in.mp3\"|>, <|Format->\"wav\"|>]".into())]),
         tool_spec!("AudioEncode", summary: "Encode raw PCM to WAV", params: ["raw","opts"], tags: ["audio","encode"], output_schema: schema_str!()),
         tool_spec!("AudioConvert", summary: "Convert audio to WAV", params: ["input","format","opts"], tags: ["audio"], output_schema: schema_str!()),
-        tool_spec!("AudioTrim", summary: "Trim audio by time range", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
+        tool_spec!("AudioTrim", summary: "Trim audio by time range", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!(), examples: [Value::String("AudioTrim[<|Path->\"in.wav\"|>, <|StartMs->1000, EndMs->2000|>]".into())]),
         tool_spec!("AudioGain", summary: "Apply gain in dB or linear", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioResample", summary: "Resample to new sample rate", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioConcat", summary: "Concatenate multiple inputs", params: ["inputs","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioFade", summary: "Fade in/out", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioChannelMix", summary: "Convert channel count (mono/stereo)", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
-        tool_spec!("AudioSave", summary: "Encode and write audio to path (WAV)", params: ["input","output","encoding"], tags: ["audio","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))]))),
+        tool_spec!("AudioSave", summary: "Encode and write audio to path (WAV)", params: ["input","output","encoding"], tags: ["audio","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioSave[<|Path->\"in.wav\"|>, \"out.wav\", <|Format->\"wav\"|>]".into())]),
     ]);
 }
 

@@ -932,7 +932,7 @@ fn pq_empty_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 pub fn register_collections(ev: &mut Evaluator) {
     // Set
-    ev.register("SetCreate", set_create as NativeFn, Attributes::empty());
+    ev.register("HashSet", set_create as NativeFn, Attributes::empty());
     ev.register("SetFromList", set_from_list as NativeFn, Attributes::empty());
     ev.register("SetToList", set_to_list as NativeFn, Attributes::empty());
     ev.register("SetInsert", set_insert as NativeFn, Attributes::empty());
@@ -950,7 +950,7 @@ pub fn register_collections(ev: &mut Evaluator) {
     ev.register("ListIntersection", list_intersection as NativeFn, Attributes::empty());
     ev.register("ListDifference", list_difference as NativeFn, Attributes::empty());
     // Bag
-    ev.register("BagCreate", bag_create as NativeFn, Attributes::empty());
+    ev.register("Bag", bag_create as NativeFn, Attributes::empty());
     ev.register("BagAdd", bag_add as NativeFn, Attributes::empty());
     ev.register("BagRemove", bag_remove as NativeFn, Attributes::empty());
     ev.register("BagCount", bag_count as NativeFn, Attributes::empty());
@@ -959,21 +959,21 @@ pub fn register_collections(ev: &mut Evaluator) {
     ev.register("BagIntersection", bag_intersection as NativeFn, Attributes::empty());
     ev.register("BagDifference", bag_difference as NativeFn, Attributes::empty());
     // Queue
-    ev.register("QueueCreate", queue_create as NativeFn, Attributes::empty());
+    ev.register("Queue", queue_create as NativeFn, Attributes::empty());
     ev.register("Enqueue", enqueue as NativeFn, Attributes::empty());
     ev.register("Dequeue", dequeue as NativeFn, Attributes::empty());
     ev.register("Peek", queue_peek as NativeFn, Attributes::empty());
     ev.register("QueueSize", queue_size as NativeFn, Attributes::empty());
     ev.register("QueueEmptyQ", queue_empty_q as NativeFn, Attributes::empty());
     // Stack
-    ev.register("StackCreate", stack_create as NativeFn, Attributes::empty());
+    ev.register("Stack", stack_create as NativeFn, Attributes::empty());
     ev.register("Push", push as NativeFn, Attributes::empty());
     ev.register("Pop", pop as NativeFn, Attributes::empty());
     ev.register("Top", top as NativeFn, Attributes::empty());
     ev.register("StackSize", stack_size as NativeFn, Attributes::empty());
     ev.register("StackEmptyQ", stack_empty_q as NativeFn, Attributes::empty());
     // Priority Queue
-    ev.register("PQCreate", pq_create as NativeFn, Attributes::empty());
+    ev.register("PriorityQueue", pq_create as NativeFn, Attributes::empty());
     ev.register("PQInsert", pq_insert as NativeFn, Attributes::empty());
     ev.register("PQPop", pq_pop as NativeFn, Attributes::empty());
     ev.register("PQPeek", pq_peek as NativeFn, Attributes::empty());
@@ -982,7 +982,7 @@ pub fn register_collections(ev: &mut Evaluator) {
 }
 
 pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    register_if(ev, pred, "SetCreate", set_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "HashSet", set_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetFromList", set_from_list as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetToList", set_to_list as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetInsert", set_insert as NativeFn, Attributes::empty());
@@ -998,7 +998,7 @@ pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     register_if(ev, pred, "ListUnion", list_union as NativeFn, Attributes::empty());
     register_if(ev, pred, "ListIntersection", list_intersection as NativeFn, Attributes::empty());
     register_if(ev, pred, "ListDifference", list_difference as NativeFn, Attributes::empty());
-    register_if(ev, pred, "BagCreate", bag_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Bag", bag_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagAdd", bag_add as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagRemove", bag_remove as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagCount", bag_count as NativeFn, Attributes::empty());
@@ -1006,19 +1006,19 @@ pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     register_if(ev, pred, "BagUnion", bag_union as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagIntersection", bag_intersection as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagDifference", bag_difference as NativeFn, Attributes::empty());
-    register_if(ev, pred, "QueueCreate", queue_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Queue", queue_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "Enqueue", enqueue as NativeFn, Attributes::empty());
     register_if(ev, pred, "Dequeue", dequeue as NativeFn, Attributes::empty());
     register_if(ev, pred, "Peek", queue_peek as NativeFn, Attributes::empty());
     register_if(ev, pred, "QueueSize", queue_size as NativeFn, Attributes::empty());
     register_if(ev, pred, "QueueEmptyQ", queue_empty_q as NativeFn, Attributes::empty());
-    register_if(ev, pred, "StackCreate", stack_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Stack", stack_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "Push", push as NativeFn, Attributes::empty());
     register_if(ev, pred, "Pop", pop as NativeFn, Attributes::empty());
     register_if(ev, pred, "Top", top as NativeFn, Attributes::empty());
     register_if(ev, pred, "StackSize", stack_size as NativeFn, Attributes::empty());
     register_if(ev, pred, "StackEmptyQ", stack_empty_q as NativeFn, Attributes::empty());
-    register_if(ev, pred, "PQCreate", pq_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PriorityQueue", pq_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQInsert", pq_insert as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQPop", pq_pop as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQPeek", pq_peek as NativeFn, Attributes::empty());

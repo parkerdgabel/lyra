@@ -10,8 +10,7 @@ GitEnsureRepo[<|"Path"->root, "InitialBranch"->"main", "GitIgnore"->"target\n*.l
 GitStatusSummary[<|"Cwd"->root|>];
 
 (* feature branch *)
-GitCreateFeatureBranch[<|"Cwd"->root, "Name"->"feat/demo"|>];
+GitFeatureBranch[<|"Cwd"->root, "Name"->"feat/demo"|>];
 WriteBytes[root<>"/demo.txt", "hello\n"];
 GitSmartCommit[<|"Cwd"->root, "AutoMessage"->"true"|>];
 GitStatusSummary[<|"Cwd"->root|>];
-

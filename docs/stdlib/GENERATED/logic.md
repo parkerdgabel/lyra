@@ -17,6 +17,7 @@
 
 - Usage: `And[args…]`
 - Summary: Logical AND (short-circuit)
+- Tags: logic
 - Examples:
   - `And[True, False]  ==> False`
 
@@ -24,6 +25,7 @@
 
 - Usage: `Equal[args…]`
 - Summary: Test equality across arguments
+- Tags: logic
 - Examples:
   - `Equal[1,1,1]  ==> True`
 
@@ -31,6 +33,7 @@
 
 - Usage: `GreaterEqual[args…]`
 - Summary: Non-increasing sequence
+- Tags: logic
 - Examples:
   - `GreaterEqual[3,2,2]  ==> True`
 
@@ -38,6 +41,7 @@
 
 - Usage: `Less[args…]`
 - Summary: Strictly increasing sequence
+- Tags: logic
 - Examples:
   - `Less[1,2,3]  ==> True`
 
@@ -45,6 +49,7 @@
 
 - Usage: `Not[x]`
 - Summary: Logical NOT
+- Tags: logic
 - Examples:
   - `Not[True]  ==> False`
 
@@ -52,5 +57,6 @@
 
 - Usage: `Or[args…]`
 - Summary: Logical OR (short-circuit)
+- Tags: logic
 - Examples:
   - `Or[False, True]  ==> True`

@@ -18,12 +18,30 @@
 
 - Usage: `AudioConvert[input, format, opts]`
 - Summary: Convert audio to WAV
+- Tags: audio
 - Examples:
   - `wav := AudioConvert[<|"Path"->"ding.mp3"|>, "wav"]  ==> base64url`
+
+## `AudioDecode`
+
+- Usage: `AudioDecode[input, opts]`
+- Summary: Decode audio to raw (s16le) or WAV
+- Tags: audio, decode
+- Examples:
+  - `AudioDecode[<|Path->"in.mp3"|>, <|Format->"wav"|>]`
 
 ## `AudioInfo`
 
 - Usage: `AudioInfo[input]`
 - Summary: Probe audio metadata
+- Tags: audio
 - Examples:
-  - `AudioInfo[wav]  ==> <|"sampleRate"->..., "channels"->...|>`
+  - `AudioInfo[<|Path->"in.wav"|>]`
+
+## `AudioTrim`
+
+- Usage: `AudioTrim[input, opts]`
+- Summary: Trim audio by time range
+- Tags: audio, edit
+- Examples:
+  - `AudioTrim[<|Path->"in.wav"|>, <|StartMs->1000, EndMs->2000|>]`

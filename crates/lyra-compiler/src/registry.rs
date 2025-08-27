@@ -88,7 +88,7 @@ lazy_static! {
 
         // Graphs
         for s in [
-            "GraphCreate","DropGraph","GraphInfo","AddNodes","AddEdges","RemoveNodes","RemoveEdges","UpsertNodes","UpsertEdges","ListNodes","ListEdges","Neighbors","IncidentEdges","HasNode","HasEdge","ShortestPaths","PageRank","KCore","KCoreDecomposition","MinimumSpanningTree","MaxFlow","ConnectedComponents","StronglyConnectedComponents","GlobalClustering","LocalClustering","TopologicalSort","BFS","DFS","SampleNodes","SampleEdges","ClosenessCentrality","DegreeCentrality",
+            "Graph","DropGraph","GraphInfo","AddNodes","AddEdges","RemoveNodes","RemoveEdges","UpsertNodes","UpsertEdges","ListNodes","ListEdges","Neighbors","IncidentEdges","HasNode","HasEdge","ShortestPaths","PageRank","KCore","KCoreDecomposition","MinimumSpanningTree","MaxFlow","ConnectedComponents","StronglyConnectedComponents","GlobalClustering","LocalClustering","TopologicalSort","BFS","DFS","SampleNodes","SampleEdges","ClosenessCentrality","DegreeCentrality",
         ] { m.insert(s, E { features: &["graphs"], effects: &[] }); }
 
         // Text & search
@@ -99,7 +99,7 @@ lazy_static! {
         m.insert("TextFilesWithMatch", E { features: &["text","text_glob"], effects: &["fs"] });
         for s in ["FuzzyFindInList","FuzzyFindInText"] { m.insert(s, E { features: &["text_fuzzy"], effects: &[] }); }
         for s in ["FuzzyFindInFiles"] { m.insert(s, E { features: &["text_fuzzy"], effects: &["fs"] }); }
-        for s in ["IndexCreate","IndexAdd","IndexSearch","IndexInfo"] { m.insert(s, E { features: &["text_index"], effects: &["db","fs"] }); }
+        for s in ["Index","IndexAdd","IndexSearch","IndexInfo"] { m.insert(s, E { features: &["text_index"], effects: &["db","fs"] }); }
 
         // Package management (stdlib shims)
         for s in [
@@ -117,7 +117,7 @@ lazy_static! {
 
         // Collections
         for s in [
-            "SetCreate","SetFromList","SetToList","SetInsert","SetRemove","SetMemberQ","SetSize","SetEmptyQ","SetUnion","SetIntersection","SetDifference","SetSubsetQ","SetEqualQ","ListUnion","ListIntersection","ListDifference","BagCreate","BagAdd","BagRemove","BagCount","BagSize","BagUnion","BagIntersection","BagDifference","QueueCreate","Enqueue","Dequeue","Peek","QueueSize","QueueEmptyQ","StackCreate","Push","Pop","Top","StackSize","StackEmptyQ","PQCreate","PQInsert","PQPop","PQPeek","PQSize","PQEmptyQ",
+            "HashSet","SetFromList","SetToList","SetInsert","SetRemove","SetMemberQ","SetSize","SetEmptyQ","SetUnion","SetIntersection","SetDifference","SetSubsetQ","SetEqualQ","ListUnion","ListIntersection","ListDifference","Bag","BagAdd","BagRemove","BagCount","BagSize","BagUnion","BagIntersection","BagDifference","Queue","Enqueue","Dequeue","Peek","QueueSize","QueueEmptyQ","Stack","Push","Pop","Top","StackSize","StackEmptyQ","PriorityQueue","PQInsert","PQPop","PQPeek","PQSize","PQEmptyQ",
         ] { m.insert(s, E { features: &["collections"], effects: &[] }); }
 
         // NDArray
@@ -133,7 +133,7 @@ lazy_static! {
 
         // Containers (Docker/etc.)
         for s in [
-            "RuntimeInfo","RuntimeCapabilities","PingContainers","ListContainers","DescribeContainers","InspectContainer","StartContainer","StopContainer","RestartContainer","PauseContainer","UnpauseContainer","RemoveContainer","WaitContainer","Logs","ExecInContainer","CreateContainer","RunContainer","ConnectContainers","DisconnectContainers","ListNetworks","CreateNetwork","RemoveNetwork","ListVolumes","CreateVolume","RemoveVolume","CopyToContainer","CopyFromContainer","SearchImages","ListImages","InspectImage","PullImage","PushImage","SaveImage","LoadImage","RemoveImage","PruneImages","ImageHistory","ExportImages","TagImage","AddRegistryAuth","ListRegistryAuth","InspectRegistryImage","Events","Stats",
+            "RuntimeInfo","RuntimeCapabilities","PingContainers","ListContainers","DescribeContainers","InspectContainer","StartContainer","StopContainer","RestartContainer","PauseContainer","UnpauseContainer","RemoveContainer","WaitContainer","Logs","ExecInContainer","Container","RunContainer","ConnectContainers","DisconnectContainers","ListNetworks","Network","RemoveNetwork","ListVolumes","Volume","RemoveVolume","CopyToContainer","CopyFromContainer","SearchImages","ListImages","InspectImage","PullImage","PushImage","SaveImage","LoadImage","RemoveImage","PruneImages","ImageHistory","ExportImages","TagImage","AddRegistryAuth","ListRegistryAuth","InspectRegistryImage","Events","Stats",
         ] { m.insert(s, E { features: &["containers"], effects: &["process","net","fs"] }); }
 
         // Dataset

@@ -1,4 +1,8 @@
 use crate::register_if;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
@@ -8,23 +12,31 @@ use rusqlite::{params, Connection};
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 pub fn register_text_index(ev: &mut Evaluator) {
-    ev.register("IndexCreate", index_create as NativeFn, Attributes::empty());
+    ev.register("Index", index_create as NativeFn, Attributes::empty());
     ev.register("IndexAdd", index_add as NativeFn, Attributes::empty());
     ev.register("IndexSearch", index_search as NativeFn, Attributes::empty());
     ev.register("IndexInfo", index_info as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("Index", summary: "Create/open a text index (sqlite fts)", params: ["path"], tags: ["index","search","text"]),
+        tool_spec!("IndexAdd", summary: "Add or replace index documents", params: ["indexPath","docs"], tags: ["index","search","text"]),
+        tool_spec!("IndexSearch", summary: "Full-text search the index", params: ["indexPath","query"], tags: ["index","search","text"]),
+        tool_spec!("IndexInfo", summary: "Index stats (path, numDocs)", params: ["indexPath"], tags: ["index","search","text","info"]),
+    ]);
 }
 
 pub fn register_text_index_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    register_if(ev, pred, "IndexCreate", index_create as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Index", index_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "IndexAdd", index_add as NativeFn, Attributes::empty());
     register_if(ev, pred, "IndexSearch", index_search as NativeFn, Attributes::empty());
     register_if(ev, pred, "IndexInfo", index_info as NativeFn, Attributes::empty());
 }
 
 fn index_create(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // IndexCreate(path) -> { indexPath }
+    // Index(path) -> { indexPath }
     if args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("IndexCreate".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Index".into())), args };
     }
     let path = match &args[0] {
         Value::String(s) => s.clone(),

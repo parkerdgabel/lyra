@@ -717,7 +717,7 @@ fn run_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn create_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("CreateContainer".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Container".into())), args };
     }
     match get_runtime(&args[0]) {
         Some(rt_id) => {
@@ -728,9 +728,9 @@ fn create_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 st.containers.insert(id, HashMap::new());
                 return container_handle(rt_id, id);
             }
-            Value::Expr { head: Box::new(Value::Symbol("CreateContainer".into())), args }
+            Value::Expr { head: Box::new(Value::Symbol("Container".into())), args }
         }
-        None => Value::Expr { head: Box::new(Value::Symbol("CreateContainer".into())), args },
+        None => Value::Expr { head: Box::new(Value::Symbol("Container".into())), args },
     }
 }
 
@@ -1067,7 +1067,7 @@ fn list_volumes(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 fn create_volume(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("CreateVolume".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Volume".into())), args };
     }
     Value::Boolean(true)
 }
@@ -1095,7 +1095,7 @@ fn list_networks(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 fn create_network(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("CreateNetwork".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Network".into())), args };
     }
     Value::Boolean(true)
 }
@@ -1129,18 +1129,117 @@ fn list_registry_auth(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // ---------- Explain / Describe ----------
-fn explain_containers(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("ExplainContainers".into())), args };
+fn explain_containers(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Structured overview of container APIs and categories, optionally enriched by runtime
+    let overview = || {
+        Value::Assoc(HashMap::from([
+            (String::from("Type"), Value::String(String::from("Containers"))),
+            (
+                String::from("APIs"),
+                Value::Assoc(HashMap::from([
+                    (
+                        String::from("Runtime"),
+                        Value::List(vec![
+                            Value::String("ConnectContainers".into()),
+                            Value::String("DisconnectContainers".into()),
+                            Value::String("PingContainers".into()),
+                            Value::String("RuntimeInfo".into()),
+                            Value::String("RuntimeCapabilities".into()),
+                        ]),
+                    ),
+                    (
+                        String::from("Images"),
+                        Value::List(vec![
+                            Value::String("PullImage".into()),
+                            Value::String("BuildImage".into()),
+                            Value::String("TagImage".into()),
+                            Value::String("PushImage".into()),
+                            Value::String("SaveImage".into()),
+                            Value::String("LoadImage".into()),
+                            Value::String("ListImages".into()),
+                            Value::String("InspectImage".into()),
+                            Value::String("RemoveImage".into()),
+                            Value::String("PruneImages".into()),
+                            Value::String("SearchImages".into()),
+                            Value::String("ImageHistory".into()),
+                            Value::String("InspectRegistryImage".into()),
+                            Value::String("ExportImages".into()),
+                        ]),
+                    ),
+                    (
+                        String::from("Containers"),
+                        Value::List(vec![
+                            Value::String("RunContainer".into()),
+                            Value::String("Container".into()),
+                            Value::String("StartContainer".into()),
+                            Value::String("StopContainer".into()),
+                            Value::String("RestartContainer".into()),
+                            Value::String("RemoveContainer".into()),
+                            Value::String("PauseContainer".into()),
+                            Value::String("UnpauseContainer".into()),
+                            Value::String("RenameContainer".into()),
+                            Value::String("ExecInContainer".into()),
+                            Value::String("CopyToContainer".into()),
+                            Value::String("CopyFromContainer".into()),
+                            Value::String("InspectContainer".into()),
+                            Value::String("WaitContainer".into()),
+                            Value::String("ListContainers".into()),
+                            Value::String("Logs".into()),
+                            Value::String("Stats".into()),
+                            Value::String("Events".into()),
+                            Value::String("ContainersFetch".into()),
+                            Value::String("ContainersClose".into()),
+                        ]),
+                    ),
+                    (
+                        String::from("Volumes"),
+                        Value::List(vec![
+                            Value::String("ListVolumes".into()),
+                            Value::String("Volume".into()),
+                            Value::String("RemoveVolume".into()),
+                            Value::String("InspectVolume".into()),
+                        ]),
+                    ),
+                    (
+                        String::from("Networks"),
+                        Value::List(vec![
+                            Value::String("ListNetworks".into()),
+                            Value::String("Network".into()),
+                            Value::String("RemoveNetwork".into()),
+                            Value::String("InspectNetwork".into()),
+                        ]),
+                    ),
+                    (
+                        String::from("Registry"),
+                        Value::List(vec![
+                            Value::String("AddRegistryAuth".into()),
+                            Value::String("ListRegistryAuth".into()),
+                        ]),
+                    ),
+                ])),
+            ),
+        ]))
+    };
+    match args.as_slice() {
+        [] => overview(),
+        [rt] if get_runtime(rt).is_some() => {
+            let mut m = HashMap::new();
+            m.insert(String::from("Overview"), overview());
+            m.insert(String::from("Runtime"), runtime_info(ev, vec![rt.clone()]));
+            m.insert(String::from("Capabilities"), runtime_capabilities(ev, vec![rt.clone()]));
+            Value::Assoc(m)
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("ExplainContainers".into())), args },
     }
-    Value::String("ExplainContainers not yet implemented".into())
 }
 
-fn describe_containers(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("DescribeContainers".into())), args };
+fn describe_containers(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Same shape as explain but named Describe; returns structured data
+    match args.as_slice() {
+        [] => explain_containers(ev, vec![]),
+        [rt] if get_runtime(rt).is_some() => explain_containers(ev, vec![rt.clone()]),
+        _ => Value::Expr { head: Box::new(Value::Symbol("DescribeContainers".into())), args },
     }
-    Value::String("DescribeContainers not yet implemented".into())
 }
 
 pub fn register_containers(ev: &mut Evaluator) {
@@ -1163,7 +1262,7 @@ pub fn register_containers(ev: &mut Evaluator) {
 
     // Containers
     ev.register("RunContainer", run_container as NativeFn, Attributes::empty());
-    ev.register("CreateContainer", create_container as NativeFn, Attributes::empty());
+    ev.register("Container", create_container as NativeFn, Attributes::empty());
     ev.register("StartContainer", start_container as NativeFn, Attributes::empty());
     ev.register("StopContainer", stop_container as NativeFn, Attributes::empty());
     ev.register("RestartContainer", restart_container as NativeFn, Attributes::empty());
@@ -1187,12 +1286,12 @@ pub fn register_containers(ev: &mut Evaluator) {
 
     // Volumes / Networks / Registry
     ev.register("ListVolumes", list_volumes as NativeFn, Attributes::empty());
-    ev.register("CreateVolume", create_volume as NativeFn, Attributes::empty());
+    ev.register("Volume", create_volume as NativeFn, Attributes::empty());
     ev.register("RemoveVolume", remove_volume as NativeFn, Attributes::empty());
     ev.register("InspectVolume", inspect_volume as NativeFn, Attributes::empty());
 
     ev.register("ListNetworks", list_networks as NativeFn, Attributes::empty());
-    ev.register("CreateNetwork", create_network as NativeFn, Attributes::empty());
+    ev.register("Network", create_network as NativeFn, Attributes::empty());
     ev.register("RemoveNetwork", remove_network as NativeFn, Attributes::empty());
     ev.register("InspectNetwork", inspect_network as NativeFn, Attributes::empty());
 
@@ -2268,7 +2367,7 @@ pub fn register_containers_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> b
     register_if(ev, pred, "WaitContainer", wait_container as NativeFn, Attributes::empty());
     register_if(ev, pred, "Logs", containers_logs as NativeFn, Attributes::empty());
     register_if(ev, pred, "ExecInContainer", exec_in_container as NativeFn, Attributes::empty());
-    register_if(ev, pred, "CreateContainer", create_container as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Container", create_container as NativeFn, Attributes::empty());
     register_if(ev, pred, "RunContainer", run_container as NativeFn, Attributes::empty());
     register_if(ev, pred, "ConnectContainers", connect_containers as NativeFn, Attributes::empty());
     register_if(
@@ -2279,10 +2378,10 @@ pub fn register_containers_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> b
         Attributes::empty(),
     );
     register_if(ev, pred, "ListNetworks", list_networks as NativeFn, Attributes::empty());
-    register_if(ev, pred, "CreateNetwork", create_network as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Network", create_network as NativeFn, Attributes::empty());
     register_if(ev, pred, "RemoveNetwork", remove_network as NativeFn, Attributes::empty());
     register_if(ev, pred, "ListVolumes", list_volumes as NativeFn, Attributes::empty());
-    register_if(ev, pred, "CreateVolume", create_volume as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Volume", create_volume as NativeFn, Attributes::empty());
     register_if(ev, pred, "RemoveVolume", remove_volume as NativeFn, Attributes::empty());
     register_if(ev, pred, "CopyToContainer", copy_to_container as NativeFn, Attributes::empty());
     register_if(

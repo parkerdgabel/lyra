@@ -73,6 +73,124 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples("StringJoin", &["StringJoin[{\"a\",\"b\",\"c\"}]  ==> \"abc\""]);
     ev.set_doc_examples("Length", &["Length[{1,2,3}]  ==> 3", "Length[\"ok\"]  ==> 2"]);
 
+    // Generic verbs (dispatched by type)
+    ev.set_doc("Insert", "Insert into collection or structure (dispatched)", &["target", "value"]);
+    ev.set_doc("Remove", "Remove from collection or structure (dispatched)", &["target", "value?"]);
+    ev.set_doc("Add", "Add value to a collection (alias of Insert for some types)", &["target", "value"]);
+    ev.set_doc("Info", "Information about a handle (Graph, etc.)", &["target"]);
+    ev.set_doc("EmptyQ", "Is the subject empty? (lists, strings, assocs, handles)", &["x"]);
+    ev.set_doc("Count", "Count items/elements (lists, assocs, Bag/VectorStore)", &["x"]);
+    ev.set_doc("Search", "Search within a store or index (VectorStore, Index)", &["target", "query", "opts?"]);
+    ev.set_doc_examples(
+        "Insert",
+        &[
+            "s := HashSet[{1,2}]; Insert[s, 3]  ==> s'",
+            "q := Queue[]; Insert[q, 5]  ==> q'",
+            "st := Stack[]; Insert[st, \"x\"]",
+            "pq := PriorityQueue[]; Insert[pq, <|\"Key\"->1, \"Value\"->\"a\"|>]",
+            "g := Graph[]; Insert[g, {\"a\",\"b\"}]",
+            "Insert[g, <|Src->\"a\",Dst->\"b\"|>]",
+        ],
+    );
+    ev.set_doc_examples(
+        "Remove",
+        &[
+            "Remove[{1,2,3}, 2]  ==> {1,3}",
+            "Remove[Queue[]]  ==> Null (dequeue)",
+            "Remove[Stack[]]  ==> Null (pop)",
+            "Remove[PriorityQueue[]]  ==> Null (pop)",
+            "Remove[g, {\"a\"}]",
+            "Remove[g, {<|Src->\"a\",Dst->\"b\"|>}]",
+        ],
+    );
+    ev.set_doc_examples(
+        "Info",
+        &[
+            "Info[Graph[]]  ==> <|nodes->..., edges->...|>",
+            "Info[DatasetFromRows[{<|a->1|>}]]  ==> <|Type->\"Dataset\", Rows->1, Columns->{\"a\"}|>",
+            "Info[VectorStore[<|Name->\"vs\"|>]]  ==> <|Type->\"VectorStore\", Name->\"vs\", Count->0|>",
+            "Info[HashSet[{1,2,3}]]  ==> <|Type->\"Set\", Size->3|>",
+            "Info[Queue[]]  ==> <|Type->\"Queue\", Size->0|>",
+            "Info[Index[\"/tmp/idx.db\"]]  ==> <|indexPath->..., numDocs->...|>",
+            "conn := Connect[\"mock://\"]; Info[conn]  ==> <|Type->\"Connection\", ...|>",
+        ],
+    );
+    ev.set_doc_examples(
+        "EmptyQ",
+        &[
+            "EmptyQ[{}]  ==> True",
+            "EmptyQ[\"\"]  ==> True",
+            "EmptyQ[Queue[]]  ==> True",
+            "EmptyQ[DatasetFromRows[{}]]  ==> True",
+        ],
+    );
+    ev.set_doc_examples(
+        "Count",
+        &[
+            "Count[{1,2,3}]  ==> 3",
+            "Count[<|a->1,b->2|>]  ==> 2",
+            "Count[DatasetFromRows[{<|a->1|>,<|a->2|>}]]  ==> 2",
+        ],
+    );
+    ev.set_doc_examples(
+        "Search",
+        &[
+            "Search[VectorStore[<|Name->\"vs\"|>], {0.1,0.2,0.3}]  ==> {...}",
+            "idx := Index[\"/tmp/idx.db\"]; Search[idx, \"foo\"]",
+        ],
+    );
+
+    // Import/Export + Sniff
+    ev.set_doc(
+        "Import",
+        "Import data from path/URL into Frame (default), Dataset (Target->\"Dataset\"), or Value. Automatically sniffs Type/Delimiter/Header.",
+        &["source", "opts?"],
+    );
+    ev.set_doc_examples(
+        "Import",
+        &[
+            "Import[\"data.csv\"]  ==> Frame[...]",
+            "Import[\"data.csv\", <|Target->\"Dataset\"|>]  ==> Dataset[...]",
+            "Import[\"logs/*.jsonl\", <|Type->\"JSONL\"|>]  ==> Frame[...]",
+        ],
+    );
+    ev.set_doc(
+        "ImportString",
+        "Parse in-memory strings into Frame/Dataset/Value. Automatically sniffs Type if missing.",
+        &["content", "opts?"],
+    );
+    ev.set_doc_examples(
+        "ImportString",
+        &[
+            "ImportString[\"a,b\\n1,2\"]  ==> Frame[...]",
+            "ImportString[\"[{\\\"a\\\":1}]\", <|Target->\"Dataset\"|>]  ==> Dataset[...]",
+        ],
+    );
+    ev.set_doc(
+        "Export",
+        "Export Frame/Dataset/Value to csv/json/jsonl/parquet (duckdb feature).",
+        &["value", "dest", "opts?"],
+    );
+    ev.set_doc_examples(
+        "Export",
+        &[
+            "Export[f, \"out.csv\"]  ==> True",
+            "Export[ds, \"out.jsonl\"]  ==> True",
+        ],
+    );
+    ev.set_doc(
+        "Sniff",
+        "Suggest Type and options for a source (file/url/string/bytes).",
+        &["source"],
+    );
+    ev.set_doc_examples(
+        "Sniff",
+        &[
+            "Sniff[\"data.csv\"]  ==> <|Type->\"CSV\", Delimiter->\",\", Header->True|>",
+            "Sniff[\"https://ex.com/data.jsonl\"]  ==> <|Type->\"JSONL\"|>",
+        ],
+    );
+
     // Logic and control
     ev.set_doc("If", "Conditional: If[cond, then, else?] (held)", &["cond", "then", "else?"]);
     ev.set_doc("When", "Evaluate body when condition is True (held)", &["cond", "body"]);
@@ -386,7 +504,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Exec", "Execute DDL/DML (non-SELECT)", &["conn", "sql", "params?"]);
     ev.set_doc("SQLCursor", "Run a query and return a cursor handle", &["conn", "sql", "params?"]);
     ev.set_doc("Fetch", "Fetch next batch of rows from a cursor", &["cursor", "limit?"]);
-    ev.set_doc("Close", "Close a cursor", &["cursor"]);
+    ev.set_doc("Close", "Close an open handle (cursor, channel)", &["handle"]);
     ev.set_doc(
         "InsertRows",
         "Insert multiple rows (assoc list) into a table",
@@ -477,7 +595,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("InspectRegistryImage", "Inspect remote registry image", &["ref", "opts?"]);
     ev.set_doc("ExportImages", "Export images to an archive", &["refs", "path"]);
 
-    ev.set_doc("CreateContainer", "Create a container", &["image", "opts?"]);
+    ev.set_doc("Container", "Create a container", &["image", "opts?"]);
     ev.set_doc("StartContainer", "Start a container", &["id"]);
     ev.set_doc("StopContainer", "Stop a container", &["id", "opts?"]);
     ev.set_doc("RestartContainer", "Restart a container", &["id"]);
@@ -498,11 +616,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("ContainersClose", "Close open fetch handles", &[]);
 
     ev.set_doc("ListVolumes", "List volumes", &[]);
-    ev.set_doc("CreateVolume", "Create volume", &["opts?"]);
+    ev.set_doc("Volume", "Create volume", &["opts?"]);
     ev.set_doc("RemoveVolume", "Remove volume", &["name"]);
     ev.set_doc("InspectVolume", "Inspect volume", &["name"]);
     ev.set_doc("ListNetworks", "List networks", &[]);
-    ev.set_doc("CreateNetwork", "Create network", &["opts?"]);
+    ev.set_doc("Network", "Create network", &["opts?"]);
     ev.set_doc("RemoveNetwork", "Remove network", &["name"]);
     ev.set_doc("InspectNetwork", "Inspect network", &["name"]);
     ev.set_doc("AddRegistryAuth", "Add registry credentials", &["server", "user", "password"]);
@@ -510,11 +628,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("ExplainContainers", "Explain container runtime configuration", &[]);
     ev.set_doc("DescribeContainers", "Describe available container APIs", &[]);
     ev.set_doc_examples("PullImage", &["PullImage[\"alpine:latest\"]  ==> <|id->..., size->...|>"]);
-    ev.set_doc_examples("CreateContainer", &["cid := CreateContainer[\"alpine\", <|\"cmd\"->\"echo hi\"|>]", "StartContainer[cid]"]);
+    ev.set_doc_examples("Container", &["cid := Container[\"alpine\", <|\"cmd\"->\"echo hi\"|>]", "StartContainer[cid]"]);
     ev.set_doc_examples("ExecInContainer", &["ExecInContainer[cid, {\"ls\", \"/\"}]  ==> <|code->0, out->..., err->...|>"]);
 
     // Graphs
-    ev.set_doc("GraphCreate", "Create a graph handle", &["opts?"]);
+    ev.set_doc("Graph", "Create a graph handle", &["opts?"]);
     ev.set_doc("DropGraph", "Drop a graph handle", &["graph"]);
     ev.set_doc("GraphInfo", "Summary and counts for graph", &["graph"]);
     ev.set_doc("AddNodes", "Add nodes by id and attributes", &["graph", "nodes"]);
@@ -547,7 +665,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("KCore", "Induced subgraph with k-core", &["graph", "k"]);
     ev.set_doc("MinimumSpanningTree", "Edges in a minimum spanning tree", &["graph"]);
     ev.set_doc("MaxFlow", "Maximum flow value and cut", &["graph", "src", "dst"]);
-    ev.set_doc_examples("GraphCreate", &["g := GraphCreate[]; AddNodes[g, {\"a\",\"b\"}]"]);
+    ev.set_doc_examples("Graph", &["g := Graph[]; AddNodes[g, {\"a\",\"b\"}]"]);
     ev.set_doc_examples("AddEdges", &["AddEdges[g, {{\"a\",\"b\"}}]"]);
     ev.set_doc_examples("BFS", &["BFS[g, \"a\"]  ==> {\"a\",\"b\"}"]);
 
@@ -639,11 +757,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
 
     // Compression + Net docs sweep
     // Compression
-    ev.set_doc("ZipCreate", "Create a .zip archive from files/directories.", &["dest", "inputs"]);
+    ev.set_doc("Zip", "Create a .zip archive from files/directories.", &["dest", "inputs"]);
     ev.set_doc_examples(
-        "ZipCreate",
+        "Zip",
         &[
-            "ZipCreate[\"/tmp/bundle.zip\", {\"/tmp/a.txt\", \"/tmp/dir\"}]  ==> <|\"path\"->\"/tmp/bundle.zip\", ...|>",
+            "Zip[\"/tmp/bundle.zip\", {\"/tmp/a.txt\", \"/tmp/dir\"}]  ==> <|\"path\"->\"/tmp/bundle.zip\", ...|>",
         ],
     );
     ev.set_doc("ZipExtract", "Extract a .zip archive into a directory.", &["src", "dest"]);
@@ -653,12 +771,12 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "ZipExtract[\"/tmp/bundle.zip\", \"/tmp/unzipped\"]  ==> <|\"path\"->\"/tmp/unzipped\", \"files\"->...|>",
         ],
     );
-    ev.set_doc("TarCreate", "Create a .tar (optionally .tar.gz) archive from inputs.", &["dest", "inputs", "opts?"]);
+    ev.set_doc("Tar", "Create a .tar (optionally .tar.gz) archive from inputs.", &["dest", "inputs", "opts?"]);
     ev.set_doc_examples(
-        "TarCreate",
+        "Tar",
         &[
-            "TarCreate[\"/tmp/bundle.tar\", {\"/tmp/data\"}]  ==> <|\"path\"->\"/tmp/bundle.tar\"|>",
-            "TarCreate[\"/tmp/bundle.tar.gz\", {\"/tmp/data\"}, <|\"Gzip\"->True|>]  ==> <|\"path\"->...|>",
+            "Tar[\"/tmp/bundle.tar\", {\"/tmp/data\"}]  ==> <|\"path\"->\"/tmp/bundle.tar\"|>",
+            "Tar[\"/tmp/bundle.tar.gz\", {\"/tmp/data\"}, <|\"Gzip\"->True|>]  ==> <|\"path\"->...|>",
         ],
     );
     ev.set_doc("TarExtract", "Extract a .tar or .tar.gz archive into a directory.", &["src", "dest"]);
@@ -914,7 +1032,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("Coalesce", &["Coalesce[Null, 0, 42]  ==> 0"]);
 
     // Collections: sets, stacks, queues, bags, priority queues
-    ev.set_doc("SetCreate", "Create a set from values", &["values"]);
+    ev.set_doc("HashSet", "Create a set from values", &["values"]);
     ev.set_doc("SetInsert", "Insert value into set", &["set", "value"]);
     ev.set_doc("SetRemove", "Remove value from set", &["set", "value"]);
     ev.set_doc("SetMemberQ", "Is value a member of set?", &["set", "value"]);
@@ -927,18 +1045,18 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("SetDifference", "Elements in a not in b", &["a", "b"]);
     ev.set_doc("SetEqualQ", "Are two sets equal?", &["a", "b"]);
     ev.set_doc("SetSubsetQ", "Is a subset of b?", &["a", "b"]);
-    ev.set_doc("StackCreate", "Create a stack", &[]);
+    ev.set_doc("Stack", "Create a stack", &[]);
     ev.set_doc("StackSize", "Size of a stack", &["stack"]);
     ev.set_doc("StackEmptyQ", "Is stack empty?", &["stack"]);
     ev.set_doc("Peek", "Peek top of stack/queue", &["handle"]);
     ev.set_doc("Push", "Push onto stack", &["stack", "value"]);
     ev.set_doc("Pop", "Pop from stack", &["stack"]);
-    ev.set_doc("QueueCreate", "Create a FIFO queue", &[]);
+    ev.set_doc("Queue", "Create a FIFO queue", &[]);
     ev.set_doc("QueueSize", "Size of queue", &["queue"]);
     ev.set_doc("QueueEmptyQ", "Is queue empty?", &["queue"]);
     ev.set_doc("Enqueue", "Enqueue value", &["queue", "value"]);
     ev.set_doc("Dequeue", "Dequeue value", &["queue"]);
-    ev.set_doc("BagCreate", "Create a multiset bag", &[]);
+    ev.set_doc("Bag", "Create a multiset bag", &[]);
     ev.set_doc("BagAdd", "Add item to bag", &["bag", "value"]);
     ev.set_doc("BagRemove", "Remove one item from bag", &["bag", "value"]);
     ev.set_doc("BagCount", "Count occurrences of value", &["bag", "value"]);
@@ -946,7 +1064,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("BagUnion", "Union of two bags", &["a", "b"]);
     ev.set_doc("BagIntersection", "Intersection of two bags", &["a", "b"]);
     ev.set_doc("BagDifference", "Difference of two bags", &["a", "b"]);
-    ev.set_doc("PQCreate", "Create a priority queue", &[]);
+    ev.set_doc("PriorityQueue", "Create a priority queue", &[]);
     ev.set_doc("PQInsert", "Insert with priority", &["pq", "priority", "value"]);
     ev.set_doc("PQPeek", "Peek min (or max) priority", &["pq"]);
     ev.set_doc("PQPop", "Pop min (or max) priority", &["pq"]);
@@ -1256,7 +1374,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("GitCommit", "Create a commit with message", &["message", "opts?"]);
     ev.set_doc("GitCurrentBranch", "Current branch name", &[]);
     ev.set_doc("GitBranchList", "List local branches", &[]);
-    ev.set_doc("GitBranchCreate", "Create a new branch", &["name", "opts?"]);
+    ev.set_doc("GitBranch", "Create a new branch", &["name", "opts?"]);
     ev.set_doc("GitSwitch", "Switch to branch (optionally create)", &["name", "opts?"]);
     ev.set_doc("GitDiff", "Diff against base and optional paths", &["opts?"]);
     ev.set_doc("GitApply", "Apply a patch (or check only)", &["patch", "opts?"]);
@@ -1290,14 +1408,14 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         ],
     );
     ev.set_doc("GitSmartCommit", "Stage + conventional commit (auto msg option)", &["opts?"]);
-    ev.set_doc("GitCreateFeatureBranch", "Create and switch to a feature branch", &["opts?"]);
+    ev.set_doc("GitFeatureBranch", "Create and switch to a feature branch", &["opts?"]);
     ev.set_doc("GitSyncUpstream", "Fetch, rebase (or merge), and push upstream", &["opts?"]);
     ev.set_doc_examples("GitVersion", &["GitVersion[]  ==> \"git version ...\""]);
     ev.set_doc_examples("GitRoot", &["GitRoot[]  ==> \"/path/to/repo\" | Null"]);
     ev.set_doc_examples("GitStatus", &["GitStatus[]  ==> <|Branch->..., Ahead->0, Behind->0, Changes->{...}|>"]);
     ev.set_doc_examples("GitAdd", &["GitAdd[\"src/main.rs\"]  ==> True"]);
     ev.set_doc_examples("GitCommit", &["GitCommit[\"feat: add api\"]  ==> <|Sha->..., Message->...|>"]);
-    ev.set_doc_examples("GitBranchCreate", &["GitBranchCreate[\"feature/x\"]  ==> True"]);
+    ev.set_doc_examples("GitBranch", &["GitBranch[\"feature/x\"]  ==> True"]);
     ev.set_doc_examples("GitSwitch", &["GitSwitch[\"feature/x\"]  ==> True"]);
     ev.set_doc_examples("GitDiff", &["GitDiff[<|\"Base\"->\"HEAD~1\"|>]  ==> \"diff...\""]);
     ev.set_doc_examples("GitLog", &["GitLog[<|\"Limit\"->5|>]  ==> {\"<sha>|<author>|...\", ...}"]);

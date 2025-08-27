@@ -1,4 +1,8 @@
 use lyra_core::value::Value;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use std::collections::HashMap;
@@ -66,7 +70,7 @@ pub fn register_git(ev: &mut Evaluator) {
     ev.register("GitCommit", git_commit as NativeFn, Attributes::empty());
     ev.register("GitCurrentBranch", git_current_branch as NativeFn, Attributes::empty());
     ev.register("GitBranchList", git_branch_list as NativeFn, Attributes::empty());
-    ev.register("GitBranchCreate", git_branch_create as NativeFn, Attributes::empty());
+    ev.register("GitBranch", git_branch as NativeFn, Attributes::empty());
     ev.register("GitSwitch", git_switch as NativeFn, Attributes::empty());
     ev.register("GitDiff", git_diff as NativeFn, Attributes::empty());
     ev.register("GitApply", git_apply as NativeFn, Attributes::empty());
@@ -80,12 +84,35 @@ pub fn register_git(ev: &mut Evaluator) {
     ev.register("GitEnsureRepo", git_ensure_repo as NativeFn, Attributes::empty());
     ev.register("GitStatusSummary", git_status_summary as NativeFn, Attributes::empty());
     ev.register("GitSmartCommit", git_smart_commit as NativeFn, Attributes::empty());
-    ev.register(
-        "GitCreateFeatureBranch",
-        git_create_feature_branch as NativeFn,
-        Attributes::empty(),
-    );
+    ev.register("GitFeatureBranch", git_create_feature_branch as NativeFn, Attributes::empty());
     ev.register("GitSyncUpstream", git_sync_upstream as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("GitVersion", summary: "Get git client version string", params: [], tags: ["git","vcs"]),
+        tool_spec!("GitRoot", summary: "Path to repository root (or Null)", params: [], tags: ["git","vcs"]),
+        tool_spec!("GitInit", summary: "Initialize a new git repository", params: ["opts?"], tags: ["git","repo"]),
+        tool_spec!("GitStatus", summary: "Status (porcelain) with branch/ahead/behind/changes", params: ["opts?"], tags: ["git","status"]),
+        tool_spec!("GitAdd", summary: "Stage files for commit", params: ["paths","opts?"], tags: ["git","index"], examples: [Value::String("GitAdd[\"src/main.rs\"]".into())]),
+        tool_spec!("GitCommit", summary: "Create a commit with message", params: ["message","opts?"], tags: ["git","commit"], examples: [Value::String("GitCommit[\"feat: add api\"]".into())]),
+        tool_spec!("GitCurrentBranch", summary: "Current branch name", params: [], tags: ["git","branch"]),
+        tool_spec!("GitBranchList", summary: "List local branches", params: [], tags: ["git","branch"]),
+        tool_spec!("GitBranch", summary: "Create a new branch", params: ["name","opts?"], tags: ["git","branch"], examples: [Value::String("GitBranch[\"feature/x\"]".into())]),
+        tool_spec!("GitSwitch", summary: "Switch to branch (optionally create)", params: ["name","opts?"], tags: ["git","branch"]),
+        tool_spec!("GitDiff", summary: "Diff against base and optional paths", params: ["opts?"], tags: ["git","diff"]),
+        tool_spec!("GitApply", summary: "Apply a patch (or check only)", params: ["patch","opts?"], tags: ["git","patch"]),
+        tool_spec!("GitLog", summary: "List commits with formatting options", params: ["opts?"], tags: ["git","log"]),
+        tool_spec!("GitRemoteList", summary: "List remotes", params: [], tags: ["git","remote"]),
+        tool_spec!("GitFetch", summary: "Fetch from remote", params: ["remote?"], tags: ["git","remote"]),
+        tool_spec!("GitPull", summary: "Pull from remote", params: ["remote?","opts?"], tags: ["git","remote"]),
+        tool_spec!("GitPush", summary: "Push to remote", params: ["opts?"], tags: ["git","remote"]),
+        // High-level helpers
+        tool_spec!("GitEnsureRepo", summary: "Ensure Cwd is a git repo (init if needed)", params: ["opts?"], tags: ["git","repo"]),
+        tool_spec!("GitStatusSummary", summary: "Summarize status counts and branch", params: ["opts?"], tags: ["git","status"]),
+        tool_spec!("GitSmartCommit", summary: "Stage + conventional commit (auto msg option)", params: ["opts?"], tags: ["git","commit"]),
+        tool_spec!("GitFeatureBranch", summary: "Create and switch to a feature branch", params: ["opts?"], tags: ["git","branch"]),
+        tool_spec!("GitSyncUpstream", summary: "Fetch, rebase/merge, and push upstream", params: ["opts?"], tags: ["git","sync"]),
+    ]);
 }
 
 pub fn register_git_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -103,13 +130,7 @@ pub fn register_git_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
         Attributes::empty(),
     );
     super::register_if(ev, pred, "GitBranchList", git_branch_list as NativeFn, Attributes::empty());
-    super::register_if(
-        ev,
-        pred,
-        "GitBranchCreate",
-        git_branch_create as NativeFn,
-        Attributes::empty(),
-    );
+    super::register_if(ev, pred, "GitBranch", git_branch as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "GitSwitch", git_switch as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "GitDiff", git_diff as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "GitApply", git_apply as NativeFn, Attributes::empty());
@@ -134,13 +155,7 @@ pub fn register_git_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
         git_smart_commit as NativeFn,
         Attributes::empty(),
     );
-    super::register_if(
-        ev,
-        pred,
-        "GitCreateFeatureBranch",
-        git_create_feature_branch as NativeFn,
-        Attributes::empty(),
-    );
+    super::register_if(ev, pred, "GitFeatureBranch", git_create_feature_branch as NativeFn, Attributes::empty());
     super::register_if(
         ev,
         pred,
@@ -396,10 +411,10 @@ fn git_branch_list(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::List(list)
 }
 
-fn git_branch_create(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // GitBranchCreate[name, <|Start->ref|>]
+fn git_branch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // GitBranch[name, <|Start->ref|>]
     if args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("GitBranchCreate".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("GitBranch".into())), args };
     }
     let name = as_str(&ev.eval(args[0].clone())).unwrap_or_else(|| "feature".into());
     let start = args.get(1).and_then(|v| {
@@ -876,7 +891,7 @@ fn git_smart_commit(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn git_create_feature_branch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    // GitCreateFeatureBranch[<|Cwd->..., Name->..., From->base|>]
+// GitFeatureBranch[<|Cwd->..., Name->..., From->base|>]
     let mut name_opt: Option<String> = None;
     let mut from: Option<String> = None;
     if let Some(Value::Assoc(m)) = args.get(0).map(|v| ev.eval(v.clone())) {

@@ -18,19 +18,22 @@
 
 - Usage: `ImageCanvas[opts]`
 - Summary: Create a blank canvas (PNG)
+- Tags: image
 - Examples:
-  - `png := ImageCanvas[<|"Width"->64, "Height"->64, "Background"->"#ff0000"|>]`
+  - `ImageCanvas[<|Width->64, Height->64, Bg->"#ffffff"|>]`
 
 ## `ImageInfo`
 
 - Usage: `ImageInfo[input, opts]`
 - Summary: Read basic image info
+- Tags: image
 - Examples:
-  - `ImageInfo[png]  ==> <|"width"->64, "height"->64|>`
+  - `ImageInfo[<|Path->"in.png"|>]`
 
 ## `ImageResize`
 
 - Usage: `ImageResize[input, opts]`
 - Summary: Resize image (contain/cover)
+- Tags: image, transform
 - Examples:
-  - `out := ImageResize[png, <|"Width"->32, "Height"->32|>]  ==> base64url`
+  - `ImageResize[<|Path->"in.png"|>, <|Width->128|>]`

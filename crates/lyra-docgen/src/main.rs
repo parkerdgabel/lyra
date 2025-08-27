@@ -62,21 +62,22 @@ fn module_for(tags: &[String], name: &str) -> String {
     "misc".into()
 }
 
-fn write_module_doc(module: &str, entries: &[(String, String, Vec<String>, Vec<String>)], out_dir: &PathBuf) -> std::io::Result<()> {
+fn write_module_doc(module: &str, entries: &[(String, String, Vec<String>, Vec<String>, Vec<String>)], out_dir: &PathBuf) -> std::io::Result<()> {
     let mut md = String::new();
     md.push_str(&format!("# {}\n\n", module.to_uppercase()));
     md.push_str("| Function | Usage | Summary |\n|---|---|---|\n");
-    for (name, summary, params, _examples) in entries.iter() {
+    for (name, summary, params, _tags, _examples) in entries.iter() {
         let use_str = usage(name, params);
         let safe_summary = summary.replace('|', "\\|");
         md.push_str(&format!("| `{}` | `{}` | {} |\n", name, use_str, safe_summary));
     }
     // Detailed sections with examples
-    for (name, summary, params, examples) in entries.iter() {
+    for (name, summary, params, tags, examples) in entries.iter() {
         if examples.is_empty() { continue; }
         md.push_str(&format!("\n## `{}`\n\n", name));
         md.push_str(&format!("- Usage: `{}`\n", usage(name, params)));
         if !summary.is_empty() { md.push_str(&format!("- Summary: {}\n", summary)); }
+        if !tags.is_empty() { md.push_str(&format!("- Tags: {}\n", tags.join(", "))); }
         md.push_str("- Examples:\n");
         for ex in examples {
             md.push_str(&format!("  - `{}`\n", ex.replace('`', "\\`")));
@@ -85,6 +86,29 @@ fn write_module_doc(module: &str, entries: &[(String, String, Vec<String>, Vec<S
     let mut path = out_dir.clone();
     path.push(format!("{}.md", module));
     fs::write(path, md)
+}
+
+fn write_tags_doc(tags_map: &std::collections::BTreeMap<String, Vec<(String, String, Vec<String>)>>, out_dir: &PathBuf) -> std::io::Result<()> {
+    let mut md = String::new();
+    md.push_str("# Tags Index\n\n");
+    // Summary table
+    md.push_str("| Tag | Functions |\n|---|---|\n");
+    for (tag, entries) in tags_map.iter() {
+        md.push_str(&format!("| `{}` | {} |\n", tag, entries.len()));
+    }
+    // Sections per tag
+    for (tag, entries) in tags_map.iter() {
+        md.push_str(&format!("\n## `{}`\n\n", tag));
+        md.push_str("| Function | Usage | Summary |\n|---|---|---|\n");
+        for (name, summary, params) in entries.iter() {
+            let use_str = usage(name, params);
+            let safe_summary = summary.replace('|', "\\|");
+            md.push_str(&format!("| `{}` | `{}` | {} |\n", name, use_str, safe_summary));
+        }
+    }
+    let mut path = out_dir.clone();
+    path.push("tags.md");
+    std::fs::write(path, md)
 }
 
 fn main() -> std::io::Result<()> {
@@ -107,12 +131,18 @@ fn main() -> std::io::Result<()> {
         }
     }
     // Group by module
-    let mut by_mod: BTreeMap<String, Vec<(String, String, Vec<String>, Vec<String>)>> = BTreeMap::new();
+    let mut by_mod: BTreeMap<String, Vec<(String, String, Vec<String>, Vec<String>, Vec<String>)>> = BTreeMap::new();
+    // Group by tag
+    let mut by_tag: BTreeMap<String, Vec<(String, String, Vec<String>)>> = BTreeMap::new();
     for (name, summary, params, tags, examples) in items.into_iter() {
         let module = module_for(&tags, &name);
-        by_mod.entry(module).or_default().push((name, summary, params, examples));
+        by_mod.entry(module).or_default().push((name.clone(), summary.clone(), params.clone(), tags.clone(), examples));
+        for t in tags {
+            by_tag.entry(t).or_default().push((name.clone(), summary.clone(), params.clone()));
+        }
     }
     for v in by_mod.values_mut() { v.sort_by(|a,b| a.0.cmp(&b.0)); }
+    for v in by_tag.values_mut() { v.sort_by(|a,b| a.0.cmp(&b.0)); }
 
     // Ensure output dir exists
     let mut out_dir = PathBuf::from("docs/stdlib/GENERATED");
@@ -121,19 +151,22 @@ fn main() -> std::io::Result<()> {
     for (module, entries) in by_mod.iter() {
         write_module_doc(module, entries, &out_dir)?;
     }
+    // Write tags index
+    write_tags_doc(&by_tag, &out_dir)?;
 
     // Write an index
     let mut index_md = String::from("# Generated Stdlib Index\n\n");
     for (module, entries) in by_mod.iter() {
         index_md.push_str(&format!("- [{}]({}.md) ({} functions)\n", module, module, entries.len()));
     }
+    index_md.push_str(&format!("- [tags](tags.md) ({} tags)\n", by_tag.len()));
     let mut idx_path = out_dir.clone(); idx_path.push("README.md");
     fs::write(idx_path, index_md)?;
 
     // Coverage report: missing summaries
     let mut missing: Vec<String> = Vec::new();
     for (_module, entries) in by_mod.iter() {
-        for (name, summary, _params, _examples) in entries.iter() {
+        for (name, summary, _params, _tags, _examples) in entries.iter() {
             if summary.trim().is_empty() { missing.push(name.clone()); }
         }
     }

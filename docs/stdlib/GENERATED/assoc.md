@@ -15,10 +15,12 @@
 | `AssociationMapKV` | `AssociationMapKV[fn, assoc]` | Map key/value pairs in an association |
 | `AssociationMapKeys` | `AssociationMapKeys[f, assoc]` | Map keys with f[k] |
 | `AssociationMapPairs` | `AssociationMapPairs[f, assoc]` | Map over (k,v) pairs |
+| `Columns` | `Columns[ds]` | List column names for a dataset |
 | `KeySort` | `KeySort[assoc]` | Sort association by key |
-| `Keys` | `Keys[assoc]` | List keys of an association |
+| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
 | `Lookup` | `Lookup[assoc, key, default]` | Lookup value from association |
 | `Merge` | `Merge[args]` | Merge associations with optional combiner |
+| `Select` | `Select[ds, cols]` | Select/compute columns |
 | `SortBy` | `SortBy[keyFn, assoc]` | Sort association by derived key |
 | `Values` | `Values[assoc]` | List values of an association |
 
@@ -41,5 +43,25 @@
 
 - Usage: `AssociationMap[f, assoc]`
 - Summary: Map values with f[v]
+- Tags: assoc
 - Examples:
   - `AssociationMap[ToUpper, <|"a"->"x"|>]  ==> <|"a"->"X"|>`
+
+## `Keys`
+
+- Usage: `Keys[subject]`
+- Summary: Keys/columns for Assoc/rows/Dataset/Frame
+- Tags: generic, schema, assoc, dataset, frame
+- Examples:
+  - `Keys[<|a->1,b->2|>]  ==> {a,b}`
+  - `Keys[{<|a->1|>,<|b->2|>}]  ==> {a,b}`
+  - `Keys[ds] (* Columns *)`
+  - `Keys[f]  (* Columns *)`
+
+## `Select`
+
+- Usage: `Select[ds, cols]`
+- Summary: Select/compute columns
+- Tags: generic, dataset, frame, assoc
+- Examples:
+  - `Select[ds, <|"name"->name, "age2"->age*2|>]  ==> ds'`

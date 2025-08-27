@@ -72,8 +72,25 @@
 
 - Usage: `HttpGet[url, opts]`
 - Summary: HTTP GET request (http/https)
+- Tags: net, http
 - Examples:
-  - `HttpGet["https://example.com"]  ==> <|"Status"->200, ...|>`
+  - `HttpGet["https://example.com"]`
+
+## `HttpPost`
+
+- Usage: `HttpPost[url, body, opts]`
+- Summary: HTTP POST request (http/https)
+- Tags: net, http
+- Examples:
+  - `HttpPost["https://example.com/api", <|"json"-><|"x"->1|>|>]`
+
+## `HttpRequest`
+
+- Usage: `HttpRequest[options]`
+- Summary: Generic HTTP request via options object
+- Tags: net, http
+- Examples:
+  - `HttpRequest[<|"Method"->"GET", "Url"->"https://example.com"|>]`
 
 ## `HttpRetry`
 
@@ -86,6 +103,7 @@
 
 - Usage: `HttpServe[handler, opts]`
 - Summary: Start an HTTP server and handle requests with a function
+- Tags: net, http, server
 - Examples:
   - `srv := HttpServe[(req) => RespondText["ok"], <|"Port"->0|>]`
   - `HttpServerAddr[srv]  ==> "127.0.0.1:PORT"`
@@ -113,3 +131,19 @@
   - `r := HttpStreamRequest["GET", "https://example.com/large.bin"]`
   - `While[! Part[r2, "done"], r2 := HttpStreamRead[Part[r, "stream"], 8192]]`
   - `HttpStreamClose[Part[r, "stream"]]`
+
+## `PathMatch`
+
+- Usage: `PathMatch[pattern, path]`
+- Summary: Match a path pattern like /users/:id against a path
+- Tags: http, routing
+- Examples:
+  - `PathMatch["/users/:id", "/users/42"]  ==> <|id->"42"|>`
+
+## `RespondText`
+
+- Usage: `RespondText[text, opts]`
+- Summary: Build a text response for HttpServe
+- Tags: http, server
+- Examples:
+  - `RespondText["ok", <|"Status"->200|>]`

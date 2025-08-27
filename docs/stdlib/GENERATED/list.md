@@ -10,8 +10,9 @@
 | `Filter` | `Filter[pred, list]` | Keep elements where pred[x] is True |
 | `Find` | `Find[pred, list]` | First element where pred[x] |
 | `Flatten` | `Flatten[list, levels?]` | Flatten by levels (default 1) |
-| `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 | `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
+| `ListEdges` | `ListEdges[graph, opts?]` | List edges |
+| `ListNodes` | `ListNodes[graph, opts?]` | List nodes |
 | `MapIndexed` | `MapIndexed[f, list]` | Map with index (1-based) |
 | `Part` | `Part[subject, index]` | Index into list/assoc |
 | `Partition` | `Partition[list, n, step?]` | Partition into fixed-size chunks |
@@ -21,20 +22,20 @@
 | `Reject` | `Reject[pred, list]` | Drop elements where pred[x] is True |
 | `Scan` | `Scan[f, init?, list]` | Prefix scan with function |
 | `Slice` | `Slice[list, start, len?]` | Slice list by start and length |
-| `Sort` | `Sort[ds, by, opts?]` | Sort rows by columns |
 | `Take` | `Take[list, n]` | Take first n (last if negative) |
 | `TakeWhile` | `TakeWhile[pred, list]` | Take while pred[x] holds |
 | `Tally` | `Tally[list]` | Counts by value (assoc) |
 | `Total` | `Total[list]` | Sum elements in a list |
 | `Transpose` | `Transpose[rows]` | Transpose list of lists |
+| `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
 | `Unique` | `Unique[list]` | Stable deduplicate list |
 | `Unzip` | `Unzip[pairs]` | Unzip pairs into two lists |
-| `Zip` | `Zip[a, b]` | Zip two lists into pairs |
 
 ## `Filter`
 
 - Usage: `Filter[pred, list]`
 - Summary: Keep elements where pred[x] is True
+- Tags: generic, dataset, frame, list
 - Examples:
   - `Filter[OddQ, {1,2,3,4}]  ==> {1,3}`
 
@@ -42,20 +43,15 @@
 
 - Usage: `Flatten[list, levels?]`
 - Summary: Flatten by levels (default 1)
+- Tags: list
 - Examples:
   - `Flatten[{{1},{2,3}}]  ==> {1,2,3}`
-
-## `GroupBy`
-
-- Usage: `GroupBy[ds, keys]`
-- Summary: Group rows by key(s)
-- Examples:
-  - `GroupBy[ds, dept]  ==> grouped`
 
 ## `Join`
 
 - Usage: `Join[left, right, on, how?]`
 - Summary: Join two datasets on keys
+- Tags: generic, list, dataset
 - Examples:
   - `Join[{1,2},{3}]  ==> {1,2,3}`
 
@@ -63,6 +59,7 @@
 
 - Usage: `MapIndexed[f, list]`
 - Summary: Map with index (1-based)
+- Tags: list, map
 - Examples:
   - `MapIndexed[({#1, #2} &), {10,20}]  ==> {{10,1},{20,2}}`
 
@@ -70,6 +67,7 @@
 
 - Usage: `Partition[list, n, step?]`
 - Summary: Partition into fixed-size chunks
+- Tags: list
 - Examples:
   - `Partition[{1,2,3,4}, 2]  ==> {{1,2},{3,4}}`
 
@@ -77,6 +75,7 @@
 
 - Usage: `Range[a, b, step?]`
 - Summary: Create numeric range
+- Tags: list, math
 - Examples:
   - `Range[1, 5]  ==> {1,2,3,4,5}`
   - `Range[0, 10, 2]  ==> {0,2,4,6,8,10}`
@@ -85,6 +84,7 @@
 
 - Usage: `Reduce[f, init?, list]`
 - Summary: Fold list with function
+- Tags: list, fold
 - Examples:
   - `Reduce[Plus, 0, {1,2,3}]  ==> 6`
 
@@ -92,6 +92,7 @@
 
 - Usage: `Scan[f, init?, list]`
 - Summary: Prefix scan with function
+- Tags: list, fold
 - Examples:
   - `Scan[Plus, 0, {1,2,3}]  ==> {0,1,3,6}`
 
@@ -99,5 +100,6 @@
 
 - Usage: `Slice[list, start, len?]`
 - Summary: Slice list by start and length
+- Tags: list, slice
 - Examples:
   - `Slice[{10,20,30,40}, 2, 2]  ==> {20,30}`

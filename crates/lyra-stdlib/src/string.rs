@@ -1,4 +1,8 @@
 use crate::register_if;
+#[cfg(feature = "tools")]
+use crate::tool_spec;
+#[cfg(feature = "tools")]
+use crate::tools::add_specs;
 use lyra_core::value::Value;
 use lyra_parser::Parser;
 use lyra_runtime::attrs::Attributes;
@@ -22,6 +26,9 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("JoinLines", join_lines as NativeFn, Attributes::empty());
     ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
     ev.register("EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
+    // Q-suffixed predicate aliases
+    ev.register("StartsWithQ", starts_with as NativeFn, Attributes::LISTABLE);
+    ev.register("EndsWithQ", ends_with as NativeFn, Attributes::LISTABLE);
     ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
     ev.register("StringReplaceFirst", string_replace_first as NativeFn, Attributes::empty());
     ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
@@ -32,6 +39,7 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("LastIndexOf", last_index_of as NativeFn, Attributes::LISTABLE);
     ev.register("StringRepeat", string_repeat as NativeFn, Attributes::LISTABLE);
     ev.register("IsBlank", is_blank as NativeFn, Attributes::LISTABLE);
+    ev.register("BlankQ", is_blank as NativeFn, Attributes::LISTABLE);
     ev.register("Capitalize", capitalize as NativeFn, Attributes::LISTABLE);
     ev.register("TitleCase", title_case as NativeFn, Attributes::LISTABLE);
     ev.register("EqualsIgnoreCase", equals_ignore_case as NativeFn, Attributes::LISTABLE);
@@ -57,7 +65,9 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
     // Regex helpers
     ev.register("RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    // Predicate aliases for clarity/consistency
     ev.register("RegexIsMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("RegexMatchQ", regex_match_fn as NativeFn, Attributes::LISTABLE);
     ev.register("RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     ev.register("RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     ev.register("RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
@@ -65,6 +75,33 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("ParseDate", parse_date_fn as NativeFn, Attributes::empty());
     ev.register("FormatDate", format_date_fn as NativeFn, Attributes::empty());
     ev.register("DateDiff", date_diff_fn as NativeFn, Attributes::empty());
+
+    #[cfg(feature = "tools")]
+    add_specs(vec![
+        tool_spec!("StringLength", summary: "Length of string (Unicode scalars)", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("StringLength[\"hello\"]  ==> 5".into())]),
+        tool_spec!("ToUpper", summary: "Uppercase string", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("ToUpper[\"hi\"]  ==> \"HI\"".into())]),
+        tool_spec!("ToLower", summary: "Lowercase string", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("ToLower[\"Hi\"]  ==> \"hi\"".into())]),
+        tool_spec!("StringJoin", summary: "Concatenate list of parts", params: ["parts"], tags: ["string","text"], examples: [lyra_core::value::Value::String("StringJoin[{\"a\",\"b\"}]  ==> \"ab\"".into())]),
+        tool_spec!("StringSplit", summary: "Split string by separator", params: ["s","sep?"], tags: ["string","text"]),
+        tool_spec!("StringContains", summary: "Does string contain substring?", params: ["s","substr"], tags: ["string","predicate"]),
+        tool_spec!("StartsWith", summary: "Starts with prefix?", params: ["s","prefix"], tags: ["string","predicate"]),
+        tool_spec!("EndsWith", summary: "Ends with suffix?", params: ["s","suffix"], tags: ["string","predicate"]),
+        tool_spec!("StringReplace", summary: "Replace all occurrences", params: ["s","from","to"], tags: ["string","replace"]),
+        tool_spec!("StringReplaceFirst", summary: "Replace first occurrence", params: ["s","from","to"], tags: ["string","replace"]),
+        tool_spec!("StringTrim", summary: "Trim whitespace from both ends", params: ["s"], tags: ["string","text"]),
+        tool_spec!("UrlEncode", summary: "Percent-encode string", params: ["s"], tags: ["string","url"]),
+        tool_spec!("UrlDecode", summary: "Decode percent-encoding", params: ["s"], tags: ["string","url"]),
+        tool_spec!("HtmlEscape", summary: "Escape HTML entities", params: ["s"], tags: ["string","html"]),
+        tool_spec!("HtmlUnescape", summary: "Unescape HTML entities", params: ["s"], tags: ["string","html"]),
+        tool_spec!("JsonEscape", summary: "Escape for JSON string literal", params: ["s"], tags: ["string","json"]),
+        tool_spec!("JsonUnescape", summary: "Unescape JSON string literal", params: ["s"], tags: ["string","json"]),
+        tool_spec!("RegexMatch", summary: "Does regex match string? (Boolean)", params: ["pattern","s"], tags: ["string","regex","predicate"]),
+        tool_spec!("RegexMatchQ", summary: "Alias: regex predicate (Boolean)", params: ["pattern","s"], tags: ["string","regex","predicate"]),
+        tool_spec!("RegexFind", summary: "Find first regex match", params: ["pattern","s"], tags: ["string","regex"]),
+        tool_spec!("RegexFindAll", summary: "Find all regex matches", params: ["pattern","s"], tags: ["string","regex"]),
+        tool_spec!("RegexReplace", summary: "Replace by regex (fn or string)", params: ["pattern","s","repl"], tags: ["string","regex"]),
+        tool_spec!("Slugify", summary: "URL-friendly slug from string", params: ["s"], tags: ["string","url"]),
+    ]);
 }
 
 pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -85,6 +122,8 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "JoinLines", join_lines as NativeFn, Attributes::empty());
     register_if(ev, pred, "StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "EndsWith", ends_with as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "StartsWithQ", starts_with as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "EndsWithQ", ends_with as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "StringReplace", string_replace as NativeFn, Attributes::empty());
     register_if(
         ev,
@@ -101,6 +140,7 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "LastIndexOf", last_index_of as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "StringRepeat", string_repeat as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "IsBlank", is_blank as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "BlankQ", is_blank as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "Capitalize", capitalize as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "TitleCase", title_case as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "EqualsIgnoreCase", equals_ignore_case as NativeFn, Attributes::LISTABLE);
@@ -138,6 +178,7 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "KebabCase", kebab_case_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "RegexMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "RegexIsMatch", regex_match_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "RegexMatchQ", regex_match_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());

@@ -26,6 +26,8 @@ pub mod containers;
 pub mod crypto;
 #[cfg(feature = "dataset")]
 pub mod dataset;
+#[cfg(feature = "frame")]
+pub mod frame;
 #[cfg(feature = "db")]
 pub mod db;
 #[cfg(feature = "dev")]
@@ -174,6 +176,8 @@ pub fn register_all(ev: &mut Evaluator) {
     fs::register_fs(ev);
     #[cfg(feature = "dataset")]
     dataset::register_dataset(ev);
+    #[cfg(feature = "frame")]
+    frame::register_frame(ev);
     #[cfg(feature = "db")]
     db::register_db(ev);
     #[cfg(feature = "containers")]
@@ -315,6 +319,11 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
             {
                 #[cfg(feature = "dataset")]
                 dataset::register_dataset(ev)
+            }
+            "frame" =>
+            {
+                #[cfg(feature = "frame")]
+                frame::register_frame(ev)
             }
             "db" =>
             {
@@ -475,6 +484,8 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     crate::fs::register_fs_filtered(ev, &predicate);
     #[cfg(feature = "dataset")]
     crate::dataset::register_dataset_filtered(ev, &predicate);
+    #[cfg(feature = "frame")]
+    crate::frame::register_frame_filtered(ev, &predicate);
     #[cfg(feature = "db")]
     crate::db::register_db_filtered(ev, &predicate);
     #[cfg(feature = "containers")]

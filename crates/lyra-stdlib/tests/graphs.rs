@@ -10,7 +10,7 @@ fn graphs_basic_create_add_list() {
     stdlib::register_all(&mut ev);
     // Create directed simple graph
     let g = ev.eval(Value::expr(
-        Value::Symbol("GraphCreate".into()),
+        Value::Symbol("Graph".into()),
         vec![Value::Assoc(
             [
                 ("Directed".to_string(), Value::Boolean(true)),
@@ -94,7 +94,7 @@ fn graphs_upsert_remove_incident_subgraph_sample() {
     stdlib::register_all(&mut ev);
     // Build graph
     let g = ev.eval(Value::expr(
-        Value::Symbol("GraphCreate".into()),
+        Value::Symbol("Graph".into()),
         vec![Value::Assoc(
             [
                 ("Directed".to_string(), Value::Boolean(true)),
@@ -230,7 +230,7 @@ fn graphs_algorithms_basic() {
     stdlib::register_all(&mut ev);
     // Build a small DAG A->B->C, A->C, C->D
     let g = ev.eval(Value::expr(
-        Value::Symbol("GraphCreate".into()),
+        Value::Symbol("Graph".into()),
         vec![Value::Assoc(
             [
                 ("Directed".to_string(), Value::Boolean(true)),
@@ -327,7 +327,7 @@ fn graphs_mst_and_maxflow() {
     stdlib::register_all(&mut ev);
     // Undirected triangle with weights
     let g = ev.eval(Value::expr(
-        Value::Symbol("GraphCreate".into()),
+        Value::Symbol("Graph".into()),
         vec![Value::Assoc(
             [
                 ("Directed".to_string(), Value::Boolean(false)),
@@ -365,7 +365,7 @@ fn graphs_mst_and_maxflow() {
 
     // Simple directed flow: s->a (3), s->b(2), a->t(2), b->t(4)
     let g2 = ev.eval(Value::expr(
-        Value::Symbol("GraphCreate".into()),
+        Value::Symbol("Graph".into()),
         vec![Value::Assoc([("Directed".into(), Value::Boolean(true))].into_iter().collect())],
     ));
     let _ = ev.eval(Value::expr(

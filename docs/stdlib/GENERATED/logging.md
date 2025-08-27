@@ -4,6 +4,7 @@
 |---|---|---|
 | `ConfigureLogging` | `ConfigureLogging[opts]` | Configure log level/format/output |
 | `GetLogger` | `GetLogger[]` | Get current logger configuration |
+| `GitLog` | `GitLog[opts?]` | List commits with formatting options |
 | `Log` | `Log[x]` | Natural logarithm |
 | `LoginRegistry` | `LoginRegistry[opts?]` | Login to package registry (requires lyra-pm) |
 | `LogoutRegistry` | `LogoutRegistry[opts?]` | Logout from package registry (requires lyra-pm) |
@@ -17,6 +18,14 @@
 - Summary: Configure log level/format/output
 - Examples:
   - `ConfigureLogging[<|"Level"->"debug"|>]  ==> True`
+
+## `GitLog`
+
+- Usage: `GitLog[opts?]`
+- Summary: List commits with formatting options
+- Tags: git, log
+- Examples:
+  - `GitLog[<|"Limit"->5|>]  ==> {"<sha>|<author>|...", ...}`
 
 ## `Log`
 

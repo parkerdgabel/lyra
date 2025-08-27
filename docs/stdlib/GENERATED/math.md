@@ -12,6 +12,7 @@
 
 - Usage: `Plus[a, b, …]`
 - Summary: Add numbers; Listable, Flat, Orderless.
+- Tags: math, sum
 - Examples:
   - `Plus[1, 2]  ==> 3`
   - `Plus[1, 2, 3]  ==> 6`
@@ -21,6 +22,7 @@
 
 - Usage: `Times[a, b, …]`
 - Summary: Multiply numbers; Listable, Flat, Orderless.
+- Tags: math, product
 - Examples:
   - `Times[2, 3]  ==> 6`
   - `Times[2, 3, 4]  ==> 24`
