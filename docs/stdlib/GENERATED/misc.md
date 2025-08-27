@@ -32,7 +32,7 @@
 | `BarChart` | `BarChart[data, opts]` | Render a bar chart |
 | `BatchNormLayer` | `BatchNormLayer[opts]` | Batch normalization layer |
 | `Binomial` | `Binomial[n, k]` | Binomial coefficient nCk |
-| `BlankQ` | `BlankQ[]` |  |
+| `BlankQ` | `BlankQ[s]` | Alias: IsBlank string predicate |
 | `BooleanQ` | `BooleanQ[x]` | Is value Boolean? |
 | `BoundedChannel` | `BoundedChannel[n]` | Create bounded channel |
 | `BoxText` | `BoxText[text, opts?]` | Draw a box around text |
@@ -99,7 +99,7 @@
 | `EmptyQ` | `EmptyQ[x]` | Is list/string/assoc empty? |
 | `EndModule` | `EndModule[]` | End current module scope |
 | `EndScope` | `EndScope[scope]` | End scope and release resources |
-| `EndsWithQ` | `EndsWithQ[]` |  |
+| `EndsWithQ` | `EndsWithQ[s, suffix]` | Alias: EndsWith predicate |
 | `Enqueue` | `Enqueue[queue, value]` | Enqueue value |
 | `EnvExpand` | `EnvExpand[text, opts?]` | Expand $VAR or %VAR% style environment variables in text. |
 | `EqualsIgnoreCase` | `EqualsIgnoreCase[a, b]` | Case-insensitive string equality |
@@ -392,7 +392,7 @@
 | `StandardDeviation` | `StandardDeviation[list]` | Standard deviation of list |
 | `StartContainer` | `StartContainer[id]` | Start a container |
 | `StartScope` | `StartScope[opts, body]` | Start a managed scope (held) |
-| `StartsWithQ` | `StartsWithQ[]` |  |
+| `StartsWithQ` | `StartsWithQ[s, prefix]` | Alias: StartsWith predicate |
 | `Stats` | `Stats[id, opts?]` | Stream container stats |
 | `StopActor` | `StopActor[actor]` | Stop actor |
 | `StopContainer` | `StopContainer[id, opts?]` | Stop a container |
@@ -455,15 +455,15 @@
 | `Workflow` | `Workflow[steps]` | Run a list of steps sequentially (held) |
 | `Wrap` | `Wrap[text, width]` | Wrap text to width |
 | `XdgDirs` | `XdgDirs[]` | Return XDG base directories (data, cache, config). |
-| `__DBClose` | `__DBClose[]` |  |
-| `__DatasetDescribe` | `__DatasetDescribe[]` |  |
-| `__DatasetDistinct` | `__DatasetDistinct[]` |  |
+| `__DBClose` | `__DBClose[]` | Internal: close DB cursor handle |
+| `__DatasetDescribe` | `__DatasetDescribe[]` | Internal: Dataset describe dispatcher |
+| `__DatasetDistinct` | `__DatasetDistinct[]` | Internal: Dataset distinct dispatcher |
 | `__DatasetFromDbTable` | `__DatasetFromDbTable[conn, table]` | Internal: create Dataset from DB table. |
-| `__DatasetHead` | `__DatasetHead[]` |  |
-| `__DatasetOffset` | `__DatasetOffset[]` |  |
-| `__DatasetSelect` | `__DatasetSelect[]` |  |
-| `__DatasetSort` | `__DatasetSort[]` |  |
-| `__DatasetTail` | `__DatasetTail[]` |  |
+| `__DatasetHead` | `__DatasetHead[]` | Internal: Dataset head dispatcher |
+| `__DatasetOffset` | `__DatasetOffset[]` | Internal: Dataset offset/skip dispatcher |
+| `__DatasetSelect` | `__DatasetSelect[]` | Internal: Dataset select dispatcher |
+| `__DatasetSort` | `__DatasetSort[]` | Internal: Dataset sort dispatcher |
+| `__DatasetTail` | `__DatasetTail[]` | Internal: Dataset tail dispatcher |
 | `__SQLToRows` | `__SQLToRows[conn, sql, params?]` | Internal: run SQL and return rows. |
 
 ## `AlignCenter`
@@ -494,6 +494,14 @@
 - Summary: Binomial coefficient nCk
 - Examples:
   - `Binomial[5, 2]  ==> 10`
+
+## `BlankQ`
+
+- Usage: `BlankQ[s]`
+- Summary: Alias: IsBlank string predicate
+- Examples:
+  - `BlankQ["   "]  ==> True`
+  - `BlankQ["x"]  ==> False`
 
 ## `BoundedChannel`
 
@@ -625,6 +633,13 @@
   - `EmptyQ[""]  ==> True`
   - `EmptyQ[Queue[]]  ==> True`
   - `EmptyQ[DatasetFromRows[{}]]  ==> True`
+
+## `EndsWithQ`
+
+- Usage: `EndsWithQ[s, suffix]`
+- Summary: Alias: EndsWith predicate
+- Examples:
+  - `EndsWithQ["hello", "lo"]  ==> True`
 
 ## `EnvExpand`
 
@@ -1108,6 +1123,13 @@
   - `id := Span["work", <|"Attrs"-><|"module"->"demo"|>|>]`
   - `SpanEnd[id]  ==> True`
   - `TraceGet[]  ==> {<|"Name"->"work", ...|>, ...}`
+
+## `StartsWithQ`
+
+- Usage: `StartsWithQ[s, prefix]`
+- Summary: Alias: StartsWith predicate
+- Examples:
+  - `StartsWithQ["hello", "he"]  ==> True`
 
 ## `TextCount`
 

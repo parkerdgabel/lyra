@@ -191,6 +191,14 @@ pub fn register_docs(ev: &mut Evaluator) {
         ],
     );
 
+    // Common predicate aliases (Q-suffixed)
+    ev.set_doc("StartsWithQ", "Alias: StartsWith predicate", &["s", "prefix"]);
+    ev.set_doc("EndsWithQ", "Alias: EndsWith predicate", &["s", "suffix"]);
+    ev.set_doc("BlankQ", "Alias: IsBlank string predicate", &["s"]);
+    ev.set_doc_examples("StartsWithQ", &["StartsWithQ[\"hello\", \"he\"]  ==> True"]);
+    ev.set_doc_examples("EndsWithQ", &["EndsWithQ[\"hello\", \"lo\"]  ==> True"]);
+    ev.set_doc_examples("BlankQ", &["BlankQ[\"   \"]  ==> True", "BlankQ[\"x\"]  ==> False"]);
+
     // Logic and control
     ev.set_doc("If", "Conditional: If[cond, then, else?] (held)", &["cond", "then", "else?"]);
     ev.set_doc("When", "Evaluate body when condition is True (held)", &["cond", "body"]);
@@ -1483,6 +1491,20 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "Workflow[{<|\"name\"->\"echo\", \"run\"->Run[\"echo\", {\"hi\"}]|>}]  ==> {...}",
         ],
     );
+}
+
+// Internal glue and dispatchers: mark as internal so they don't count as missing
+pub fn register_internal_docs(ev: &mut Evaluator) {
+    // Database
+    ev.set_doc("__DBClose", "Internal: close DB cursor handle", &[]);
+    // Dataset internal dispatch entry points
+    ev.set_doc("__DatasetSelect", "Internal: Dataset select dispatcher", &[]);
+    ev.set_doc("__DatasetDescribe", "Internal: Dataset describe dispatcher", &[]);
+    ev.set_doc("__DatasetSort", "Internal: Dataset sort dispatcher", &[]);
+    ev.set_doc("__DatasetOffset", "Internal: Dataset offset/skip dispatcher", &[]);
+    ev.set_doc("__DatasetHead", "Internal: Dataset head dispatcher", &[]);
+    ev.set_doc("__DatasetTail", "Internal: Dataset tail dispatcher", &[]);
+    ev.set_doc("__DatasetDistinct", "Internal: Dataset distinct dispatcher", &[]);
 }
 
 // End of register_docs_extra

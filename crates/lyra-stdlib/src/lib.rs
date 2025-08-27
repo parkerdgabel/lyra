@@ -225,6 +225,8 @@ pub fn register_all(ev: &mut Evaluator) {
     docs::register_docs_extra(ev);
     // Auto-populate from ToolsDescribe specs provided by modules
     docs::autoseed_from_tools(ev);
+    // Mark internal dispatchers so coverage doesn't flag them
+    docs::register_internal_docs(ev);
 }
 
 pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
