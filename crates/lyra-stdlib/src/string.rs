@@ -2345,6 +2345,9 @@ fn html_render_block(
     stack: &mut Vec<Value>,
     partials: &std::collections::HashMap<String, String>,
     components: &std::collections::HashMap<String, String>,
+    loader: Option<&Value>,
+    blocks_collect: &mut Option<&mut std::collections::HashMap<String, String>>,
+    blocks_lookup: Option<&std::collections::HashMap<String, String>>,
     escape_html: bool,
 ) -> String {
     let mut out = String::new();
@@ -2370,15 +2373,18 @@ fn html_render_block(
                 let mut it = body.split_whitespace();
                 let name = it.next().unwrap_or("").trim();
                 let props_path = it.next().map(|s| s.trim());
-                if let Some(ptpl) = partials.get(name) {
-                    let mut pushed = false;
-                    if let Some(p) = props_path {
-                        if let Some(val) = resolve_path(stack, p) {
-                            stack.push(val);
-                            pushed = true;
-                        }
+                // Resolve partial from map or via loader
+                let mut src: Option<String> = partials.get(name).cloned();
+                if src.is_none() {
+                    if let Some(f) = loader {
+                        let res = ev.eval(Value::Expr{ head: Box::new(f.clone()), args: vec![Value::String(name.into()), Value::String("partial".into())] });
+                        if let Value::String(s) = res { src = Some(s); }
                     }
-                    out.push_str(&html_render_block(ev, ptpl, stack, partials, components, escape_html));
+                }
+                if let Some(ptpl) = src {
+                    let mut pushed = false;
+                    if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
+                    out.push_str(&html_render_block(ev, &ptpl, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html));
                     if pushed { stack.pop(); }
                 }
                 continue;
@@ -2414,19 +2420,70 @@ fn html_render_block(
                     k += 1;
                 }
                 let inner: String = chars[inner_start..(i)].iter().collect();
-                if let Some(ctpl) = components.get(name) {
+                // Resolve component
+                let mut src: Option<String> = components.get(name).cloned();
+                if src.is_none() {
+                    if let Some(f) = loader {
+                        let res = ev.eval(Value::Expr{ head: Box::new(f.clone()), args: vec![Value::String(name.into()), Value::String("component".into())] });
+                        if let Value::String(s) = res { src = Some(s); }
+                    }
+                }
+                if let Some(ctpl) = src {
                     let mut pushed = false;
                     let mut local = std::collections::HashMap::new();
                     if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
-                    let inner_rendered = html_render_block(ev, &inner, stack, partials, components, escape_html);
+                    let inner_rendered = html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html);
                     local.insert("slot".to_string(), Value::Assoc(std::collections::HashMap::from([
                         ("__type".into(), Value::String("SafeHtml".into())),
                         ("value".into(), Value::String(inner_rendered)),
                     ])));
                     stack.push(Value::Assoc(local));
-                    out.push_str(&html_render_block(ev, ctpl, stack, partials, components, escape_html));
+                    out.push_str(&html_render_block(ev, &ctpl, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html));
                     stack.pop();
                     if pushed { stack.pop(); }
+                }
+                continue;
+            }
+            // Named blocks for layout: {{#block "name"}}...{{/block}}
+            if tag.starts_with("block") {
+                if let Some(mut rest) = tag.strip_prefix("block") {
+                    rest = rest.trim();
+                    let name = rest.trim_matches('"');
+                    // find matching closing {{/block}}
+                    let mut depth = 1i32; let mut k = i; let mut inner_start = i;
+                    while k < chars.len() {
+                        if chars[k]== '{' && k+1 < chars.len() && chars[k+1] == '{' {
+                            let triple2 = k+2 < chars.len() && chars[k+2] == '{';
+                            let start2 = k + if triple2 {3} else {2};
+                            let mut j2 = start2;
+                            while j2 < chars.len() { if !triple2 && j2+1 < chars.len() && chars[j2]=='}' && chars[j2+1]=='}' {break;} if triple2 && j2+2 < chars.len() && chars[j2]=='}' && chars[j2+1]=='}' && chars[j2+2]=='}' {break;} j2 += 1; }
+                            let tag2: String = chars[start2..j2].iter().collect();
+                            let tag2t = tag2.trim();
+                            if tag2t.starts_with("block") { depth += 1; }
+                            else if tag2t.starts_with('/') && tag2t[1..].trim() == "block" { depth -= 1; if depth==0 { inner_start = i; i = j2 + if triple2 {3} else {2}; break; } }
+                            k = j2 + if triple2 {3} else {2};
+                            continue;
+                        }
+                        k += 1;
+                    }
+                    let inner: String = chars[inner_start..(i)].iter().collect();
+                    let rendered = html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html);
+                    if let Some(coll) = blocks_collect.as_deref_mut() { coll.insert(name.to_string(), rendered); }
+                    // do not write block content inline
+                    continue;
+                }
+            }
+            // Layout yields: {{yield}} or {{yield "name"}}
+            if tag.starts_with("yield") {
+                let arg = tag.strip_prefix("yield").map(|s| s.trim()).unwrap_or("");
+                if !arg.is_empty() {
+                    let name = arg.trim_matches('"');
+                    if let Some(blk) = blocks_lookup.and_then(|m| m.get(name)) { out.push_str(blk); }
+                } else {
+                    // default yield uses PAGE_CONTENT from scope, prefer SafeHtml
+                    if let Some(v) = resolve_path(stack, "PAGE_CONTENT") {
+                        if let Some(s) = is_safe_html(&v) { out.push_str(&s); } else { let s = match v { Value::String(s) => s, other => lyra_core::pretty::format_value(&other) }; if escape_html { out.push_str(&html_escape(&s)); } else { out.push_str(&s); } }
+                    }
                 }
                 continue;
             }
@@ -2459,14 +2516,14 @@ fn html_render_block(
                 let inner: String = chars[inner_start..(i)].iter().collect();
                 let val = resolve_path(stack, key).unwrap_or(Value::Symbol("Null".into()));
                 if inverted {
-                    if !truthy(&val) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); }
+                    if !truthy(&val) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); }
                 } else {
                     match val {
                         Value::List(xs) => {
-                            for item in xs { stack.push(item); out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); stack.pop(); }
+                            for item in xs { stack.push(item); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); stack.pop(); }
                         }
-                        Value::Assoc(_) => { stack.push(val); out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); stack.pop(); }
-                        other => { if truthy(&other) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, escape_html)); } }
+                        Value::Assoc(_) => { stack.push(val); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); stack.pop(); }
+                        other => { if truthy(&other) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); } }
                     }
                 }
                 continue;
@@ -2506,22 +2563,27 @@ fn html_template(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut components: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut layout: Option<String> = None;
     let mut escape_html_opt = true;
+    let mut loader_fn: Option<Value> = None;
     if let Value::Assoc(m) = &opts {
         if let Some(Value::Assoc(p)) = m.get("Partials") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { partials.insert(k.clone(), fs); } else { partials.insert(k.clone(), s.clone()); } } } }
         if let Some(Value::Assoc(p)) = m.get("Components") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { components.insert(k.clone(), fs); } else { components.insert(k.clone(), s.clone()); } } } }
         if let Some(Value::String(s)) = m.get("Layout") { layout = Some(read_template_source(s).unwrap_or_else(|| s.clone())); }
         if let Some(Value::Boolean(b)) = m.get("EscapeHtml") { escape_html_opt = *b; }
+        if let Some(v) = m.get("Loader") { loader_fn = Some(v.clone()); }
     }
     let tpl = read_template_source(&tpl_in).unwrap_or(tpl_in);
     // Render page/body
     let mut stack: Vec<Value> = vec![data.clone()];
-    let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, escape_html_opt);
+    let mut blocks: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut collect_opt = Some(&mut blocks);
+    let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, loader_fn.as_ref(), &mut collect_opt, None, escape_html_opt);
     if let Some(layout_tpl) = layout {
         // Provide PAGE_CONTENT as SafeHtml
         let mut top = match data { Value::Assoc(m) => m, other => std::collections::HashMap::from([(String::from("."), other)]) };
         top.insert("PAGE_CONTENT".into(), Value::Assoc(std::collections::HashMap::from([(String::from("__type"), Value::String("SafeHtml".into())), (String::from("value"), Value::String(body))])));
         let mut stack2 = vec![Value::Assoc(top)];
-        let out = html_render_block(ev, &layout_tpl, &mut stack2, &partials, &components, escape_html_opt);
+        let mut no_collect: Option<&mut std::collections::HashMap<String, String>> = None;
+        let out = html_render_block(ev, &layout_tpl, &mut stack2, &partials, &components, loader_fn.as_ref(), &mut no_collect, Some(&blocks), escape_html_opt);
         Value::String(out)
     } else {
         Value::String(body)
