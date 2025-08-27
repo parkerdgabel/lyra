@@ -1021,6 +1021,8 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "HtmlTemplate[\"{{#block \\\"content\\\"}}<p>Hello</p>{{/block}}\", <|title->\"Home\"|>, <|Layout->\"<html><head><title>{{title}}</title></head><body>{{yield \\\"content\\\"}}</body></html>\"|>]  ==> \"<html><head><title>Home</title></head><body><p>Hello</p></body></html>\"",
             // SafeHtml bypasses escaping
             "HtmlTemplate[\"<div>{{{bio}}}</div>\", <|bio->SafeHtml[\"<em>writer</em>\"]|>]  ==> \"<div><em>writer</em></div>\"",
+            // XML mode uses &apos; by default
+            "HtmlTemplate[\"<note>{{text}}</note>\", <|text->\"O'Reilly\"|>, <|Mode->\"xml\"|>]  ==> \"<note>O&apos;Reilly</note>\"",
         ],
     );
     ev.set_doc_examples(

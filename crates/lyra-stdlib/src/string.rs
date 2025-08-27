@@ -1588,6 +1588,21 @@ fn html_escape(s: &str) -> String {
     out
 }
 
+fn xml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 fn html_escape_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [Value::String(s)] => Value::String(html_escape(s)),
@@ -2353,6 +2368,7 @@ fn html_render_block(
     loader: Option<&Value>,
     blocks_collect: &mut Option<&mut std::collections::HashMap<String, String>>,
     blocks_lookup: Option<&std::collections::HashMap<String, String>>,
+    xml_mode: bool,
     escape_html: bool,
 ) -> String {
     let mut out = String::new();
@@ -2389,7 +2405,7 @@ fn html_render_block(
                 if let Some(ptpl) = src {
                     let mut pushed = false;
                     if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
-                    out.push_str(&html_render_block(ev, &ptpl, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html));
+                    out.push_str(&html_render_block(ev, &ptpl, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html));
                     if pushed { stack.pop(); }
                 }
                 continue;
@@ -2438,7 +2454,7 @@ fn html_render_block(
                     let mut local = std::collections::HashMap::new();
                     if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
                     // Collect named slots: {{#slot "name"}}...{{/slot}} inside inner
-                    let (default_slot_html, slots_map) = collect_named_slots(ev, &inner, stack, partials, components, loader, blocks_lookup, escape_html);
+                    let (default_slot_html, slots_map) = collect_named_slots(ev, &inner, stack, partials, components, loader, blocks_lookup, xml_mode, escape_html);
                     local.insert("slot".to_string(), Value::Assoc(std::collections::HashMap::from([
                         ("__type".into(), Value::String("SafeHtml".into())),
                         ("value".into(), Value::String(default_slot_html)),
@@ -2453,7 +2469,7 @@ fn html_render_block(
                     }
                     local.insert("Slots".to_string(), Value::Assoc(slots_assoc));
                     stack.push(Value::Assoc(local));
-                    out.push_str(&html_render_block(ev, &ctpl, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html));
+                    out.push_str(&html_render_block(ev, &ctpl, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html));
                     stack.pop();
                     if pushed { stack.pop(); }
                 }
@@ -2482,7 +2498,7 @@ fn html_render_block(
                         k += 1;
                     }
                     let inner: String = chars[inner_start..(i)].iter().collect();
-                    let rendered = html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html);
+                    let rendered = html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html);
                     if let Some(coll) = blocks_collect.as_deref_mut() { coll.insert(name.to_string(), rendered); }
                     // do not write block content inline
                     continue;
@@ -2531,14 +2547,14 @@ fn html_render_block(
                 let inner: String = chars[inner_start..(i)].iter().collect();
                 let val = resolve_path(stack, key).unwrap_or(Value::Symbol("Null".into()));
                 if inverted {
-                    if !truthy(&val) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); }
+                    if !truthy(&val) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html)); }
                 } else {
                     match val {
                         Value::List(xs) => {
-                            for item in xs { stack.push(item); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); stack.pop(); }
+                            for item in xs { stack.push(item); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html)); stack.pop(); }
                         }
-                        Value::Assoc(_) => { stack.push(val); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); stack.pop(); }
-                        other => { if truthy(&other) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, escape_html)); } }
+                        Value::Assoc(_) => { stack.push(val); out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html)); stack.pop(); }
+                        other => { if truthy(&other) { out.push_str(&html_render_block(ev, &inner, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html)); } }
                     }
                 }
                 continue;
@@ -2554,7 +2570,7 @@ fn html_render_block(
                 out.push_str(&safe);
             } else {
                 let s = match val { Value::String(s) => s, other => lyra_core::pretty::format_value(&other), };
-                if triple || !escape_html { out.push_str(&s); } else { out.push_str(&html_escape(&s)); }
+                if triple || !escape_html { out.push_str(&s); } else { out.push_str(&(if xml_mode { xml_escape(&s) } else { html_escape(&s) })); }
             }
         } else {
             out.push(chars[i]);
@@ -2579,26 +2595,28 @@ fn html_template(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut layout: Option<String> = None;
     let mut escape_html_opt = true;
     let mut loader_fn: Option<Value> = None;
+    let mut xml_mode = false;
     if let Value::Assoc(m) = &opts {
         if let Some(Value::Assoc(p)) = m.get("Partials") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { partials.insert(k.clone(), fs); } else { partials.insert(k.clone(), s.clone()); } } } }
         if let Some(Value::Assoc(p)) = m.get("Components") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { components.insert(k.clone(), fs); } else { components.insert(k.clone(), s.clone()); } } } }
         if let Some(Value::String(s)) = m.get("Layout") { layout = Some(read_template_source(s).unwrap_or_else(|| s.clone())); }
         if let Some(Value::Boolean(b)) = m.get("EscapeHtml") { escape_html_opt = *b; }
         if let Some(v) = m.get("Loader") { loader_fn = Some(v.clone()); }
+        if let Some(Value::String(mode)) = m.get("Mode") { xml_mode = mode.to_ascii_lowercase() == "xml"; }
     }
     let tpl = read_template_source(&tpl_in).unwrap_or(tpl_in);
     // Render page/body
     let mut stack: Vec<Value> = vec![data.clone()];
     let mut blocks: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut collect_opt = Some(&mut blocks);
-    let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, loader_fn.as_ref(), &mut collect_opt, None, escape_html_opt);
+    let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, loader_fn.as_ref(), &mut collect_opt, None, xml_mode, escape_html_opt);
     if let Some(layout_tpl) = layout {
         // Provide PAGE_CONTENT as SafeHtml
         let mut top = match data { Value::Assoc(m) => m, other => std::collections::HashMap::from([(String::from("."), other)]) };
         top.insert("PAGE_CONTENT".into(), Value::Assoc(std::collections::HashMap::from([(String::from("__type"), Value::String("SafeHtml".into())), (String::from("value"), Value::String(body))])));
         let mut stack2 = vec![Value::Assoc(top)];
         let mut no_collect: Option<&mut std::collections::HashMap<String, String>> = None;
-        let out = html_render_block(ev, &layout_tpl, &mut stack2, &partials, &components, loader_fn.as_ref(), &mut no_collect, Some(&blocks), escape_html_opt);
+        let out = html_render_block(ev, &layout_tpl, &mut stack2, &partials, &components, loader_fn.as_ref(), &mut no_collect, Some(&blocks), xml_mode, escape_html_opt);
         Value::String(out)
     } else {
         Value::String(body)
@@ -2646,6 +2664,7 @@ fn collect_named_slots(
     components: &std::collections::HashMap<String, String>,
     loader: Option<&Value>,
     blocks_lookup: Option<&std::collections::HashMap<String, String>>,
+    xml_mode: bool,
     escape_html: bool,
 ) -> (String, std::collections::HashMap<String, String>) {
     let chars: Vec<char> = src.chars().collect();
@@ -2699,12 +2718,12 @@ fn collect_named_slots(
     for (s, e, is, ie, name) in ranges.iter() {
         if *s > cursor { let seg: String = chars[cursor..*s].iter().collect(); out.push_str(&seg); }
         let inner_block: String = chars[*is..*ie].iter().collect();
-        let rendered = html_render_block(ev, &inner_block, stack, partials, components, loader, &mut None, blocks_lookup, escape_html);
+        let rendered = html_render_block(ev, &inner_block, stack, partials, components, loader, &mut None, blocks_lookup, xml_mode, escape_html);
         slots.insert(name.clone(), rendered);
         cursor = *e;
     }
     if cursor < chars.len() { let tail: String = chars[cursor..].iter().collect(); out.push_str(&tail); }
     // Now out contains template without slot blocks; render default slot
-    let default_html = html_render_block(ev, &out, stack, partials, components, loader, &mut None, blocks_lookup, escape_html);
+    let default_html = html_render_block(ev, &out, stack, partials, components, loader, &mut None, blocks_lookup, xml_mode, escape_html);
     (default_html, slots)
 }

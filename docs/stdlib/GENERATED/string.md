@@ -96,6 +96,7 @@
   - `HtmlTemplate["{{< Button <|label->\"Go\", href->\"/a?b=1&c=2\"|>}}", <||>, <|Components-><|"Button"->"<a href=\"{{href|UrlEncode}}\" class=\"btn\">{{label}}</a>"|>|>]  ==> "<a href=\"/a%3Fb%3D1%26c%3D2\" class=\"btn\">Go</a>"`
   - `HtmlTemplate["{{#block \"content\"}}<p>Hello</p>{{/block}}", <|title->"Home"|>, <|Layout->"<html><head><title>{{title}}</title></head><body>{{yield \"content\"}}</body></html>"|>]  ==> "<html><head><title>Home</title></head><body><p>Hello</p></body></html>"`
   - `HtmlTemplate["<div>{{{bio}}}</div>", <|bio->SafeHtml["<em>writer</em>"]|>]  ==> "<div><em>writer</em></div>"`
+  - `HtmlTemplate["<note>{{text}}</note>", <|text->"O'Reilly"|>, <|Mode->"xml"|>]  ==> "<note>O&apos;Reilly</note>"`
 
 ## `HtmlTemplateRender`
 
