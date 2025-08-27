@@ -225,7 +225,7 @@
 | `AssociationMapPairs` | `AssociationMapPairs[f, assoc]` | Map over (k,v) pairs |
 | `Columns` | `Columns[ds]` | List column names for a dataset |
 | `KeySort` | `KeySort[assoc]` | Sort association by key |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `Lookup` | `Lookup[assoc, key, default]` | Lookup value from association |
 | `Merge` | `Merge[args]` | Merge associations with optional combiner |
 | `Part` | `Part[subject, index]` | Index into list/assoc |
@@ -500,7 +500,7 @@
 | `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 | `Import` | `Import[source, opts?]` | Import data from path/URL into Frame (default), Dataset (Target->"Dataset"), or Value. Automatically sniffs Type/Delimiter/Header. |
 | `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `ReadCSVDataset` | `ReadCSVDataset[path, opts?]` | Read a CSV file into a dataset |
 | `ReadJsonLinesDataset` | `ReadJsonLinesDataset[path, opts?]` | Read a JSONL file into a dataset |
 | `RenameCols` | `RenameCols[ds, mapping]` | Rename columns via mapping |
@@ -707,7 +707,7 @@
 | `FrameWriteCSV` | `FrameWriteCSV[path, frame, opts?]` | Write Frame to CSV file |
 | `FrameWriteJSONLines` | `FrameWriteJSONLines[path, frame, opts?]` | Write Frame rows as JSON Lines |
 | `Import` | `Import[source, opts?]` | Import data from path/URL into Frame (default), Dataset (Target->"Dataset"), or Value. Automatically sniffs Type/Delimiter/Header. |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `Select` | `Select[ds, cols]` | Select/compute columns |
 
 ## `fs`
@@ -782,9 +782,9 @@
 | `Info` | `Info[target]` | Information about a handle (Graph, etc.) |
 | `Insert` | `Insert[target, value]` | Insert into collection or structure (dispatched) |
 | `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `Length` | `Length[x]` | Length of a list or string. |
-| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate |
+| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate (Contains) |
 | `Offset` | `Offset[ds, n]` | Skip first n rows |
 | `Remove` | `Remove[path, opts?]` | Remove a file or directory (Recursive option) |
 | `Search` | `Search[target, query, opts?]` | Search within a store or index (VectorStore, Index) |
@@ -1400,7 +1400,7 @@
 | `EmptyQ` | `EmptyQ[x]` | Is list/string/assoc empty? |
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `HasKeyQ` | `HasKeyQ[subject, key]` | Alias: key membership predicate |
-| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate |
+| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate (Contains) |
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
@@ -1539,7 +1539,7 @@
 | `DatasetSchema` | `DatasetSchema[ds]` | Describe schema for a dataset |
 | `FrameColumns` | `FrameColumns[frame]` | List column names for a Frame |
 | `HasKeyQ` | `HasKeyQ[subject, key]` | Alias: key membership predicate |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `ListTables` | `ListTables[conn]` | List tables on a connection |
 
 ## `scope`

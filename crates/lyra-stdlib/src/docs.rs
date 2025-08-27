@@ -199,6 +199,33 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples("EndsWithQ", &["EndsWithQ[\"hello\", \"lo\"]  ==> True"]);
     ev.set_doc_examples("BlankQ", &["BlankQ[\"   \"]  ==> True", "BlankQ[\"x\"]  ==> False"]);
 
+    // Generic metadata and predicates
+    ev.set_doc("Keys", "Keys/columns for assoc, rows, Dataset, or Frame", &["subject"]);
+    ev.set_doc_examples(
+        "Keys",
+        &[
+            "Keys[<|a->1,b->2|>]  ==> {a,b}",
+            "Keys[{<|a->1|>,<|b->2|>}]  ==> {a,b}",
+        ],
+    );
+    ev.set_doc("MemberQ", "Alias: membership predicate (Contains)", &["container", "item"]);
+    ev.set_doc_examples(
+        "MemberQ",
+        &[
+            "MemberQ[{1,2,3}, 2]  ==> True",
+            "MemberQ[\"foobar\", \"bar\"]  ==> True",
+        ],
+    );
+    ev.set_doc("ContainsKeyQ", "Key membership for assoc/rows/Dataset/Frame", &["subject", "key"]);
+    ev.set_doc("HasKeyQ", "Alias: key membership predicate", &["subject", "key"]);
+    ev.set_doc_examples(
+        "ContainsKeyQ",
+        &[
+            "ContainsKeyQ[<|a->1|>, \"a\"]  ==> True",
+            "ContainsKeyQ[{<|a->1|>,<|b->2|>}, \"b\"]  ==> True",
+        ],
+    );
+
     // Logic and control
     ev.set_doc("If", "Conditional: If[cond, then, else?] (held)", &["cond", "then", "else?"]);
     ev.set_doc("When", "Evaluate body when condition is True (held)", &["cond", "body"]);

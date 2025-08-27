@@ -227,7 +227,7 @@
 | `MatchQ` | `MatchQ[expr, pattern]` | Pattern match predicate (held) |
 | `Mean` | `Mean[list]` | Arithmetic mean of list |
 | `Median` | `Median[list]` | Median of list |
-| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate |
+| `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate (Contains) |
 | `Metrics` | `Metrics[]` | Return counters for tools/models/tokens/cost. |
 | `MetricsReset` | `MetricsReset[]` | Reset metrics counters to zero. |
 | `Minus` | `Minus[a, b?]` | Subtract or unary negate. |
@@ -455,16 +455,6 @@
 | `Workflow` | `Workflow[steps]` | Run a list of steps sequentially (held) |
 | `Wrap` | `Wrap[text, width]` | Wrap text to width |
 | `XdgDirs` | `XdgDirs[]` | Return XDG base directories (data, cache, config). |
-| `__DBClose` | `__DBClose[]` | Internal: close DB cursor handle |
-| `__DatasetDescribe` | `__DatasetDescribe[]` | Internal: Dataset describe dispatcher |
-| `__DatasetDistinct` | `__DatasetDistinct[]` | Internal: Dataset distinct dispatcher |
-| `__DatasetFromDbTable` | `__DatasetFromDbTable[conn, table]` | Internal: create Dataset from DB table. |
-| `__DatasetHead` | `__DatasetHead[]` | Internal: Dataset head dispatcher |
-| `__DatasetOffset` | `__DatasetOffset[]` | Internal: Dataset offset/skip dispatcher |
-| `__DatasetSelect` | `__DatasetSelect[]` | Internal: Dataset select dispatcher |
-| `__DatasetSort` | `__DatasetSort[]` | Internal: Dataset sort dispatcher |
-| `__DatasetTail` | `__DatasetTail[]` | Internal: Dataset tail dispatcher |
-| `__SQLToRows` | `__SQLToRows[conn, sql, params?]` | Internal: run SQL and return rows. |
 
 ## `AlignCenter`
 
@@ -574,8 +564,6 @@
 - Examples:
   - `ContainsKeyQ[<|a->1|>, "a"]  ==> True`
   - `ContainsKeyQ[{<|a->1|>,<|b->2|>}, "b"]  ==> True`
-  - `ContainsKeyQ[ds, "col"]`
-  - `ContainsKeyQ[f, "col"]`
 
 ## `ContainsQ`
 
@@ -943,6 +931,15 @@
 - Examples:
   - `Map[ToUpper, {"a", "b"}]  ==> {"A", "B"}`
   - `Map[#^2 &, {1,2,3}]  ==> {1,4,9}`
+
+## `MemberQ`
+
+- Usage: `MemberQ[container, item]`
+- Summary: Alias: membership predicate (Contains)
+- Tags: generic, predicate
+- Examples:
+  - `MemberQ[{1,2,3}, 2]  ==> True`
+  - `MemberQ["foobar", "bar"]  ==> True`
 
 ## `Minus`
 

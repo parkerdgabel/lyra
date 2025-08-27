@@ -122,6 +122,8 @@ fn main() -> std::io::Result<()> {
         for v in vs {
             if let Value::Assoc(m) = v {
                 let name = m.get("name").and_then(value_to_string).unwrap_or_default();
+                // Hide internal symbols like __Dataset* and __DB* from public docs
+                if name.starts_with("__") { continue; }
                 let summary = m.get("summary").and_then(value_to_string).unwrap_or_default();
                 let params: Vec<String> = match m.get("params") { Some(Value::List(ps)) => ps.iter().filter_map(value_to_string).collect(), _ => Vec::new() };
                 let examples: Vec<String> = match m.get("examples") { Some(Value::List(xs)) => xs.iter().filter_map(value_to_string).collect(), _ => Vec::new() };

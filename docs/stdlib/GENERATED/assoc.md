@@ -17,7 +17,7 @@
 | `AssociationMapPairs` | `AssociationMapPairs[f, assoc]` | Map over (k,v) pairs |
 | `Columns` | `Columns[ds]` | List column names for a dataset |
 | `KeySort` | `KeySort[assoc]` | Sort association by key |
-| `Keys` | `Keys[subject]` | Keys/columns for Assoc/rows/Dataset/Frame |
+| `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `Lookup` | `Lookup[assoc, key, default]` | Lookup value from association |
 | `Merge` | `Merge[args]` | Merge associations with optional combiner |
 | `Select` | `Select[ds, cols]` | Select/compute columns |
@@ -50,13 +50,11 @@
 ## `Keys`
 
 - Usage: `Keys[subject]`
-- Summary: Keys/columns for Assoc/rows/Dataset/Frame
+- Summary: Keys/columns for assoc, rows, Dataset, or Frame
 - Tags: generic, schema, assoc, dataset, frame
 - Examples:
   - `Keys[<|a->1,b->2|>]  ==> {a,b}`
   - `Keys[{<|a->1|>,<|b->2|>}]  ==> {a,b}`
-  - `Keys[ds] (* Columns *)`
-  - `Keys[f]  (* Columns *)`
 
 ## `Select`
 
