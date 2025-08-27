@@ -2428,7 +2428,7 @@ fn html_render_block(
                 if src.is_none() {
                     if let Some(f) = loader {
                         let res = ev.eval(Value::Expr{ head: Box::new(f.clone()), args: vec![Value::String(name.into()), Value::String("partial".into())] });
-                        if let Value::String(s) = res { src = Some(s); }
+                        if let Value::String(s) = res { src = Some(normalize_delimiters(&s, "{{", "}}")); }
                     }
                 }
                 if let Some(ptpl) = src {
@@ -2493,7 +2493,7 @@ fn html_render_block(
                 if src.is_none() {
                     if let Some(f) = loader {
                         let res = ev.eval(Value::Expr{ head: Box::new(f.clone()), args: vec![Value::String(name.into()), Value::String("component".into())] });
-                        if let Value::String(s) = res { src = Some(s); }
+                        if let Value::String(s) = res { src = Some(normalize_delimiters(&s, "{{", "}}")); }
                     }
                 }
                 if let Some(ctpl) = src {
@@ -2652,6 +2652,59 @@ fn read_template_source(s: &str) -> Option<String> {
     if p.exists() && p.is_file() { std::fs::read_to_string(p).ok() } else { None }
 }
 
+fn normalize_delimiters(input: &str, initial_open: &str, initial_close: &str) -> String {
+    // Convert custom delimiters and in-template delimiter changes into standard {{ }} tags.
+    let mut out = String::new();
+    let mut i = 0usize;
+    let mut open = initial_open.to_string();
+    let mut close = initial_close.to_string();
+    let s = input;
+    while i < s.len() {
+        if let Some(pos) = s[i..].find(&open) {
+            let start = i + pos;
+            out.push_str(&s[i..start]);
+            // triple-mustache only when using {{ }}
+            let triple = open == "{{" && s[start..].starts_with("{{{");
+            let (tag_start, tag_close_str) = if triple { (start + 3, String::from("}}}")) } else { (start + open.len(), close.clone()) };
+            if let Some(end_rel) = s[tag_start..].find(tag_close_str.as_str()) {
+                let end = tag_start + end_rel;
+                let content = &s[tag_start..end];
+                let tag = content.trim();
+                // Delimiter change: {{= newOpen newClose =}}
+                let is_change = !triple && tag.starts_with('=') && tag.ends_with('=');
+                if is_change {
+                    let inner = tag.trim_matches('=');
+                    let mut parts = inner.split_whitespace().filter(|p| !p.is_empty());
+                    if let (Some(nopen), Some(nclose)) = (parts.next(), parts.next()) {
+                        open = nopen.to_string();
+                        close = nclose.to_string();
+                    }
+                    // do not emit anything for delimiter change
+                } else {
+                    if triple {
+                        out.push_str("{{{");
+                        out.push_str(content);
+                        out.push_str("}}}");
+                    } else {
+                        out.push_str("{{");
+                        out.push_str(content);
+                        out.push_str("}}");
+                    }
+                }
+                i = end + tag_close_str.len();
+            } else {
+                // No closing found; emit rest and break
+                out.push_str(&s[start..]);
+                break;
+            }
+        } else {
+            out.push_str(&s[i..]);
+            break;
+        }
+    }
+    out
+}
+
 fn html_template(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplate".into())), args } }
     let tpl_in = match ev.eval(args[0].clone()) { Value::String(s) | Value::Symbol(s) => s, v => return Value::Expr { head: Box::new(Value::Symbol("HtmlTemplate".into())), args: vec![v, args[1].clone()] } };
@@ -2665,23 +2718,32 @@ fn html_template(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut whitespace_mode = String::from("smart");
     let mut loader_fn: Option<Value> = None;
     let mut xml_mode = false;
+    let mut init_open = String::from("{{");
+    let mut init_close = String::from("}}");
     if let Value::Assoc(m) = &opts {
-        if let Some(Value::Assoc(p)) = m.get("Partials") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { partials.insert(k.clone(), fs); } else { partials.insert(k.clone(), s.clone()); } } } }
-        if let Some(Value::Assoc(p)) = m.get("Components") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { components.insert(k.clone(), fs); } else { components.insert(k.clone(), s.clone()); } } } }
-        if let Some(Value::String(s)) = m.get("Layout") { layout = Some(read_template_source(s).unwrap_or_else(|| s.clone())); }
+        if let Some(Value::Assoc(p)) = m.get("Partials") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { partials.insert(k.clone(), normalize_delimiters(&fs, &init_open, &init_close)); } else { partials.insert(k.clone(), normalize_delimiters(s, &init_open, &init_close)); } } } }
+        if let Some(Value::Assoc(p)) = m.get("Components") { for (k,v) in p { if let Value::String(s)=v { if let Some(fs)=read_template_source(s) { components.insert(k.clone(), normalize_delimiters(&fs, &init_open, &init_close)); } else { components.insert(k.clone(), normalize_delimiters(s, &init_open, &init_close)); } } } }
+        if let Some(Value::String(s)) = m.get("Layout") { layout = Some(normalize_delimiters(&read_template_source(s).unwrap_or_else(|| s.clone()), &init_open, &init_close)); }
         if let Some(Value::Boolean(b)) = m.get("EscapeHtml") { escape_html_opt = *b; }
         if let Some(Value::Boolean(b)) = m.get("Strict") { strict_opt = *b; }
         if let Some(Value::String(s)) = m.get("Whitespace") { let low = s.to_ascii_lowercase(); if low=="preserve"||low=="trim-tags"||low=="smart" { whitespace_mode = low; } }
         if let Some(v) = m.get("Loader") { loader_fn = Some(v.clone()); }
         if let Some(Value::String(mode)) = m.get("Mode") { xml_mode = mode.to_ascii_lowercase() == "xml"; }
+        if let Some(Value::Assoc(dm)) = m.get("Delimiters") {
+            if let (Some(Value::String(op)), Some(Value::String(cl))) = (dm.get("Open"), dm.get("Close")) {
+                init_open = op.clone(); init_close = cl.clone();
+            }
+        }
     }
-    let tpl = read_template_source(&tpl_in).unwrap_or(tpl_in);
+    let tpl_raw = read_template_source(&tpl_in).unwrap_or(tpl_in);
+    let tpl = normalize_delimiters(&tpl_raw, &init_open, &init_close);
     // Render page/body
     let mut stack: Vec<Value> = vec![data.clone()];
     let mut blocks: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut collect_opt = Some(&mut blocks);
     let body = html_render_block(ev, &tpl, &mut stack, &partials, &components, loader_fn.as_ref(), &mut collect_opt, None, xml_mode, escape_html_opt, strict_opt, &whitespace_mode);
-    if let Some(layout_tpl) = layout {
+    if let Some(layout_tpl_raw) = layout {
+        let layout_tpl = normalize_delimiters(&layout_tpl_raw, &init_open, &init_close);
         // Provide PAGE_CONTENT as SafeHtml
         let mut top = match data { Value::Assoc(m) => m, other => std::collections::HashMap::from([(String::from("."), other)]) };
         top.insert("PAGE_CONTENT".into(), Value::Assoc(std::collections::HashMap::from([(String::from("__type"), Value::String("SafeHtml".into())), (String::from("value"), Value::String(body))])));
