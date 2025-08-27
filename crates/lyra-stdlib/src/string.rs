@@ -2373,6 +2373,29 @@ fn html_render_block(
     strict: bool,
     whitespace_mode: &str,
 ) -> String {
+    fn trailing_indent(out: &str) -> String {
+        let mut idx = out.len();
+        let b = out.as_bytes();
+        while idx > 0 {
+            let c = b[idx - 1] as char;
+            if c == ' ' || c == '\t' {
+                idx -= 1;
+                continue;
+            }
+            if c == '\n' { break; }
+            return String::new();
+        }
+        out[idx..].to_string()
+    }
+    fn trim_standalone(out: &mut String, chars: &[char], i: &mut usize) {
+        // Remove trailing spaces/tabs up to last newline
+        while out.ends_with(' ') || out.ends_with('\t') { out.pop(); }
+        // If next chars are spaces/tabs and optional \r then a \n, consume them
+        let mut k = *i;
+        while k < chars.len() && (chars[k] == ' ' || chars[k] == '\t') { k += 1; }
+        if k < chars.len() && chars[k] == '\r' { k += 1; }
+        if k < chars.len() && chars[k] == '\n' { k += 1; *i = k; }
+    }
     let mut out = String::new();
     let chars: Vec<char> = tpl.chars().collect();
     let mut i = 0usize;
@@ -2392,13 +2415,14 @@ fn html_render_block(
             let standalone = |t: &str| t.starts_with('!') || t.starts_with('>') || t.starts_with('#') || t.starts_with('^') || t.starts_with('/') || t.starts_with("block") || t.starts_with("yield");
             let mut did_output = false;
             let mut should_trim = false;
-            if tag.starts_with('!') { should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && standalone(tag)); continue; }
+            if tag.starts_with('!') { should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && standalone(tag)); if should_trim { trim_standalone(&mut out, &chars, &mut i); } continue; }
             // Partials with optional props: {{> name}} or {{> name propsPath}}
             if tag.starts_with('>') {
                 let body = tag[1..].trim();
                 let mut it = body.split_whitespace();
                 let name = it.next().unwrap_or("").trim();
                 let props_path = it.next().map(|s| s.trim());
+                let indent = trailing_indent(&out);
                 // Resolve partial from map or via loader
                 let mut src: Option<String> = partials.get(name).cloned();
                 if src.is_none() {
@@ -2410,7 +2434,17 @@ fn html_render_block(
                 if let Some(ptpl) = src {
                     let mut pushed = false;
                     if let Some(p) = props_path { if let Some(val) = resolve_path(stack, p) { stack.push(val); pushed = true; } }
-                    out.push_str(&html_render_block(ev, &ptpl, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html, strict, whitespace_mode));
+                    let mut rendered = html_render_block(ev, &ptpl, stack, partials, components, loader, blocks_collect, blocks_lookup, xml_mode, escape_html, strict, whitespace_mode);
+                    if !indent.is_empty() {
+                        let mut acc = String::new();
+                        for (idx, seg) in rendered.split_inclusive('\n').enumerate() {
+                            let _ = idx; // suppress warning
+                            acc.push_str(&indent);
+                            acc.push_str(seg);
+                        }
+                        rendered = acc;
+                    }
+                    out.push_str(&rendered);
                     if pushed { stack.pop(); }
                     did_output = true;
                 } else if strict {
@@ -2419,9 +2453,7 @@ fn html_render_block(
                 }
                 should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && standalone(tag));
                 if should_trim && did_output {
-                    // trim trailing newline before tag and next newline after
-                    if out.ends_with('\n') { out.pop(); }
-                    if i < chars.len() && chars[i] == '\n' { i += 1; }
+                    trim_standalone(&mut out, &chars, &mut i);
                 }
                 continue;
             }
@@ -2494,8 +2526,7 @@ fn html_render_block(
                 }
                 should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && true);
                 if should_trim && did_output {
-                    if out.ends_with('\n') { out.pop(); }
-                    if i < chars.len() && chars[i] == '\n' { i += 1; }
+                    trim_standalone(&mut out, &chars, &mut i);
                 }
                 continue;
             }
@@ -2526,10 +2557,7 @@ fn html_render_block(
                     if let Some(coll) = blocks_collect.as_deref_mut() { coll.insert(name.to_string(), rendered); }
                     // do not write block content inline
                     should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && true);
-                    if should_trim {
-                        if out.ends_with('\n') { out.pop(); }
-                        if i < chars.len() && chars[i] == '\n' { i += 1; }
-                    }
+                    if should_trim { trim_standalone(&mut out, &chars, &mut i); }
                     continue;
                 }
             }
@@ -2546,10 +2574,7 @@ fn html_render_block(
                     }
                 }
                 should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && true);
-                if should_trim {
-                    if out.ends_with('\n') { out.pop(); }
-                    if i < chars.len() && chars[i] == '\n' { i += 1; }
-                }
+                if should_trim { trim_standalone(&mut out, &chars, &mut i); }
                 continue;
             }
             if tag.starts_with('#') || tag.starts_with('^') {
@@ -2604,12 +2629,15 @@ fn html_render_block(
                 continue;
             }
             let mut val = lookup.unwrap_or(Value::String(String::new()));
+            // Unescaped with ampersand per Mustache: {{& name}}
+            let (unescaped, name) = if name.starts_with('&') { (true, name[1..].trim()) } else { (false, name) };
+            if unescaped { val = resolve_path(stack, name).unwrap_or(Value::String(String::new())); }
             if let Some(f) = filt { val = apply_filter(ev, f, val); }
             if let Some(safe) = is_safe_html(&val) {
                 out.push_str(&safe);
             } else {
                 let s = match val { Value::String(s) => s, other => lyra_core::pretty::format_value(&other), };
-                if triple || !escape_html { out.push_str(&s); } else { out.push_str(&(if xml_mode { xml_escape(&s) } else { html_escape(&s) })); }
+                if triple || unescaped || !escape_html { out.push_str(&s); } else { out.push_str(&(if xml_mode { xml_escape(&s) } else { html_escape(&s) })); }
             }
         } else {
             out.push(chars[i]);

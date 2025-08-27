@@ -874,7 +874,7 @@
 |---|---|---|
 | `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
-| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML templates with Mustache semantics (sections, inverted, partials, comments, indented partials, standalone trimming; unescaped via {{{...}}} or {{& name}}). Options: Mode(html\|xml), Strict, Whitespace(preserve\|trim-tags\|smart), Partials, Components, Layout, Loader. |
 | `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
 | `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
@@ -1689,7 +1689,7 @@
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
-| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML templates with Mustache semantics (sections, inverted, partials, comments, indented partials, standalone trimming; unescaped via {{{...}}} or {{& name}}). Options: Mode(html\|xml), Strict, Whitespace(preserve\|trim-tags\|smart), Partials, Components, Layout, Loader. |
 | `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
 | `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
@@ -1745,7 +1745,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML templates with Mustache semantics (sections, inverted, partials, comments, indented partials, standalone trimming; unescaped via {{{...}}} or {{& name}}). Options: Mode(html\|xml), Strict, Whitespace(preserve\|trim-tags\|smart), Partials, Components, Layout, Loader. |
 | `HtmlTemplateCompile` | `HtmlTemplateCompile[templateOrPath, opts?]` | Precompile HTML template (returns handle) |
 | `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
@@ -1919,7 +1919,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML template with data and options. |
+| `HtmlTemplate` | `HtmlTemplate[templateOrPath, data, opts?]` | Render HTML/XML templates with Mustache semantics (sections, inverted, partials, comments, indented partials, standalone trimming; unescaped via {{{...}}} or {{& name}}). Options: Mode(html\|xml), Strict, Whitespace(preserve\|trim-tags\|smart), Partials, Components, Layout, Loader. |
 
 ## `yaml`
 
