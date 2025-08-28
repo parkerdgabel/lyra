@@ -1,0 +1,15 @@
+[package]
+name = "lyra-notebook-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = { version = "1", features = ["wry","api-all"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["serde","v7"] }
+lyra-notebook-gui = { path = "../lyra-notebook-gui", features = ["tauri_cmd"] }
+
+[build-dependencies]
+tauri-build = { version = "1" }
+base64 = "0.21"

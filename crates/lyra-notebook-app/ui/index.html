@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lyra Notebook</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      // Load Monaco editor from CDN (lightweight integration)
+      // Uses AMD loader provided by monaco-editor
+      window.__monacoReady = false;
+    </script>
+    <!-- No external editor deps; custom Lyra editor is implemented in main.js -->
+  </head>
+  <body>
+    <div id="topProgress" class="top-progress" hidden></div>
+    <header>
+      <div class="title">Lyra Notebook</div>
+      <div class="toolbar">
+        <button id="toggleSidebarBtn" class="btn ghost" title="Toggle sidebar">Sidebar</button>
+        <button id="toggleDocsBtn" class="btn ghost" title="Toggle docs">Docs</button>
+        <span id="statusDot" class="status-dot" title="Notebook status" aria-label="Notebook status" role="img"></span>
+        <button id="problemsBtn" class="btn ghost" title="Show problems"></button>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--sub)">Light <input id="themeToggle" type="checkbox" class="toggle" /> Dark</label>
+        <button id="settingsBtn" class="btn ghost" title="Settings">Settings</button>
+        <span class="hr" style="width:8px"></span>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--sub)">Density
+          <select id="densitySelect" class="select">
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select>
+        </label>
+  </div>
+  <!-- Data Viewer Overlay -->
+  <div id="dataViewer" class="viewer" hidden>
+    <div class="viewer-backdrop"></div>
+    <div class="viewer-panel" role="dialog" aria-modal="true" aria-label="Data Viewer">
+      <div class="viewer-head">
+        <div class="viewer-title">Data Viewer</div>
+        <div class="viewer-actions">
+          <button id="viewerClose" class="btn ghost" title="Close">Close</button>
+        </div>
+      </div>
+      <div class="viewer-body">
+        <div class="viewer-cols" id="viewerCols"></div>
+        <div class="viewer-table" id="viewerTable"></div>
+        <div class="viewer-stats" id="viewerStats"></div>
+      </div>
+    </div>
+  </div>
+    </header>
+    <!-- Settings Overlay -->
+    <div id="settings" class="viewer" hidden>
+      <div class="viewer-backdrop"></div>
+      <div class="viewer-panel" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="viewer-head">
+          <div class="viewer-title">Settings</div>
+          <div class="viewer-actions">
+            <button id="settingsClose" class="btn ghost" title="Close">Close</button>
+          </div>
+        </div>
+        <div class="viewer-body" style="grid-template-columns: 1fr">
+          <div style="padding:4px 0">
+            <div style="font-weight:600;margin:6px 0">Preview sizes</div>
+            <div style="color:var(--sub);margin-bottom:6px">Comma-separated integers used for table preview sample selector.</div>
+            <input id="previewSizesInput" type="text" placeholder="50,200,1000" style="width:100%" />
+
+            <div style="font-weight:600;margin:12px 0 6px">Default preview size</div>
+            <select id="previewDefaultSelect" class="select" style="min-width:160px"></select>
+
+            <div style="margin-top:16px">
+              <button id="settingsSave" class="btn primary">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="appWrap" class="app">
+      <aside id="leftSidebar" class="sidebar" aria-label="Left Sidebar" tabindex="-1">
+        <div class="sidebar-head">
+          <div class="tabs" role="tablist" aria-label="Sidebar Tabs">
+            <button id="tabOutline" class="tab active" role="tab" aria-selected="true" aria-controls="panelOutline" title="Outline">Outline</button>
+            <button id="tabQueue" class="tab" role="tab" aria-selected="false" aria-controls="panelQueue" title="Run Queue">Queue</button>
+            <button id="tabProblems" class="tab" role="tab" aria-selected="false" aria-controls="panelProblems" title="Problems">Problems</button>
+            <button id="tabDeps" class="tab" role="tab" aria-selected="false" aria-controls="panelDeps" title="Dependencies">Deps</button>
+          </div>
+        </div>
+        <div class="sidebar-body">
+          <div id="panelOutline" class="panel" role="tabpanel"></div>
+          <div id="panelQueue" class="panel" role="tabpanel" hidden></div>
+          <div id="panelProblems" class="panel" role="tabpanel" hidden></div>
+          <div id="panelDeps" class="panel" role="tabpanel" hidden></div>
+        </div>
+        <div id="sidebarResizer" class="resizer" title="Drag to resize"></div>
+      </aside>
+      <div id="leftBackdrop" class="backdrop" hidden></div>
+      <main>
+        <section class="toolbar" id="open">
+          <input id="newTitle" type="text" placeholder="New notebook title (optional)" />
+          <button id="newBtn" class="btn">New</button>
+          <span class="hr" style="width:8px"></span>
+          <input id="path" type="text" placeholder="/absolute/path/to/notebook.lynb" />
+          <button id="openBtn" class="btn">Open</button>
+          <button id="saveBtn" class="btn" disabled>Save</button>
+          <label style="margin-left:8px;color:var(--sub)"><input type="checkbox" id="includeOutputs" /> Include outputs</label>
+          <span class="hr" style="width:8px"></span>
+          <button id="addCodeBtn" class="btn">Add Code</button>
+          <button id="addTextBtn" class="btn">Add Text</button>
+          <button id="runAllBtn" class="btn primary">Run All</button>
+          <button id="runImpBtn" class="btn">Run Impacted</button>
+          <button id="stopBtn" class="btn ghost">Stop</button>
+        </section>
+        <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+        <section id="cells"></section>
+      </main>
+      <aside id="rightSidebar" class="sidebar right" aria-label="Docs Sidebar" tabindex="-1">
+        <div class="sidebar-head">
+          <div class="tabs" role="tablist" aria-label="Right Tabs">
+            <button class="tab active" disabled>Docs</button>
+          </div>
+        </div>
+        <div class="sidebar-body">
+          <div id="panelDocs" class="panel" role="tabpanel"></div>
+        </div>
+        <div id="rightResizer" class="resizer left" title="Drag to resize"></div>
+      </aside>
+      <div id="rightBackdrop" class="backdrop" hidden></div>
+    </div>
+    <script src="main.js"></script>
+  </body>
+  </html>

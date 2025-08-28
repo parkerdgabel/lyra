@@ -1,0 +1,406 @@
+/* Base tokens (light/dark via data-theme). Keep legacy vars mapped for compatibility. */
+:root{
+  /* layout */
+  --header-h: 52px;
+  /* color scale (defaults to dark; overridden below) */
+  --surface-1: hsl(225 14% 8%);
+  --surface-2: hsl(225 12% 10%);
+  --surface-3: hsl(225 12% 14%);
+  --text-1: hsl(220 20% 92%);
+  --text-2: hsl(215 14% 64%);
+  --border: hsl(220 10% 22% / 0.6);
+  --border-strong: hsl(220 10% 30% / 0.8);
+  --accent: hsl(252 83% 60%);
+  --accent-2: hsl(188 85% 56%);
+  --success: hsl(152 60% 45%);
+  --warn: hsl(43 90% 55%);
+  --danger: hsl(0 84% 60%);
+  --info: hsl(205 80% 60%);
+  --ring: color-mix(in oklab, var(--accent) 35%, transparent);
+  /* output syntax colors (defaults, overridden per theme) */
+  --out-key: #93c5fd;
+  --out-string: #a7f3d0;
+  --out-number: #fde68a;
+  --out-bool: #c4b5fd;
+  --out-null: #9ca3af;
+  --out-punct: #94a3b8;
+  /* editor syntax tokens (defaults for dark) */
+  --tok-comment: #6b7280;
+  --tok-string: #a7f3d0;
+  --tok-number: #fde68a;
+  --tok-builtin: #93c5fd;
+  --tok-symbol: #e5e7eb;
+  --tok-bracket: #fca5a5;
+  /* editor selection */
+  --select-bg: color-mix(in oklab, var(--accent) 30%, transparent);
+  --shadow-sm: 0 1px 2px hsl(220 40% 2% / 0.35), 0 1px 1px hsl(220 40% 2% / 0.2);
+  --shadow-md: 0 6px 16px hsl(220 40% 2% / 0.35), 0 2px 6px hsl(220 40% 2% / 0.2);
+  /* legacy aliases */
+  --bg: var(--surface-1);
+  --surface: var(--surface-2);
+  --muted: var(--surface-3);
+  --text: var(--text-1);
+  --sub: var(--text-2);
+}
+/* Explicit overrides via attribute (placed after media queries to take precedence) */
+/* Classy palette: muted neutral surfaces, teal-blue accent */
+:root[data-theme="dark"] {
+  --surface-1: hsl(220 15% 7%);
+  --surface-2: hsl(220 14% 10%);
+  --surface-3: hsl(220 14% 14%);
+  --text-1: hsl(210 20% 95%);
+  --text-2: hsl(210 12% 65%);
+  --border: hsl(220 10% 25% / 0.6);
+  --border-strong: hsl(220 10% 35% / 0.8);
+  --accent: hsl(200 75% 55%); /* teal-blue */
+  --accent-2: hsl(185 70% 50%);
+  --success: hsl(155 55% 45%);
+  --warn: hsl(40 95% 55%);
+  --danger: hsl(0 70% 58%);
+  --info: hsl(200 75% 55%);
+  --ring: color-mix(in oklab, var(--accent) 32%, transparent);
+  --out-key: #93c5fd;
+  --out-string: #a7f3d0;
+  --out-number: #fde68a;
+  --out-bool: #c4b5fd;
+  --out-null: #9ca3af;
+  --out-punct: #94a3b8;
+  --tok-comment: #6b7280;
+  --tok-string: #a7f3d0;
+  --tok-number: #fde68a;
+  --tok-builtin: #93c5fd;
+  --tok-symbol: #e5e7eb;
+  --tok-bracket: #fca5a5;
+  --select-bg: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+:root[data-theme="light"] {
+  --surface-1: hsl(210 20% 97%);
+  --surface-2: hsl(0 0% 100%);
+  --surface-3: hsl(210 25% 95%);
+  --text-1: hsl(210 25% 10%);
+  --text-2: hsl(210 12% 45%);
+  --border: hsl(215 16% 80% / 0.9);
+  --border-strong: hsl(215 18% 72% / 1);
+  --accent: hsl(204 80% 45%);
+  --accent-2: hsl(189 72% 42%);
+  --success: hsl(150 55% 40%);
+  --warn: hsl(38 94% 50%);
+  --danger: hsl(0 72% 50%);
+  --info: hsl(204 80% 45%);
+  --ring: color-mix(in oklab, var(--accent) 28%, transparent);
+  --out-key: #3b82f6;
+  --out-string: #047857;
+  --out-number: #b45309;
+  --out-bool: #6d28d9;
+  --out-null: #6b7280;
+  --out-punct: #64748b;
+  /* lighter/darker tweaks for readability on light */
+  --tok-comment: #6b7280;
+  --tok-string: #047857;  /* emerald-700 */
+  --tok-number: #b45309;  /* amber-700 */
+  --tok-builtin: #3b82f6; /* blue-500 */
+  --tok-symbol: #0f172a;  /* slate-900 */
+  --tok-bracket: #b91c1c; /* red-700 */
+  --select-bg: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";}
+/* App layout */
+.app{display:flex;align-items:stretch}
+.sidebar{position:relative;width:260px;min-width:200px;max-width:420px;background:var(--surface);border-right:1px solid var(--border);height:calc(100vh - var(--header-h));top:0;overflow:hidden}
+.sidebar.right{border-right:0;border-left:1px solid var(--border)}
+.sidebar-head{padding:8px;border-bottom:1px solid var(--border)}
+.tabs{display:flex;gap:6px}
+.tab{background:var(--muted);color:var(--text);border:1px solid var(--border);padding:6px 8px;border-radius:999px;cursor:pointer;font-size:.9rem}
+.tab.active{border-color:var(--accent)}
+.tab .count{display:inline-block;min-width:16px;padding:0 6px;margin-left:6px;border-radius:999px;background:color-mix(in oklab, var(--danger) 20%, transparent);border:1px solid color-mix(in oklab, var(--danger) 45%, transparent);color:var(--danger);font-size:.8em;text-align:center}
+.sidebar-body{position:relative;height:calc(100% - 49px)}
+.panel{position:absolute;inset:0;overflow:auto;padding:8px}
+.resizer{position:absolute;right:-2px;top:0;bottom:0;width:4px;cursor:ew-resize;background:transparent}
+.resizer.left{right:auto;left:-2px}
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);z-index:40}
+
+/* Overlay behavior on narrow screens */
+@media (max-width: 1000px){
+  .app{position:relative}
+  .sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;height:auto;z-index:50;transform:translateX(-100%);transition:transform .2s ease}
+  :root[data-left-open="true"] .sidebar{transform:none}
+  :root[data-left-open="true"] #leftBackdrop{display:block}
+  .sidebar.right{left:auto;right:0;transform:translateX(100%)}
+  :root[data-right-open="true"] .sidebar.right{transform:none}
+  :root[data-right-open="true"] #rightBackdrop{display:block}
+}
+
+/* Collapsible behavior on wide screens */
+@media (min-width: 1001px){
+  :root[data-left-open="false"] .sidebar{width:0;min-width:0;border-right:0}
+  :root[data-left-open="false"] .sidebar .resizer{display:none}
+  :root[data-right-open="false"] .sidebar.right{width:0;min-width:0;border-left:0}
+  :root[data-right-open="false"] .sidebar.right .resizer{display:none}
+}
+
+/* Docs content */
+#panelDocs .doc-name{font-weight:600}
+#panelDocs .doc-usage{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; margin:6px 0}
+#panelDocs .doc-summary{color:var(--text)}
+#panelDocs .doc-examples{margin-top:10px}
+#panelDocs .doc-examples pre{background:var(--surface-3);border:1px solid var(--border);padding:8px;border-radius:8px}
+/* Top progress bar */
+.top-progress{position:fixed;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg, transparent, var(--accent), transparent);background-size:200% 100%;animation: indet 1.2s linear infinite;z-index:60}
+@keyframes indet{0%{background-position:200% 0}100%{background-position:-200% 0}}
+header{
+  position: sticky; top: 0; z-index: 50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px; min-height: var(--header-h);
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom:1px solid var(--border);
+}
+header .title{font-weight:600;letter-spacing:.2px}
+.toolbar{display:flex;gap:8px;align-items:center}
+.toolbar.scrollable{position:relative;overflow-x:auto;white-space:nowrap;mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent 100%)}
+.toolbar.scrollable::before,
+.toolbar.scrollable::after{content:"";position:absolute;top:0;bottom:0;width:16px;pointer-events:none;transition:opacity .15s ease}
+.toolbar.scrollable::before{left:0;background:linear-gradient(90deg, var(--surface) 0%, transparent 100%);opacity:0}
+.toolbar.scrollable::after{right:0;background:linear-gradient(270deg, var(--surface) 0%, transparent 100%);opacity:0}
+.toolbar.scrollable.has-left-shadow::before{opacity:1}
+.toolbar.scrollable.has-right-shadow::after{opacity:1}
+
+/* Generic horizontal scroll shadows (reusable) */
+.scrollshadow{position:relative}
+.scrollshadow::before,
+.scrollshadow::after{content:"";position:absolute;top:0;bottom:0;width:12px;pointer-events:none;transition:opacity .15s ease;opacity:0}
+.scrollshadow::before{left:0;background:linear-gradient(90deg, var(--scrollshadow-bg, var(--surface)) 0%, transparent 100%)}
+.scrollshadow::after{right:0;background:linear-gradient(270deg, var(--scrollshadow-bg, var(--surface)) 0%, transparent 100%)}
+.scrollshadow.has-left-shadow::before{opacity:1}
+.scrollshadow.has-right-shadow::after{opacity:1}
+.ed-wrap.scrollshadow{ --scrollshadow-bg: var(--muted); }
+.outputs pre.scrollshadow{ --scrollshadow-bg: var(--surface-2); }
+.vt-wrap{border:1px solid var(--border);border-radius:8px;overflow:auto;background:var(--surface-2);max-height:420px}
+.vt-head{position:sticky;top:0;background:var(--muted);border-bottom:1px solid var(--border);z-index:2}
+.vt-row{position:absolute;left:0;right:0;display:flex;border-bottom:1px solid color-mix(in oklab, var(--border) 60%, transparent)}
+.vt-cell{padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid color-mix(in oklab, var(--border) 60%, transparent)}
+.vt-cell:last-child{border-right:0}
+.vt-head .vt-cell{font-weight:600}
+.vt-resizer{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;opacity:.4}
+.vt-resizer:hover{opacity:1}
+.vt-cell.sticky{position:sticky;background:inherit;z-index:1}
+.vt-row.selected{background:color-mix(in oklab, var(--accent) 18%, transparent)}
+.vt-spark{display:flex;gap:1px;align-items:flex-end;height:12px;margin-top:2px}
+.vt-spark div{flex:1;background:var(--accent);opacity:.7}
+.vt-nullbar{position:relative;height:4px;margin-top:4px;background:color-mix(in oklab, var(--border) 60%, transparent);border-radius:3px;overflow:hidden}
+.vt-nullbar > div{position:absolute;left:0;top:0;bottom:0;background:color-mix(in oklab, var(--danger) 55%, transparent)}
+
+/* Buttons and chips additions */
+.btn.sm{padding:6px 10px;border-radius:7px;font-size:.9rem}
+.btn.icon{padding:6px;border-radius:50%;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:4px 8px;border:1px solid var(--border);border-radius:999px;cursor:pointer;background:var(--surface-3);color:var(--text);font-size:.85rem}
+.chip.active, .chip:hover{border-color:var(--accent)}
+
+/* Editor toolbar */
+.editor-tools{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.editor-shell .btn{border-color:var(--border)}
+
+/* Data Viewer */
+.viewer{position:fixed;inset:0;z-index:70;display:block}
+.viewer[hidden]{display:none}
+.viewer-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(2px)}
+.viewer-panel{position:absolute;inset:4% 4%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;overflow:hidden}
+.viewer-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface)}
+.viewer-title{font-weight:600}
+.viewer-body{display:grid;grid-template-columns:220px 1fr 300px;gap:10px;padding:10px;height:100%}
+.viewer-cols{border-right:1px solid var(--border);padding-right:10px;overflow:auto}
+.viewer-cols .col{padding:6px 8px;border-radius:6px;cursor:pointer}
+.viewer-cols .col.active{background:color-mix(in oklab, var(--accent) 20%, transparent);border:1px solid var(--accent)}
+.viewer-table{overflow:hidden}
+.viewer-stats{border-left:1px solid var(--border);padding-left:10px;overflow:auto}
+.chart-bars{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.chart-row{display:flex;align-items:center;gap:8px}
+.chart-row .label{flex:0 0 120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub)}
+.chart-row .bar{flex:1;height:12px;background:color-mix(in oklab, var(--accent) 25%, transparent);border:1px solid var(--accent);border-radius:3px;position:relative}
+.chart-row .bar > div{position:absolute;left:0;top:0;bottom:0;background:var(--accent)}
+.toolbar.compact{gap:4px;flex-wrap:wrap}
+.select{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:8px;outline:none}
+.toolbar input[type="text"]{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:8px;outline:none;min-width:260px}
+.btn{background:var(--surface);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:8px;cursor:pointer;transition:.15s ease;}
+.btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);}
+.btn.ghost{background:transparent}
+.btn.link{background:transparent;border:0;color:var(--accent);padding:0}
+.btn.xs{font-size:.85rem;padding:4px 6px;border-radius:6px}
+.btn.ghost .count{display:inline-block;min-width:16px;padding:0 6px;margin-left:6px;border-radius:999px;background:color-mix(in oklab, var(--danger) 20%, transparent);border:1px solid color-mix(in oklab, var(--danger) 45%, transparent);color:var(--danger);font-size:.8em;text-align:center}
+/* Header status dot */
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--border-strong);margin:0 6px;vertical-align:middle;box-shadow:0 0 0 1px var(--border)}
+.status-dot.error{background:var(--danger);box-shadow:0 0 0 2px color-mix(in oklab, var(--danger) 40%, transparent)}
+.status-dot.ok{background:var(--success);box-shadow:0 0 0 2px color-mix(in oklab, var(--success) 40%, transparent)}
+.status-dot.busy{background:var(--warn);box-shadow:0 0 0 2px color-mix(in oklab, var(--warn) 40%, transparent)}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in oklab, var(--accent) 25%, transparent);border-top-color:var(--accent);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toggle{appearance:none;width:46px;height:26px;border-radius:14px;background:var(--muted);position:relative;border:1px solid var(--border);cursor:pointer}
+.toggle:checked{background:var(--accent)}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.toggle:checked::after{left:22px}
+
+/* Unified focus ring */
+.btn:focus-visible,
+.select:focus-visible,
+.toolbar input[type="text"]:focus-visible,
+.textcell:focus-visible,
+.tab:focus-visible,
+.toggle:focus-visible,
+.pal-input:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--accent);
+}
+
+main{padding:16px;max-width:1100px;margin:0 auto}
+.status{font-size:.9rem;color:var(--sub);margin:8px 0}
+.cell{position:relative;display:grid;grid-template-columns:80px 1fr;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px;overflow:hidden}
+/* status rail */
+.cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border-strong);}
+.cell[data-state="running"]::before{background:linear-gradient(180deg, color-mix(in oklab, var(--accent) 80%, transparent), transparent);
+  animation: railPulse 1.2s ease-in-out infinite;}
+.cell[data-state="ok"]::before{background: var(--success);}
+.cell[data-state="error"]::before{background: var(--danger);}
+@keyframes railPulse{0%{opacity:.6} 50%{opacity:1} 100%{opacity:.6}}
+.cell .gutter{display:flex;flex-direction:column;align-items:flex-end;color:var(--sub);padding-top:4px;}
+.cell .gutter .label{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;opacity:.9}
+.cell .body{display:block}
+.cell-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.badges{display:flex;gap:6px;align-items:center;color:var(--sub);font-size:.85rem}
+.badge{background:var(--muted);padding:2px 8px;border-radius:999px;border:1px solid var(--border)}
+.cell-actions{display:flex;gap:6px}
+.drag-handle{width:16px;height:16px;border-radius:4px;color:var(--text-2);opacity:.6;cursor:grab;display:inline-block}
+.drag-handle:active{cursor:grabbing}
+.cell:hover .drag-handle{opacity:1}
+.drag-handle{background-image: radial-gradient(currentColor 1.2px, transparent 1.2px);background-size:4px 4px;background-position:0 0}
+.monaco-editor, .monaco-editor-background{background:var(--muted) !important}
+.monaco-editor .margin{background:var(--muted) !important}
+.monaco-editor, .monaco-editor .view-lines{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important; font-size: 14px;}
+.editor-shell{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.editor-shell:focus-within{box-shadow:0 0 0 3px var(--ring)}
+.code{width:100%;height:160px;background:var(--muted);color:transparent;caret-color:var(--text);border:0;padding:10px;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:14px;line-height:1.5;letter-spacing:0;tab-size:2;resize:vertical;position:relative;z-index:2;background:transparent;box-sizing:border-box;overflow:auto}
+.code::selection{background-color: var(--select-bg)}
+.ed-wrap{position:relative;background:var(--muted);border-radius:8px;overflow:visible}
+.ed-highlight{position:absolute;inset:0;padding:10px;white-space:pre;pointer-events:none;color:var(--text);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:14px;line-height:1.5;letter-spacing:0;tab-size:2;z-index:1;box-sizing:border-box}
+.diag-layer{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:3}
+.diag-uline{position:absolute;height:0;border-bottom:2px solid var(--danger);border-radius:0;pointer-events:auto}
+.diag-uline.warn{border-bottom-color: var(--warn); border-bottom-style: dashed}
+.diag-uline.info{border-bottom-color: var(--info); border-bottom-style: dotted}
+.tok-comment{color:var(--tok-comment)}
+.tok-string{color:var(--tok-string)}
+.tok-number{color:var(--tok-number)}
+.tok-builtin{color:var(--tok-builtin)}
+.tok-symbol{color:var(--tok-symbol)}
+.tok-bracket{color:var(--tok-bracket)}
+.diag-msg{font-size:.85rem;margin-top:6px}
+.diag-msg.info{color: var(--info)}
+.diag-msg.warn{color: var(--warn)}
+.diag-msg.error{color: var(--danger)}
+.outputs .out-label{color:var(--sub);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;margin:6px 0}
+.outputs .controls{display:flex;gap:8px;align-items:center;color:var(--sub);font-size:.85rem;margin:6px 0}
+.outputs pre{background:var(--surface-2);color:var(--text);border:1px solid var(--border);padding:10px 12px;border-radius:10px;overflow:auto;box-shadow: var(--shadow-sm)}
+.outputs pre.pre-wrap{white-space:pre-wrap;word-break:break-word}
+.outputs .toggle-link{background:transparent;border:0;color:var(--accent);cursor:pointer;font-size:.85rem;padding:0}
+.outputs .copy-link{background:transparent;border:0;color:var(--accent);cursor:pointer;font-size:.85rem;padding:0}
+/* Error panel */
+.error-panel{background:color-mix(in oklab, var(--danger) 8%, var(--surface-2));border:1px solid color-mix(in oklab, var(--danger) 35%, var(--border));border-left:3px solid var(--danger);border-radius:10px;padding:8px 10px;margin:8px 0;box-shadow: var(--shadow-sm)}
+.error-head{display:flex;align-items:center;gap:8px;color:var(--danger);font-weight:600;margin-bottom:6px}
+.error-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block}
+.error-pre{background:transparent;border:0;padding:0;margin:0;color:var(--text);}
+/* Output syntax colors */
+.out-key{color:var(--out-key)}
+.out-string{color:var(--out-string)}
+.out-number{color:var(--out-number)}
+.out-bool{color:var(--out-bool)}
+.out-null{color:var(--out-null)}
+.out-punct{color:var(--out-punct)}
+
+/* Editor autocomplete */
+.ac-wrap{position:absolute;right:8px;bottom:8px;z-index:5}
+.ac-box{min-width:180px;max-height:180px;overflow:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);padding:4px}
+.ac-item{padding:6px 8px;border-radius:6px;cursor:pointer;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:13px;color:var(--text)}
+.ac-item:hover,.ac-item.active{background:color-mix(in oklab, var(--accent) 15%, transparent)}
+.ac-doc{margin-top:6px;border-top:1px solid var(--border);padding-top:6px;font-size:.85rem;color:var(--sub);max-width:320px}
+.ac-doc .usage{color:var(--text);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:.9rem}
+
+/* Signature help */
+.sig-wrap{position:absolute;left:auto;right:8px;top:8px;z-index:5}
+.sig-box{max-width:360px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);padding:6px 8px;color:var(--text);font-size:.9rem}
+.sig-box .usage{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+.sig-box .param{padding:0 2px;border-radius:4px}
+.sig-box .param.active{background:color-mix(in oklab, var(--accent) 20%, transparent)}
+
+/* Hover docs */
+.doc-tip{position:fixed;z-index:70;max-width:420px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);padding:8px;color:var(--text);font-size:.9rem}
+.doc-tip .usage{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;margin-bottom:4px}
+
+/* Command palette */
+.pal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(2px);z-index:90}
+.palette{position:fixed;left:50%;top:12%;transform:translateX(-50%);width:min(720px, 92vw);background:var(--surface-2);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);z-index:100;overflow:hidden}
+.pal-head{display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--border)}
+.pal-input{flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);padding:10px;border-radius:8px;outline:none}
+.pal-list{max-height:380px;overflow:auto;padding:6px}
+.pal-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;cursor:pointer}
+.pal-item:hover,.pal-item.active{background:color-mix(in oklab, var(--accent) 12%, transparent)}
+.pal-item .name{font-weight:500}
+.pal-item .meta{color:var(--sub);font-size:.85rem}
+/* Palette badges + doc preview */
+.tag{display:inline-block;font-size:.75rem;padding:2px 6px;border-radius:999px;border:1px solid var(--border);color:var(--sub)}
+.tag.symbol{border-color: color-mix(in oklab, var(--accent) 40%, transparent); color: var(--accent)}
+.tag.command{border-color: var(--border)}
+.tag.error{border-color: color-mix(in oklab, var(--danger) 50%, transparent); color: var(--danger)}
+.tag.warn{border-color: color-mix(in oklab, var(--warn) 50%, transparent); color: var(--warn)}
+.tag.info{border-color: color-mix(in oklab, var(--info) 50%, transparent); color: var(--info)}
+.pal-doc{border-top:1px solid var(--border);padding:8px;color:var(--sub);max-height:160px;overflow:auto}
+.pal-doc .usage{color:var(--text);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;margin-bottom:4px}
+/* Focus ring for palette items and sidebar rows */
+.pal-item:focus-visible,
+.sidebar .panel .row:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* Problems severity colors */
+.sidebar .panel .row.sev-error .sub{ color: var(--danger); }
+.sidebar .panel .row.sev-warn .sub{ color: var(--warn); }
+.sidebar .panel .row.sev-info .sub{ color: var(--info); }
+
+/* Cell selection bracket (Mathematica-style cue) */
+.cell:hover::after,
+.cell:focus-within::after{
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--ring);
+  border-radius: 2px;
+}
+/* Drop indicators for reordering */
+.cell.drop-before{box-shadow: inset 0 3px 0 0 var(--accent)}
+.cell.drop-after{box-shadow: inset 0 -3px 0 0 var(--accent)}
+/* Flash highlight on jump */
+.cell.flash{animation: flashCell .8s ease}
+@keyframes flashCell{0%{box-shadow:0 0 0 0 color-mix(in oklab, var(--accent) 40%, transparent)} 100%{box-shadow:none}}
+
+/* Text cell editing */
+.textcell{width:100%;min-height:80px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);padding:10px;border-radius:8px;resize:vertical;font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;line-height:1.5}
+.hr{height:1px;background:rgba(255,255,255,0.06);margin:12px 0}
+
+/* Density adjustments */
+:root[data-density="compact"] header{min-height:46px;padding:8px 12px}
+:root[data-density="compact"] main{padding:12px}
+:root[data-density="compact"] .btn{padding:6px 10px;border-radius:7px}
+:root[data-density="compact"] .toolbar input[type="text"],
+:root[data-density="compact"] .select{padding:6px 8px;border-radius:7px}
+:root[data-density="compact"] .cell{padding:8px 10px;margin-bottom:10px;border-radius:10px}
+:root[data-density="compact"] .badge{padding:1px 6px}
+:root[data-density="compact"] .editor-shell{border-radius:7px}
+:root[data-density="compact"] .ed-wrap{border-radius:7px}
+:root[data-density="compact"] .code{height:120px;line-height:1.4}
+:root[data-density="compact"] .ed-highlight{line-height:1.4}
+:root[data-density="compact"] .outputs pre{padding:8px 10px;border-radius:8px}

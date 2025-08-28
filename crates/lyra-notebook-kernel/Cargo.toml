@@ -1,0 +1,17 @@
+[package]
+name = "lyra-notebook-kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lyra-core = { path = "../lyra-core" }
+lyra-parser = { path = "../lyra-parser" }
+lyra-runtime = { path = "../lyra-runtime" }
+lyra-stdlib = { path = "../lyra-stdlib" }
+lyra-notebook-core = { path = "../lyra-notebook-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["serde", "v7"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = "0.12"
