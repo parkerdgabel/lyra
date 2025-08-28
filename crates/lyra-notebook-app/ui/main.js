@@ -289,6 +289,59 @@
     // returns { el, actions?: [{label,onclick}] } or null
     if (!Array.isArray(obj) || obj.length === 0) return null;
     const maxRows = 200; // safety cap
+    const selected = new Set(); // row indices in local rows array
+    const actions = [];
+    function buildWrap(table){ const wrap = document.createElement('div'); wrap.className='table-wrap'; wrap.style.overflow='auto'; wrap.appendChild(table); return wrap; }
+    function addRowHandlers(tbody){
+      const trs = Array.from(tbody.querySelectorAll('tr'));
+      trs.forEach((tr, i) => {
+        tr.style.cursor = 'pointer';
+        tr.onclick = (e) => {
+          if (selected.has(i)) { selected.delete(i); tr.classList.remove('selected'); }
+          else { selected.add(i); tr.classList.add('selected'); }
+        };
+      });
+    }
+    function addCommonActions(getHeaders, getRows, getCell){
+      // Copy selection
+      actions.push({ label: 'Copy selection', onclick: () => {
+        const idxs = Array.from(selected.values()).sort((a,b)=>a-b);
+        const headers = getHeaders();
+        const rows = getRows().filter((_,i)=>idxs.includes(i)).map(r => headers.map(h => getCell(r, h)));
+        const csv = toCSV(rows.map(r => Object.fromEntries(headers.map((h, i) => [h, r[i]]))), headers);
+        const ta = document.createElement('textarea'); ta.value = csv; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+      }});
+      // Insert filter
+      actions.push({ label: 'Insert filter', onclick: () => {
+        if (!activeEditor || !activeEditor.insert){ setStatus('No active editor'); return; }
+        const idxs = Array.from(selected.values()).sort((a,b)=>a-b);
+        if (idxs.length === 0){ setStatus('No rows selected'); return; }
+        const headers = getHeaders(); if (!headers.length){ setStatus('No columns'); return; }
+        const key = headers[0];
+        const vals = [];
+        const rows = getRows();
+        idxs.forEach(i => { const r = rows[i]; vals.push(getCell(r, key)); });
+        const uniq = Array.from(new Set(vals.map(v => JSON.stringify(v)))).map(s => JSON.parse(s)).filter(v => v !== null && v !== undefined);
+        if (!uniq.length){ setStatus('Selected rows have empty key values'); return; }
+        const lit = (x) => { if (x===null) return 'Null'; if (typeof x==='string') return JSON.stringify(x); if (typeof x==='number' || typeof x==='boolean') return String(x); return JSON.stringify(x); };
+        const arr = '{' + uniq.map(lit).join(', ') + '}';
+        const pred = `MemberQ[${arr}, #${key}] &`;
+        const subj = guessValueSymbol();
+        const code = `Filter[${subj}, ${pred}]`;
+        activeEditor.insert(code);
+        setStatus('Inserted filter');
+      }});
+      // Insert select columns
+      actions.push({ label: 'Insert select cols', onclick: () => {
+        if (!activeEditor || !activeEditor.insert){ setStatus('No active editor'); return; }
+        const headers = getHeaders(); if (!headers.length){ setStatus('No columns'); return; }
+        const arr = '{' + headers.map(h => JSON.stringify(h)).join(', ') + '}';
+        const subj = guessValueSymbol();
+        const code = `Select[${subj}, ${arr}]`;
+        activeEditor.insert(code);
+        setStatus('Inserted select');
+      }});
+    }
     if (obj.every(row => Array.isArray(row))){
       const rows = obj.slice(0, maxRows);
       const cols = rows.reduce((m, r)=>Math.max(m, r.length||0), 0);
@@ -299,8 +352,9 @@
       const tbody = document.createElement('tbody');
       rows.forEach(r => { const tr=document.createElement('tr'); for(let c=0;c<cols;c++){ const td=document.createElement('td'); td.textContent = toCell(r[c]); tr.appendChild(td);} tbody.appendChild(tr); });
       table.appendChild(tbody);
-      const wrap = document.createElement('div'); wrap.className='table-wrap'; wrap.style.overflow='auto'; wrap.appendChild(table);
-      return { el: wrap };
+      addRowHandlers(tbody);
+      addCommonActions(() => Array.from({length: cols}, (_,i)=>`c${i+1}`), () => rows, (r, h) => { const idx = parseInt(h.slice(1),10)-1; return r[idx]; });
+      return { el: buildWrap(table), actions };
     }
     if (obj.every(row => row && typeof row === 'object' && !Array.isArray(row))){
       const rows = obj.slice(0, maxRows);
@@ -312,9 +366,11 @@
       const tbody = document.createElement('tbody');
       rows.forEach(r => { const tr=document.createElement('tr'); headers.forEach(h => { const td=document.createElement('td'); td.textContent = toCell(r[h]); tr.appendChild(td); }); tbody.appendChild(tr); });
       table.appendChild(tbody);
-      const wrap = document.createElement('div'); wrap.className='table-wrap'; wrap.style.overflow='auto'; wrap.appendChild(table);
+      addRowHandlers(tbody);
+      const wrap = buildWrap(table);
       const csv = toCSV(rows, headers);
-      const actions = [{ label: 'Download CSV', onclick: () => { const blob=new Blob([csv], {type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='table.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000); } }];
+      actions.push({ label: 'Download CSV', onclick: () => { const blob=new Blob([csv], {type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='table.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000); } });
+      addCommonActions(() => headers, () => rows, (r, h) => r[h]);
       return { el: wrap, actions };
     }
     return null;
@@ -674,7 +730,7 @@
     function reorder(fromIdx, toIdx){
       if (fromIdx === toIdx) return;
       const it = order.splice(fromIdx, 1)[0]; order.splice(toIdx, 0, it);
-      renderHead(); renderViewport(); persist();
+      renderHead(); renderViewport(); rebuildKeySelect(); persist();
     }
     function toggleSort(colIdx){
       if (sortCol !== colIdx){ sortCol = colIdx; sortDir = 'asc'; }
@@ -692,12 +748,63 @@
     resetBtn.onclick = ()=>{ for (let i=0;i<colWidths.length;i++) colWidths[i]=160; order = cols.map((_,i)=>i); frozenCount=0; renderHead(); renderViewport(); persist(); };
     const searchIn = document.createElement('input'); searchIn.type='text'; searchIn.placeholder='Search'; searchIn.value = searchText || ''; searchIn.oninput = debounce(()=>{ searchText = searchIn.value; persist(); refreshQuery(true); }, 250);
     tools.appendChild(searchIn);
+    // Key column picker for filter generation
+    let filterKeyName = (state && state.filterKeyName) ? state.filterKeyName : (cols[order[0]] ? cols[order[0]].name : (cols[0]?.name || null));
+    const keyLabel = document.createElement('span'); keyLabel.style.marginLeft='8px'; keyLabel.style.color='var(--sub)'; keyLabel.textContent='Key: ';
+    const keySelect = document.createElement('select'); keySelect.className='select xs';
+    function rebuildKeySelect(){ keySelect.innerHTML=''; headers().forEach(name => { const o=document.createElement('option'); o.value=name; o.textContent=name; if (name===filterKeyName) o.selected=true; keySelect.appendChild(o); }); }
+    keySelect.onchange = () => { filterKeyName = keySelect.value; persist(); };
+    rebuildKeySelect();
+    keyLabel.appendChild(keySelect); tools.appendChild(keyLabel);
     // Copy selection
     const copySelBtn = document.createElement('button'); copySelBtn.className='toggle-link'; copySelBtn.textContent='Copy selection';
     copySelBtn.onclick = async () => {
       const rows = await getRowsForIndices(Array.from(selected.values()).sort((a,b)=>a-b));
       const csv = rowsToCsv(rows);
       await copyToClipboard(csv);
+    };
+    // Insert filter code from selection
+    const insertFilterBtn = document.createElement('button'); insertFilterBtn.className='toggle-link'; insertFilterBtn.textContent='Insert filter';
+    insertFilterBtn.onclick = async () => {
+      if (!activeEditor || !activeEditor.insert){ setStatus('No active editor'); return; }
+      const indices = Array.from(selected.values()).sort((a,b)=>a-b);
+      if (indices.length === 0){ setStatus('No rows selected'); return; }
+      const rows = await getRowsForIndices(indices);
+      // choose selected key column
+      const colName = filterKeyName || (headers()[0] || (cols[order[0]]?.name || ''));
+      const vals = [];
+      for (const r of rows){
+        let v = null;
+        if (Array.isArray(r)) { const idx = cols.findIndex(c => c.name === colName); v = r[idx]; }
+        else if (r && typeof r === 'object') v = r[colName];
+        if (v !== undefined && v !== null) vals.push(v);
+      }
+      if (vals.length === 0){ setStatus('Selected rows have empty key values'); return; }
+      const uniq = Array.from(new Set(vals.map(v => JSON.stringify(v)))).map(s => JSON.parse(s));
+      const lit = (x) => {
+        if (x === null) return 'Null';
+        if (typeof x === 'string') return JSON.stringify(x);
+        if (typeof x === 'number' || typeof x === 'boolean') return String(x);
+        return JSON.stringify(x);
+      };
+      const arr = '{' + uniq.map(lit).join(', ') + '}';
+      const pred = `MemberQ[${arr}, #${colName}] &`;
+      const subj = guessValueSymbol();
+      const code = `Filter[${subj}, ${pred}]`;
+      activeEditor.insert(code);
+      setStatus('Inserted filter');
+    };
+    // Insert select columns code
+    const insertSelectBtn = document.createElement('button'); insertSelectBtn.className='toggle-link'; insertSelectBtn.textContent='Insert select cols';
+    insertSelectBtn.onclick = () => {
+      if (!activeEditor || !activeEditor.insert){ setStatus('No active editor'); return; }
+      const names = order.map(idx => (cols[idx] && cols[idx].name) ? cols[idx].name : `c${idx+1}`);
+      if (!names.length){ setStatus('No columns'); return; }
+      const arr = '{' + names.map(n => JSON.stringify(n)).join(', ') + '}';
+      const subj = guessValueSymbol();
+      const code = `Select[${subj}, ${arr}]`;
+      activeEditor.insert(code);
+      setStatus('Inserted select');
     };
     // Export CSV (all results)
     const exportBtn = document.createElement('button'); exportBtn.className='toggle-link'; exportBtn.textContent='Export CSV';
@@ -706,6 +813,8 @@
       const blob=new Blob([csv], {type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='table.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000);
     };
     tools.appendChild(copySelBtn);
+    tools.appendChild(insertFilterBtn);
+    tools.appendChild(insertSelectBtn);
     tools.appendChild(exportBtn);
     tools.appendChild(freezeBtn); tools.appendChild(resetBtn);
 
@@ -1219,12 +1328,19 @@
     // Build columns list
     const colNames = (schema.columns||[]).map(c=>c.name || '');
     let selectedCol = colNames[0] || null;
+    const selectedColsForInsert = new Set();
     function renderCols(){
       colsEl.innerHTML='';
       const title = document.createElement('div'); title.style.fontWeight='600'; title.style.margin='6px 0'; title.textContent = 'Columns'; colsEl.appendChild(title);
+      const tip = document.createElement('div'); tip.style.color='var(--sub)'; tip.style.fontSize='.85rem'; tip.style.margin='4px 0 8px'; tip.textContent = 'Click name to view stats; toggle ✔ to add/remove for Select.'; colsEl.appendChild(tip);
       colNames.forEach(name => {
-        const d = document.createElement('div'); d.className = 'col' + (name===selectedCol?' active':''); d.textContent = name || '—'; d.onclick = ()=>{ selectedCol = name; renderCols(); fetchAndRenderStats(lastQuery); };
-        colsEl.appendChild(d);
+        const row = document.createElement('div'); row.className = 'col' + (name===selectedCol?' active':'');
+        const pick = document.createElement('input'); pick.type='checkbox'; pick.checked = selectedColsForInsert.has(name);
+        pick.onclick = (e)=>{ e.stopPropagation(); if (pick.checked) selectedColsForInsert.add(name); else selectedColsForInsert.delete(name); };
+        const lab = document.createElement('span'); lab.textContent = name || '—'; lab.style.marginLeft='6px';
+        row.onclick = ()=>{ selectedCol = name; renderCols(); fetchAndRenderStats(lastQuery); };
+        row.appendChild(pick); row.appendChild(lab);
+        colsEl.appendChild(row);
       });
     }
     renderCols();
@@ -1234,7 +1350,23 @@
     let lastQuery = null;
     const vt = createVirtualTable(handle, schema, sessionId, state, (st)=>{ lastState = st; }, (q)=>{ lastQuery = q; fetchAndRenderStats(q); });
     tableEl.appendChild(vt.el);
-    if (vt.tools){ const tools = document.createElement('div'); tools.style.marginTop='8px'; tools.appendChild(vt.tools); tableEl.appendChild(tools); }
+    if (vt.tools){
+      const tools = document.createElement('div'); tools.style.marginTop='8px'; tools.appendChild(vt.tools);
+      // Add an Insert select cols (picked) button that honors the column picker
+      const insertPicked = document.createElement('button'); insertPicked.className='toggle-link'; insertPicked.textContent='Insert select cols (picked)';
+      insertPicked.onclick = () => {
+        if (!activeEditor || !activeEditor.insert){ setStatus('No active editor'); return; }
+        const names = colNames.filter(n => selectedColsForInsert.has(n));
+        if (!names.length){ setStatus('Pick columns on the left first'); return; }
+        const arr = '{' + names.map(n => JSON.stringify(n)).join(', ') + '}';
+        const subj = guessValueSymbol();
+        const code = `Select[${subj}, ${arr}]`;
+        activeEditor.insert(code);
+        setStatus('Inserted select');
+      };
+      tools.appendChild(insertPicked);
+      tableEl.appendChild(tools);
+    }
     // Fetch initial stats for the first column
     fetchAndRenderStats(null);
 
@@ -1868,6 +2000,17 @@ async function duplicateCell(cellId){
 
   // Hover docs tooltip for editor tokens
   let docTip = null; let docHoverTimer = null;
+  function guessValueSymbol(){
+    try{
+      if (!activeEditor || !activeEditor.textarea) return 'value';
+      const ta = activeEditor.textarea; const v = ta.value; const pos = ta.selectionStart|0;
+      let i = pos-1; while(i>=0 && /\s/.test(v[i])) i--; let j=i; while(j>=0 && /[A-Za-z0-9_]/.test(v[j])) j--; const word = v.slice(j+1, i+1);
+      if (word && /^[A-Za-z_][A-Za-z0-9_]*$/.test(word) && !KEYWORDS.includes(word)) return word;
+      let m, last=null; const reLet=/\blet\s+([A-Za-z_][A-Za-z0-9_]*)/g; while((m = reLet.exec(v))){ if (m.index < pos) last = m[1]; else break; }
+      if (last) return last;
+      return 'value';
+    } catch(_) { return 'value'; }
+  }
   function ensureDocTip(){ if (docTip) return docTip; const d = document.createElement('div'); d.className='doc-tip'; d.style.display='none'; document.body.appendChild(d); d.addEventListener('click', (ev) => { const t = ev.target; if (t && t.getAttribute && t.getAttribute('data-doc-symbol')){ const sym = t.getAttribute('data-doc-symbol'); if (sym){ setCurrentDocSymbol(sym); if (typeof setRightOpen === 'function') setRightOpen(true); hideDocTip(); } } }); docTip = d; return d; }
   function showDocTipAt(x,y,html){ const d=ensureDocTip(); d.innerHTML = html; d.style.display='block'; d.style.left = (x + 12) + 'px'; d.style.top = (y + 12) + 'px'; }
   function hideDocTip(){ if (docTip) docTip.style.display='none'; }

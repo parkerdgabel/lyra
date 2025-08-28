@@ -190,6 +190,10 @@ header .title{font-weight:600;letter-spacing:.2px}
 .vt-spark div{flex:1;background:var(--accent);opacity:.7}
 .vt-nullbar{position:relative;height:4px;margin-top:4px;background:color-mix(in oklab, var(--border) 60%, transparent);border-radius:3px;overflow:hidden}
 .vt-nullbar > div{position:absolute;left:0;top:0;bottom:0;background:color-mix(in oklab, var(--danger) 55%, transparent)}
+/* Viewer columns picker */
+#viewerCols .col{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer}
+#viewerCols .col:hover{background:color-mix(in oklab, var(--surface-3) 60%, transparent)}
+#viewerCols .col.active{background:color-mix(in oklab, var(--accent) 15%, transparent)}
 
 /* Buttons and chips additions */
 .btn.sm{padding:6px 10px;border-radius:7px;font-size:.9rem}
@@ -404,3 +408,7 @@ main{padding:16px;max-width:1100px;margin:0 auto}
 :root[data-density="compact"] .code{height:120px;line-height:1.4}
 :root[data-density="compact"] .ed-highlight{line-height:1.4}
 :root[data-density="compact"] .outputs pre{padding:8px 10px;border-radius:8px}
+/* Inline mini-table selection */
+.mini-table tr.selected{background:color-mix(in oklab, var(--accent) 18%, transparent)}
+.mini-table{border-collapse:collapse;width:100%}
+.mini-table th,.mini-table td{border:1px solid var(--border);padding:4px 6px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
