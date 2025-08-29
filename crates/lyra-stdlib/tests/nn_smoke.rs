@@ -11,12 +11,12 @@ fn net_chain_properties() {
     stdlib::register_all(&mut ev);
 
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
-        vec![Value::List(vec![Value::Symbol("LinearLayer".into())])],
+        Value::Symbol("Sequential".into()),
+        vec![Value::List(vec![Value::Symbol("Dense".into())])],
     ));
 
     let props = ev.eval(Value::expr(
-        Value::Symbol("NetProperty".into()),
+        Value::Symbol("Property".into()),
         vec![net.clone(), Value::String("Properties".into())],
     ));
     if let Value::List(xs) = props {
@@ -26,12 +26,12 @@ fn net_chain_properties() {
     }
 
     let kind = ev.eval(Value::expr(
-        Value::Symbol("NetProperty".into()),
+        Value::Symbol("Property".into()),
         vec![net.clone(), Value::String("Kind".into())],
     ));
     assert!(matches!(kind, Value::String(_)));
 
-    let summary = ev.eval(Value::expr(Value::Symbol("NetSummary".into()), vec![net]));
+    let summary = ev.eval(Value::expr(Value::Symbol("Summary".into()), vec![net]));
     if let Value::Assoc(m) = summary {
         assert!(m.contains_key("LayerCount"));
     } else {
@@ -46,11 +46,11 @@ fn net_apply_identity() {
     stdlib::register_all(&mut ev);
 
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
-        vec![Value::List(vec![Value::Symbol("ActivationLayer".into())])],
+        Value::Symbol("Sequential".into()),
+        vec![Value::List(vec![Value::expr(Value::Symbol("Relu".into()), vec![])])],
     ));
 
     // Direct NetApply call (no training)
-    let out = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, Value::Integer(42)]));
+    let out = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, Value::Integer(42)]));
     assert!(matches!(out, Value::Integer(42)));
 }

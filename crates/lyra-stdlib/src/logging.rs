@@ -77,32 +77,22 @@ fn logger() -> &'static Mutex<LoggerConf> {
 thread_local! { static LOG_CONTEXT: std::cell::RefCell<Vec<HashMap<String, Value>>> = std::cell::RefCell::new(Vec::new()); }
 
 pub fn register_logging(ev: &mut Evaluator) {
-    ev.register("ConfigureLogging", configure_logging as NativeFn, Attributes::empty());
-    ev.register("Log", log_fn as NativeFn, Attributes::empty());
+    ev.register("Logger", logger_fn as NativeFn, Attributes::empty());
+    ev.register("Write", write_fn as NativeFn, Attributes::empty());
     ev.register("WithLogger", with_logger as NativeFn, Attributes::HOLD_ALL);
-    ev.register("SetLogLevel", set_log_level as NativeFn, Attributes::empty());
-    ev.register("GetLogger", get_logger as NativeFn, Attributes::empty());
+    ev.register("SetLevel", set_level as NativeFn, Attributes::empty());
+    ev.register("Info", info_fn as NativeFn, Attributes::empty());
 }
 
 pub fn register_logging_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    crate::register_if(
-        ev,
-        pred,
-        "ConfigureLogging",
-        configure_logging as NativeFn,
-        Attributes::empty(),
-    );
-    crate::register_if(ev, pred, "Log", log_fn as NativeFn, Attributes::empty());
+    crate::register_if(ev, pred, "Logger", logger_fn as NativeFn, Attributes::empty());
+    crate::register_if(ev, pred, "Write", write_fn as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "WithLogger", with_logger as NativeFn, Attributes::HOLD_ALL);
-    crate::register_if(ev, pred, "SetLogLevel", set_log_level as NativeFn, Attributes::empty());
-    crate::register_if(ev, pred, "GetLogger", get_logger as NativeFn, Attributes::empty());
+    crate::register_if(ev, pred, "SetLevel", set_level as NativeFn, Attributes::empty());
+    crate::register_if(ev, pred, "Info", info_fn as NativeFn, Attributes::empty());
 }
 
-fn configure_logging(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("ConfigureLogging".into())), args };
-    }
-    let opts = ev.eval(args[0].clone());
+fn apply_logger_opts(opts: Value) -> Result<(), String> {
     if let Value::Assoc(m) = opts {
         let mut conf = logger().lock().unwrap().clone();
         if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Level") {
@@ -127,13 +117,13 @@ fn configure_logging(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         // If File.Path set, try opening once to validate
         if let Some(path) = conf.file.clone() {
             if std::fs::OpenOptions::new().create(true).append(true).open(&path).is_err() {
-                return failure("Log::config", &format!("Cannot open log file: {}", path));
+                return Err(format!("Cannot open log file: {}", path));
             }
         }
         *logger().lock().unwrap() = conf;
-        return Value::Boolean(true);
+        return Ok(());
     }
-    failure("Log::config", "Expected options assoc")
+    Err("Expected options assoc".into())
 }
 
 fn emit(level: Level, msg: String, meta: Option<HashMap<String, Value>>) -> Result<(), String> {
@@ -221,30 +211,55 @@ fn val_to_json(v: &Value) -> serde_json::Value {
     }
 }
 
-fn log_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("Log".into())), args };
-    }
-    let level_s = match ev.eval(args[0].clone()) {
-        Value::String(s) | Value::Symbol(s) => s,
-        other => format_value(&other),
-    };
-    let level = Level::from_str(&level_s).unwrap_or(Level::Info);
-    let msg = match ev.eval(args[1].clone()) {
-        Value::String(s) | Value::Symbol(s) => s,
-        other => format_value(&other),
-    };
-    let meta = if args.len() >= 3 {
-        match ev.eval(args[2].clone()) {
-            Value::Assoc(m) => Some(m),
-            _ => None,
+fn logger_handle() -> Value {
+    Value::Assoc(HashMap::from([
+        (String::from("__type"), Value::String(String::from("Logger"))),
+        (String::from("Name"), Value::String(String::from("default"))),
+    ]))
+}
+
+fn logger_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [] => logger_handle(),
+        [opts] => {
+            let v = ev.eval(opts.clone());
+            match apply_logger_opts(v) {
+                Ok(_) => logger_handle(),
+                Err(msg) => failure("Logger::config", &msg),
+            }
         }
-    } else {
-        None
-    };
-    match emit(level, msg, meta) {
-        Ok(_) => Value::Boolean(true),
-        Err(e) => failure("Log::emit", &e),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Logger".into())), args },
+    }
+}
+
+fn write_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Write".into())), args };
+    }
+    let target = ev.eval(args[0].clone());
+    match target {
+        Value::Assoc(m) if matches!(m.get("__type"), Some(Value::String(s)) if s=="Logger") => {
+            // Write[logger, msg, <|Level->..., Meta->...|>]
+            let msg = match ev.eval(args[1].clone()) {
+                Value::String(s) | Value::Symbol(s) => s,
+                other => format_value(&other),
+            };
+            let mut level = Level::Info;
+            let mut meta: Option<HashMap<String, Value>> = None;
+            if args.len() >= 3 {
+                if let Value::Assoc(o) = ev.eval(args[2].clone()) {
+                    if let Some(Value::String(s)) | Some(Value::Symbol(s)) = o.get("Level") {
+                        if let Some(l) = Level::from_str(s) { level = l; }
+                    }
+                    if let Some(Value::Assoc(m)) = o.get("Meta") { meta = Some(m.clone()); }
+                }
+            }
+            match emit(level, msg, meta) {
+                Ok(_) => Value::Boolean(true),
+                Err(e) => failure("Logger::emit", &e),
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Write".into())), args },
     }
 }
 
@@ -264,31 +279,35 @@ fn with_logger(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     out
 }
 
-fn set_log_level(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("SetLogLevel".into())), args };
+fn set_level(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [target, lvl] => {
+            let _t = ev.eval(target.clone());
+            let s = match ev.eval(lvl.clone()) { Value::String(s) | Value::Symbol(s) => s, _ => String::new() };
+            if let Some(l) = Level::from_str(&s) {
+                logger().lock().unwrap().level = l;
+                Value::Boolean(true)
+            } else {
+                failure("Logger::config", "Unknown level")
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("SetLevel".into())), args },
     }
-    let s = match ev.eval(args[0].clone()) {
-        Value::String(s) | Value::Symbol(s) => s,
-        _ => String::new(),
-    };
-    if let Some(l) = Level::from_str(&s) {
-        logger().lock().unwrap().level = l;
-        return Value::Boolean(true);
-    }
-    failure("Log::config", "Unknown log level")
 }
 
-fn get_logger(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if !args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("GetLogger".into())), args };
+fn info_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [target] => {
+            let _t = ev.eval(target.clone());
+            let c = logger().lock().unwrap().clone();
+            Value::Assoc(HashMap::from([
+                ("Level".into(), Value::String(c.level.as_str().into())),
+                ("Format".into(), Value::String(if c.json { "json" } else { "text" }.into())),
+                ("To".into(), Value::String(if c.file.is_some() { "file" } else { "stderr" }.into())),
+                ("IncludeTime".into(), Value::Boolean(c.include_time)),
+                ("IncludeSpan".into(), Value::Boolean(c.include_span)),
+            ]))
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Info".into())), args },
     }
-    let c = logger().lock().unwrap().clone();
-    Value::Assoc(HashMap::from([
-        ("Level".into(), Value::String(c.level.as_str().into())),
-        ("Format".into(), Value::String(if c.json { "json" } else { "text" }.into())),
-        ("To".into(), Value::String(if c.file.is_some() { "file" } else { "stderr" }.into())),
-        ("IncludeTime".into(), Value::Boolean(c.include_time)),
-        ("IncludeSpan".into(), Value::Boolean(c.include_span)),
-    ]))
 }

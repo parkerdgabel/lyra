@@ -2,12 +2,13 @@
 
 | Tag | Functions |
 |---|---|
+| `activation` | 4 |
 | `actor` | 4 |
 | `admin` | 1 |
 | `aead` | 3 |
-| `aggregate` | 4 |
+| `aggregate` | 5 |
 | `apply` | 1 |
-| `archive` | 6 |
+| `archive` | 8 |
 | `assoc` | 13 |
 | `async` | 4 |
 | `audio` | 12 |
@@ -18,15 +19,16 @@
 | `centrality` | 1 |
 | `channel` | 6 |
 | `chart` | 3 |
-| `classification` | 1 |
+| `classification` | 2 |
 | `clock` | 2 |
-| `clustering` | 1 |
+| `clustering` | 2 |
 | `collection` | 3 |
 | `commit` | 2 |
 | `compose` | 2 |
 | `compress` | 2 |
 | `concurrency` | 21 |
 | `conn` | 4 |
+| `control` | 3 |
 | `cookies` | 2 |
 | `copy` | 1 |
 | `create` | 2 |
@@ -34,20 +36,22 @@
 | `crypto` | 16 |
 | `csv` | 8 |
 | `cursor` | 3 |
-| `cv` | 1 |
-| `dataset` | 28 |
+| `cv` | 2 |
+| `dataset` | 29 |
 | `datetime` | 3 |
 | `db` | 18 |
-| `decode` | 3 |
+| `decode` | 2 |
 | `decomposition` | 1 |
 | `delete` | 2 |
 | `diff` | 1 |
-| `distinct` | 3 |
+| `dist` | 8 |
+| `distinct` | 4 |
 | `duration` | 4 |
 | `edit` | 6 |
-| `encode` | 3 |
+| `encode` | 2 |
 | `encoding` | 6 |
 | `env` | 2 |
+| `estimator` | 1 |
 | `explain` | 2 |
 | `export` | 1 |
 | `expr` | 1 |
@@ -56,15 +60,15 @@
 | `fixedpoint` | 2 |
 | `flow` | 1 |
 | `fold` | 3 |
-| `frame` | 20 |
-| `fs` | 27 |
+| `frame` | 22 |
+| `fs` | 30 |
 | `functional` | 11 |
-| `generic` | 31 |
+| `generic` | 35 |
 | `git` | 22 |
 | `glob` | 1 |
 | `graph` | 16 |
 | `graphs` | 1 |
-| `groupby` | 1 |
+| `group` | 2 |
 | `hash` | 1 |
 | `html` | 8 |
 | `http` | 25 |
@@ -73,7 +77,8 @@
 | `index` | 1 |
 | `inference` | 2 |
 | `info` | 1 |
-| `inspect` | 4 |
+| `init` | 1 |
+| `inspect` | 5 |
 | `introspect` | 7 |
 | `introspection` | 2 |
 | `io` | 65 |
@@ -82,24 +87,26 @@
 | `json` | 9 |
 | `jwt` | 2 |
 | `kdf` | 3 |
-| `layer` | 15 |
+| `key` | 1 |
+| `layer` | 28 |
 | `layout` | 1 |
 | `lifecycle` | 2 |
 | `link` | 1 |
-| `list` | 28 |
+| `list` | 41 |
 | `log` | 1 |
-| `logic` | 12 |
+| `logic` | 15 |
 | `mac` | 2 |
-| `map` | 1 |
-| `math` | 9 |
+| `map` | 2 |
+| `math` | 16 |
 | `media` | 7 |
-| `metrics` | 2 |
-| `ml` | 11 |
+| `metrics` | 3 |
+| `ml` | 20 |
 | `move` | 1 |
 | `mst` | 1 |
 | `mutate` | 2 |
-| `net` | 17 |
-| `nn` | 23 |
+| `net` | 16 |
+| `network` | 6 |
+| `nn` | 45 |
 | `optimize` | 1 |
 | `os` | 9 |
 | `parallel` | 2 |
@@ -114,9 +121,9 @@
 | `process` | 10 |
 | `product` | 1 |
 | `query` | 3 |
-| `random` | 2 |
+| `random` | 9 |
 | `redirect` | 1 |
-| `regex` | 5 |
+| `regex` | 8 |
 | `regression` | 1 |
 | `remote` | 4 |
 | `remove` | 2 |
@@ -129,44 +136,57 @@
 | `search` | 4 |
 | `select` | 3 |
 | `server` | 12 |
-| `set` | 5 |
+| `set` | 8 |
 | `sign` | 3 |
 | `sleep` | 1 |
 | `slice` | 5 |
-| `sort` | 2 |
+| `sort` | 7 |
 | `sql` | 17 |
-| `stats` | 2 |
+| `stats` | 18 |
 | `status` | 2 |
 | `stdio` | 1 |
 | `store` | 1 |
-| `string` | 29 |
+| `string` | 35 |
 | `sum` | 1 |
 | `sync` | 1 |
 | `table` | 1 |
 | `temp` | 2 |
 | `template` | 4 |
+| `tensor` | 6 |
 | `testing` | 1 |
-| `text` | 6 |
+| `text` | 5 |
 | `time` | 16 |
 | `tls` | 1 |
 | `toml` | 2 |
-| `train` | 1 |
+| `train` | 2 |
 | `transform` | 11 |
+| `transformer` | 13 |
 | `traversal` | 2 |
-| `tune` | 1 |
+| `tune` | 2 |
 | `tx` | 3 |
 | `types` | 2 |
 | `tz` | 1 |
+| `unicode` | 4 |
+| `update` | 2 |
 | `upsert` | 1 |
 | `url` | 3 |
 | `vcs` | 2 |
 | `vector` | 6 |
+| `vision` | 1 |
 | `viz` | 6 |
-| `watch` | 2 |
+| `watch` | 3 |
 | `write` | 3 |
 | `xml` | 1 |
 | `yaml` | 2 |
-| `zip` | 1 |
+
+## `activation`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Gelu` | `Gelu[x?]` | GELU activation (tanh approx): tensor op or zero-arg layer |
+| `Relu` | `Relu[x]` | Rectified Linear Unit: max(0, x). Tensor-aware: elementwise on tensors. |
+| `Sigmoid` | `Sigmoid[x?]` | Sigmoid activation: tensor op or zero-arg layer |
+| `Softmax` | `Softmax[x?, opts?]` | Softmax activation: zero-arg layer (tensor variant TBD) |
 
 ## `actor`
 
@@ -196,7 +216,8 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `Agg` | `Agg[ds, aggs]` | Aggregate groups to single rows |
-| `Count` | `Count[list, value|pred]` | Count elements equal to value or matching predicate |
+| `Aggregate` | `Aggregate[group, spec]` | Aggregate grouped data (stub) |
+| `Count` | `Count[x]` | Count items/elements (lists, assocs, Bag/VectorStore) |
 | `CountBy` | `CountBy[f, list]` | Counts by key function (assoc) |
 | `Tally` | `Tally[list]` | Counts by value (assoc) |
 
@@ -204,7 +225,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `Apply` | `Apply[f, list]` | Apply head to list elements: Apply[f, {…}] |
+| `Apply` | `Apply[f, list, level?]` | Apply head to list elements: Apply[f, {…}] |
 
 ## `archive`
 
@@ -214,25 +235,27 @@
 | `Gzip` | `Gzip[dataOrPath, opts?]` | Gzip-compress a string or a file; optionally write to path. |
 | `Tar` | `Tar[dest, inputs, opts?]` | Create a .tar (optionally .tar.gz) archive from inputs. |
 | `TarExtract` | `TarExtract[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
-| `Zip` | `Zip[dest, inputs]` | Create a .zip archive from files/directories. |
+| `Untar` | `Untar[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
+| `Unzip` | `Unzip[pairs|src, dest?]` | Unzip list of pairs or extract a .zip (dispatched). Overloads: Unzip[pairs]; Unzip[src, dest] |
+| `Zip` | `Zip[a|dest, b|inputs]` | Zip lists into pairs or create a .zip archive (dispatched). Overloads: Zip[a, b]; Zip[dest, inputs] |
 | `ZipExtract` | `ZipExtract[src, dest]` | Extract a .zip archive into a directory. |
 
 ## `assoc`
 
 | Function | Usage | Summary |
 |---|---|---|
-| `AssociationMap` | `AssociationMap[f, assoc]` | Map values with f[v] |
+| `AssociationMap` | `AssociationMap[fn, assoc]` | Map values in an association |
 | `AssociationMapKV` | `AssociationMapKV[fn, assoc]` | Map key/value pairs in an association |
-| `AssociationMapKeys` | `AssociationMapKeys[f, assoc]` | Map keys with f[k] |
-| `AssociationMapPairs` | `AssociationMapPairs[f, assoc]` | Map over (k,v) pairs |
+| `AssociationMapKeys` | `AssociationMapKeys[fn, assoc]` | Map keys in an association |
+| `AssociationMapPairs` | `AssociationMapPairs[fn, assoc]` | Map to key/value pairs or assoc |
 | `Columns` | `Columns[ds]` | List column names for a dataset |
 | `KeySort` | `KeySort[assoc]` | Sort association by key |
 | `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
-| `Lookup` | `Lookup[assoc, key, default]` | Lookup value from association |
+| `MapAt` | `MapAt[f, subject, indexOrKey]` | Apply function at 1-based index or key. |
 | `Merge` | `Merge[args]` | Merge associations with optional combiner |
 | `Part` | `Part[subject, index]` | Index into list/assoc |
-| `Select` | `Select[ds, cols]` | Select/compute columns |
-| `SortBy` | `SortBy[keyFn, assoc]` | Sort association by derived key |
+| `ReplacePart` | `ReplacePart[subject, indexOrKey, value]` | Replace element at 1-based index or key. |
+| `Select` | `Select[assoc|ds, pred|keys|cols]` | Select keys/columns or compute columns (dispatched). Overloads: Select[assoc, pred\|keys]; Select[ds, cols] |
 | `Values` | `Values[assoc]` | List values of an association |
 
 ## `async`
@@ -329,6 +352,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Classifier` | `Classifier[opts?]` | Create classifier spec (Logistic/Baseline) |
 | `Classify` | `Classify[data, opts]` | Train a classifier (baseline/logistic) |
 
 ## `clock`
@@ -343,6 +367,7 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `Cluster` | `Cluster[data, opts]` | Cluster points (prototype) |
+| `Clusterer` | `Clusterer[opts?]` | Create clusterer spec |
 
 ## `collection`
 
@@ -350,7 +375,7 @@
 |---|---|---|
 | `Add` | `Add[target, value]` | Add value to a collection (alias of Insert for some types) |
 | `Insert` | `Insert[target, value]` | Insert into collection or structure (dispatched) |
-| `Remove` | `Remove[path, opts?]` | Remove a file or directory (Recursive option) |
+| `Remove` | `Remove[target|path, value?|opts?]` | Remove from a collection/structure or remove a file/directory (dispatched). Overloads: Remove[target, value?]; Remove[path, opts?] |
 
 ## `commit`
 
@@ -407,6 +432,14 @@
 | `ConnectionInfo` | `ConnectionInfo[conn]` | Inspect connection details (dsn, kind, tx) |
 | `Disconnect` | `Disconnect[conn]` | Close a database connection |
 | `Ping` | `Ping[conn]` | Check connectivity for a database connection |
+
+## `control`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Do` | `Do[body, n]` | Execute body n times. |
+| `For` | `For[init, test, step, body]` | C-style loop with init/test/step. |
+| `While` | `While[test, body]` | Repeat body while test evaluates to True. |
 
 ## `cookies`
 
@@ -480,6 +513,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `CrossValidate` | `CrossValidate[obj, data, opts?]` | Cross-validate estimator + data (dispatched) |
 | `MLCrossValidate` | `MLCrossValidate[data, opts]` | Cross-validate with simple split |
 
 ## `dataset`
@@ -494,22 +528,23 @@
 | `Concat` | `Concat[inputs]` | Concatenate datasets by rows (schema-union) |
 | `DatasetFromRows` | `DatasetFromRows[rows]` | Create dataset from list of row assocs |
 | `DatasetSchema` | `DatasetSchema[ds]` | Describe schema for a dataset |
+| `DistinctBy` | `DistinctBy[dataset, keys, opts?]` | Alias for DistinctOn |
 | `DistinctOn` | `DistinctOn[ds, keys, orderBy?, keepLast?]` | Keep one row per key with order policy |
 | `ExplainDataset` | `ExplainDataset[ds]` | Inspect logical plan for a dataset |
 | `ExplainSQL` | `ExplainSQL[ds]` | Render SQL for pushdown-capable parts |
 | `Filter` | `Filter[pred, list]` | Keep elements where pred[x] is True |
 | `FilterRows` | `FilterRows[ds, pred]` | Filter rows by predicate (held) |
-| `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 | `Import` | `Import[source, opts?]` | Import data from path/URL into Frame (default), Dataset (Target->"Dataset"), or Value. Automatically sniffs Type/Delimiter/Header. |
-| `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
+| `Join` | `Join[a|left, b|right, on?, how?]` | Join lists or datasets (dispatched). Overloads: Join[list1, list2]; Join[left, right, on, how?] |
 | `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
+| `Limit` | `Limit[dataset, n]` | Alias for Head on Dataset |
 | `ReadCSVDataset` | `ReadCSVDataset[path, opts?]` | Read a CSV file into a dataset |
 | `ReadJsonLinesDataset` | `ReadJsonLinesDataset[path, opts?]` | Read a JSONL file into a dataset |
 | `RenameCols` | `RenameCols[ds, mapping]` | Rename columns via mapping |
-| `Select` | `Select[ds, cols]` | Select/compute columns |
+| `Select` | `Select[assoc|ds, pred|keys|cols]` | Select keys/columns or compute columns (dispatched). Overloads: Select[assoc, pred\|keys]; Select[ds, cols] |
 | `SelectCols` | `SelectCols[ds, cols]` | Select subset of columns by name |
 | `Table` | `Table[conn, name]` | Reference a table as a Dataset |
-| `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
+| `Union` | `Union[args]` | Union for lists (stable) or sets (dispatched) |
 | `UnionByPosition` | `UnionByPosition[ds1, ds2, …]` | Union datasets by column position. |
 | `WithColumns` | `WithColumns[ds, defs]` | Add/compute new columns (held) |
 | `WriteDataset` | `WriteDataset[conn, table, dataset, opts?]` | Write a Dataset into a table |
@@ -533,14 +568,14 @@
 | `ConnectionInfo` | `ConnectionInfo[conn]` | Inspect connection details (dsn, kind, tx) |
 | `CursorInfo` | `CursorInfo[cursor]` | Inspect cursor details (dsn, kind, sql, offset) |
 | `Disconnect` | `Disconnect[conn]` | Close a database connection |
-| `Exec` | `Exec[conn, sql, params?]` | Execute DDL/DML (non-SELECT) |
+| `Execute` | `Execute[conn, sql, opts?]` | Execute DDL/DML (non-SELECT) |
 | `Fetch` | `Fetch[cursor, limit?]` | Fetch next batch of rows from a cursor |
 | `InsertRows` | `InsertRows[conn, table, rows]` | Insert multiple rows (assoc list) into a table |
 | `ListTables` | `ListTables[conn]` | List tables on a connection |
 | `Ping` | `Ping[conn]` | Check connectivity for a database connection |
+| `Query` | `Query[conn, sql, opts?]` | Run a SELECT query and return rows |
 | `RegisterTable` | `RegisterTable[conn, name, rows]` | Register in-memory rows as a table (mock) |
 | `Rollback` | `Rollback[conn]` | Rollback the current transaction |
-| `SQL` | `SQL[conn, sql, params?]` | Run a SELECT query and return rows |
 | `SQLCursor` | `SQLCursor[conn, sql, params?]` | Run a query and return a cursor handle |
 | `Table` | `Table[conn, name]` | Reference a table as a Dataset |
 | `UpsertRows` | `UpsertRows[conn, table, rows, keys?]` | Upsert rows (assoc list) into a table |
@@ -552,7 +587,6 @@
 |---|---|---|
 | `AudioDecode` | `AudioDecode[input, opts]` | Decode audio to raw (s16le) or WAV |
 | `ImageDecode` | `ImageDecode[input, opts]` | Decode image to raw or reencoded bytes |
-| `NetDecoder` | `NetDecoder[net]` | Get network output decoder |
 
 ## `decomposition`
 
@@ -573,11 +607,25 @@
 |---|---|---|
 | `GitDiff` | `GitDiff[opts?]` | Diff against base and optional paths |
 
+## `dist`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Bernoulli` | `Bernoulli[p]` | Bernoulli distribution head (probability p). |
+| `BinomialDistribution` | `BinomialDistribution[n, p]` | Binomial distribution head (trials n, prob p). |
+| `CDF` | `CDF[dist, x]` | Cumulative distribution for a distribution at x. |
+| `Exponential` | `Exponential[lambda]` | Exponential distribution head (rate λ). |
+| `Gamma` | `Gamma[k, theta]` | Gamma distribution head (shape k, scale θ). |
+| `Normal` | `Normal[mu, sigma]` | Normal distribution head (mean μ, stddev σ). |
+| `PDF` | `PDF[dist, x]` | Probability density/mass for a distribution at x. |
+| `Poisson` | `Poisson[lambda]` | Poisson distribution head (rate λ). |
+
 ## `distinct`
 
 | Function | Usage | Summary |
 |---|---|---|
 | `Distinct` | `Distinct[ds, cols?]` | Drop duplicate rows (optionally by columns) |
+| `DistinctBy` | `DistinctBy[dataset, keys, opts?]` | Alias for DistinctOn |
 | `DistinctOn` | `DistinctOn[ds, keys, orderBy?, keepLast?]` | Keep one row per key with order policy |
 | `FrameDistinct` | `FrameDistinct[frame, cols?]` | Distinct rows in Frame (optional columns) |
 
@@ -607,7 +655,6 @@
 |---|---|---|
 | `AudioEncode` | `AudioEncode[raw, opts]` | Encode raw PCM to WAV |
 | `ImageEncode` | `ImageEncode[input, encoding]` | Encode raw pixels or reencode bytes |
-| `NetEncoder` | `NetEncoder[net]` | Get network input encoder |
 
 ## `encoding`
 
@@ -626,6 +673,12 @@
 |---|---|---|
 | `GetEnv` | `GetEnv[name]` | Read environment variable |
 | `SetEnv` | `SetEnv[name, value]` | Set environment variable |
+
+## `estimator`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Estimator` | `Estimator[opts]` | Create ML estimator spec (Task/Method) |
 
 ## `explain`
 
@@ -691,6 +744,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Aggregate` | `Aggregate[group, spec]` | Aggregate grouped data (stub) |
 | `Columns` | `Columns[ds]` | List column names for a dataset |
 | `Filter` | `Filter[pred, list]` | Keep elements where pred[x] is True |
 | `FrameCollect` | `FrameCollect[frame]` | Materialize Frame to list of rows |
@@ -708,9 +762,10 @@
 | `FrameUnion` | `FrameUnion[frames…]` | Union Frames by columns (schema union) |
 | `FrameWriteCSV` | `FrameWriteCSV[path, frame, opts?]` | Write Frame to CSV file |
 | `FrameWriteJSONLines` | `FrameWriteJSONLines[path, frame, opts?]` | Write Frame rows as JSON Lines |
+| `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 | `Import` | `Import[source, opts?]` | Import data from path/URL into Frame (default), Dataset (Target->"Dataset"), or Value. Automatically sniffs Type/Delimiter/Header. |
 | `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
-| `Select` | `Select[ds, cols]` | Select/compute columns |
+| `Select` | `Select[assoc|ds, pred|keys|cols]` | Select keys/columns or compute columns (dispatched). Overloads: Select[assoc, pred\|keys]; Select[ds, cols] |
 
 ## `fs`
 
@@ -738,17 +793,20 @@
 | `TempDir` | `TempDir[]` | Create a unique temporary directory |
 | `TempFile` | `TempFile[]` | Create a unique temporary file |
 | `Touch` | `Touch[path]` | Create file if missing (update mtime) |
+| `Untar` | `Untar[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
+| `Unzip` | `Unzip[pairs|src, dest?]` | Unzip list of pairs or extract a .zip (dispatched). Overloads: Unzip[pairs]; Unzip[src, dest] |
+| `Watch` | `Watch[path, handler, opts?]` | Watch directory and stream events (held) |
 | `WatchDirectory` | `WatchDirectory[path, handler, opts?]` | Watch directory and stream events (held) |
 | `WriteBytes` | `WriteBytes[path, bytes]` | Write bytes to file |
 | `WriteFile` | `WriteFile[path, content]` | Write stringified content to file |
-| `Zip` | `Zip[dest, inputs]` | Create a .zip archive from files/directories. |
+| `Zip` | `Zip[a|dest, b|inputs]` | Zip lists into pairs or create a .zip archive (dispatched). Overloads: Zip[a, b]; Zip[dest, inputs] |
 | `ZipExtract` | `ZipExtract[src, dest]` | Extract a .zip archive into a directory. |
 
 ## `functional`
 
 | Function | Usage | Summary |
 |---|---|---|
-| `Apply` | `Apply[f, list]` | Apply head to list elements: Apply[f, {…}] |
+| `Apply` | `Apply[f, list, level?]` | Apply head to list elements: Apply[f, {…}] |
 | `Compose` | `Compose[f, g, …]` | Compose functions left-to-right |
 | `ConstantFunction` | `ConstantFunction[c]` | Constant function returning c |
 | `FixedPoint` | `FixedPoint[f, x]` | Iterate f until convergence |
@@ -770,10 +828,11 @@
 | `Contains` | `Contains[container, item]` | Membership test for strings/lists/sets/assocs |
 | `ContainsKeyQ` | `ContainsKeyQ[subject, key]` | Key membership for assoc/rows/Dataset/Frame |
 | `ContainsQ` | `ContainsQ[container, item]` | Alias: membership predicate |
-| `Count` | `Count[list, value|pred]` | Count elements equal to value or matching predicate |
+| `Count` | `Count[x]` | Count items/elements (lists, assocs, Bag/VectorStore) |
 | `Describe` | `Describe[name, items, opts?]` | Define a test suite (held). |
 | `Distinct` | `Distinct[ds, cols?]` | Drop duplicate rows (optionally by columns) |
-| `EmptyQ` | `EmptyQ[x]` | Is list/string/assoc empty? |
+| `EmptyQ` | `EmptyQ[x]` | Is the subject empty? (lists, strings, assocs, handles) |
+| `EqualQ` | `EqualQ[a, b]` | Structural equality for sets and handles |
 | `Export` | `Export[symbols]` | Mark symbol(s) as public |
 | `Filter` | `Filter[pred, list]` | Keep elements where pred[x] is True |
 | `HasKeyQ` | `HasKeyQ[subject, key]` | Alias: key membership predicate |
@@ -781,20 +840,23 @@
 | `Import` | `Import[source, opts?]` | Import data from path/URL into Frame (default), Dataset (Target->"Dataset"), or Value. Automatically sniffs Type/Delimiter/Header. |
 | `ImportBytes` | `ImportBytes[bytes, opts?]` | Parse byte buffer using Type (text/json/etc.) |
 | `ImportString` | `ImportString[content, opts?]` | Parse in-memory strings into Frame/Dataset/Value. Automatically sniffs Type if missing. |
-| `Info` | `Info[target]` | Information about a handle (Graph, etc.) |
+| `Info` | `Info[target]` | Information about a handle (Logger, Graph, etc.) |
 | `Insert` | `Insert[target, value]` | Insert into collection or structure (dispatched) |
-| `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
+| `Join` | `Join[a|left, b|right, on?, how?]` | Join lists or datasets (dispatched). Overloads: Join[list1, list2]; Join[left, right, on, how?] |
 | `Keys` | `Keys[subject]` | Keys/columns for assoc, rows, Dataset, or Frame |
 | `Length` | `Length[x]` | Length of a list or string. |
 | `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate (Contains) |
 | `Offset` | `Offset[ds, n]` | Skip first n rows |
-| `Remove` | `Remove[path, opts?]` | Remove a file or directory (Recursive option) |
+| `Remove` | `Remove[target|path, value?|opts?]` | Remove from a collection/structure or remove a file/directory (dispatched). Overloads: Remove[target, value?]; Remove[path, opts?] |
 | `Search` | `Search[target, query, opts?]` | Search within a store or index (VectorStore, Index) |
-| `Select` | `Select[ds, cols]` | Select/compute columns |
+| `Select` | `Select[assoc|ds, pred|keys|cols]` | Select keys/columns or compute columns (dispatched). Overloads: Select[assoc, pred\|keys]; Select[ds, cols] |
 | `Sniff` | `Sniff[source]` | Suggest Type and options for a source (file/url/string/bytes). |
-| `Sort` | `Sort[ds, by, opts?]` | Sort rows by columns |
+| `Sort` | `Sort[list|ds, by?, opts?]` | Sort a list or dataset (dispatched). Overloads: Sort[list]; Sort[ds, by, opts?] |
+| `SortBy` | `SortBy[f, subject]` | Sort list by key or association by derived key. |
+| `StableKey` | `StableKey[x]` | Canonical stable key string for ordering/dedup. |
+| `SubsetQ` | `SubsetQ[a, b]` | Is a subset of b? (sets, lists) |
 | `Tail` | `Tail[ds, n]` | Take last n rows |
-| `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
+| `Union` | `Union[args]` | Union for lists (stable) or sets (dispatched) |
 
 ## `git`
 
@@ -856,10 +918,11 @@
 |---|---|---|
 | `Graph` | `Graph[opts?]` | Create a graph handle |
 
-## `groupby`
+## `group`
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Aggregate` | `Aggregate[group, spec]` | Aggregate grouped data (stub) |
 | `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 
 ## `hash`
@@ -948,13 +1011,19 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `MLApply` | `MLApply[model, x, opts]` | Apply a trained model to input |
-| `NetApply` | `NetApply[net, x, opts]` | Apply network to input |
+| `Predict` | `Predict[obj, x, opts?]` | Predict using a network or estimator (dispatched) |
 
 ## `info`
 
 | Function | Usage | Summary |
 |---|---|---|
 | `VectorCount` | `VectorCount[store]` | Count items in store |
+
+## `init`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Initializer` | `Initializer[opts?]` | Initializer spec for layer parameters |
 
 ## `inspect`
 
@@ -963,6 +1032,7 @@
 | `FrameHead` | `FrameHead[frame, n?]` | Take first n rows from Frame |
 | `FrameTail` | `FrameTail[frame, n?]` | Take last n rows from Frame |
 | `Head` | `Head[ds, n]` | Take first n rows |
+| `Limit` | `Limit[dataset, n]` | Alias for Head on Dataset |
 | `Tail` | `Tail[ds, n]` | Take last n rows |
 
 ## `introspect`
@@ -973,16 +1043,16 @@
 | `CursorInfo` | `CursorInfo[cursor]` | Inspect cursor details (dsn, kind, sql, offset) |
 | `GraphInfo` | `GraphInfo[graph]` | Summary and counts for graph |
 | `MLProperty` | `MLProperty[model, prop]` | Inspect trained model properties |
-| `NetProperty` | `NetProperty[net, prop]` | Inspect network properties |
-| `NetSummary` | `NetSummary[net]` | Summarize network structure |
 | `ProcessInfo` | `ProcessInfo[proc]` | Inspect process handle (pid, running, exit) |
+| `Property` | `Property[obj, key]` | Property of a network or ML model (dispatch) |
+| `Summary` | `Summary[obj]` | Summary of a network (dispatch to NetSummary) |
 
 ## `introspection`
 
 | Function | Usage | Summary |
 |---|---|---|
 | `Describe` | `Describe[name, items, opts?]` | Define a test suite (held). |
-| `Info` | `Info[target]` | Information about a handle (Graph, etc.) |
+| `Info` | `Info[target]` | Information about a handle (Logger, Graph, etc.) |
 
 ## `io`
 
@@ -1096,25 +1166,44 @@
 | `PasswordHash` | `PasswordHash[password, opts]` | Password hash with Argon2id (PHC string) |
 | `PasswordVerify` | `PasswordVerify[password, hash]` | Verify Argon2id password hash |
 
+## `key`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `StableKey` | `StableKey[x]` | Canonical stable key string for ordering/dedup. |
+
 ## `layer`
 
 | Function | Usage | Summary |
 |---|---|---|
-| `ActivationLayer` | `ActivationLayer[kind, opts]` | Activation layer (Relu/Tanh/Sigmoid) |
-| `AddLayer` | `AddLayer[opts]` | Elementwise add layer |
-| `BatchNormLayer` | `BatchNormLayer[opts]` | Batch normalization layer |
-| `ConcatLayer` | `ConcatLayer[axis]` | Concatenate along axis |
-| `ConvolutionLayer` | `ConvolutionLayer[opts]` | 2D convolution layer |
-| `DropoutLayer` | `DropoutLayer[p]` | Dropout probability p |
-| `EmbeddingLayer` | `EmbeddingLayer[opts]` | Embedding lookup layer |
-| `FlattenLayer` | `FlattenLayer[opts]` | Flatten to 1D |
-| `LayerNormLayer` | `LayerNormLayer[opts]` | Layer normalization layer |
-| `LinearLayer` | `LinearLayer[opts]` | Linear (fully-connected) layer |
-| `MulLayer` | `MulLayer[opts]` | Elementwise multiply layer |
-| `PoolingLayer` | `PoolingLayer[opts]` | Pooling layer (Max/Avg) |
-| `ReshapeLayer` | `ReshapeLayer[shape]` | Reshape to given shape |
-| `SoftmaxLayer` | `SoftmaxLayer[opts]` | Softmax over last dimension |
-| `TransposeLayer` | `TransposeLayer[perm]` | Transpose dimensions |
+| `BatchNorm` | `BatchNorm[opts?]` | Batch normalization layer |
+| `CausalSelfAttention` | `CausalSelfAttention[opts?]` | Self-attention with causal mask |
+| `ConvTranspose2D` | `ConvTranspose2D[opts?]` | Transposed 2D convolution (deconv) |
+| `Convolution1D` | `Convolution1D[opts?]` | 1D convolution layer |
+| `Convolution2D` | `Convolution2D[opts?]` | 2D convolution layer (uses InputChannels/Height/Width for forward) |
+| `CrossAttention` | `CrossAttention[opts?]` | Cross-attention over Memory (seq x dim) |
+| `Dense` | `Dense[opts?]` | Linear (fully-connected) layer |
+| `DepthwiseConv2D` | `DepthwiseConv2D[opts?]` | Depthwise 2D convolution (per-channel) |
+| `Embedding` | `Embedding[vocab, dim]` | Embedding lookup layer |
+| `FFN` | `FFN[opts?]` | Position-wise feed-forward (supports SwiGLU/GEGLU) |
+| `Flatten` | `Flatten[list, levels?]` | Flatten by levels (default 1) |
+| `GlobalAvgPool2D` | `GlobalAvgPool2D[opts?]` | Global average pooling per channel over HxW |
+| `GroupNorm` | `GroupNorm[opts?]` | Group normalization over channels (NumGroups) |
+| `LayerNorm` | `LayerNorm[opts?]` | Layer normalization layer |
+| `MultiHeadAttention` | `MultiHeadAttention[opts?]` | Self-attention with NumHeads (single-batch) |
+| `PatchEmbedding2D` | `PatchEmbedding2D[opts?]` | 2D to tokens via patch conv |
+| `Pooling` | `Pooling[kind, size, opts?]` | Pooling layer (Max/Avg) |
+| `Pooling2D` | `Pooling2D[kind, size, opts?]` | 2D pooling layer (Max/Avg; requires InputChannels/Height/Width) |
+| `PositionalEmbedding` | `PositionalEmbedding[opts?]` | Learnable positional embeddings (adds to input) |
+| `PositionalEncoding` | `PositionalEncoding[opts?]` | Sinusoidal positional encoding (adds to input) |
+| `RMSNorm` | `RMSNorm[opts?]` | RMS normalization (seq x dim) |
+| `Residual` | `Residual[layers]` | Residual wrapper with inner layers (adds skip) |
+| `ResidualBlock` | `ResidualBlock[opts?]` | Two convs + skip (MVP no norm) |
+| `SeparableConv2D` | `SeparableConv2D[opts?]` | Depthwise + 1x1 pointwise convolution |
+| `TransformerDecoder` | `TransformerDecoder[opts?]` | Decoder block: self-attn + cross-attn + FFN (single-batch) |
+| `TransformerEncoder` | `TransformerEncoder[opts?]` | Encoder block: MHA + FFN with residuals and layer norms (single-batch) |
+| `Transpose` | `Transpose[A, perm?]` | Transpose of a matrix (or NDTranspose for permutations). |
+| `Upsample2D` | `Upsample2D[opts?]` | Upsample HxW (Nearest/Bilinear) |
 
 ## `layout`
 
@@ -1141,32 +1230,45 @@
 |---|---|---|
 | `All` | `All[list, pred?]` | True if all match (optionally with pred) |
 | `Any` | `Any[list, pred?]` | True if any matches (optionally with pred) |
+| `ArgMax` | `ArgMax[f, list]` | 1-based index of maximal key. |
+| `ArgMin` | `ArgMin[f, list]` | 1-based index of minimal key. |
 | `CountBy` | `CountBy[f, list]` | Counts by key function (assoc) |
 | `Drop` | `Drop[list, n]` | Drop first n (last if negative) |
 | `DropWhile` | `DropWhile[pred, list]` | Drop while pred[x] holds |
 | `Filter` | `Filter[pred, list]` | Keep elements where pred[x] is True |
 | `Find` | `Find[pred, list]` | First element where pred[x] |
-| `Flatten` | `Flatten[list, levels?]` | Flatten by levels (default 1) |
-| `Join` | `Join[left, right, on, how?]` | Join two datasets on keys |
+| `First` | `First[list]` | First element of a list (or Null). |
+| `Init` | `Init[list]` | All but the last element. |
+| `Join` | `Join[a|left, b|right, on?, how?]` | Join lists or datasets (dispatched). Overloads: Join[list1, list2]; Join[left, right, on, how?] |
+| `Last` | `Last[list]` | Last element of a list (or Null). |
 | `ListEdges` | `ListEdges[graph, opts?]` | List edges |
 | `ListNodes` | `ListNodes[graph, opts?]` | List nodes |
+| `MapAt` | `MapAt[f, subject, indexOrKey]` | Apply function at 1-based index or key. |
 | `MapIndexed` | `MapIndexed[f, list]` | Map with index (1-based) |
+| `MapThread` | `MapThread[f, lists]` | Map function over zipped lists (zip-with). |
+| `MaxBy` | `MaxBy[f, list]` | Element with maximal derived key. |
+| `MinBy` | `MinBy[f, list]` | Element with minimal derived key. |
 | `Part` | `Part[subject, index]` | Index into list/assoc |
 | `Partition` | `Partition[list, n, step?]` | Partition into fixed-size chunks |
 | `Position` | `Position[pred, list]` | 1-based index of first match |
+| `RandomChoice` | `RandomChoice[list]` | Random element from a list. |
 | `Range` | `Range[a, b, step?]` | Create numeric range |
 | `Reduce` | `Reduce[f, init?, list]` | Fold list with function |
 | `Reject` | `Reject[pred, list]` | Drop elements where pred[x] is True |
+| `ReplacePart` | `ReplacePart[subject, indexOrKey, value]` | Replace element at 1-based index or key. |
+| `Rest` | `Rest[list]` | All but the first element. |
+| `Sample` | `Sample[list, k]` | Sample k distinct elements from a list. |
 | `Scan` | `Scan[f, init?, list]` | Prefix scan with function |
+| `Shuffle` | `Shuffle[list]` | Shuffle list uniformly. |
 | `Slice` | `Slice[list, start, len?]` | Slice list by start and length |
+| `SubsetQ` | `SubsetQ[a, b]` | Is a subset of b? (sets, lists) |
 | `Take` | `Take[list, n]` | Take first n (last if negative) |
 | `TakeWhile` | `TakeWhile[pred, list]` | Take while pred[x] holds |
 | `Tally` | `Tally[list]` | Counts by value (assoc) |
 | `Total` | `Total[list]` | Sum elements in a list |
-| `Transpose` | `Transpose[rows]` | Transpose list of lists |
-| `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
+| `Union` | `Union[args]` | Union for lists (stable) or sets (dispatched) |
 | `Unique` | `Unique[list]` | Stable deduplicate list |
-| `Unzip` | `Unzip[pairs]` | Unzip pairs into two lists |
+| `UniqueBy` | `UniqueBy[f, list]` | Stable dedupe by derived key. |
 
 ## `log`
 
@@ -1181,8 +1283,10 @@
 | `All` | `All[list, pred?]` | True if all match (optionally with pred) |
 | `And` | `And[args…]` | Logical AND (short-circuit) |
 | `Any` | `Any[list, pred?]` | True if any matches (optionally with pred) |
+| `Do` | `Do[body, n]` | Execute body n times. |
 | `Equal` | `Equal[args…]` | Test equality across arguments |
 | `EvenQ` | `EvenQ[n]` | Is integer even? |
+| `For` | `For[init, test, step, body]` | C-style loop with init/test/step. |
 | `Greater` | `Greater[args…]` | Strictly decreasing sequence |
 | `GreaterEqual` | `GreaterEqual[args…]` | Non-increasing sequence |
 | `Less` | `Less[args…]` | Strictly increasing sequence |
@@ -1190,6 +1294,7 @@
 | `Not` | `Not[x]` | Logical NOT |
 | `OddQ` | `OddQ[n]` | Is integer odd? |
 | `Or` | `Or[args…]` | Logical OR (short-circuit) |
+| `While` | `While[test, body]` | Repeat body while test evaluates to True. |
 
 ## `mac`
 
@@ -1203,18 +1308,26 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `MapIndexed` | `MapIndexed[f, list]` | Map with index (1-based) |
+| `MapThread` | `MapThread[f, lists]` | Map function over zipped lists (zip-with). |
 
 ## `math`
 
 | Function | Usage | Summary |
 |---|---|---|
 | `Abs` | `Abs[x]` | Absolute value |
+| `Correlation` | `Correlation[a, b]` | Pearson correlation of two numeric lists (population moments). |
+| `Covariance` | `Covariance[a, b]` | Covariance of two numeric lists (population). |
 | `EvenQ` | `EvenQ[n]` | Is integer even? |
+| `Kurtosis` | `Kurtosis[data]` | Kurtosis (fourth standardized moment). |
 | `Max` | `Max[args]` | Maximum of values or list |
 | `Min` | `Min[args]` | Minimum of values or list |
+| `Mode` | `Mode[data]` | Most frequent element (ties broken by first appearance). |
 | `OddQ` | `OddQ[n]` | Is integer odd? |
+| `Percentile` | `Percentile[data, p|list]` | Percentile(s) of numeric data using R-7 interpolation. |
 | `Plus` | `Plus[a, b, …]` | Add numbers; Listable, Flat, Orderless. |
+| `Quantile` | `Quantile[data, q|list]` | Quantile(s) of numeric data using R-7 interpolation. |
 | `Range` | `Range[a, b, step?]` | Create numeric range |
+| `Skewness` | `Skewness[data]` | Skewness (third standardized moment). |
 | `Times` | `Times[a, b, …]` | Multiply numbers; Listable, Flat, Orderless. |
 | `Total` | `Total[list]` | Sum elements in a list |
 
@@ -1235,23 +1348,33 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `ClassifyMeasurements` | `ClassifyMeasurements[model, data, opts]` | Evaluate classifier metrics |
+| `Evaluate` | `Evaluate[model, data, opts?]` | Evaluate an ML model on data (dispatched) |
 | `PredictMeasurements` | `PredictMeasurements[model, data, opts]` | Evaluate regressor metrics |
 
 ## `ml`
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Classifier` | `Classifier[opts?]` | Create classifier spec (Logistic/Baseline) |
 | `Classify` | `Classify[data, opts]` | Train a classifier (baseline/logistic) |
 | `ClassifyMeasurements` | `ClassifyMeasurements[model, data, opts]` | Evaluate classifier metrics |
 | `Cluster` | `Cluster[data, opts]` | Cluster points (prototype) |
+| `Clusterer` | `Clusterer[opts?]` | Create clusterer spec |
+| `CrossValidate` | `CrossValidate[obj, data, opts?]` | Cross-validate estimator + data (dispatched) |
 | `DimensionReduce` | `DimensionReduce[data, opts]` | Reduce dimensionality (PCA-like) |
+| `Estimator` | `Estimator[opts]` | Create ML estimator spec (Task/Method) |
+| `Evaluate` | `Evaluate[model, data, opts?]` | Evaluate an ML model on data (dispatched) |
 | `FeatureExtract` | `FeatureExtract[data, opts]` | Learn preprocessing (impute/encode/standardize) |
 | `MLApply` | `MLApply[model, x, opts]` | Apply a trained model to input |
 | `MLCrossValidate` | `MLCrossValidate[data, opts]` | Cross-validate with simple split |
 | `MLProperty` | `MLProperty[model, prop]` | Inspect trained model properties |
 | `MLTune` | `MLTune[data, opts]` | Parameter sweep with basic scoring |
-| `Predict` | `Predict[data, opts]` | Train a regressor (baseline/linear) |
+| `Predict` | `Predict[obj, x, opts?]` | Predict using a network or estimator (dispatched) |
 | `PredictMeasurements` | `PredictMeasurements[model, data, opts]` | Evaluate regressor metrics |
+| `Property` | `Property[obj, key]` | Property of a network or ML model (dispatch) |
+| `Regressor` | `Regressor[opts?]` | Create regressor spec (Linear/Baseline) |
+| `Train` | `Train[net, data, opts?]` | Train a network (dispatch to NetTrain) |
+| `Tune` | `Tune[obj, data, opts?]` | Hyperparameter search for estimator (dispatched) |
 
 ## `move`
 
@@ -1291,36 +1414,68 @@
 | `HttpServeTls` | `HttpServeTls[handler, opts]` | Start an HTTPS server with TLS cert/key |
 | `HttpServerAddr` | `HttpServerAddr[server]` | Get bound address for a server id |
 | `HttpServerStop` | `HttpServerStop[server]` | Stop a running HTTP server by id |
-| `NetChain` | `NetChain[layers, opts]` | Construct a sequential network from layers |
-| `NetInitialize` | `NetInitialize[net, opts]` | Initialize network parameters |
+| `Initialize` | `Initialize[net, opts?]` | Initialize a network (dispatch to NetInitialize) |
+
+## `network`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `GraphNetwork` | `GraphNetwork[nodes, edges, opts?]` | Construct a graph network from nodes/edges |
+| `Network` | `Network[opts?]` | Create network |
+| `Sequential` | `Sequential[layers, opts?]` | Construct a sequential network from layers |
+| `TransformerDecoderStack` | `TransformerDecoderStack[opts?]` | Stack N decoder blocks (returns Sequential network) |
+| `TransformerEncoderDecoder` | `TransformerEncoderDecoder[opts?]` | Convenience: builds Encoder/Decoder stacks |
+| `TransformerEncoderStack` | `TransformerEncoderStack[opts?]` | Stack N encoder blocks (returns Sequential network) |
 
 ## `nn`
 
 | Function | Usage | Summary |
 |---|---|---|
-| `ActivationLayer` | `ActivationLayer[kind, opts]` | Activation layer (Relu/Tanh/Sigmoid) |
-| `AddLayer` | `AddLayer[opts]` | Elementwise add layer |
-| `BatchNormLayer` | `BatchNormLayer[opts]` | Batch normalization layer |
-| `ConcatLayer` | `ConcatLayer[axis]` | Concatenate along axis |
-| `ConvolutionLayer` | `ConvolutionLayer[opts]` | 2D convolution layer |
-| `DropoutLayer` | `DropoutLayer[p]` | Dropout probability p |
-| `EmbeddingLayer` | `EmbeddingLayer[opts]` | Embedding lookup layer |
-| `FlattenLayer` | `FlattenLayer[opts]` | Flatten to 1D |
-| `LayerNormLayer` | `LayerNormLayer[opts]` | Layer normalization layer |
-| `LinearLayer` | `LinearLayer[opts]` | Linear (fully-connected) layer |
-| `MulLayer` | `MulLayer[opts]` | Elementwise multiply layer |
-| `NetApply` | `NetApply[net, x, opts]` | Apply network to input |
-| `NetChain` | `NetChain[layers, opts]` | Construct a sequential network from layers |
-| `NetDecoder` | `NetDecoder[net]` | Get network output decoder |
-| `NetEncoder` | `NetEncoder[net]` | Get network input encoder |
-| `NetInitialize` | `NetInitialize[net, opts]` | Initialize network parameters |
-| `NetProperty` | `NetProperty[net, prop]` | Inspect network properties |
-| `NetSummary` | `NetSummary[net]` | Summarize network structure |
-| `NetTrain` | `NetTrain[net, data, opts]` | Train network on data |
-| `PoolingLayer` | `PoolingLayer[opts]` | Pooling layer (Max/Avg) |
-| `ReshapeLayer` | `ReshapeLayer[shape]` | Reshape to given shape |
-| `SoftmaxLayer` | `SoftmaxLayer[opts]` | Softmax over last dimension |
-| `TransposeLayer` | `TransposeLayer[perm]` | Transpose dimensions |
+| `BatchNorm` | `BatchNorm[opts?]` | Batch normalization layer |
+| `CausalSelfAttention` | `CausalSelfAttention[opts?]` | Self-attention with causal mask |
+| `ConvTranspose2D` | `ConvTranspose2D[opts?]` | Transposed 2D convolution (deconv) |
+| `Convolution1D` | `Convolution1D[opts?]` | 1D convolution layer |
+| `Convolution2D` | `Convolution2D[opts?]` | 2D convolution layer (uses InputChannels/Height/Width for forward) |
+| `CrossAttention` | `CrossAttention[opts?]` | Cross-attention over Memory (seq x dim) |
+| `Dense` | `Dense[opts?]` | Linear (fully-connected) layer |
+| `DepthwiseConv2D` | `DepthwiseConv2D[opts?]` | Depthwise 2D convolution (per-channel) |
+| `Embedding` | `Embedding[vocab, dim]` | Embedding lookup layer |
+| `FFN` | `FFN[opts?]` | Position-wise feed-forward (supports SwiGLU/GEGLU) |
+| `Fit` | `Fit[net, data, opts?]` | Train a network (alias of NetTrain) |
+| `Flatten` | `Flatten[list, levels?]` | Flatten by levels (default 1) |
+| `Gelu` | `Gelu[x?]` | GELU activation (tanh approx): tensor op or zero-arg layer |
+| `GlobalAvgPool2D` | `GlobalAvgPool2D[opts?]` | Global average pooling per channel over HxW |
+| `GraphNetwork` | `GraphNetwork[nodes, edges, opts?]` | Construct a graph network from nodes/edges |
+| `GroupNorm` | `GroupNorm[opts?]` | Group normalization over channels (NumGroups) |
+| `Initialize` | `Initialize[net, opts?]` | Initialize a network (dispatch to NetInitialize) |
+| `Initializer` | `Initializer[opts?]` | Initializer spec for layer parameters |
+| `LayerNorm` | `LayerNorm[opts?]` | Layer normalization layer |
+| `MultiHeadAttention` | `MultiHeadAttention[opts?]` | Self-attention with NumHeads (single-batch) |
+| `Network` | `Network[opts?]` | Create network |
+| `PatchEmbedding2D` | `PatchEmbedding2D[opts?]` | 2D to tokens via patch conv |
+| `Pooling` | `Pooling[kind, size, opts?]` | Pooling layer (Max/Avg) |
+| `Pooling2D` | `Pooling2D[kind, size, opts?]` | 2D pooling layer (Max/Avg; requires InputChannels/Height/Width) |
+| `PositionalEmbedding` | `PositionalEmbedding[opts?]` | Learnable positional embeddings (adds to input) |
+| `PositionalEncoding` | `PositionalEncoding[opts?]` | Sinusoidal positional encoding (adds to input) |
+| `Predict` | `Predict[obj, x, opts?]` | Predict using a network or estimator (dispatched) |
+| `Property` | `Property[obj, key]` | Property of a network or ML model (dispatch) |
+| `RMSNorm` | `RMSNorm[opts?]` | RMS normalization (seq x dim) |
+| `Relu` | `Relu[x]` | Rectified Linear Unit: max(0, x). Tensor-aware: elementwise on tensors. |
+| `Residual` | `Residual[layers]` | Residual wrapper with inner layers (adds skip) |
+| `ResidualBlock` | `ResidualBlock[opts?]` | Two convs + skip (MVP no norm) |
+| `SeparableConv2D` | `SeparableConv2D[opts?]` | Depthwise + 1x1 pointwise convolution |
+| `Sequential` | `Sequential[layers, opts?]` | Construct a sequential network from layers |
+| `Sigmoid` | `Sigmoid[x?]` | Sigmoid activation: tensor op or zero-arg layer |
+| `Softmax` | `Softmax[x?, opts?]` | Softmax activation: zero-arg layer (tensor variant TBD) |
+| `Summary` | `Summary[obj]` | Summary of a network (dispatch to NetSummary) |
+| `Train` | `Train[net, data, opts?]` | Train a network (dispatch to NetTrain) |
+| `TransformerDecoder` | `TransformerDecoder[opts?]` | Decoder block: self-attn + cross-attn + FFN (single-batch) |
+| `TransformerDecoderStack` | `TransformerDecoderStack[opts?]` | Stack N decoder blocks (returns Sequential network) |
+| `TransformerEncoder` | `TransformerEncoder[opts?]` | Encoder block: MHA + FFN with residuals and layer norms (single-batch) |
+| `TransformerEncoderDecoder` | `TransformerEncoderDecoder[opts?]` | Convenience: builds Encoder/Decoder stacks |
+| `TransformerEncoderStack` | `TransformerEncoderStack[opts?]` | Stack N encoder blocks (returns Sequential network) |
+| `Transpose` | `Transpose[A, perm?]` | Transpose of a matrix (or NDTranspose for permutations). |
+| `Upsample2D` | `Upsample2D[opts?]` | Upsample HxW (Nearest/Bilinear) |
 
 ## `optimize`
 
@@ -1404,7 +1559,7 @@
 | `Contains` | `Contains[container, item]` | Membership test for strings/lists/sets/assocs |
 | `ContainsKeyQ` | `ContainsKeyQ[subject, key]` | Key membership for assoc/rows/Dataset/Frame |
 | `ContainsQ` | `ContainsQ[container, item]` | Alias: membership predicate |
-| `EmptyQ` | `EmptyQ[x]` | Is list/string/assoc empty? |
+| `EmptyQ` | `EmptyQ[x]` | Is the subject empty? (lists, strings, assocs, handles) |
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `HasKeyQ` | `HasKeyQ[subject, key]` | Alias: key membership predicate |
 | `MemberQ` | `MemberQ[container, item]` | Alias: membership predicate (Contains) |
@@ -1460,16 +1615,23 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `Exec` | `Exec[conn, sql, params?]` | Execute DDL/DML (non-SELECT) |
+| `Execute` | `Execute[conn, sql, opts?]` | Execute DDL/DML (non-SELECT) |
 | `Neighbors` | `Neighbors[graph, id, opts?]` | Neighbor node ids for a node |
-| `SQL` | `SQL[conn, sql, params?]` | Run a SELECT query and return rows |
+| `Query` | `Query[conn, sql, opts?]` | Run a SELECT query and return rows |
 
 ## `random`
 
 | Function | Usage | Summary |
 |---|---|---|
 | `RandomBytes` | `RandomBytes[len, opts]` | Generate cryptographically secure random bytes |
+| `RandomChoice` | `RandomChoice[list]` | Random element from a list. |
 | `RandomHex` | `RandomHex[len]` | Generate random hex string of n bytes |
+| `RandomInteger` | `RandomInteger[spec?]` | Random integer; supports {min,max}. |
+| `RandomReal` | `RandomReal[spec?]` | Random real; supports {min,max}. |
+| `RandomVariate` | `RandomVariate[dist, n?]` | Sample from a distribution (optionally n samples). |
+| `Sample` | `Sample[list, k]` | Sample k distinct elements from a list. |
+| `SeedRandom` | `SeedRandom[seed?]` | Seed deterministic RNG scoped to this evaluator. |
+| `Shuffle` | `Shuffle[list]` | Shuffle list uniformly. |
 
 ## `redirect`
 
@@ -1481,17 +1643,20 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `RegexCaptureNames` | `RegexCaptureNames[pattern]` | Ordered list of named capture groups. |
 | `RegexFind` | `RegexFind[s, pattern]` | Find first regex capture groups |
 | `RegexFindAll` | `RegexFindAll[s, pattern]` | Find all regex capture groups |
+| `RegexGroups` | `RegexGroups[pattern, s]` | Capture groups of first match. |
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `RegexSplit` | `RegexSplit[pattern, s]` | Split string by regex pattern. |
 
 ## `regression`
 
 | Function | Usage | Summary |
 |---|---|---|
-| `Predict` | `Predict[data, opts]` | Train a regressor (baseline/linear) |
+| `Regressor` | `Regressor[opts?]` | Create regressor spec (Linear/Baseline) |
 
 ## `remote`
 
@@ -1598,10 +1763,13 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `Concat` | `Concat[inputs]` | Concatenate datasets by rows (schema-union) |
+| `EqualQ` | `EqualQ[a, b]` | Structural equality for sets and handles |
 | `FrameUnion` | `FrameUnion[frames…]` | Union Frames by columns (schema union) |
-| `Union` | `Union[inputs, byColumns?]` | Union multiple datasets (by columns) |
+| `SubsetQ` | `SubsetQ[a, b]` | Is a subset of b? (sets, lists) |
+| `Union` | `Union[args]` | Union for lists (stable) or sets (dispatched) |
 | `UnionByPosition` | `UnionByPosition[ds1, ds2, …]` | Union datasets by column position. |
 | `Unique` | `Unique[list]` | Stable deduplicate list |
+| `UniqueBy` | `UniqueBy[f, list]` | Stable dedupe by derived key. |
 
 ## `sign`
 
@@ -1631,8 +1799,13 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `ArgMax` | `ArgMax[f, list]` | 1-based index of maximal key. |
+| `ArgMin` | `ArgMin[f, list]` | 1-based index of minimal key. |
 | `FrameSort` | `FrameSort[frame, by]` | Sort Frame by columns |
-| `Sort` | `Sort[ds, by, opts?]` | Sort rows by columns |
+| `MaxBy` | `MaxBy[f, list]` | Element with maximal derived key. |
+| `MinBy` | `MinBy[f, list]` | Element with minimal derived key. |
+| `Sort` | `Sort[list|ds, by?, opts?]` | Sort a list or dataset (dispatched). Overloads: Sort[list]; Sort[ds, by, opts?] |
+| `SortBy` | `SortBy[f, subject]` | Sort list by key or association by derived key. |
 
 ## `sql`
 
@@ -1642,15 +1815,15 @@
 | `Commit` | `Commit[conn]` | Commit the current transaction |
 | `Connect` | `Connect[dsn|opts]` | Open database connection (mock/sqlite/duckdb) |
 | `Disconnect` | `Disconnect[conn]` | Close a database connection |
-| `Exec` | `Exec[conn, sql, params?]` | Execute DDL/DML (non-SELECT) |
+| `Execute` | `Execute[conn, sql, opts?]` | Execute DDL/DML (non-SELECT) |
 | `ExplainSQL` | `ExplainSQL[ds]` | Render SQL for pushdown-capable parts |
 | `Fetch` | `Fetch[cursor, limit?]` | Fetch next batch of rows from a cursor |
 | `InsertRows` | `InsertRows[conn, table, rows]` | Insert multiple rows (assoc list) into a table |
 | `ListTables` | `ListTables[conn]` | List tables on a connection |
 | `Ping` | `Ping[conn]` | Check connectivity for a database connection |
+| `Query` | `Query[conn, sql, opts?]` | Run a SELECT query and return rows |
 | `RegisterTable` | `RegisterTable[conn, name, rows]` | Register in-memory rows as a table (mock) |
 | `Rollback` | `Rollback[conn]` | Rollback the current transaction |
-| `SQL` | `SQL[conn, sql, params?]` | Run a SELECT query and return rows |
 | `SQLCursor` | `SQLCursor[conn, sql, params?]` | Run a query and return a cursor handle |
 | `Table` | `Table[conn, name]` | Reference a table as a Dataset |
 | `UpsertRows` | `UpsertRows[conn, table, rows, keys?]` | Upsert rows (assoc list) into a table |
@@ -1660,8 +1833,24 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Bernoulli` | `Bernoulli[p]` | Bernoulli distribution head (probability p). |
+| `BinomialDistribution` | `BinomialDistribution[n, p]` | Binomial distribution head (trials n, prob p). |
+| `CDF` | `CDF[dist, x]` | Cumulative distribution for a distribution at x. |
+| `Correlation` | `Correlation[a, b]` | Pearson correlation of two numeric lists (population moments). |
+| `Covariance` | `Covariance[a, b]` | Covariance of two numeric lists (population). |
 | `Describe` | `Describe[name, items, opts?]` | Define a test suite (held). |
+| `Exponential` | `Exponential[lambda]` | Exponential distribution head (rate λ). |
 | `FrameDescribe` | `FrameDescribe[frame, opts?]` | Quick stats by columns |
+| `Gamma` | `Gamma[k, theta]` | Gamma distribution head (shape k, scale θ). |
+| `Kurtosis` | `Kurtosis[data]` | Kurtosis (fourth standardized moment). |
+| `Mode` | `Mode[data]` | Most frequent element (ties broken by first appearance). |
+| `Normal` | `Normal[mu, sigma]` | Normal distribution head (mean μ, stddev σ). |
+| `PDF` | `PDF[dist, x]` | Probability density/mass for a distribution at x. |
+| `Percentile` | `Percentile[data, p|list]` | Percentile(s) of numeric data using R-7 interpolation. |
+| `Poisson` | `Poisson[lambda]` | Poisson distribution head (rate λ). |
+| `Quantile` | `Quantile[data, q|list]` | Quantile(s) of numeric data using R-7 interpolation. |
+| `RandomVariate` | `RandomVariate[dist, n?]` | Sample from a distribution (optionally n samples). |
+| `Skewness` | `Skewness[data]` | Skewness (third standardized moment). |
 
 ## `status`
 
@@ -1686,6 +1875,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `CaseFold` | `CaseFold[s]` | Unicode case-fold |
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
@@ -1695,24 +1885,29 @@
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `JsonEscape` | `JsonEscape[s]` | Escape string for JSON |
 | `JsonUnescape` | `JsonUnescape[s]` | Unescape JSON-escaped string |
+| `NormalizeUnicode` | `NormalizeUnicode[s, form?]` | Normalize to NFC/NFD/NFKC/NFKD |
+| `RegexCaptureNames` | `RegexCaptureNames[pattern]` | Ordered list of named capture groups. |
 | `RegexFind` | `RegexFind[s, pattern]` | Find first regex capture groups |
 | `RegexFindAll` | `RegexFindAll[s, pattern]` | Find all regex capture groups |
+| `RegexGroups` | `RegexGroups[pattern, s]` | Capture groups of first match. |
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `RegexSplit` | `RegexSplit[pattern, s]` | Split string by regex pattern. |
+| `RemoveDiacritics` | `RemoveDiacritics[s]` | Strip diacritics (stub) |
 | `SafeHtml` | `SafeHtml[s]` | Mark string as safe HTML (no escaping) |
 | `Slugify` | `Slugify[s]` | Slugify for URLs |
+| `Split` | `Split[s, sep]` | Split string by separator |
 | `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `StringContains` | `StringContains[s, substr]` | Does string contain substring? |
 | `StringJoin` | `StringJoin[parts]` | Concatenate list of parts. |
-| `StringLength` | `StringLength[s]` | Length of string (Unicode scalar count). |
 | `StringReplace` | `StringReplace[s, from, to]` | Replace all substring matches |
 | `StringReplaceFirst` | `StringReplaceFirst[s, from, to]` | Replace first substring match |
-| `StringSplit` | `StringSplit[s, sep]` | Split string by separator |
 | `StringTrim` | `StringTrim[s]` | Trim whitespace from both ends |
 | `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 | `ToLower` | `ToLower[s]` | Lowercase string. |
 | `ToUpper` | `ToUpper[s]` | Uppercase string. |
+| `Transliterate` | `Transliterate[s]` | Transliterate to ASCII (stub) |
 | `UrlDecode` | `UrlDecode[s]` | Decode percent-encoded string |
 | `UrlEncode` | `UrlEncode[s]` | Percent-encode string for URLs |
 
@@ -1750,6 +1945,17 @@
 | `HtmlTemplateRender` | `HtmlTemplateRender[handle, data, opts?]` | Render compiled HTML template with data |
 | `TemplateRender` | `TemplateRender[template, data, opts?]` | Render Mustache-like template with assoc data. |
 
+## `tensor`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `Gelu` | `Gelu[x?]` | GELU activation (tanh approx): tensor op or zero-arg layer |
+| `Relu` | `Relu[x]` | Rectified Linear Unit: max(0, x). Tensor-aware: elementwise on tensors. |
+| `Reshape` | `Reshape[tensor, dims]` | Reshape a tensor to new dims (supports -1) |
+| `Shape` | `Shape[tensor]` | Shape of a tensor |
+| `Sigmoid` | `Sigmoid[x?]` | Sigmoid activation: tensor op or zero-arg layer |
+| `Transpose` | `Transpose[A, perm?]` | Transpose of a matrix (or NDTranspose for permutations). |
+
 ## `testing`
 
 | Function | Usage | Summary |
@@ -1760,9 +1966,8 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `Split` | `Split[s, sep]` | Split string by separator |
 | `StringJoin` | `StringJoin[parts]` | Concatenate list of parts. |
-| `StringLength` | `StringLength[s]` | Length of string (Unicode scalar count). |
-| `StringSplit` | `StringSplit[s, sep]` | Split string by separator |
 | `StringTrim` | `StringTrim[s]` | Trim whitespace from both ends |
 | `ToLower` | `ToLower[s]` | Lowercase string. |
 | `ToUpper` | `ToUpper[s]` | Uppercase string. |
@@ -1805,7 +2010,8 @@
 
 | Function | Usage | Summary |
 |---|---|---|
-| `NetTrain` | `NetTrain[net, data, opts]` | Train network on data |
+| `Fit` | `Fit[net, data, opts?]` | Train a network (alias of NetTrain) |
+| `Train` | `Train[net, data, opts?]` | Train a network (dispatch to NetTrain) |
 
 ## `transform`
 
@@ -1823,6 +2029,24 @@
 | `SelectCols` | `SelectCols[ds, cols]` | Select subset of columns by name |
 | `WithColumns` | `WithColumns[ds, defs]` | Add/compute new columns (held) |
 
+## `transformer`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `CausalSelfAttention` | `CausalSelfAttention[opts?]` | Self-attention with causal mask |
+| `CrossAttention` | `CrossAttention[opts?]` | Cross-attention over Memory (seq x dim) |
+| `FFN` | `FFN[opts?]` | Position-wise feed-forward (supports SwiGLU/GEGLU) |
+| `MultiHeadAttention` | `MultiHeadAttention[opts?]` | Self-attention with NumHeads (single-batch) |
+| `PatchEmbedding2D` | `PatchEmbedding2D[opts?]` | 2D to tokens via patch conv |
+| `PositionalEmbedding` | `PositionalEmbedding[opts?]` | Learnable positional embeddings (adds to input) |
+| `PositionalEncoding` | `PositionalEncoding[opts?]` | Sinusoidal positional encoding (adds to input) |
+| `RMSNorm` | `RMSNorm[opts?]` | RMS normalization (seq x dim) |
+| `TransformerDecoder` | `TransformerDecoder[opts?]` | Decoder block: self-attn + cross-attn + FFN (single-batch) |
+| `TransformerDecoderStack` | `TransformerDecoderStack[opts?]` | Stack N decoder blocks (returns Sequential network) |
+| `TransformerEncoder` | `TransformerEncoder[opts?]` | Encoder block: MHA + FFN with residuals and layer norms (single-batch) |
+| `TransformerEncoderDecoder` | `TransformerEncoderDecoder[opts?]` | Convenience: builds Encoder/Decoder stacks |
+| `TransformerEncoderStack` | `TransformerEncoderStack[opts?]` | Stack N encoder blocks (returns Sequential network) |
+
 ## `traversal`
 
 | Function | Usage | Summary |
@@ -1835,6 +2059,7 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `MLTune` | `MLTune[data, opts]` | Parameter sweep with basic scoring |
+| `Tune` | `Tune[obj, data, opts?]` | Hyperparameter search for estimator (dispatched) |
 
 ## `tx`
 
@@ -1856,6 +2081,22 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `TimeZoneConvert` | `TimeZoneConvert[dt, tz]` | Convert DateTime to another timezone |
+
+## `unicode`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `CaseFold` | `CaseFold[s]` | Unicode case-fold |
+| `NormalizeUnicode` | `NormalizeUnicode[s, form?]` | Normalize to NFC/NFD/NFKC/NFKD |
+| `RemoveDiacritics` | `RemoveDiacritics[s]` | Strip diacritics (stub) |
+| `Transliterate` | `Transliterate[s]` | Transliterate to ASCII (stub) |
+
+## `update`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `MapAt` | `MapAt[f, subject, indexOrKey]` | Apply function at 1-based index or key. |
+| `ReplacePart` | `ReplacePart[subject, indexOrKey, value]` | Replace element at 1-based index or key. |
 
 ## `upsert`
 
@@ -1889,6 +2130,12 @@
 | `VectorStore` | `VectorStore[optsOrDsn]` | Create/open a vector store (memory or DSN) |
 | `VectorUpsert` | `VectorUpsert[store, rows]` | Insert or update vectors with metadata |
 
+## `vision`
+
+| Function | Usage | Summary |
+|---|---|---|
+| `PatchEmbedding2D` | `PatchEmbedding2D[opts?]` | 2D to tokens via patch conv |
+
 ## `viz`
 
 | Function | Usage | Summary |
@@ -1905,6 +2152,7 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `CancelWatch` | `CancelWatch[token]` | Cancel a directory watch |
+| `Watch` | `Watch[path, handler, opts?]` | Watch directory and stream events (held) |
 | `WatchDirectory` | `WatchDirectory[path, handler, opts?]` | Watch directory and stream events (held) |
 
 ## `write`
@@ -1927,9 +2175,3 @@
 |---|---|---|
 | `YamlParse` | `YamlParse[yaml]` | Parse YAML string to value |
 | `YamlStringify` | `YamlStringify[value, opts]` | Render value as YAML |
-
-## `zip`
-
-| Function | Usage | Summary |
-|---|---|---|
-| `Unzip` | `Unzip[pairs]` | Unzip pairs into two lists |

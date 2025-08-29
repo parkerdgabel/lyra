@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -147,7 +147,7 @@ fn main() -> std::io::Result<()> {
     for v in by_tag.values_mut() { v.sort_by(|a,b| a.0.cmp(&b.0)); }
 
     // Ensure output dir exists
-    let mut out_dir = PathBuf::from("docs/stdlib/GENERATED");
+    let out_dir = PathBuf::from("docs/stdlib/GENERATED");
     fs::create_dir_all(&out_dir)?;
     // Write per-module files
     for (module, entries) in by_mod.iter() {
@@ -180,7 +180,7 @@ fn main() -> std::io::Result<()> {
         cov.push_str("## Missing\n\n");
         for n in missing { cov.push_str(&format!("- {}\n", n)); }
     }
-    let mut cov_path = PathBuf::from("docs/stdlib/COVERAGE.md");
+    let cov_path = PathBuf::from("docs/stdlib/COVERAGE.md");
     fs::write(&cov_path, cov)?;
     Ok(())
 }

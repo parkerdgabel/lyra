@@ -394,14 +394,7 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
     // (moved to detailed specs below)
     // Tightened schemas with examples for core string functions
     // Note: placed after generic adds to avoid borrow conflicts with the `add` closure above.
-    if names.contains("StringLength") {
-        specs.push(tool_spec!(
-        "StringLength", summary: "Length of string (Unicode scalar count)", params: ["s"], tags: ["string"],
-        input_schema: schema_object_value(vec![ ("s".into(), schema_str!()) ], vec!["s".into()]), output_schema: schema_int!(), examples: [
-            Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("hé".into())) ]))), ("result".into(), Value::Integer(2))]))
-        ]
-    ));
-    }
+    // Prefer generic Length for strings
     if names.contains("ToUpper") {
         specs.push(tool_spec!(
         "ToUpper", summary: "Uppercase string", params: ["s"], tags: ["string","case"],
@@ -482,9 +475,9 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
         ]
     ));
     }
-    if names.contains("StringSplit") {
+    if names.contains("Split") {
         specs.push(tool_spec!(
-        "StringSplit", summary: "Split string by delimiter", params: ["s","delim"], tags: ["string","split"],
+        "Split", summary: "Split string by delimiter", params: ["s","delim"], tags: ["string","split"],
         input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("delim".into(), schema_str!()) ], vec!["s".into(), "delim".into()]), output_schema: schema_arr!(schema_str!()), examples: [
             Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a,b".into())), ("delim".into(), Value::String(",".into())) ]))), ("result".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())]))]))
         ]
@@ -522,17 +515,17 @@ fn stdlib_default_specs(ev: &mut Evaluator) -> Vec<Value> {
         ]
     ));
     }
-    if names.contains("StringReplace") {
+    if names.contains("Replace") {
         specs.push(tool_spec!(
-        "StringReplace", summary: "Replace all occurrences", params: ["s","from","to"], tags: ["string","replace"],
+        "Replace", summary: "Replace all occurrences", params: ["s","from","to"], tags: ["string","replace"],
         input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("from".into(), schema_str!()), ("to".into(), schema_str!()) ], vec!["s".into(), "from".into(), "to".into()]), output_schema: schema_str!(), examples: [
             Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a-b-a".into())), ("from".into(), Value::String("a".into())), ("to".into(), Value::String("x".into())) ]))), ("result".into(), Value::String("x-b-x".into()))]))
         ]
     ));
     }
-    if names.contains("StringReplaceFirst") {
+    if names.contains("ReplaceFirst") {
         specs.push(tool_spec!(
-        "StringReplaceFirst", summary: "Replace first occurrence", params: ["s","from","to"], tags: ["string","replace"],
+        "ReplaceFirst", summary: "Replace first occurrence", params: ["s","from","to"], tags: ["string","replace"],
         input_schema: schema_object_value(vec![ ("s".into(), schema_str!()), ("from".into(), schema_str!()), ("to".into(), schema_str!()) ], vec!["s".into(), "from".into(), "to".into()]), output_schema: schema_str!(), examples: [
             Value::Assoc(HashMap::from([("args".into(), Value::Assoc(HashMap::from([( "s".into(), Value::String("a-b-a".into())), ("from".into(), Value::String("a".into())), ("to".into(), Value::String("x".into())) ]))), ("result".into(), Value::String("x-b-a".into()))]))
         ]
@@ -1312,6 +1305,7 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let provided = ev.eval(args[1].clone());
     let reg = tool_reg().lock().unwrap();
     let spec_opt = reg.get(&key).cloned();
+    
     let mut normalized: Vec<Value> = Vec::new();
     let mut missing: Vec<Value> = Vec::new();
     let mut errors: Vec<Value> = Vec::new();
@@ -1331,13 +1325,17 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         };
         if let Value::Assoc(input) = provided.clone() {
             for p in &params {
-                if let Some(v) = input.get(p) {
+                let is_opt = p.ends_with('?');
+                let pname = if is_opt { p.trim_end_matches('?') } else { p.as_str() };
+                if let Some(v) = input.get(pname) {
                     normalized.push(v.clone());
-                } else if let Some(v) = defaults.get(p) {
+                } else if let Some(v) = defaults.get(pname) {
                     normalized.push(v.clone());
                 } else {
-                    ok = false;
-                    missing.push(Value::String(p.clone()));
+                    if !is_opt {
+                        ok = false;
+                        missing.push(Value::String(p.clone()));
+                    }
                     normalized.push(Value::Symbol("Null".into()));
                 }
             }
@@ -1363,7 +1361,7 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             v => vec![v],
         };
     }
-    Value::Assoc(
+    let out = Value::Assoc(
         vec![
             ("ok".to_string(), Value::Boolean(ok)),
             ("normalized_args".to_string(), Value::List(normalized)),
@@ -1373,7 +1371,9 @@ fn tools_dry_run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ]
         .into_iter()
         .collect(),
-    )
+    );
+    
+    out
 }
 
 fn sanitize_name(mut s: String) -> String {

@@ -4,10 +4,10 @@
 
 url := "https://httpbin.org/get";
 tmp := "target/tmp/http";
-MakeDirectory[tmp, <|"Parents"->True|>];
+MakeDirectory[tmp, <|"parents"->True|>];
 dest := PathJoin[{tmp, "get.json"}];
 
-HttpDownloadCached[url, dest, <|"TtlMs"->60000|>];
+HttpDownloadCached[url, dest, <|"ttlMs"->60000|>];
 resp := HttpGet[url];
 Part[resp, "status"];   
 Part[resp, "body"];

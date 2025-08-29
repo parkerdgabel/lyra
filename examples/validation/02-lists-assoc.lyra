@@ -1,5 +1,5 @@
 (*
-  02-lists-assoc.lyra — Lists, associations, indexing with Part and Lookup
+  02-lists-assoc.lyra — Lists, associations, indexing with Part and Get
 *)
 
 (* Lists *)
@@ -11,4 +11,4 @@ Part[{1,2,3}, 2];        (* 1-based index => 2 *)
 Part[<|a->1, b->2|>, "b"];  (* => 2 *)
 
 (* Dot property and method chaining *)
-<|name->"ann"|>.name;    (* => "ann" via Lookup *)
+<|name->"ann"|>.name;    (* => "ann" via Get *)

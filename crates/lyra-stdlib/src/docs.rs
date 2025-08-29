@@ -8,7 +8,7 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("Times", "Multiply numbers; Listable, Flat, Orderless.", &["a", "b", "…"]);
     ev.set_doc("Minus", "Subtract or unary negate.", &["a", "b?"]);
     ev.set_doc("Divide", "Divide two numbers.", &["a", "b"]);
-    ev.set_doc("Power", "Exponentiation (right-associative in parser).", &["a", "b"]);
+    ev.set_doc("Power", "Exponentiation (right-associative). Tensor-aware: elementwise when any tensor.", &["a", "b"]);
     ev.set_doc_examples(
         "Plus",
         &["Plus[1, 2]  ==> 3", "Plus[1, 2, 3]  ==> 6", "Plus[{1,2,3}]  ==> {1,2,3} (Listable)"],
@@ -19,7 +19,81 @@ pub fn register_docs(ev: &mut Evaluator) {
     );
     ev.set_doc_examples("Minus", &["Minus[5, 2]  ==> 3", "Minus[5]  ==> -5"]);
     ev.set_doc_examples("Divide", &["Divide[6, 3]  ==> 2", "Divide[7, 2]  ==> 3.5"]);
-    ev.set_doc_examples("Power", &["Power[2, 8]  ==> 256", "2^3^2 parses as 2^(3^2)"]);
+    ev.set_doc_examples("Power", &["Power[2, 8]  ==> 256", "Power[Tensor[{2,3}], 2]  ==> Tensor[...]", "2^3^2 parses as 2^(3^2)"]);
+
+    // Combinatorics
+    ev.set_doc("Permutations", "All permutations (or k-permutations) of a list or range 1..n.", &["listOrN", "k?"]);
+    ev.set_doc("Combinations", "All k-combinations (subsets) of a list or 1..n.", &["listOrN", "k"]);
+    ev.set_doc("PermutationsCount", "Count of permutations; n! or nPk.", &["n", "k?"]);
+    ev.set_doc("CombinationsCount", "Count of combinations; Binomial[n,k].", &["n", "k"]);
+    ev.set_doc_examples(
+        "Permutations",
+        &[
+            "Permutations[{1,2}]  ==> {{1,2},{2,1}}",
+            "Length[Permutations[{1,2,3}]]  ==> 6",
+            "Permutations[3, 2]  ==> {{1,2},{1,3},{2,1},{2,3},{3,1},{3,2}}"
+        ],
+    );
+    ev.set_doc_examples(
+        "Combinations",
+        &[
+            "Combinations[{1,2,3}, 2]  ==> {{1,2},{1,3},{2,3}}",
+            "Length[Combinations[4, 2]]  ==> 6",
+        ],
+    );
+    ev.set_doc_examples(
+        "PermutationsCount",
+        &["PermutationsCount[5]  ==> 120", "PermutationsCount[5, 2]  ==> 20"],
+    );
+    ev.set_doc_examples(
+        "CombinationsCount",
+        &["CombinationsCount[5, 2]  ==> 10"],
+    );
+
+    // Number theory
+    ev.set_doc("ExtendedGCD", "Extended GCD: returns {g, x, y} with a x + b y = g.", &["a", "b"]);
+    ev.set_doc("ModInverse", "Multiplicative inverse of a modulo m (if coprime).", &["a", "m"]);
+    ev.set_doc("ChineseRemainder", "Solve x ≡ r_i (mod m_i) for coprime moduli.", &["residues", "moduli"]);
+    ev.set_doc("DividesQ", "Predicate: does a divide b?", &["a", "b"]);
+    ev.set_doc("CoprimeQ", "Predicate: are integers coprime?", &["a", "b"]);
+    ev.set_doc("PrimeQ", "Predicate: is integer prime?", &["n"]);
+    ev.set_doc("NextPrime", "Next prime greater than n (or 2 if n<2).", &["n"]);
+    ev.set_doc("FactorInteger", "Prime factorization as {{p1,e1},{p2,e2},…}.", &["n"]);
+    ev.set_doc("PrimeFactors", "List of prime factors with multiplicity.", &["n"]);
+    ev.set_doc("EulerPhi", "Euler's totient function: count of 1<=k<=n with CoprimeQ[k,n].", &["n"]);
+    ev.set_doc("MobiusMu", "Möbius mu function: 0 if non-square-free, else (-1)^k.", &["n"]);
+    ev.set_doc("PowerMod", "Modular exponentiation: a^b mod m (supports negative b if invertible).", &["a","b","m"]);
+    ev.set_doc_examples("ExtendedGCD", &["ExtendedGCD[240, 46]  ==> {2, -9, 47}"]);
+    ev.set_doc_examples("ModInverse", &["ModInverse[3, 11]  ==> 4"]);
+    ev.set_doc_examples(
+        "ChineseRemainder",
+        &[
+            "ChineseRemainder[{2,3,2}, {3,5,7}]  ==> 23",
+            "23 mod 3==2, mod 5==3, mod 7==2",
+        ],
+    );
+    ev.set_doc_examples("DividesQ", &["DividesQ[3, 12]  ==> True", "DividesQ[5, 12]  ==> False"]);
+    ev.set_doc_examples("CoprimeQ", &["CoprimeQ[12, 35]  ==> True", "CoprimeQ[12, 18]  ==> False"]);
+    ev.set_doc_examples("PrimeQ", &["PrimeQ[17]  ==> True", "PrimeQ[1]  ==> False"]);
+    ev.set_doc_examples("NextPrime", &["NextPrime[10]  ==> 11", "NextPrime[-5]  ==> 2"]);
+    ev.set_doc_examples("FactorInteger", &["FactorInteger[84]  ==> {{2,2},{3,1},{7,1}}"]);
+    ev.set_doc_examples("PrimeFactors", &["PrimeFactors[84]  ==> {2,2,3,7}"]);
+    ev.set_doc_examples("EulerPhi", &["EulerPhi[36]  ==> 12"]);
+    ev.set_doc_examples("MobiusMu", &["MobiusMu[36]  ==> 0", "MobiusMu[35]  ==> 1", "MobiusMu[30]  ==> -1"]);
+    ev.set_doc_examples("PowerMod", &["PowerMod[2, 10, 1000]  ==> 24", "PowerMod[3, -1, 11]  ==> 4"]);
+
+    // Logging (resource + generic verbs)
+    ev.set_doc("Logger", "Create/configure a logger (global).", &["opts?"]);
+    ev.set_doc(
+        "Write",
+        "Write to a Logger or set key in an association (dispatched). Overloads: Write[logger, msg, opts?]; Write[assoc, key, value]",
+        &["logger|assoc", "msg|key", "opts?|value"],
+    );
+    ev.set_doc("SetLevel", "Set logger level (trace|debug|info|warn|error).", &["logger", "level"]);
+    ev.set_doc_examples("Logger", &["logger := Logger[<|\"Level\"->\"debug\"|>]  ==> <|__type->\"Logger\",Name->\"default\"|>"]);
+    ev.set_doc_examples("Write", &["Write[Logger[], \"service started\", <|\"Level\"->\"info\", \"Meta\"-><|\"port\"->8080|>|>]  ==> True"]);
+    ev.set_doc_examples("WithLogger", &["WithLogger[<|\"requestId\"->\"abc\"|>, Write[Logger[], \"ok\"]]  ==> True"]);
+    // Info is documented generically below; avoid duplicate set_doc here.
 
     // Lists and mapping
     ev.set_doc("Map", "Map a function over a list.", &["f", "list"]);
@@ -62,12 +136,10 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples("Explain", &["Explain[Plus[1,2]]  ==> <|steps->...|>"]);
 
     // Selected stdlib helpers (non-exhaustive; expand over time)
-    ev.set_doc("StringLength", "Length of string (Unicode scalar count).", &["s"]);
     ev.set_doc("ToUpper", "Uppercase string.", &["s"]);
     ev.set_doc("ToLower", "Lowercase string.", &["s"]);
     ev.set_doc("StringJoin", "Concatenate list of parts.", &["parts"]);
     ev.set_doc("Length", "Length of a list or string.", &["x"]);
-    ev.set_doc_examples("StringLength", &["StringLength[\"hello\"]  ==> 5"]);
     ev.set_doc_examples("ToUpper", &["ToUpper[\"hi\"]  ==> \"HI\""]);
     ev.set_doc_examples("ToLower", &["ToLower[\"Hello\"]  ==> \"hello\""]);
     ev.set_doc_examples("StringJoin", &["StringJoin[{\"a\",\"b\",\"c\"}]  ==> \"abc\""]);
@@ -75,12 +147,18 @@ pub fn register_docs(ev: &mut Evaluator) {
 
     // Generic verbs (dispatched by type)
     ev.set_doc("Insert", "Insert into collection or structure (dispatched)", &["target", "value"]);
-    ev.set_doc("Remove", "Remove from collection or structure (dispatched)", &["target", "value?"]);
+    ev.set_doc("Upsert", "Insert or update within a collection or structure (dispatched)", &["target", "value"]);
+    ev.set_doc(
+        "Remove",
+        "Remove from a collection/structure or remove a file/directory (dispatched). Overloads: Remove[target, value?]; Remove[path, opts?]",
+        &["target|path", "value?|opts?"],
+    );
     ev.set_doc("Add", "Add value to a collection (alias of Insert for some types)", &["target", "value"]);
-    ev.set_doc("Info", "Information about a handle (Graph, etc.)", &["target"]);
+    ev.set_doc("Info", "Information about a handle (Logger, Graph, etc.)", &["target"]);
     ev.set_doc("EmptyQ", "Is the subject empty? (lists, strings, assocs, handles)", &["x"]);
     ev.set_doc("Count", "Count items/elements (lists, assocs, Bag/VectorStore)", &["x"]);
     ev.set_doc("Search", "Search within a store or index (VectorStore, Index)", &["target", "query", "opts?"]);
+    ev.set_doc("Reset", "Reset or clear a handle (e.g., VectorStore)", &["handle"]);
     ev.set_doc_examples(
         "Insert",
         &[
@@ -90,6 +168,12 @@ pub fn register_docs(ev: &mut Evaluator) {
             "pq := PriorityQueue[]; Insert[pq, <|\"Key\"->1, \"Value\"->\"a\"|>]",
             "g := Graph[]; Insert[g, {\"a\",\"b\"}]",
             "Insert[g, <|Src->\"a\",Dst->\"b\"|>]",
+        ],
+    );
+    ev.set_doc_examples(
+        "Upsert",
+        &[
+            "vs := VectorStore[<|name->\"vs\"|>]; Upsert[vs, {<|id->\"a\", vec->{0.1,0.2,0.3}|>}]",
         ],
     );
     ev.set_doc_examples(
@@ -108,7 +192,7 @@ pub fn register_docs(ev: &mut Evaluator) {
         &[
             "Info[Graph[]]  ==> <|nodes->..., edges->...|>",
             "Info[DatasetFromRows[{<|a->1|>}]]  ==> <|Type->\"Dataset\", Rows->1, Columns->{\"a\"}|>",
-            "Info[VectorStore[<|Name->\"vs\"|>]]  ==> <|Type->\"VectorStore\", Name->\"vs\", Count->0|>",
+            "Info[VectorStore[<|name->\"vs\"|>]]  ==> <|Type->\"VectorStore\", Name->\"vs\", Count->0|>",
             "Info[HashSet[{1,2,3}]]  ==> <|Type->\"Set\", Size->3|>",
             "Info[Queue[]]  ==> <|Type->\"Queue\", Size->0|>",
             "Info[Index[\"/tmp/idx.db\"]]  ==> <|indexPath->..., numDocs->...|>",
@@ -135,7 +219,7 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples(
         "Search",
         &[
-            "Search[VectorStore[<|Name->\"vs\"|>], {0.1,0.2,0.3}]  ==> {...}",
+            "Search[VectorStore[<|name->\"vs\"|>], {0.1,0.2,0.3}]  ==> {...}",
             "idx := Index[\"/tmp/idx.db\"]; Search[idx, \"foo\"]",
         ],
     );
@@ -252,7 +336,7 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc_examples("GreaterEqual", &["GreaterEqual[3,2,2]  ==> True"]);
 
     // Functional
-    ev.set_doc("Apply", "Apply head to list elements: Apply[f, {…}]", &["f", "list"]);
+    ev.set_doc("Apply", "Apply head to list elements: Apply[f, {…}]", &["f", "list", "level?"]);
     ev.set_doc("Compose", "Compose functions left-to-right", &["f", "g", "…"]);
     ev.set_doc("RightCompose", "Compose functions right-to-left", &["f", "g", "…"]);
     ev.set_doc("Nest", "Nest function n times: Nest[f, x, n]", &["f", "x", "n"]);
@@ -263,9 +347,9 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("Through", "Through[{f,g}, x] applies each to x", &["fs", "x"]);
     ev.set_doc("Identity", "Identity function: returns its argument", &["x"]);
     ev.set_doc("ConstantFunction", "Constant function returning c", &["c"]);
-    ev.set_doc("Try", "Try body; capture failures (held)", &["body"]);
+    ev.set_doc("Try", "Try body; capture failures (held)", &["body", "handler?"]);
     ev.set_doc("OnFailure", "Handle Failure values (held)", &["body", "handler"]);
-    ev.set_doc("Catch", "Catch a thrown value (held)", &["body"]);
+    ev.set_doc("Catch", "Catch a thrown value (held)", &["body", "handlers"]);
     ev.set_doc("Throw", "Throw a value for Catch", &["x"]);
     ev.set_doc("Finally", "Ensure cleanup runs (held)", &["body", "cleanup"]);
     ev.set_doc("TryOr", "Try body else default (held)", &["body", "default"]);
@@ -287,25 +371,33 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("SetSubValues", "Attach SubValues to a symbol (held)", &["symbol", "defs"]);
     ev.set_doc("GetSubValues", "Return SubValues for a symbol", &["symbol"]);
 
-    // Assoc
-    ev.set_doc("AssocGet", "Get value by key with optional default", &["assoc", "key", "default?"]);
-    ev.set_doc("AssocSet", "Set key to value (returns new assoc)", &["assoc", "key", "value"]);
-    ev.set_doc("AssocSelect", "Filter keys by predicate or list", &["assoc", "pred|keys"]);
-    ev.set_doc("AssocDelete", "Delete keys from association", &["assoc", "keys"]);
-    ev.set_doc("AssocDrop", "Drop keys and return remaining assoc", &["assoc", "keys"]);
-    ev.set_doc("AssocContainsKeyQ", "Does association contain key?", &["assoc", "key"]);
-    ev.set_doc("AssocInvert", "Invert mapping values -> list of keys", &["assoc"]);
-    ev.set_doc("AssocRenameKeys", "Rename keys by mapping or function", &["assoc", "map|f"]);
-    ev.set_doc("AssociationMap", "Map values with f[v]", &["f", "assoc"]);
-    ev.set_doc("AssociationMapKeys", "Map keys with f[k]", &["f", "assoc"]);
-    ev.set_doc("AssociationMapPairs", "Map over (k,v) pairs", &["f", "assoc"]);
-    ev.set_doc_examples("AssocGet", &["AssocGet[<|\"a\"->1|>, \"a\"]  ==> 1", "AssocGet[<||>, \"k\", 0]  ==> 0"]);
-    ev.set_doc_examples("AssocSet", &["AssocSet[<|\"a\"->1|>, \"b\", 2]  ==> <|\"a\"->1, \"b\"->2|>"]);
-    ev.set_doc_examples("AssociationMap", &["AssociationMap[ToUpper, <|\"a\"->\"x\"|>]  ==> <|\"a\"->\"X\"|>"]);
+    // Associations (canonical names)
+    // Lookup removed (use Get)
+    // Write is documented in a consolidated form above.
+    ev.set_doc(
+        "Select",
+        "Select keys/columns or compute columns (dispatched). Overloads: Select[assoc, pred|keys]; Select[ds, cols]",
+        &["assoc|ds", "pred|keys|cols"],
+    );
+    ev.set_doc("Delete", "Delete keys from association", &["assoc", "keys"]);
+    ev.set_doc("Drop", "Drop keys and return remaining assoc", &["assoc", "keys"]);
+    // ContainsKeyQ documented generically earlier; avoid duplicate.
+    ev.set_doc("Invert", "Invert mapping values -> list of keys", &["assoc"]);
+    ev.set_doc("RenameKeys", "Rename keys by mapping or function", &["assoc", "map|f"]);
+    ev.set_doc("MapValues", "Map values with f[v]", &["f", "assoc"]);
+    ev.set_doc("MapKeys", "Map keys with f[k]", &["f", "assoc"]);
+    ev.set_doc("MapPairs", "Map over (k,v) pairs", &["f", "assoc"]);
+    // Legacy Lookup removed; use Get
+    ev.set_doc_examples("Write", &["Write[<|\"a\"->1|>, \"b\", 2]  ==> <|\"a\"->1, \"b\"->2|>"]);
+    ev.set_doc_examples("MapValues", &["MapValues[ToUpper, <|\"a\"->\"x\"|>]  ==> <|\"a\"->\"X\"|>"]);
 
     // Lists (common)
     ev.set_doc("Range", "Create numeric range", &["a", "b", "step?"]);
-    ev.set_doc("Join", "Concatenate two lists", &["a", "b"]);
+    ev.set_doc(
+        "Join",
+        "Join lists or datasets (dispatched). Overloads: Join[list1, list2]; Join[left, right, on, how?]",
+        &["a|left", "b|right", "on?", "how?"],
+    );
     ev.set_doc("Reverse", "Reverse a list", &["list"]);
     ev.set_doc("Flatten", "Flatten by levels (default 1)", &["list", "levels?"]);
     ev.set_doc("Partition", "Partition into fixed-size chunks", &["list", "n", "step?"]);
@@ -320,9 +412,21 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("Drop", "Drop first n (last if negative)", &["list", "n"]);
     ev.set_doc("TakeWhile", "Take while pred[x] holds", &["pred", "list"]);
     ev.set_doc("DropWhile", "Drop while pred[x] holds", &["pred", "list"]);
-    ev.set_doc("Zip", "Zip two lists into pairs", &["a", "b"]);
-    ev.set_doc("Unzip", "Unzip pairs into two lists", &["pairs"]);
-    ev.set_doc("Sort", "Sort list by value", &["list"]);
+    ev.set_doc(
+        "Zip",
+        "Zip lists into pairs or create a .zip archive (dispatched). Overloads: Zip[a, b]; Zip[dest, inputs]",
+        &["a|dest", "b|inputs"],
+    );
+    ev.set_doc(
+        "Unzip",
+        "Unzip list of pairs or extract a .zip (dispatched). Overloads: Unzip[pairs]; Unzip[src, dest]",
+        &["pairs|src", "dest?"],
+    );
+    ev.set_doc(
+        "Sort",
+        "Sort a list or dataset (dispatched). Overloads: Sort[list]; Sort[ds, by, opts?]",
+        &["list|ds", "by?", "opts?"],
+    );
     ev.set_doc("Unique", "Stable deduplicate list", &["list"]);
     ev.set_doc("Tally", "Counts by value (assoc)", &["list"]);
     ev.set_doc("CountBy", "Counts by key function (assoc)", &["f", "list"]);
@@ -372,7 +476,7 @@ pub fn register_docs(ev: &mut Evaluator) {
 
     // File system (core)
     ev.set_doc("MakeDirectory", "Create a directory (Parents option)", &["path", "opts?"]);
-    ev.set_doc("Remove", "Remove a file or directory (Recursive option)", &["path", "opts?"]);
+    // Remove is documented in a consolidated form above.
     ev.set_doc("Copy", "Copy file or directory (Recursive option)", &["src", "dst", "opts?"]);
     ev.set_doc("Move", "Move or rename a file/directory", &["src", "dst"]);
     ev.set_doc("Touch", "Create file if missing (update mtime)", &["path"]);
@@ -387,6 +491,11 @@ pub fn register_docs(ev: &mut Evaluator) {
     ev.set_doc("TempDir", "Create a unique temporary directory", &[]);
     ev.set_doc(
         "WatchDirectory",
+        "Watch directory and stream events (held)",
+        &["path", "handler", "opts?"],
+    );
+    ev.set_doc(
+        "Watch",
         "Watch directory and stream events (held)",
         &["path", "handler", "opts?"],
     );
@@ -444,7 +553,7 @@ pub fn register_docs(ev: &mut Evaluator) {
 
     // Logging
     ev.set_doc("ConfigureLogging", "Configure log level/format/output", &["opts"]);
-    ev.set_doc("Log", "Emit a log message with level and meta", &["level", "msg", "meta?"]);
+    ev.set_doc("LogMessage", "Emit a log message with level and meta", &["level", "msg", "meta?"]);
     ev.set_doc(
         "WithLogger",
         "Add contextual metadata while evaluating body (held)",
@@ -535,8 +644,8 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         &["conn", "name", "rows"],
     );
     ev.set_doc("Table", "Reference a table as a Dataset", &["conn", "name"]);
-    ev.set_doc("SQL", "Run a SELECT query and return rows", &["conn", "sql", "params?"]);
-    ev.set_doc("Exec", "Execute DDL/DML (non-SELECT)", &["conn", "sql", "params?"]);
+    ev.set_doc("Query", "Run a SELECT query and return rows", &["conn", "sql", "opts?"]);
+    ev.set_doc("Execute", "Execute DDL/DML (non-SELECT)", &["conn", "sql", "opts?"]);
     ev.set_doc("SQLCursor", "Run a query and return a cursor handle", &["conn", "sql", "params?"]);
     ev.set_doc("Fetch", "Fetch next batch of rows from a cursor", &["cursor", "limit?"]);
     ev.set_doc("Close", "Close an open handle (cursor, channel)", &["handle"]);
@@ -569,9 +678,119 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     );
     ev.set_doc_examples("ListTables", &["ListTables[conn]  ==> {\"t\"}"]);
     ev.set_doc_examples("Table", &["ds := Table[conn, \"t\"]; Head[ds,1]  ==> {<|...|>}"]);
-    ev.set_doc_examples("SQL", &["SQL[conn, \"SELECT * FROM t\"]  ==> Dataset[...] "]);
-    ev.set_doc_examples("Exec", &["Exec[conn, \"CREATE TABLE x(id INT)\"]  ==> <|Status->0|>"]);
-    ev.set_doc_examples("Begin", &["Begin[conn]; Exec[conn, \"INSERT ...\"]; Commit[conn]"]);
+    ev.set_doc_examples("Query", &["Query[conn, \"SELECT * FROM t\"]  ==> Dataset[...] "]);
+    ev.set_doc_examples("Execute", &["Execute[conn, \"CREATE TABLE x(id INT)\"]  ==> <|Status->0|>"]);
+    ev.set_doc_examples("Begin", &["Begin[conn]; Execute[conn, \"INSERT ...\"]; Commit[conn]"]);
+
+    // Associations (immutable helpers)
+    // Assoc* legacy names removed (pre-release). Use Get/ContainsKeyQ/Set/Delete/Select/Drop/Invert/RenameKeys.
+    ev.set_doc("MapKeyValues", "Map over (k,v) pairs to new values or pairs", &["f", "assoc"]);
+    // Legacy Assoc* examples removed.
+    ev.set_doc_examples("MapKeyValues", &[
+        "MapKeyValues[(k,v)=>k<>ToString[v], <|\"a\"->1, \"b\"->2|>]  ==> {\"a1\", \"b2\"}",
+    ]);
+
+    // Collections (set/list operations): use Union/Intersection/Difference via dispatchers.
+
+    // Strings
+    // Legacy StringLength/StringSplit removed (pre-release). Use Length/Split.
+    // Generic helpers (dispatchers)
+    ev.set_doc("Get", "Get value by key/index from a structure (dispatch)", &["subject", "key", "default?"]);
+    ev.set_doc_examples("Get", &[
+        "Get[<|\"a\"->1|>, \"a\"]  ==> 1",
+        "Get[<|\"a\"->1|>, \"b\", 9]  ==> 9",
+    ]);
+
+    // Net/HTTP
+    // HttpServer legacy name removed (pre-release). Use HttpServe or HttpServeRoutes.
+    ev.set_doc("Respond", "Construct HTTP response from body/status/headers", &["body", "status?", "headers?"]);
+    // Example removed with legacy name.
+    ev.set_doc_examples("Respond", &[
+        "Respond[\"ok\", 200]  ==> <|\"Status\"->200, ...|>",
+        "Respond[\"Json\", <|\"a\"->1|>]  ==> <|\"Status\"->200, \"Body\"->\"{\\\"a\\\":1}\", ...|>",
+    ]);
+
+    // Files/Resources
+    ev.set_doc("UsingFile", "Open a file and pass handle to a function (ensures close)", &["path", "fn"]);
+    ev.set_doc_examples("UsingFile", &[
+        "UsingFile[\"/tmp/x.txt\", (f)=>Puts[f, \"hi\"]]",
+        "ReadFile[\"/tmp/x.txt\"]  ==> \"hi\"",
+    ]);
+
+    // Notebook helpers
+    ev.set_doc("Cells", "Get list of cells in a notebook", &["notebook"]);
+    ev.set_doc("CellCreate", "Create a new cell association", &["type", "input", "opts?"]);
+    ev.set_doc("CellInsert", "Insert a cell into a notebook at position", &["notebook", "cell", "pos"]);
+    ev.set_doc("CellDelete", "Delete a cell by UUID", &["notebook", "id"]);
+    ev.set_doc("CellMove", "Move a cell to index", &["notebook", "id", "toIndex"]);
+    ev.set_doc("CellUpdate", "Update fields on a cell by UUID", &["notebook", "id", "updates"]);
+    ev.set_doc("ClearOutputs", "Clear output of code cells", &["notebook"]);
+    ev.set_doc("NotebookMetadata", "Get notebook-level metadata", &["notebook"]);
+    ev.set_doc("NotebookSetMetadata", "Set notebook-level metadata", &["notebook", "updates"]);
+
+    // Linear algebra
+    ev.set_doc("LU", "LU factorization: returns <|L,U,P|>", &["A"]);
+    ev.set_doc("Cholesky", "Cholesky factorization for SPD matrices", &["A"]);
+    ev.set_doc_examples("LU", &[
+        "LU[{{1,2},{3,4}}]  ==> <|L->..., U->..., P->...|>",
+        "{L,U,P} := Values[LU[A]]; L.U ≈ P.A",
+    ]);
+    ev.set_doc_examples("Cholesky", &[
+        "Cholesky[{{4,1},{1,3}}]  ==> <|L->...|>",
+        "L := Cholesky[A][\"L\"]; L.Transpose[L] == A",
+    ]);
+
+    // Signal processing (stubs)
+    ev.set_doc("FilterFIR", "Finite impulse response filter (stub)", &["x", "coeffs", "opts?"]);
+    ev.set_doc("FilterIIR", "Infinite impulse response filter (stub)", &["x", "coeffs", "opts?"]);
+    ev.set_doc_examples("FilterFIR", &["FilterFIR[{1,2,3}, {0.2,0.2,0.2}]  ==> {...}"]);
+    ev.set_doc_examples("FilterIIR", &["FilterIIR[{1,2,3}, {1.0, -0.5}]  ==> {...}"]);
+
+    // Math (missing singletons)
+    ev.set_doc("Tanh", "Hyperbolic tangent (Listable)", &["x"]);
+    ev.set_doc_examples("Tanh", &[
+        "Tanh[0]  ==> 0",
+        "Tanh[1]  ==> 0.76159...",
+        "Tanh[{0,1}]  ==> {0, 0.76159...}",
+    ]);
+
+    // Neural network layers and ops (constructor docs)
+    ev.set_doc("LinearLayer", "Fully-connected linear layer", &["out|opts"]);
+    ev.set_doc("ActivationLayer", "Activation layer (e.g., ReLU, Tanh)", &["name|opts"]);
+    ev.set_doc("BatchNormLayer", "Batch normalization layer", &["opts?"]);
+    ev.set_doc("LayerNormLayer", "Layer normalization layer", &["opts?"]);
+    ev.set_doc("DropoutLayer", "Dropout layer", &["p|opts"]);
+    ev.set_doc("EmbeddingLayer", "Embedding lookup layer", &["vocab", "dim", "opts?"]);
+    ev.set_doc("ConcatLayer", "Concatenate along channel/feature axis", &["opts?"]);
+    ev.set_doc("MulLayer", "Elementwise multiplication layer", &["opts?"]);
+    ev.set_doc("SoftmaxLayer", "Softmax over features", &["opts?"]);
+    ev.set_doc("ConvolutionLayer", "1D convolution layer", &["outChannels", "kernelSize", "opts?"]);
+    ev.set_doc("PoolingLayer", "1D pooling layer (Max/Avg)", &["kind", "size", "opts?"]);
+    ev.set_doc("FlattenLayer", "Flatten leading dims to vector", &["opts?"]);
+    ev.set_doc("ReshapeLayer", "Reshape tensor to new shape", &["shape|opts"]);
+    ev.set_doc("TransposeLayer", "Transpose/permute axes", &["perm|opts"]);
+    ev.set_doc("AddLayer", "Elementwise addition layer", &["opts?"]);
+    // Networks
+    ev.set_doc("NetChain", "Compose layers sequentially", &["layers", "opts?"]);
+    ev.set_doc("NetInitialize", "Initialize a network (weights/state)", &["net", "opts?"]);
+    ev.set_doc("NetTrain", "Train a network on data", &["net", "data", "opts?"]);
+    ev.set_doc("NetApply", "Apply network to input(s)", &["net", "x", "opts?"]);
+    ev.set_doc("NetProperty", "Get network property", &["net", "key"]);
+    ev.set_doc("NetSummary", "Human-readable network summary", &["net"]);
+    ev.set_doc("NetEncoder", "Construct an input encoder", &["spec|auto"]);
+    ev.set_doc("NetDecoder", "Construct an output decoder", &["spec|auto"]);
+    ev.set_doc_examples("NetChain", &[
+        "net := NetChain[{LinearLayer[8], ActivationLayer[\"relu\"], LinearLayer[1]}]",
+    ]);
+    ev.set_doc_examples("NetInitialize", &[
+        "neti := NetInitialize[net]  ==> net' (initialized)",
+    ]);
+    ev.set_doc_examples("NetApply", &[
+        "NetApply[neti, {1.0, 2.0}]  ==> {...}",
+    ]);
+    ev.set_doc_examples("NetSummary", &[
+        "NetSummary[neti]  ==> \"Layer (out) ...\"",
+    ]);
 
     // Datasets (declarative transformations)
     ev.set_doc("DatasetFromRows", "Create dataset from list of row assocs", &["rows"]);
@@ -581,7 +800,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("ShowDataset", "Pretty-print a dataset table to string", &["ds", "opts?"]);
     ev.set_doc("ReadCSVDataset", "Read a CSV file into a dataset", &["path", "opts?"]);
     ev.set_doc("ReadJsonLinesDataset", "Read a JSONL file into a dataset", &["path", "opts?"]);
-    ev.set_doc("Select", "Select/compute columns", &["ds", "cols"]);
+    // Select documented in a consolidated form above.
     ev.set_doc("SelectCols", "Select subset of columns by name", &["ds", "cols"]);
     ev.set_doc("RenameCols", "Rename columns via mapping", &["ds", "mapping"]);
     ev.set_doc("FilterRows", "Filter rows by predicate (held)", &["ds", "pred"]);
@@ -592,14 +811,14 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("WithColumns", "Add/compute new columns (held)", &["ds", "defs"]);
     ev.set_doc("GroupBy", "Group rows by key(s)", &["ds", "keys"]);
     ev.set_doc("Agg", "Aggregate groups to single rows", &["ds", "aggs"]);
-    ev.set_doc("Sort", "Sort rows by columns", &["ds", "by", "opts?"]);
+    // Sort documented in a consolidated form above.
     ev.set_doc("Distinct", "Drop duplicate rows (optionally by columns)", &["ds", "cols?"]);
     ev.set_doc(
         "DistinctOn",
         "Keep one row per key with order policy",
         &["ds", "keys", "orderBy?", "keepLast?"],
     );
-    ev.set_doc("Join", "Join two datasets on keys", &["left", "right", "on", "how?"]);
+    // Join documented in a consolidated form above.
     ev.set_doc("Union", "Union multiple datasets (by columns)", &["inputs", "byColumns?"]);
     ev.set_doc("Concat", "Concatenate datasets by rows (schema-union)", &["inputs"]);
     ev.set_doc("ExplainDataset", "Inspect logical plan for a dataset", &["ds"]);
@@ -738,6 +957,21 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("NDShape", &["NDShape[a]  ==> {2,2}"]);
     ev.set_doc_examples("NDMatMul", &["NDMatMul[NDArray[{{1,2},{3,4}}], NDArray[{{5,6},{7,8}}]]  ==> NDArray[...] "]);
 
+    // Canonical tensor entries (dispatch to ND implementations)
+    ev.set_doc("Tensor", "Create a tensor (alias of NDArray)", &["spec"]);
+    ev.set_doc("Shape", "Shape of a tensor", &["tensor"]);
+    ev.set_doc("Reshape", "Reshape a tensor to new dims (supports -1)", &["tensor", "dims"]);
+
+    // Elementwise activation (generic)
+    ev.set_doc("Relu", "Rectified Linear Unit: max(0, x). Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc_examples("Relu", &["Relu[-2]  ==> 0", "Relu[Tensor[{-1,0,2}]]  ==> Tensor[...]"]);
+
+    // Generic NN/ML verbs (dispatch)
+    ev.set_doc("Train", "Train a network (dispatch to NetTrain)", &["net", "data", "opts?"]);
+    ev.set_doc("Initialize", "Initialize a network (dispatch to NetInitialize)", &["net", "opts?"]);
+    ev.set_doc("Property", "Property of a network or ML model (dispatch)", &["obj", "key"]);
+    ev.set_doc("Summary", "Summary of a network (dispatch to NetSummary)", &["obj"]);
+
     // IO examples
     ev.set_doc_examples("ReadFile", &["WriteFile[\"/tmp/x.txt\", \"hi\"]; ReadFile[\"/tmp/x.txt\"]  ==> \"hi\""]);
     ev.set_doc_examples("WriteFile", &["WriteFile[\"/tmp/y.txt\", <|\"a\"->1|>]  ==> True"]);
@@ -777,7 +1011,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("Wrap", &["Wrap[\"aaaa bbbb cccc\", 5]  ==> \"aaaa\\nbbbb\\ncccc\""]);
 
     // Net examples
-    ev.set_doc_examples("HttpGet", &["HttpGet[\"https://example.com\"]  ==> <|\"Status\"->200, ...|>"]);
+    ev.set_doc_examples("HttpGet", &["HttpGet[\"https://example.com\"]  ==> <|\"status\"->200, ...|>"]);
     ev.set_doc_examples(
         "Download",
         &["Download[\"https://example.com\", \"/tmp/index.html\"]  ==> \"/tmp/index.html\""]);
@@ -792,7 +1026,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
 
     // Compression + Net docs sweep
     // Compression
-    ev.set_doc("Zip", "Create a .zip archive from files/directories.", &["dest", "inputs"]);
+    // Zip documented in a consolidated form above.
     ev.set_doc_examples(
         "Zip",
         &[
@@ -800,6 +1034,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         ],
     );
     ev.set_doc("ZipExtract", "Extract a .zip archive into a directory.", &["src", "dest"]);
+    // Unzip documented in a consolidated form above.
     ev.set_doc_examples(
         "ZipExtract",
         &[
@@ -815,6 +1050,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         ],
     );
     ev.set_doc("TarExtract", "Extract a .tar or .tar.gz archive into a directory.", &["src", "dest"]);
+    ev.set_doc("Untar", "Extract a .tar or .tar.gz archive into a directory.", &["src", "dest"]);
     ev.set_doc_examples(
         "TarExtract",
         &[
@@ -874,7 +1110,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples(
         "HttpDownloadCached",
         &[
-            "HttpDownloadCached[\"https://httpbin.org/get\", \"/tmp/get.json\", <|\"TtlMs\"->60000|>]  ==> <|\"path\"->..., \"from_cache\"->True|>",
+            "HttpDownloadCached[\"https://httpbin.org/get\", \"/tmp/get.json\", <|ttlMs->60000|>]  ==> <|\"path\"->..., \"from_cache\"->True|>",
         ],
     );
     ev.set_doc(
@@ -909,10 +1145,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
 
     // Logging examples
     ev.set_doc_examples("ConfigureLogging", &["ConfigureLogging[<|\"Level\"->\"debug\"|>]  ==> True"]);
-    ev.set_doc_examples("Log", &["Log[\"info\", \"service started\", <|\"port\"->8080|>]  ==> True"]);
+    ev.set_doc_examples("LogMessage", &["LogMessage[\"info\", \"service started\", <|\"port\"->8080|>]  ==> True"]);
     ev.set_doc_examples(
         "WithLogger",
-        &["WithLogger[<|\"requestId\"->\"abc\"|>, Log[\"info\", \"ok\"]]  ==> True"],
+        &["WithLogger[<|\"requestId\"->\"abc\"|>, LogMessage[\"info\", \"ok\"]]  ==> True"],
     );
 
     // Image examples
@@ -943,7 +1179,7 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("StringReplaceFirst", "Replace first substring match", &["s", "from", "to"]);
     ev.set_doc("StringReverse", "Reverse characters in a string", &["s"]);
     ev.set_doc("StringSlice", "Slice by start and optional length", &["s", "start", "len?"]);
-    ev.set_doc("StringSplit", "Split string by separator", &["s", "sep"]);
+    ev.set_doc("Split", "Split string by separator", &["s", "sep"]);
     ev.set_doc("StringTrim", "Trim whitespace from both ends", &["s"]);
     ev.set_doc("StringTrimLeft", "Trim from left", &["s"]);
     ev.set_doc("StringTrimRight", "Trim from right", &["s"]);
@@ -969,9 +1205,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("StringContains", &["StringContains[\"hello\", \"ell\"]  ==> True"]);
     ev.set_doc_examples("StringJoinWith", &["StringJoinWith[{\"a\",\"b\"}, \"-\"]  ==> \"a-b\""]);
     ev.set_doc_examples("StringPadLeft", &["StringPadLeft[\"7\", 3, \"0\"]  ==> \"007\""]);
-    ev.set_doc_examples("StringReplace", &["StringReplace[\"foo bar\", \"o\", \"0\"]  ==> \"f00 bar\""]);
+    ev.set_doc_examples("Replace", &["Replace[\"foo bar\", \"o\", \"0\"]  ==> \"f00 bar\""]);
     ev.set_doc_examples("StringReverse", &["StringReverse[\"abc\"]  ==> \"cba\""]);
-    ev.set_doc_examples("StringSplit", &["StringSplit[\"a,b,c\", \",\"]  ==> {\"a\",\"b\",\"c\"}"]);
+    ev.set_doc_examples("Split", &["Split[\"a,b,c\", \",\"]  ==> {\"a\",\"b\",\"c\"}"]);
+    ev.set_doc_examples("Intersection", &["Intersection[{1,2,3},{2,4}]  ==> {2}"]);
+    ev.set_doc_examples("Difference", &["Difference[{1,2,3},{2}]  ==> {1,3}"]);
     ev.set_doc_examples("StringTrim", &["StringTrim[\"  hi  \"]  ==> \"hi\""]);
     ev.set_doc_examples("CamelCase", &["CamelCase[\"hello world\"]  ==> \"helloWorld\""]);
     ev.set_doc_examples("SnakeCase", &["SnakeCase[\"HelloWorld\"]  ==> \"hello_world\""]);
@@ -1062,16 +1300,21 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("UrlFormEncode", &["UrlFormEncode[<|\"a\"->\"b\"|>]  ==> \"a=b\""]);
 
     // Math and stats
-    ev.set_doc("Sin", "Sine (radians)", &["x"]);
-    ev.set_doc("Cos", "Cosine (radians)", &["x"]);
+    ev.set_doc("Sin", "Sine (radians). Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc("Cos", "Cosine (radians). Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc_examples("Sin", &["Sin[0]  ==> 0", "Sin[Tensor[{0, Pi/2}]]  ==> Tensor[...]"]);
+    ev.set_doc_examples("Cos", &["Cos[0]  ==> 1", "Cos[Tensor[{0, Pi}]]  ==> Tensor[...]"]);
     ev.set_doc("Tan", "Tangent (radians)", &["x"]);
-    ev.set_doc("Exp", "Natural exponential e^x", &["x"]);
-    ev.set_doc("Sqrt", "Square root", &["x"]);
+    ev.set_doc("Exp", "Natural exponential e^x. Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc("Sqrt", "Square root. Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc_examples("Exp", &["Exp[1]  ==> 2.71828...", "Exp[Tensor[{0,1}]]  ==> Tensor[...]"]);
+    ev.set_doc_examples("Sqrt", &["Sqrt[9]  ==> 3", "Sqrt[Tensor[{1,4,9}]]  ==> Tensor[...]"]);
     ev.set_doc("ToDegrees", "Convert radians to degrees (Listable)", &["x"]);
     ev.set_doc("ToRadians", "Convert degrees to radians (Listable)", &["x"]);
     ev.set_doc_examples("ToDegrees", &["ToDegrees[Pi]  ==> 180"]);
     ev.set_doc_examples("ToRadians", &["ToRadians[180]  ==> 3.14159..."]);
-    ev.set_doc("Log", "Natural logarithm", &["x"]);
+    ev.set_doc("Log", "Natural logarithm. Tensor-aware: elementwise on tensors.", &["x"]);
+    ev.set_doc_examples("Log", &["Log[E]  ==> 1", "Log[Tensor[{1,E}]]  ==> Tensor[...]"]);
     ev.set_doc("Signum", "Sign of number (-1,0,1)", &["x"]);
     ev.set_doc("Mod", "Modulo remainder ((a mod n) >= 0)", &["a", "n"]);
     ev.set_doc("DivMod", "Quotient and remainder", &["a", "n"]);
@@ -1088,6 +1331,18 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Median", "Median of list", &["list"]);
     ev.set_doc("StandardDeviation", "Standard deviation of list", &["list"]);
     ev.set_doc("Variance", "Variance of list", &["list"]);
+    ev.set_doc("Quantile", "Quantile(s) of numeric data using R-7 interpolation.", &["data", "q|list"]);
+    ev.set_doc("Percentile", "Percentile(s) of numeric data using R-7 interpolation.", &["data", "p|list"]);
+    ev.set_doc("Mode", "Most frequent element (ties broken by first appearance).", &["data"]);
+    ev.set_doc("Correlation", "Pearson correlation of two numeric lists (population moments).", &["a", "b"]);
+    ev.set_doc("Covariance", "Covariance of two numeric lists (population).", &["a", "b"]);
+    ev.set_doc("Skewness", "Skewness (third standardized moment).", &["data"]);
+    ev.set_doc("Kurtosis", "Kurtosis (fourth standardized moment).", &["data"]);
+    ev.set_doc_examples("Quantile", &["Quantile[{1,2,3,4}, 0.25]  ==> 1.75", "Quantile[{1,2,3,4}, {0.25,0.5}]  ==> {1.75, 2.5}"]);
+    ev.set_doc_examples("Percentile", &["Percentile[{1,2,3,4}, 25]  ==> 1.75"]);
+    ev.set_doc_examples("Mode", &["Mode[{1,2,2,3}]  ==> 2"]);
+    ev.set_doc_examples("Correlation", &["Correlation[{1,2,3},{2,4,6}]  ==> 1.0"]);
+    ev.set_doc_examples("Covariance", &["Covariance[{1,2,3},{2,4,6}]  ==> 2.0"]);
     ev.set_doc_examples("Mod", &["Mod[7, 3]  ==> 1"]);
     ev.set_doc_examples("DivMod", &["DivMod[7, 3]  ==> {2, 1}"]);
     ev.set_doc_examples("Round", &["Round[2.6]  ==> 3"]);
@@ -1101,9 +1356,9 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("ACos", "Arc-cosine (inverse cosine)", &["x"]);
     ev.set_doc("ATan", "Arc-tangent (inverse tangent)", &["x"]);
     ev.set_doc("ATan2", "Arc-tangent of y/x (quadrant aware)", &["y", "x"]);
-    ev.set_doc("Clip", "Clamp value to [min,max]", &["x", "min", "max"]);
+    ev.set_doc("Clip", "Clamp value to [min,max]. Tensor-aware: elementwise on tensors.", &["x", "min", "max"]);
     ev.set_doc("Coalesce", "First non-null value", &["values…"]);
-    ev.set_doc_examples("Clip", &["Clip[10, 0, 5]  ==> 5"]);
+    ev.set_doc_examples("Clip", &["Clip[10, 0, 5]  ==> 5", "Clip[Tensor[{-1,2,7}], 0, 5]  ==> Tensor[...]"]);
     ev.set_doc_examples("Coalesce", &["Coalesce[Null, 0, 42]  ==> 0"]);
 
     // Collections: sets, stacks, queues, bags, priority queues
@@ -1111,24 +1366,18 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("SetInsert", "Insert value into set", &["set", "value"]);
     ev.set_doc("SetRemove", "Remove value from set", &["set", "value"]);
     ev.set_doc("SetMemberQ", "Is value a member of set?", &["set", "value"]);
-    ev.set_doc("SetEmptyQ", "Is set empty?", &["set"]);
-    ev.set_doc("SetSize", "Number of elements in set", &["set"]);
     ev.set_doc("SetToList", "Convert set to list", &["set"]);
     ev.set_doc("SetFromList", "Create set from list", &["list"]);
-    ev.set_doc("SetUnion", "Union of two sets", &["a", "b"]);
-    ev.set_doc("SetIntersection", "Intersection of two sets", &["a", "b"]);
-    ev.set_doc("SetDifference", "Elements in a not in b", &["a", "b"]);
+    // Generic set/list ops are documented under Union/Intersection/Difference
     ev.set_doc("SetEqualQ", "Are two sets equal?", &["a", "b"]);
     ev.set_doc("SetSubsetQ", "Is a subset of b?", &["a", "b"]);
     ev.set_doc("Stack", "Create a stack", &[]);
-    ev.set_doc("StackSize", "Size of a stack", &["stack"]);
-    ev.set_doc("StackEmptyQ", "Is stack empty?", &["stack"]);
+    // Size/emptiness use generic Length/EmptyQ
     ev.set_doc("Peek", "Peek top of stack/queue", &["handle"]);
     ev.set_doc("Push", "Push onto stack", &["stack", "value"]);
     ev.set_doc("Pop", "Pop from stack", &["stack"]);
     ev.set_doc("Queue", "Create a FIFO queue", &[]);
-    ev.set_doc("QueueSize", "Size of queue", &["queue"]);
-    ev.set_doc("QueueEmptyQ", "Is queue empty?", &["queue"]);
+    // Size/emptiness use generic Length/EmptyQ
     ev.set_doc("Enqueue", "Enqueue value", &["queue", "value"]);
     ev.set_doc("Dequeue", "Dequeue value", &["queue"]);
     ev.set_doc("Bag", "Create a multiset bag", &[]);
@@ -1143,13 +1392,12 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("PQInsert", "Insert with priority", &["pq", "priority", "value"]);
     ev.set_doc("PQPeek", "Peek min (or max) priority", &["pq"]);
     ev.set_doc("PQPop", "Pop min (or max) priority", &["pq"]);
-    ev.set_doc("PQSize", "Size of priority queue", &["pq"]);
-    ev.set_doc("PQEmptyQ", "Is priority queue empty?", &["pq"]);
+    // Size/emptiness use generic Length/EmptyQ
 
-    // List utilities (set-like)
-    ev.set_doc("ListUnion", "Union of lists (dedup)", &["a", "b"]);
-    ev.set_doc("ListIntersection", "Intersection of lists", &["a", "b"]);
-    ev.set_doc("ListDifference", "Elements in a not in b", &["a", "b"]);
+    // Generic list/set utilities
+    ev.set_doc("Union", "Union for lists (stable) or sets (dispatched)", &["args"]);
+    ev.set_doc("Intersection", "Intersection for lists or sets (dispatched)", &["args"]);
+    ev.set_doc("Difference", "Difference for lists or sets (dispatched)", &["a", "b"]);
 
     // Predicates (Q)
     ev.set_doc("BooleanQ", "Is value Boolean?", &["x"]);
@@ -1164,10 +1412,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("NonNegativeQ", "Is number >= 0?", &["x"]);
     ev.set_doc("NonPositiveQ", "Is number <= 0?", &["x"]);
     ev.set_doc("NonEmptyQ", "Is list/string/assoc non-empty?", &["x"]);
-    ev.set_doc("EmptyQ", "Is list/string/assoc empty?", &["x"]);
+    // EmptyQ documented earlier; avoid duplicate.
 
     // Counting
-    ev.set_doc("Count", "Count elements equal to value or matching predicate", &["list", "value|pred"]);
+    // Count documented earlier; avoid duplicate.
     ev.set_doc_examples("Count", &["Count[{1,2,1,1}, 1]  ==> 3"]);
 
     // Date/time helpers
@@ -1180,10 +1428,34 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Prompt", "Prompt user for input (TTY)", &["text", "opts?"]);
     ev.set_doc("Confirm", "Ask yes/no question (TTY)", &["text", "opts?"]);
     ev.set_doc("PasswordPrompt", "Prompt for password without echo", &["text", "opts?"]);
+    ev.set_doc("PromptSelect", "Prompt user to select one item from a list", &["text", "items", "opts?"]);
+    ev.set_doc("PromptSelectMany", "Prompt user to select many items from a list", &["text", "items", "opts?"]);
+    ev.set_doc("SetUiBackend", "Set UI backend: terminal | null | auto | gui (requires ui_egui)", &["mode"]);
+    ev.set_doc("GetUiBackend", "Get current UI backend mode", &[]);
+    ev.set_doc("SetUiTheme", "Set UI theme: system | light | dark. Optional opts: <|AccentColor->color, Rounding->px, FontSize->pt, Compact->True|False, SpacingScale->num, Palette-><|Primary->color, Success->color, Warning->color, Error->color, Info->color, Background->color, Surface->color, Text->color|>|>", &["mode", "opts?"]);
+    ev.set_doc("GetUiTheme", "Get current UI theme", &[]);
+    ev.set_doc("Notify", "Show a notification/message to the user", &["text", "opts?"]);
+    ev.set_doc_examples("Notify", &[
+        "Notify[\"Saved successfully\", <|Level->\"Success\"|>]",
+        "Notify[\"Low disk space\", <|Level->\"Warning\", timeoutMs->5000|>]",
+        "Notify[\"Build failed\", <|Level->\"Error\", Title->\"CI\"|>]",
+        "Notify[\"Heads up\", <|Level->\"Info\", AccentColor->\"cyan\"|>]",
+        "Notify[\"Tap anywhere to dismiss\", <|CloseOnClick->True, ShowDismiss->False|>]",
+    ]);
+    ev.set_doc("SpinnerStart", "Start an indeterminate spinner; returns id", &["text?", "opts?"]);
+    ev.set_doc("SpinnerStop", "Stop a spinner by id", &["id"]);
     ev.set_doc("ProgressBar", "Create a progress bar; returns id.", &["total"]);
     ev.set_doc("ProgressAdvance", "Advance progress bar by n (default 1).", &["id", "n?"]);
     ev.set_doc("ProgressFinish", "Finish and remove a progress bar.", &["id"]);
     ev.set_doc_examples("Confirm", &["Confirm[\"Proceed?\"]  ==> True|False"]);
+    ev.set_doc("PromptSelect", "Prompt user to select one item from a list.", &["text","items","opts?"]);
+    ev.set_doc_examples("PromptSelect", &[
+        "PromptSelect[\"Pick one\", {\"A\",\"B\",\"C\"}]  ==> \"B\"",
+        "PromptSelect[\"Pick one\", {<|\"name\"->\"Human\", \"value\"->\"human\"|>, <|\"name\"->\"AI\", \"value\"->\"ai\"|>}]  ==> \"ai\"",
+    ]);
+    ev.set_doc_examples("PromptSelectMany", &[
+        "PromptSelectMany[\"Pick some\", {\"A\",\"B\",\"C\"}]  ==> {\"A\",\"C\"}",
+    ]);
     ev.set_doc_examples(
         "ProgressBar",
         &[
@@ -1226,14 +1498,14 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples(
         "Cors",
         &[
-            "srv := HttpServe[Cors[<|\"AllowOrigin\"->\"*\"|>, (req)=>RespondText[\"ok\"]], <|\"Port\"->0|>]",
+            "srv := HttpServe[Cors[<|allowOrigin->\"*\"|>, (req)=>RespondText[\"ok\"]], <|port->0|>]",
             "HttpServerStop[srv]",
         ],
     );
     ev.set_doc_examples(
         "CorsApply",
         &[
-            "CorsApply[<|\"AllowOrigin\"->\"*\", \"AllowMethods\"->\"GET\"|>, (r)=>RespondText[\"ok\"], <|\"method\"->\"OPTIONS\", \"headers\"-><||>|>]  ==> <|\"status\"->204, ...|>",
+            "CorsApply[<|allowOrigin->\"*\", allowMethods->\"GET\"|>, (r)=>RespondText[\"ok\"], <|\"method\"->\"OPTIONS\", \"headers\"-><||>|>]  ==> <|\"status\"->204, ...|>",
         ],
     );
     ev.set_doc("AuthJwt", "JWT auth middleware; verifies Bearer token and injects claims.", &["opts", "handler"]);
@@ -1245,10 +1517,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples(
         "AuthJwtApply",
         &[
-            "AuthJwtApply[<|\"Secret\"->\"s\"|>, (r)=>RespondText[\"ok\"], <||>]  ==> <|\"status\"->401, ...|>",
-            "tok := JwtSign[<|\"sub\"->\"u1\"|>, \"s\", <|\"Alg\"->\"HS256\"|>]",
+            "AuthJwtApply[<|secret->\"s\"|>, (r)=>RespondText[\"ok\"], <||>]  ==> <|\"status\"->401, ...|>",
+            "tok := JwtSign[<|\"sub\"->\"u1\"|>, \"s\", <|alg->\"HS256\"|>]",
             "req := <|\"headers\"-><|\"Authorization\"->StringJoin[{\"Bearer \", tok}]|>|>",
-            "AuthJwtApply[<|\"Secret\"->\"s\"|>, (r)=>RespondText[\"ok\"], req]  ==> <|\"status\"->200, ...|>",
+            "AuthJwtApply[<|secret->\"s\"|>, (r)=>RespondText[\"ok\"], req]  ==> <|\"status\"->200, ...|>",
         ],
     );
     ev.set_doc("OpenApiGenerate", "Generate OpenAPI from routes", &["routes", "opts?"]);
@@ -1329,13 +1601,73 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("UuidV4", &["UuidV4[]  ==> \"xxxxxxxx-xxxx-4xxx-...\""]);
     ev.set_doc_examples("UuidV7", &["UuidV7[]  ==> \"xxxxxxxx-xxxx-7xxx-...\""]);
 
-    // Part/Span helpers and packed arrays
-    ev.set_doc("Span", "Start a trace span and return its id.", &["name", "opts?"]);
-    ev.set_doc("SpanEnd", "End the last span or the given span id.", &["id?"]);
+    // List accessors and ops
+    ev.set_doc("First", "First element of a list (or Null).", &["list"]);
+    ev.set_doc("Last", "Last element of a list (or Null).", &["list"]);
+    ev.set_doc("Rest", "All but the first element.", &["list"]);
+    ev.set_doc("Init", "All but the last element.", &["list"]);
+    ev.set_doc("MapThread", "Map function over zipped lists (zip-with).", &["f", "lists"]);
+    ev.set_doc("ReplacePart", "Replace element at 1-based index or key.", &["subject", "indexOrKey", "value"]);
+    ev.set_doc("MapAt", "Apply function at 1-based index or key.", &["f", "subject", "indexOrKey"]);
+    ev.set_doc("StableKey", "Canonical stable key string for ordering/dedup.", &["x"]);
+    ev.set_doc("MaxBy", "Element with maximal derived key.", &["f", "list"]);
+    ev.set_doc("MinBy", "Element with minimal derived key.", &["f", "list"]);
+    ev.set_doc("ArgMax", "1-based index of maximal key.", &["f", "list"]);
+    ev.set_doc("ArgMin", "1-based index of minimal key.", &["f", "list"]);
+    ev.set_doc("UniqueBy", "Stable dedupe by derived key.", &["f", "list"]);
+    ev.set_doc_examples("First", &["First[{1,2,3}]  ==> 1"]);
+    ev.set_doc_examples("Last", &["Last[{1,2,3}]  ==> 3"]);
+    ev.set_doc_examples("Rest", &["Rest[{1,2,3}]  ==> {2,3}"]);
+    ev.set_doc_examples("Init", &["Init[{1,2,3}]  ==> {1,2}"]);
+    ev.set_doc_examples("MapThread", &["MapThread[Plus, {{1,2},{10,20}}]  ==> {11,22}"]);
+    ev.set_doc_examples("ReplacePart", &["ReplacePart[{1,2,3}, 2, 9]  ==> {1,9,3}"]);
+    ev.set_doc_examples("MapAt", &["MapAt[ToUpper, <|\"a\"->\"x\"|>, \"a\"]  ==> <|\"a\"->\"X\"|>"]);
+    ev.set_doc_examples("StableKey", &["StableKey[<|a->1|>]  ==> \"6:<|a=>0:00000000000000000001|>\""]);
+    ev.set_doc_examples("MaxBy", &["MaxBy[Length, {\"a\",\"bbb\",\"cc\"}]  ==> \"bbb\""]);
+    ev.set_doc_examples("MinBy", &["MinBy[Length, {\"a\",\"bbb\",\"cc\"}]  ==> \"a\""]);
+    ev.set_doc_examples("ArgMax", &["ArgMax[Identity, {2,10,5}]  ==> 2"]);
+    ev.set_doc_examples("ArgMin", &["ArgMin[Identity, {2,10,5}]  ==> 1"]);
+    ev.set_doc_examples("UniqueBy", &["UniqueBy[Length, {\"a\",\"bb\",\"c\",\"dd\"}]  ==> {\"a\",\"bb\"}"]);
+
+    // Generic SortBy dispatcher
+    ev.set_doc("SortBy", "Sort list by key or association by derived key.", &["f", "subject"]);
+    ev.set_doc_examples("SortBy", &["SortBy[Length, {\"a\",\"bbb\",\"cc\"}]  ==> {\"a\",\"cc\",\"bbb\"}"]);
+
+    // Random (math + list helpers)
+    ev.set_doc("SeedRandom", "Seed deterministic RNG scoped to this evaluator.", &["seed?"]);
+    ev.set_doc("RandomInteger", "Random integer; supports {min,max}.", &["spec?"]);
+    ev.set_doc("RandomReal", "Random real; supports {min,max}.", &["spec?"]);
+    ev.set_doc("RandomChoice", "Random element from a list.", &["list"]);
+    ev.set_doc("Shuffle", "Shuffle list uniformly.", &["list"]);
+    ev.set_doc("Sample", "Sample k distinct elements from a list.", &["list", "k"]);
+    ev.set_doc_examples("SeedRandom", &["SeedRandom[1]  ==> True"]);
+    ev.set_doc_examples("RandomInteger", &["SeedRandom[1]; RandomInteger[{1,3}]  ==> 2"]);
+    ev.set_doc_examples("RandomReal", &["SeedRandom[1]; RandomReal[{0.0,1.0}]  ==> 0.3..."]);
+    ev.set_doc_examples("RandomChoice", &["SeedRandom[1]; RandomChoice[{\"a\",\"b\",\"c\"}]"]);
+    ev.set_doc_examples("Shuffle", &["SeedRandom[1]; Shuffle[{1,2,3}]  ==> {3,1,2}"]);
+    ev.set_doc_examples("Sample", &["SeedRandom[1]; Sample[{1,2,3,4}, 2]  ==> {3,1}"]);
+
+    // Regex helpers
+    ev.set_doc("RegexSplit", "Split string by regex pattern.", &["pattern", "s"]);
+    ev.set_doc("RegexGroups", "Capture groups of first match.", &["pattern", "s"]);
+    ev.set_doc("RegexCaptureNames", "Ordered list of named capture groups.", &["pattern"]);
+    ev.set_doc_examples("RegexSplit", &["RegexSplit[\",\", \"a,b,c\"]  ==> {\"a\",\"b\",\"c\"}", "Split[\"a|b|c\", \"|\"]  ==> {\"a\",\"b\",\"c\"}"]);
+    ev.set_doc_examples("RegexGroups", &["RegexGroups[\"(a)(b)\", \"ab\"]  ==> {\"a\",\"b\"}"]);
+    ev.set_doc_examples("RegexCaptureNames", &["RegexCaptureNames[\"(?P<x>a)(?P<y>b)\"]  ==> {\"x\",\"y\"}"]);
+
+    // Control flow
+    ev.set_doc("While", "Repeat body while test evaluates to True.", &["test", "body"]);
+    ev.set_doc("Do", "Execute body n times.", &["body", "n"]);
+    ev.set_doc("For", "C-style loop with init/test/step.", &["init", "test", "step", "body"]);
+    ev.set_doc_examples("While", &["i:=0; While[i<3, i:=i+1]; i  ==> 3"]);
+    ev.set_doc_examples("Do", &["i:=0; Do[i:=i+1, 3]; i  ==> 3"]);
+    ev.set_doc_examples("For", &["i:=0; For[i:=0, i<3, i:=i+1, Null]; i  ==> 3"]);
+
+    // Part/Span helpers and packed arrays (Span docs defined earlier)
     ev.set_doc("PackedArray", "Create a packed numeric array.", &["list", "opts?"]);
     ev.set_doc("PackedToList", "Convert a packed array back to nested lists.", &["packed"]);
     ev.set_doc("PackedShape", "Return the shape of a packed array.", &["packed"]);
-    ev.set_doc_examples("PackedShape", &["PackedShape[PackedArray[{{1,2},{3,4}}]]  ==> {2,2}"]);
+    // Packed* helpers are internal; prefer Tensor + Shape
 
     // Tools registry (agent tools)
     ev.set_doc("ToolsRegister", "Register one or more tool specs.", &["spec|list"]);
@@ -1558,20 +1890,127 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
             "Workflow[{<|\"name\"->\"echo\", \"run\"->Run[\"echo\", {\"hi\"}]|>}]  ==> {...}",
         ],
     );
+    // ---------------- Distributions ----------------
+    ev.set_doc("Normal", "Normal distribution head (mean μ, stddev σ).", &["mu","sigma"]);
+    ev.set_doc("Bernoulli", "Bernoulli distribution head (probability p).", &["p"]);
+    ev.set_doc("BinomialDistribution", "Binomial distribution head (trials n, prob p).", &["n","p"]);
+    ev.set_doc("Poisson", "Poisson distribution head (rate λ).", &["lambda"]);
+    ev.set_doc("Exponential", "Exponential distribution head (rate λ).", &["lambda"]);
+    ev.set_doc("Gamma", "Gamma distribution head (shape k, scale θ).", &["k","theta"]);
+    ev.set_doc("PDF", "Probability density/mass for a distribution at x.", &["dist","x"]);
+    ev.set_doc("CDF", "Cumulative distribution for a distribution at x.", &["dist","x"]);
+    ev.set_doc("RandomVariate", "Sample from a distribution (optionally n samples).", &["dist","n?"]);
+    ev.set_doc_examples("PDF", &["PDF[Normal[0,1], 0]  ==> 0.39894…", "PDF[BinomialDistribution[10, 0.5], 5]  ==> 0.24609375"]);
+    ev.set_doc_examples("CDF", &["CDF[Exponential[2.0], 1.0]  ==> 1 - e^-2", "CDF[Poisson[2.0], 3]  ==> Σ_{k=0..3} e^-2 2^k/k!"]);
+    ev.set_doc_examples("RandomVariate", &["RandomVariate[Normal[0,1], 3]  ==> {…}", "RandomVariate[Bernoulli[0.3], 5]  ==> {0,1,0,0,1}"]);
+
+    // ---------------- Linalg ----------------
+    ev.set_doc("Determinant", "Determinant of a square matrix (partial pivoting).", &["A"]);
+    ev.set_doc("Inverse", "Inverse of a square matrix (Gauss–Jordan with pivoting).", &["A"]);
+    ev.set_doc("LinearSolve", "Solve linear system A x = b (SPD via Cholesky; otherwise LU).", &["A","b"]);
+    ev.set_doc("QR", "QR decomposition via Householder reflections. Use \"Reduced\" option for thin Q,R.", &["A","opts?"]);
+    ev.set_doc("SVD", "Reduced singular value decomposition A = U S V^T (via AtA eigen).", &["A"]);
+    ev.set_doc("EigenDecomposition", "Eigenvalues and eigenvectors. Symmetric: Jacobi; general: real QR + inverse iteration.", &["A"]);
+    ev.set_doc("Dot", "Matrix multiplication and vector dot product (type-dispatched).", &["a","b"]);
+    ev.set_doc("Transpose", "Transpose of a matrix (or NDTranspose for permutations).", &["A","perm?"]);
+    ev.set_doc("Trace", "Trace of a square matrix (sum of diagonal).", &["A"]);
+    ev.set_doc("Norm", "Vector p-norms; for matrices: Frobenius by default, 2-norm via SVD when p==2; also supports p=1 and Infinity.", &["x","p?"]);
+    ev.set_doc("MatrixNorm", "Matrix p-norm: 2 (spectral via SVD), 1 (max column sum), Infinity (max row sum), \"Frobenius\" alias.", &["A","p"]);
+    ev.set_doc("PseudoInverse", "Moore–Penrose pseudoinverse via reduced SVD (V S^+ U^T). Accepts Tolerance option or numeric.", &["A","optsOrTol?"]);
+    ev.set_doc("Diagonal", "Main diagonal of a matrix as a vector.", &["A"]);
+    ev.set_doc("DiagMatrix", "Diagonal matrix from a vector.", &["v"]);
+    ev.set_doc("Rank", "Numerical matrix rank via reduced QR (tolerance-based).", &["A"]);
+    ev.set_doc("ConditionNumber", "Estimated 2-norm condition number using power iterations on A^T A.", &["A"]);
+
+    ev.set_doc_examples("QR", &[
+        "r := QR[{{1,2},{3,4}}]  ==> <|Q->..., R->...|>",
+        "r2 := QR[{{1,2,3},{4,5,6}}, \"Reduced\"]  ==> Q:(2x2), R:(2x3)",
+    ]);
+    ev.set_doc_examples("SVD", &[
+        "sv := SVD[{{1,2},{3,4}}]  ==> <|U->(2x2), S->{..}, V->(2x2)|>",
+        "Dot[sv[\"U\"], DiagMatrix[sv[\"S\"]], Transpose[sv[\"V\"]]]  ==> {{1,2},{3,4}}",
+    ]);
+    ev.set_doc_examples("EigenDecomposition", &[
+        "EigenDecomposition[{{2,1},{1,2}}]  ==> <|Eigenvalues->{3,1}, Eigenvectors->...|>",
+    ]);
+    ev.set_doc("FFT", "Discrete Fourier transform of a 1D sequence (returns Complex list).", &["x","n?"]);
+    ev.set_doc("IFFT", "Inverse DFT of a 1D sequence.", &["X"]);
+    ev.set_doc("Convolve", "Linear convolution of two sequences. Modes: Full|Same|Valid.", &["a","b","mode?"]);
+    ev.set_doc("Window", "Window weights vector by type and size (Hann|Hamming|Blackman).", &["type","n","opts?"]);
+    ev.set_doc("STFT", "Short-time Fourier transform. STFT[x, size, hop?] or options.", &["x","size|opts","hop?"]);
+    ev.set_doc_examples("FFT", &[
+        "FFT[{1,0,0,0}]  ==> {1+0i, 1+0i, 1+0i, 1+0i}",
+        "IFFT[%]  ==> {1,0,0,0}",
+    ]);
+    ev.set_doc_examples("Convolve", &[
+        "Convolve[{1,2,1}, {1,1,1}]  ==> {1,3,4,3,1}",
+        "Convolve[{1,2,1}, {1,1,1}, \"Same\"]  ==> {1,3,4}",
+    ]);
+    ev.set_doc_examples("Window", &[
+        "Window[\"Hann\", 4]  ==> {0.0, 0.5, 0.5, 0.0}",
+    ]);
+    ev.set_doc_examples("STFT", &[
+        "STFT[Range[0, 127], 64, 32]  ==> {{…}, {…}, …}",
+    ]);
+    ev.set_doc_examples("MatrixNorm", &[
+        "MatrixNorm[{{1,2},{3,4}}, 2]  ==> largest singular value",
+        "MatrixNorm[{{1,2},{-3,4}}, 1]  ==> max column sum",
+        "MatrixNorm[{{1,2},{-3,4}}, Infinity]  ==> max row sum",
+        "MatrixNorm[{{1,2},{3,4}}, \"Frobenius\"]  ==> same as Norm[A]",
+    ]);
+    ev.set_doc_examples("PseudoInverse", &[
+        "PseudoInverse[{{1,2},{2,4}}]  ==> least-squares inverse (2x2 rank-1)",
+        "PseudoInverse[A, <|\"Tolerance\"->1e-8|>]",
+        "PseudoInverse[A, 1e-8]  (numeric shorthand)",
+    ]);
+    ev.set_doc("Determinant", "Determinant of a square matrix (partial pivoting).", &["A"]);
+    ev.set_doc("Inverse", "Inverse of a square matrix (Gauss–Jordan with pivoting).", &["A"]);
+    ev.set_doc("LinearSolve", "Solve linear system A x = b (SPD via Cholesky; otherwise LU).", &["A","b"]);
+    ev.set_doc("QR", "QR decomposition via Householder reflections. Use \"Reduced\" option for thin Q,R.", &["A","opts?"]);
+    ev.set_doc("SVD", "Reduced singular value decomposition A = U S V^T (via AtA eigen).", &["A"]);
+    ev.set_doc("EigenDecomposition", "Eigenvalues and eigenvectors. Symmetric: Jacobi; general: real QR + inverse iteration.", &["A"]);
+    ev.set_doc("Dot", "Matrix multiplication and vector dot product (type-dispatched).", &["a","b"]);
+    ev.set_doc("Transpose", "Transpose of a matrix (or NDTranspose for permutations).", &["A","perm?"]);
+    ev.set_doc("Trace", "Trace of a square matrix (sum of diagonal).", &["A"]);
+    ev.set_doc("Norm", "Vector p-norms; for matrices: Frobenius by default, 2-norm via SVD when p==2.", &["x","p?"]);
+    ev.set_doc("MatrixNorm", "Matrix p-norm: 2 (spectral via SVD), 1 (max column sum), Infinity (max row sum).", &["A","p"]);
+    ev.set_doc("PseudoInverse", "Moore–Penrose pseudoinverse via reduced SVD (V S^+ U^T).", &["A"]);
+    ev.set_doc("Diagonal", "Main diagonal of a matrix as a vector.", &["A"]);
+    ev.set_doc("DiagMatrix", "Diagonal matrix from a vector.", &["v"]);
+    ev.set_doc("Rank", "Numerical matrix rank via reduced QR (tolerance-based).", &["A"]);
+    ev.set_doc("ConditionNumber", "Estimated 2-norm condition number using power iterations on A^T A.", &["A"]);
+
+    ev.set_doc_examples("QR", &[
+        "r := QR[{{1,2},{3,4}}]  ==> <|Q->..., R->...|>",
+        "r2 := QR[{{1,2,3},{4,5,6}}, \"Reduced\"]  ==> Q:(2x2), R:(2x3)",
+    ]);
+    ev.set_doc_examples("SVD", &[
+        "sv := SVD[{{1,2},{3,4}}]  ==> <|U->(2x2), S->{..}, V->(2x2)|>",
+        "Dot[sv[\"U\"], DiagMatrix[sv[\"S\"]], Transpose[sv[\"V\"]]]  ==> {{1,2},{3,4}}",
+    ]);
+    ev.set_doc_examples("EigenDecomposition", &[
+        "EigenDecomposition[{{2,1},{1,2}}]  ==> <|Eigenvalues->{3,1}, Eigenvectors->...|>",
+    ]);
+    ev.set_doc_examples("MatrixNorm", &[
+        "MatrixNorm[{{1,2},{3,4}}, 2]  ==> largest singular value",
+        "MatrixNorm[{{1,2},{-3,4}}, 1]  ==> max column sum",
+        "MatrixNorm[{{1,2},{-3,4}}, Infinity]  ==> max row sum",
+    ]);
+    ev.set_doc_examples("PseudoInverse", &[
+        "PseudoInverse[{{1,2},{2,4}}]  ==> least-squares inverse (2x2 rank-1)",
+    ]);
 }
 
 // Internal glue and dispatchers: mark as internal so they don't count as missing
 pub fn register_internal_docs(ev: &mut Evaluator) {
     // Database
-    ev.set_doc("__DBClose", "Internal: close DB cursor handle", &[]);
+    Evaluator::set_doc(ev, "__DBClose", "Internal: close DB cursor handle", &[]);
     // Dataset internal dispatch entry points
-    ev.set_doc("__DatasetSelect", "Internal: Dataset select dispatcher", &[]);
-    ev.set_doc("__DatasetDescribe", "Internal: Dataset describe dispatcher", &[]);
-    ev.set_doc("__DatasetSort", "Internal: Dataset sort dispatcher", &[]);
-    ev.set_doc("__DatasetOffset", "Internal: Dataset offset/skip dispatcher", &[]);
-    ev.set_doc("__DatasetHead", "Internal: Dataset head dispatcher", &[]);
-    ev.set_doc("__DatasetTail", "Internal: Dataset tail dispatcher", &[]);
-    ev.set_doc("__DatasetDistinct", "Internal: Dataset distinct dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetSelect", "Internal: Dataset select dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetDescribe", "Internal: Dataset describe dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetSort", "Internal: Dataset sort dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetOffset", "Internal: Dataset offset/skip dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetHead", "Internal: Dataset head dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetTail", "Internal: Dataset tail dispatcher", &[]);
+    Evaluator::set_doc(ev, "__DatasetDistinct", "Internal: Dataset distinct dispatcher", &[]);
 }
-
-// End of register_docs_extra

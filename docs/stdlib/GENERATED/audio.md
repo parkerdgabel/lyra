@@ -28,7 +28,7 @@
 - Summary: Decode audio to raw (s16le) or WAV
 - Tags: audio, decode
 - Examples:
-  - `AudioDecode[<|Path->"in.mp3"|>, <|Format->"wav"|>]`
+  - `AudioDecode[<|path->"in.mp3"|>, <|format->"wav"|>]`
 
 ## `AudioInfo`
 
@@ -36,7 +36,7 @@
 - Summary: Probe audio metadata
 - Tags: audio
 - Examples:
-  - `AudioInfo[<|Path->"in.wav"|>]`
+  - `AudioInfo[<|path->"in.wav"|>]`
 
 ## `AudioTrim`
 
@@ -44,4 +44,4 @@
 - Summary: Trim audio by time range
 - Tags: audio, edit
 - Examples:
-  - `AudioTrim[<|Path->"in.wav"|>, <|StartMs->1000, EndMs->2000|>]`
+  - `AudioTrim[<|path->"in.wav"|>, <|startMs->1000, endMs->2000|>]`

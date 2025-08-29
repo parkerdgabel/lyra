@@ -54,14 +54,64 @@ pub fn register_math(ev: &mut Evaluator) {
     ev.register("Median", median_fn as NativeFn, Attributes::empty());
     ev.register("Variance", variance_fn as NativeFn, Attributes::empty());
     ev.register("StandardDeviation", stddev_fn as NativeFn, Attributes::empty());
+    ev.register("Quantile", quantile_fn as NativeFn, Attributes::empty());
+    ev.register("Percentile", percentile_fn as NativeFn, Attributes::empty());
+    ev.register("Mode", mode_fn as NativeFn, Attributes::empty());
+    ev.register("Correlation", correlation_fn as NativeFn, Attributes::empty());
+    ev.register("Covariance", covariance_fn as NativeFn, Attributes::empty());
+    ev.register("Skewness", skewness_fn as NativeFn, Attributes::empty());
+    ev.register("Kurtosis", kurtosis_fn as NativeFn, Attributes::empty());
     ev.register("GCD", gcd_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     ev.register("LCM", lcm_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     ev.register("Factorial", factorial_fn as NativeFn, Attributes::empty());
     ev.register("Binomial", binomial_fn as NativeFn, Attributes::empty());
+    // Number theory extensions
+    ev.register("PrimeFactors", prime_factors_fn as NativeFn, Attributes::empty());
+    ev.register("EulerPhi", euler_phi_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("MobiusMu", mobius_mu_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("PowerMod", power_mod_fn as NativeFn, Attributes::empty());
+    // Number theory
+    ev.register("ExtendedGCD", extended_gcd_fn as NativeFn, Attributes::empty());
+    ev.register("ModInverse", mod_inverse_fn as NativeFn, Attributes::empty());
+    ev.register("ChineseRemainder", chinese_remainder_fn as NativeFn, Attributes::empty());
+    ev.register("DividesQ", divides_q_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("CoprimeQ", coprime_q_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("PrimeQ", prime_q_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("NextPrime", next_prime_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("FactorInteger", factor_integer_fn as NativeFn, Attributes::empty());
+    // Combinatorics
+    ev.register("Permutations", permutations_fn as NativeFn, Attributes::empty());
+    ev.register("Combinations", combinations_fn as NativeFn, Attributes::empty());
+    ev.register("PermutationsCount", permutations_count_fn as NativeFn, Attributes::empty());
+    ev.register("CombinationsCount", combinations_count_fn as NativeFn, Attributes::empty());
     ev.register("ToDegrees", to_degrees_fn as NativeFn, Attributes::LISTABLE);
     ev.register("ToRadians", to_radians_fn as NativeFn, Attributes::LISTABLE);
     ev.register("Clip", clip_fn as NativeFn, Attributes::empty());
+    // Internal aliases for tensor-aware dispatch fallbacks
+    ev.register("__MathExp", exp_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathLog", log_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathSqrt", sqrt_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathSin", sin_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathCos", cos_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathTanh", tanh_fn as NativeFn, Attributes::LISTABLE);
+    ev.register("__MathPower", power as NativeFn, Attributes::empty());
+    ev.register("__MathClip", clip_fn as NativeFn, Attributes::empty());
     ev.register("Signum", signum_fn as NativeFn, Attributes::LISTABLE);
+    // Randomness (simple deterministic RNG)
+    ev.register("SeedRandom", seed_random_fn as NativeFn, Attributes::empty());
+    ev.register("RandomInteger", random_integer_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("RandomReal", random_real_fn as NativeFn, Attributes::HOLD_ALL);
+
+    // Tier1: Distributions and probability functions (stubs)
+    ev.register("Normal", dist_normal as NativeFn, Attributes::empty());
+    ev.register("Bernoulli", dist_bernoulli as NativeFn, Attributes::empty());
+    ev.register("BinomialDistribution", dist_binomial as NativeFn, Attributes::empty());
+    ev.register("Poisson", dist_poisson as NativeFn, Attributes::empty());
+    ev.register("Exponential", dist_exponential as NativeFn, Attributes::empty());
+    ev.register("Gamma", dist_gamma as NativeFn, Attributes::empty());
+    ev.register("PDF", pdf_fn as NativeFn, Attributes::empty());
+    ev.register("CDF", cdf_fn as NativeFn, Attributes::empty());
+    ev.register("RandomVariate", random_variate_fn as NativeFn, Attributes::HOLD_ALL);
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -93,6 +143,25 @@ pub fn register_math(ev: &mut Evaluator) {
                 ("result".to_string(), Value::Integer(6)),
             ]))
         ]),
+        tool_spec!("Quantile", summary: "Quantile(s) of numeric data (R7)", params: ["data","q"], tags: ["math","stats"], examples: [Value::String("Quantile[{1,2,3,4}, 0.25]  ==> 1.75".into())]),
+        tool_spec!("Percentile", summary: "Percentiles of numeric data (R7)", params: ["data","p"], tags: ["math","stats"], examples: [Value::String("Percentile[{1,2,3,4}, 25]  ==> 1.75".into())]),
+        tool_spec!("Mode", summary: "Most frequent element (first tie)", params: ["data"], tags: ["math","stats"], examples: [Value::String("Mode[{1,2,2,3}]  ==> 2".into())]),
+        tool_spec!("Correlation", summary: "Pearson correlation of two lists", params: ["a","b"], tags: ["math","stats"], examples: [Value::String("Correlation[{1,2,3},{2,4,6}]  ==> 1.0".into())]),
+        tool_spec!("Covariance", summary: "Covariance of two lists (population)", params: ["a","b"], tags: ["math","stats"], examples: [Value::String("Covariance[{1,2,3},{2,4,6}]  ==> 2.0".into())]),
+        tool_spec!("Skewness", summary: "Skewness (population moment)", params: ["data"], tags: ["math","stats"], examples: [Value::String("Skewness[{1,2,3}]".into())]),
+        tool_spec!("Kurtosis", summary: "Kurtosis (population moment)", params: ["data"], tags: ["math","stats"], examples: [Value::String("Kurtosis[{1,2,3}]".into())]),
+        tool_spec!("SeedRandom", summary: "Seed deterministic RNG for this evaluator", params: ["seed?"], tags: ["random"], examples: [Value::String("SeedRandom[1]  ==> True".into())]),
+        tool_spec!("RandomInteger", summary: "Random integer; support {min,max}", params: ["spec?"], tags: ["random"], examples: [Value::String("SeedRandom[1]; RandomInteger[{1,10}]".into())]),
+        tool_spec!("RandomReal", summary: "Random real; support {min,max}", params: ["spec?"], tags: ["random"], examples: [Value::String("SeedRandom[1]; RandomReal[{0.0,1.0}]".into())]),
+        tool_spec!("Normal", summary: "Normal distribution head", params: ["mu","sigma"], tags: ["stats","dist"]),
+        tool_spec!("Bernoulli", summary: "Bernoulli distribution head", params: ["p"], tags: ["stats","dist"]),
+        tool_spec!("BinomialDistribution", summary: "Binomial distribution head", params: ["n","p"], tags: ["stats","dist"]),
+        tool_spec!("Poisson", summary: "Poisson distribution head", params: ["lambda"], tags: ["stats","dist"]),
+        tool_spec!("Exponential", summary: "Exponential distribution head", params: ["lambda"], tags: ["stats","dist"]),
+        tool_spec!("Gamma", summary: "Gamma distribution head (shape k, scale θ)", params: ["k","theta"], tags: ["stats","dist"]),
+        tool_spec!("PDF", summary: "Probability density/mass function", params: ["dist","x"], tags: ["stats","dist"]),
+        tool_spec!("CDF", summary: "Cumulative distribution function", params: ["dist","x"], tags: ["stats","dist"]),
+        tool_spec!("RandomVariate", summary: "Sample from distribution", params: ["dist","n?"], tags: ["stats","random"], examples: [Value::String("RandomVariate[Normal[0,1], 3]".into())]),
         tool_spec!("Abs", summary: "Absolute value", params: ["x"], tags: ["math"], input_schema: Value::Assoc(HashMap::from([
             ("type".to_string(), Value::String("object".into())),
             ("properties".to_string(), Value::Assoc(HashMap::from([(String::from("x"), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))])))]))),
@@ -152,6 +221,16 @@ pub fn register_math_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Log", log_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "Sin", sin_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "Cos", cos_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "Tanh", tanh_fn as NativeFn, Attributes::LISTABLE);
+    // Internal aliases for dispatch fallbacks
+    register_if(ev, pred, "__MathExp", exp_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathLog", log_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathSqrt", sqrt_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathSin", sin_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathCos", cos_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathTanh", tanh_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "__MathPower", power as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__MathClip", clip_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "Tan", tan_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ASin", asin_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ACos", acos_fn as NativeFn, Attributes::LISTABLE);
@@ -163,15 +242,602 @@ pub fn register_math_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Median", median_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "Variance", variance_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "StandardDeviation", stddev_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Quantile", quantile_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Percentile", percentile_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Mode", mode_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Correlation", correlation_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Covariance", covariance_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Skewness", skewness_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Kurtosis", kurtosis_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "GCD", gcd_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     register_if(ev, pred, "LCM", lcm_fn as NativeFn, Attributes::FLAT | Attributes::ORDERLESS);
     register_if(ev, pred, "Factorial", factorial_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "Binomial", binomial_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PrimeFactors", prime_factors_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "EulerPhi", euler_phi_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "MobiusMu", mobius_mu_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "PowerMod", power_mod_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ExtendedGCD", extended_gcd_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ModInverse", mod_inverse_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ChineseRemainder", chinese_remainder_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "DividesQ", divides_q_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "CoprimeQ", coprime_q_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "PrimeQ", prime_q_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "NextPrime", next_prime_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "FactorInteger", factor_integer_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Permutations", permutations_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Combinations", combinations_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PermutationsCount", permutations_count_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "CombinationsCount", combinations_count_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "ToDegrees", to_degrees_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ToRadians", to_radians_fn as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "Clip", clip_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "Signum", signum_fn as NativeFn, Attributes::LISTABLE);
+    register_if(ev, pred, "SeedRandom", seed_random_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RandomInteger", random_integer_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "RandomReal", random_real_fn as NativeFn, Attributes::HOLD_ALL);
 }
+
+// ----- Simple RNG backed by evaluator env -----
+fn rng_next_u64(ev: &mut Evaluator) -> u64 {
+    let state_key = "__rng_state";
+    let mut x: u64 = match ev.get_env(state_key) { Some(lyra_core::value::Value::Integer(n)) => n as u64, _ => {
+        let seed = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1) as u64) | 1;
+        ev.set_env(state_key, lyra_core::value::Value::Integer(seed as i64)); seed }
+    };
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27; let r = x.wrapping_mul(2685821657736338717);
+    ev.set_env(state_key, lyra_core::value::Value::Integer(x as i64));
+    r
+}
+fn rng_uniform01(ev: &mut Evaluator) -> f64 { (rng_next_u64(ev) as f64) / (u64::MAX as f64 + 1.0) }
+
+fn seed_random_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let state_key = "__rng_state";
+    let seed: u64 = match args.as_slice() {
+        [] => 1,
+        [Value::Integer(n)] => (*n as u64) | 1,
+        [other] => return Value::Expr { head: Box::new(Value::Symbol("SeedRandom".into())), args: vec![ev.eval(other.clone())] },
+        _ => return Value::Expr { head: Box::new(Value::Symbol("SeedRandom".into())), args },
+    };
+    ev.set_env(state_key, Value::Integer(seed as i64));
+    Value::Boolean(true)
+}
+
+fn random_integer_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [] => {
+            let n = (rng_next_u64(ev) % (i64::MAX as u64)) as i64;
+            Value::Integer(n)
+        }
+        [Value::Integer(max)] => {
+            let m = *max; if m <= 0 { return Value::Integer(0); }
+            let r = (rng_uniform01(ev) * ((m + 1) as f64)) as i64; Value::Integer(r.min(m))
+        }
+        [Value::List(spec)] if spec.len() == 2 => {
+            let a = ev.eval(spec[0].clone()); let b = ev.eval(spec[1].clone());
+            if let (Value::Integer(min), Value::Integer(max)) = (a, b) {
+                if max < min { return Value::Integer(min); }
+                let span = (max - min + 1) as f64; let r = (rng_uniform01(ev) * span) as i64; Value::Integer(min + r)
+            } else {
+                Value::Expr { head: Box::new(Value::Symbol("RandomInteger".into())), args }
+            }
+        }
+        [other] => Value::Expr { head: Box::new(Value::Symbol("RandomInteger".into())), args: vec![ev.eval(other.clone())] },
+        _ => Value::Expr { head: Box::new(Value::Symbol("RandomInteger".into())), args },
+    }
+}
+
+fn random_real_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [] => Value::Real(rng_uniform01(ev)),
+        [Value::List(spec)] if spec.len() == 2 => {
+            let a = ev.eval(spec[0].clone()); let b = ev.eval(spec[1].clone());
+            match (a, b) {
+                (Value::Integer(min), Value::Integer(max)) => {
+                    let u = rng_uniform01(ev);
+                    Value::Real((min as f64) + u * ((max - min) as f64))
+                }
+                (Value::Real(min), Value::Real(max)) => {
+                    let u = rng_uniform01(ev);
+                    Value::Real(min + u * (max - min))
+                }
+                (Value::Integer(min), Value::Real(max)) => { let u = rng_uniform01(ev); Value::Real((min as f64) + u * (max - (min as f64))) }
+                (Value::Real(min), Value::Integer(max)) => { let u = rng_uniform01(ev); Value::Real(min + u * ((max as f64) - min)) }
+                _ => Value::Expr { head: Box::new(Value::Symbol("RandomReal".into())), args },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RandomReal".into())), args },
+    }
+}
+
+// -------- Tier1 Distributions (stubs) --------
+fn dist_head(name: &str, args: Vec<Value>) -> Value { Value::Expr { head: Box::new(Value::Symbol(name.into())), args } }
+
+fn dist_normal(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Canonicalize when possible: evaluate args, coerce to reals, validate sigma>0
+    match args.as_slice() {
+        [a, b] => {
+            let mu_v = ev.eval(a.clone());
+            let sigma_v = ev.eval(b.clone());
+            match (super_num_to_f64(&mu_v), super_num_to_f64(&sigma_v)) {
+                (Some(mu), Some(sigma)) if sigma > 0.0 => {
+                    return Value::Expr {
+                        head: Box::new(Value::Symbol("Normal".into())),
+                        args: vec![Value::Real(mu), Value::Real(sigma)],
+                    }
+                }
+                _ => {}
+            }
+            // Fallback to inert head with evaluated args
+            Value::Expr { head: Box::new(Value::Symbol("Normal".into())), args: vec![mu_v, sigma_v] }
+        }
+        _ => dist_head("Normal", args),
+    }
+}
+fn dist_bernoulli(_ev: &mut Evaluator, args: Vec<Value>) -> Value { dist_head("Bernoulli", args) }
+fn dist_binomial(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Canonical head name is BinomialDistribution; evaluate and normalize when possible
+    match args.as_slice() {
+        [n_v, p_v] => {
+            let n_e = ev.eval(n_v.clone());
+            let p_e = ev.eval(p_v.clone());
+            let n_ok = matches!(n_e, Value::Integer(k) if k >= 0);
+            let p_ok = super_num_to_f64(&p_e).map(|p| (0.0..=1.0).contains(&p)).unwrap_or(false);
+            let args_canon = if n_ok && p_ok {
+                let n = if let Value::Integer(k) = n_e { k } else { 0 } as i64;
+                let p = super_num_to_f64(&p_e).unwrap();
+                vec![Value::Integer(n), Value::Real(p)]
+            } else {
+                vec![n_e, p_e]
+            };
+            Value::Expr { head: Box::new(Value::Symbol("BinomialDistribution".into())), args: args_canon }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("BinomialDistribution".into())), args },
+    }
+}
+fn dist_poisson(_ev: &mut Evaluator, args: Vec<Value>) -> Value { dist_head("Poisson", args) }
+fn dist_exponential(_ev: &mut Evaluator, args: Vec<Value>) -> Value { dist_head("Exponential", args) }
+fn dist_gamma(_ev: &mut Evaluator, args: Vec<Value>) -> Value { dist_head("Gamma", args) }
+
+fn parse_normal(ev: &mut Evaluator, v: Value) -> Option<(f64, f64)> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if h == "Normal" && (args.len() == 2) {
+                    let mu = match ev.eval(args[0].clone()) { x => super_num_to_f64(&x)? };
+                    let sigma = match ev.eval(args[1].clone()) { x => super_num_to_f64(&x)? };
+                    if sigma > 0.0 { return Some((mu, sigma)); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_bernoulli(ev: &mut Evaluator, v: Value) -> Option<f64> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if h == "Bernoulli" && args.len() == 1 {
+                    let p = super_num_to_f64(&ev.eval(args[0].clone()))?;
+                    if (0.0..=1.0).contains(&p) { return Some(p); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_binomial(ev: &mut Evaluator, v: Value) -> Option<(usize, f64)> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if (h == "BinomialDistribution" || h == "Binomial") && args.len() == 2 {
+                    let n = match ev.eval(args[0].clone()) { Value::Integer(k) if k >= 0 => k as usize, _ => return None };
+                    let p = super_num_to_f64(&ev.eval(args[1].clone()))?;
+                    if (0.0..=1.0).contains(&p) { return Some((n, p)); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_poisson(ev: &mut Evaluator, v: Value) -> Option<f64> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if h == "Poisson" && args.len() == 1 {
+                    let lambda = super_num_to_f64(&ev.eval(args[0].clone()))?;
+                    if lambda > 0.0 { return Some(lambda); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_exponential(ev: &mut Evaluator, v: Value) -> Option<f64> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if h == "Exponential" && args.len() == 1 {
+                    let lambda = super_num_to_f64(&ev.eval(args[0].clone()))?;
+                    if lambda > 0.0 { return Some(lambda); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_gamma(ev: &mut Evaluator, v: Value) -> Option<(f64, f64)> {
+    match ev.eval(v) {
+        Value::Expr { head, args } => {
+            if let Value::Symbol(h) = *head {
+                if h == "Gamma" && args.len() == 2 {
+                    let k = super_num_to_f64(&ev.eval(args[0].clone()))?; // shape
+                    let theta = super_num_to_f64(&ev.eval(args[1].clone()))?; // scale
+                    if k > 0.0 && theta > 0.0 { return Some((k, theta)); }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn super_num_to_f64(v: &Value) -> Option<f64> {
+    match v {
+        Value::Integer(n) => Some(*n as f64),
+        Value::Real(x) => Some(*x),
+        Value::Rational { num, den } => if *den != 0 { Some((*num as f64)/(*den as f64)) } else { None },
+        Value::BigReal(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn normal_pdf(mu: f64, sigma: f64, x: f64) -> f64 {
+    let z = (x - mu) / sigma;
+    (1.0 / (sigma * (2.0 * std::f64::consts::PI).sqrt())) * (-0.5 * z * z).exp()
+}
+
+fn erf_approx(x: f64) -> f64 {
+    // Abramowitz & Stegun 7.1.26
+    let sign = if x < 0.0 { -1.0 } else { 1.0 };
+    let x = x.abs();
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    let a1 = 0.254829592;
+    let a2 = -0.284496736;
+    let a3 = 1.421413741;
+    let a4 = -1.453152027;
+    let a5 = 1.061405429;
+    let y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1) * t * (-x*x).exp();
+    sign * y
+}
+
+fn normal_cdf(mu: f64, sigma: f64, x: f64) -> f64 {
+    let z = (x - mu) / (sigma * std::f64::consts::SQRT_2);
+    0.5 * (1.0 + erf_approx(z))
+}
+
+fn pdf_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return dist_head("PDF", args); }
+    // Normal
+    if let Some((mu, sigma)) = parse_normal(ev, args[0].clone()) {
+        match ev.eval(args[1].clone()) {
+            v => match super_num_to_f64(&v) {
+                Some(x) => return Value::Real(normal_pdf(mu, sigma, x)),
+                None => return dist_head("PDF", vec![Value::Expr { head: Box::new(Value::Symbol("Normal".into())), args: vec![Value::Real(mu), Value::Real(sigma)] }, v]),
+            },
+        }
+    }
+    // Bernoulli
+    if let Some(p) = parse_bernoulli(ev, args[0].clone()) {
+        let xv = ev.eval(args[1].clone());
+        let x = match xv { Value::Integer(k) => k, Value::Real(r) => r.round() as i64, _ => -1 };
+        let pmf = if x == 0 { 1.0 - p } else if x == 1 { p } else { 0.0 };
+        return Value::Real(pmf);
+    }
+    // Binomial
+    if let Some((n, p)) = parse_binomial(ev, args[0].clone()) {
+        let xr = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("PDF", args) };
+        let k = xr.round() as i64;
+        if k < 0 || (k as usize) > n { return Value::Real(0.0); }
+        let k = k as usize;
+        let pmf = binomial_pmf(n, k, p);
+        return Value::Real(pmf);
+    }
+    dist_head("PDF", args)
+}
+
+fn cdf_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return dist_head("CDF", args); }
+    // Normal
+    if let Some((mu, sigma)) = parse_normal(ev, args[0].clone()) {
+        match ev.eval(args[1].clone()) {
+            v => match super_num_to_f64(&v) {
+                Some(x) => return Value::Real(normal_cdf(mu, sigma, x)),
+                None => return dist_head("CDF", vec![Value::Expr { head: Box::new(Value::Symbol("Normal".into())), args: vec![Value::Real(mu), Value::Real(sigma)] }, v]),
+            },
+        }
+    }
+    // Bernoulli
+    if let Some(p) = parse_bernoulli(ev, args[0].clone()) {
+        let x = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("CDF", args) };
+        if x < 0.0 { return Value::Real(0.0); }
+        if x < 1.0 { return Value::Real(1.0 - p); }
+        return Value::Real(1.0);
+    }
+    // Binomial
+    if let Some((n, p)) = parse_binomial(ev, args[0].clone()) {
+        let x = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("CDF", args) };
+        if x < 0.0 { return Value::Real(0.0); }
+        if x >= n as f64 { return Value::Real(1.0); }
+        let kmax = x.floor() as usize;
+        let mut c = 0.0f64;
+        for k in 0..=kmax { c += binomial_pmf(n, k, p); }
+        return Value::Real(c.min(1.0));
+    }
+    // Poisson
+    if let Some(lambda) = parse_poisson(ev, args[0].clone()) {
+        let x = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("CDF", args) };
+        if x < 0.0 { return Value::Real(0.0); }
+        let kmax = x.floor() as usize;
+        let mut c = 0.0f64;
+        for k in 0..=kmax { c += poisson_pmf(lambda, k); }
+        return Value::Real(c.min(1.0));
+    }
+    // Exponential
+    if let Some(lambda) = parse_exponential(ev, args[0].clone()) {
+        let x = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("CDF", args) };
+        if x < 0.0 { return Value::Real(0.0); }
+        return Value::Real(1.0 - (-lambda * x).exp());
+    }
+    // Gamma
+    if let Some((k, theta)) = parse_gamma(ev, args[0].clone()) {
+        let x = match super_num_to_f64(&ev.eval(args[1].clone())) { Some(x) => x, None => return dist_head("CDF", args) };
+        if x <= 0.0 { return Value::Real(0.0); }
+        let a = k; let z = x / theta;
+        let p = lower_incomplete_gamma_regularized(a, z);
+        return Value::Real(p);
+    }
+    dist_head("CDF", args)
+}
+
+fn random_variate_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [dist] => {
+            if let Some((mu, sigma)) = parse_normal(ev, dist.clone()) {
+                return Value::Real(normal_sample(ev, mu, sigma));
+            }
+            if let Some(p) = parse_bernoulli(ev, dist.clone()) {
+                let u = rng_uniform01(ev); return Value::Integer(if u < p { 1 } else { 0 });
+            }
+            if let Some((n, p)) = parse_binomial(ev, dist.clone()) {
+                return Value::Integer(binomial_sample(ev, n, p) as i64);
+            }
+            if let Some(lambda) = parse_poisson(ev, dist.clone()) {
+                return Value::Integer(poisson_sample(ev, lambda) as i64);
+            }
+            if let Some(lambda) = parse_exponential(ev, dist.clone()) {
+                return Value::Real(exponential_sample(ev, lambda));
+            }
+            if let Some((k, theta)) = parse_gamma(ev, dist.clone()) {
+                return Value::Real(gamma_sample(ev, k, theta));
+            }
+            dist_head("RandomVariate", args)
+        }
+        [dist, Value::Integer(nn)] => {
+            let k = (*nn).max(0) as usize;
+            if let Some((mu, sigma)) = parse_normal(ev, dist.clone()) {
+                let mut out = Vec::with_capacity(k);
+                for _ in 0..k { out.push(Value::Real(normal_sample(ev, mu, sigma))); }
+                return Value::List(out);
+            }
+            if let Some(p) = parse_bernoulli(ev, dist.clone()) {
+                let mut out: Vec<Value> = Vec::with_capacity(k);
+                for _ in 0..k { let u = rng_uniform01(ev); out.push(Value::Integer(if u < p { 1 } else { 0 })); }
+                return Value::List(out);
+            }
+            if let Some((n, p)) = parse_binomial(ev, dist.clone()) {
+                let mut out: Vec<Value> = Vec::with_capacity(k);
+                for _ in 0..k { out.push(Value::Integer(binomial_sample(ev, n, p) as i64)); }
+                return Value::List(out);
+            }
+            if let Some(lambda) = parse_poisson(ev, dist.clone()) {
+                let mut out: Vec<Value> = Vec::with_capacity(k);
+                for _ in 0..k { out.push(Value::Integer(poisson_sample(ev, lambda) as i64)); }
+                return Value::List(out);
+            }
+            if let Some(lambda) = parse_exponential(ev, dist.clone()) {
+                let mut out: Vec<Value> = Vec::with_capacity(k);
+                for _ in 0..k { out.push(Value::Real(exponential_sample(ev, lambda))); }
+                return Value::List(out);
+            }
+            if let Some((kk, theta)) = parse_gamma(ev, dist.clone()) {
+                let mut out: Vec<Value> = Vec::with_capacity(k);
+                for _ in 0..k { out.push(Value::Real(gamma_sample(ev, kk, theta))); }
+                return Value::List(out);
+            }
+            dist_head("RandomVariate", args)
+        }
+        _ => dist_head("RandomVariate", args),
+    }
+}
+
+fn normal_sample(ev: &mut Evaluator, mu: f64, sigma: f64) -> f64 {
+    // Box-Muller
+    let mut u1 = rng_uniform01(ev); let mut u2 = rng_uniform01(ev);
+    // Avoid log(0)
+    if u1 <= 1e-12 { u1 = 1e-12; }
+    let r = (-2.0 * u1.ln()).sqrt();
+    let theta = 2.0 * std::f64::consts::PI * u2;
+    let z = r * theta.cos();
+    mu + sigma * z
+}
+
+fn binomial_coeff(n: usize, k: usize) -> f64 {
+    if k > n { return 0.0; }
+    let k = k.min(n - k);
+    let mut c = 1.0f64;
+    for i in 1..=k { c *= (n - k + i) as f64; c /= i as f64; }
+    c
+}
+
+fn binomial_pmf(n: usize, k: usize, p: f64) -> f64 {
+    if p < 0.0 || p > 1.0 { return 0.0; }
+    if k > n { return 0.0; }
+    let c = binomial_coeff(n, k);
+    c * p.powi(k as i32) * (1.0 - p).powi((n - k) as i32)
+}
+
+fn binomial_sample(ev: &mut Evaluator, n: usize, p: f64) -> usize {
+    let mut cnt = 0usize;
+    for _ in 0..n { if rng_uniform01(ev) < p { cnt += 1; } }
+    cnt
+}
+
+fn factorial_u64(k: usize) -> f64 { (1..=k).fold(1.0, |acc, i| acc * (i as f64)) }
+
+fn poisson_pmf(lambda: f64, k: usize) -> f64 {
+    if lambda <= 0.0 { return 0.0; }
+    let kf = factorial_u64(k);
+    ((-lambda).exp()) * lambda.powi(k as i32) / kf
+}
+
+fn poisson_sample(ev: &mut Evaluator, lambda: f64) -> usize {
+    // Knuth's algorithm
+    let l = (-lambda).exp();
+    let mut p = 1.0; let mut k = 0usize;
+    loop {
+        k += 1;
+        p *= rng_uniform01(ev);
+        if p <= l { break; }
+    }
+    k - 1
+}
+
+fn exponential_sample(ev: &mut Evaluator, lambda: f64) -> f64 {
+    let mut u = rng_uniform01(ev);
+    if u <= 1e-12 { u = 1e-12; }
+    -u.ln() / lambda
+}
+
+// ---- Gamma helpers ----
+fn ln_gamma(z: f64) -> f64 {
+    // Lanczos approximation, g=7, n=9 coefficients
+    let p: [f64; 9] = [
+        0.99999999999980993,
+        676.5203681218851,
+        -1259.1392167224028,
+        771.32342877765313,
+        -176.61502916214059,
+        12.507343278686905,
+        -0.13857109526572012,
+        9.9843695780195716e-6,
+        1.5056327351493116e-7,
+    ];
+    if z < 0.5 {
+        return std::f64::consts::PI.ln() - (std::f64::consts::PI * z).sin().ln() - ln_gamma(1.0 - z);
+    }
+    let z = z - 1.0;
+    let x0 = p[0];
+    let mut x = x0;
+    for i in 1..9 { x += p[i] / (z + i as f64); }
+    let t = z + 7.5;
+    0.5 * (2.0 * std::f64::consts::PI).ln() + (z + 0.5) * t.ln() - t + x.ln()
+}
+
+fn lower_incomplete_gamma_series(a: f64, x: f64) -> f64 {
+    // Series expansion for P(a,x) * Gamma(a)
+    let mut sum = 1.0 / a;
+    let mut term = sum;
+    let mut n = 1.0;
+    while term.abs() > 1e-12 && n < 10000.0 {
+        term *= x / (a + n);
+        sum += term;
+        n += 1.0;
+    }
+    sum * x.powf(a) * (-x).exp()
+}
+
+fn lower_incomplete_gamma_cf(a: f64, x: f64) -> f64 {
+    // Continued fraction for Q(a,x) = Gamma(a,x)/Gamma(a)
+    // We compute Q and then return Gamma(a) * (1-Q)
+    let max_iter = 200;
+    let eps = 1e-12;
+    let mut b = x + 1.0 - a;
+    let mut c = 1.0 / 1e-30;
+    let mut d = 1.0 / b;
+    let mut h = d;
+    for i in 1..=max_iter {
+        let an = -(i as f64) * (i as f64 - a);
+        b += 2.0;
+        d = an * d + b; if d.abs() < 1e-30 { d = 1e-30; }
+        c = b + an / c; if c.abs() < 1e-30 { c = 1e-30; }
+        d = 1.0 / d;
+        let del = d * c;
+        h *= del;
+        if (del - 1.0).abs() < eps { break; }
+    }
+    ((-x).exp()) * h
+}
+
+fn lower_incomplete_gamma_regularized(a: f64, x: f64) -> f64 {
+    if x <= 0.0 { return 0.0; }
+    if x < a + 1.0 {
+        let s = lower_incomplete_gamma_series(a, x);
+        let p = s / (ln_gamma(a).exp());
+        p.max(0.0).min(1.0)
+    } else {
+        let q = lower_incomplete_gamma_cf(a, x);
+        (1.0 - q).max(0.0).min(1.0)
+    }
+}
+
+fn gamma_pdf(k: f64, theta: f64, x: f64) -> f64 {
+    if x < 0.0 { return 0.0; }
+    let a = k;
+    let t = theta;
+    let log_pdf = (a - 1.0) * x.ln() - (x / t) - a * t.ln() - ln_gamma(a);
+    log_pdf.exp()
+}
+
+fn gamma_sample(ev: &mut Evaluator, k: f64, theta: f64) -> f64 {
+    let a = k;
+    if a < 1.0 {
+        let u = rng_uniform01(ev);
+        return gamma_sample(ev, a + 1.0, theta) * u.powf(1.0 / a);
+    }
+    // Marsaglia and Tsang's method for a>=1
+    let d = a - 1.0 / 3.0;
+    let c = (1.0 / (9.0 * d)).sqrt();
+    loop {
+        let mut x: f64;
+        let mut v: f64;
+        // Standard normal via Box-Muller
+        let z = {
+            let u1 = rng_uniform01(ev).max(1e-12);
+            let u2 = rng_uniform01(ev);
+            let r = (-2.0 * u1.ln()).sqrt();
+            let theta = 2.0 * std::f64::consts::PI * u2;
+            r * theta.cos()
+        };
+        x = 1.0 + c * z;
+        if x <= 0.0 { continue; }
+        v = x * x * x;
+        let u = rng_uniform01(ev);
+        if u < 1.0 - 0.0331 * z * z * z * z { return (d * v) * theta; }
+        if (u.ln()) < 0.5 * z * z + d * (1.0 - v + v.ln()) { return (d * v) * theta; }
+    }
+}
+
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
@@ -868,15 +1534,21 @@ fn divide(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn power(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn power(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
-        [a, b] => pow_numeric(a.clone(), b.clone()).unwrap_or(Value::Expr {
-            head: Box::new(Value::Symbol("Power".into())),
-            args: vec![a.clone(), b.clone()],
-        }),
-        other => {
-            Value::Expr { head: Box::new(Value::Symbol("Power".into())), args: other.to_vec() }
+        [a, b] => {
+            // Tensor-aware: if either side evaluates to a PackedArray, delegate to NDPow
+            let av = ev.eval(a.clone());
+            let bv = ev.eval(b.clone());
+            if matches!(av, Value::PackedArray { .. }) || matches!(bv, Value::PackedArray { .. }) {
+                return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![av, bv] });
+            }
+            pow_numeric(av, bv).unwrap_or(Value::Expr {
+                head: Box::new(Value::Symbol("Power".into())),
+                args: vec![a.clone(), b.clone()],
+            })
         }
+        other => Value::Expr { head: Box::new(Value::Symbol("Power".into())), args: other.to_vec() },
     }
 }
 
@@ -929,6 +1601,18 @@ fn abs_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
         }
         other => Value::Expr { head: Box::new(Value::Symbol("Abs".into())), args: other.to_vec() },
+    }
+}
+
+fn tanh_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Real((*n as f64).tanh()),
+        [Value::Real(x)] => Value::Real(x.tanh()),
+        [Value::Rational { num, den }] => {
+            let x = (*num as f64) / (*den as f64);
+            Value::Real(x.tanh())
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("Tanh".into())), args: other.to_vec() },
     }
 }
 
@@ -1588,6 +2272,125 @@ fn stddev_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+// ----- Quantiles -----
+fn collect_f64_list(ev: &mut Evaluator, v: Value) -> Option<Vec<f64>> {
+    match ev.eval(v) {
+        Value::List(xs) => {
+            let mut out = Vec::with_capacity(xs.len());
+            for it in xs {
+                if let Some(x) = to_f64_scalar(&ev.eval(it)) { out.push(x); } else { return None; }
+            }
+            Some(out)
+        }
+        Value::PackedArray { data, .. } => Some(data),
+        other => to_f64_scalar(&other).map(|x| vec![x]),
+    }
+}
+
+fn quantile_single(mut vals: Vec<f64>, q: f64) -> Value {
+    if vals.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Quantile".into())), args: vec![Value::List(vec![]), Value::Real(q)] }; }
+    if q.is_nan() { return Value::Symbol("Null".into()); }
+    let n = vals.len();
+    vals.sort_by(|a,b| a.partial_cmp(b).unwrap());
+    // Use linear interpolation between closest ranks (R type 7)
+    let h = (q.clamp(0.0,1.0)) * ((n - 1) as f64);
+    let lo = h.floor() as usize;
+    let hi = h.ceil() as usize;
+    if lo == hi { Value::Real(vals[lo]) } else { let w = h - (lo as f64); Value::Real(vals[lo] * (1.0 - w) + vals[hi] * w) }
+}
+
+fn quantile_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [v, q] => {
+            let vals = match collect_f64_list(ev, v.clone()) { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Quantile".into())), args } };
+            match ev.eval(q.clone()) {
+                Value::Real(p) => quantile_single(vals, p),
+                Value::Integer(i) => quantile_single(vals, i as f64),
+                Value::List(qs) => Value::List(qs.into_iter().map(|qq| match ev.eval(qq) { Value::Real(p) => quantile_single(vals.clone(), p), Value::Integer(i) => quantile_single(vals.clone(), i as f64), other => other }).collect()),
+                other => Value::Expr { head: Box::new(Value::Symbol("Quantile".into())), args: vec![Value::List(vals.into_iter().map(Value::Real).collect()), other] },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Quantile".into())), args },
+    }
+}
+
+fn percentile_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [v, p] => {
+            let vals = match collect_f64_list(ev, v.clone()) { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Percentile".into())), args } };
+            match ev.eval(p.clone()) {
+                Value::Real(pp) => quantile_single(vals, pp / 100.0),
+                Value::Integer(i) => quantile_single(vals, (i as f64) / 100.0),
+                Value::List(ps) => Value::List(ps.into_iter().map(|qq| match ev.eval(qq) { Value::Real(pp) => quantile_single(vals.clone(), pp / 100.0), Value::Integer(ii) => quantile_single(vals.clone(), (ii as f64) / 100.0), other => other }).collect()),
+                other => Value::Expr { head: Box::new(Value::Symbol("Percentile".into())), args: vec![Value::List(vals.into_iter().map(Value::Real).collect()), other] },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Percentile".into())), args },
+    }
+}
+
+fn mode_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let items: Vec<Value> = match args.as_slice() {
+        [v] => match ev.eval(v.clone()) { Value::List(xs) => xs, other => vec![other] },
+        _ => args.into_iter().map(|a| ev.eval(a)).collect(),
+    };
+    if items.is_empty() { return Value::Symbol("Null".into()); }
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, (i64, Value, usize)> = HashMap::new();
+    for (i, it) in items.into_iter().enumerate() {
+        let v = ev.eval(it);
+        let k = lyra_runtime::eval::value_order_key(&v);
+        let e = counts.entry(k).or_insert((0, v.clone(), i));
+        e.0 += 1;
+    }
+    let mut best: Option<(i64, usize, Value)> = None;
+    for (_k, (cnt, v, idx)) in counts.into_iter() {
+        match &best { Some((bc, bi, _)) if cnt < *bc || (cnt == *bc && idx >= *bi) => {} _ => best = Some((cnt, idx, v)) }
+    }
+    best.map(|(_, _, v)| v).unwrap_or(Value::Symbol("Null".into()))
+}
+
+fn covariance_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Covariance".into())), args }; }
+    let a = match collect_f64_list(ev, args[0].clone()) { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Covariance".into())), args } };
+    let b = match collect_f64_list(ev, args[1].clone()) { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Covariance".into())), args } };
+    if a.len() != b.len() || a.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Covariance".into())), args: vec![Value::List(a.into_iter().map(Value::Real).collect()), Value::List(b.into_iter().map(Value::Real).collect())] }; }
+    let n = a.len() as f64;
+    let ma = a.iter().copied().sum::<f64>() / n;
+    let mb = b.iter().copied().sum::<f64>() / n;
+    let mut acc = 0.0; for i in 0..a.len() { acc += (a[i]-ma)*(b[i]-mb); }
+    Value::Real(acc / n)
+}
+
+fn correlation_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Correlation".into())), args }; }
+    match (covariance_fn(ev, args.clone()), variance_fn(ev, vec![args[0].clone()]), variance_fn(ev, vec![args[1].clone()])) {
+        (Value::Real(cov), Value::Real(va), Value::Real(vb)) if va > 0.0 && vb > 0.0 => Value::Real(cov / (va.sqrt() * vb.sqrt())),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Correlation".into())), args },
+    }
+}
+
+fn skewness_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let vals = match args.as_slice() { [v] => collect_f64_list(ev, v.clone()), _ => Some(args.into_iter().filter_map(|a| to_f64_scalar(&ev.eval(a))).collect()) };
+    let mut x = match vals { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Skewness".into())), args: vec![] } };
+    if x.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Skewness".into())), args: vec![Value::List(vec![])] }; }
+    let n = x.len() as f64; let mean = x.iter().sum::<f64>()/n; let mut m2=0.0; let mut m3=0.0;
+    for v in x.drain(..) { let d = v-mean; m2 += d*d; m3 += d*d*d; }
+    if m2 == 0.0 { return Value::Real(0.0); }
+    Value::Real((m3/n) / (m2/n).powf(1.5))
+}
+
+fn kurtosis_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let vals = match args.as_slice() { [v] => collect_f64_list(ev, v.clone()), _ => Some(args.into_iter().filter_map(|a| to_f64_scalar(&ev.eval(a))).collect()) };
+    let mut x = match vals { Some(v) => v, None => return Value::Expr { head: Box::new(Value::Symbol("Kurtosis".into())), args: vec![] } };
+    if x.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Kurtosis".into())), args: vec![Value::List(vec![])] }; }
+    let n = x.len() as f64; let mean = x.iter().sum::<f64>()/n; let mut m2=0.0; let mut m4=0.0;
+    for v in x.drain(..) { let d = v-mean; let d2=d*d; m2 += d2; m4 += d2*d2; }
+    if m2 == 0.0 { return Value::Real(0.0); }
+    Value::Real((m4/n) / ((m2/n).powi(2)))
+}
+
+
 fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
     if a == 0 {
         return b.abs();
@@ -1722,6 +2525,191 @@ fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
     a
 }
 
+// ----- Combinatorics -----
+
+fn value_list_to_vec(lst: &Value) -> Option<Vec<Value>> {
+    match lst {
+        Value::List(xs) => Some(xs.clone()),
+        _ => None,
+    }
+}
+
+fn range_list(n: i64) -> Value {
+    let mut out = Vec::with_capacity(n as usize);
+    for i in 1..=n {
+        out.push(Value::Integer(i));
+    }
+    Value::List(out)
+}
+
+fn combinations_indices(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut res: Vec<Vec<usize>> = Vec::new();
+    if k == 0 { res.push(vec![]); return res; }
+    if k > n { return res; }
+    let mut idx: Vec<usize> = (0..k).collect();
+    loop {
+        res.push(idx.clone());
+        // Generate next combination in lex order
+        let mut i = k;
+        while i > 0 {
+            i -= 1;
+            if idx[i] != i + n - k { break; }
+        }
+        if idx[i] == i + n - k { break; }
+        idx[i] += 1;
+        for j in i+1..k { idx[j] = idx[j-1] + 1; }
+    }
+    res
+}
+
+fn permutations_backtrack(items: &[Value]) -> Vec<Vec<Value>> {
+    let n = items.len();
+    let mut res: Vec<Vec<Value>> = Vec::new();
+    if n == 0 { return vec![vec![]]; }
+    let mut used = vec![false; n];
+    let mut cur: Vec<Value> = Vec::with_capacity(n);
+    fn dfs(items: &[Value], used: &mut [bool], cur: &mut Vec<Value>, res: &mut Vec<Vec<Value>>) {
+        if cur.len() == items.len() {
+            res.push(cur.clone());
+            return;
+        }
+        for i in 0..items.len() {
+            if !used[i] {
+                used[i] = true;
+                cur.push(items[i].clone());
+                dfs(items, used, cur, res);
+                cur.pop();
+                used[i] = false;
+            }
+        }
+    }
+    dfs(items, &mut used, &mut cur, &mut res);
+    res
+}
+
+fn k_permutations_backtrack(items: &[Value], k: usize) -> Vec<Vec<Value>> {
+    let n = items.len();
+    let mut res: Vec<Vec<Value>> = Vec::new();
+    if k == 0 { return vec![vec![]]; }
+    if k > n { return res; }
+    let mut used = vec![false; n];
+    let mut cur: Vec<Value> = Vec::with_capacity(k);
+    fn dfs_k(items: &[Value], k: usize, used: &mut [bool], cur: &mut Vec<Value>, res: &mut Vec<Vec<Value>>) {
+        if cur.len() == k {
+            res.push(cur.clone());
+            return;
+        }
+        for i in 0..items.len() {
+            if !used[i] {
+                used[i] = true;
+                cur.push(items[i].clone());
+                dfs_k(items, k, used, cur, res);
+                cur.pop();
+                used[i] = false;
+            }
+        }
+    }
+    dfs_k(items, k, &mut used, &mut cur, &mut res);
+    res
+}
+
+fn permutations_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::List(xs)] => {
+            let perms = permutations_backtrack(xs);
+            Value::List(perms.into_iter().map(Value::List).collect())
+        }
+        [Value::List(xs), Value::Integer(k)] if *k >= 0 => {
+            let k = *k as usize;
+            let perms = k_permutations_backtrack(xs, k);
+            Value::List(perms.into_iter().map(Value::List).collect())
+        }
+        [Value::Integer(n)] if *n >= 0 => {
+            let xs: Vec<Value> = (1..=(*n as i64)).map(Value::Integer).collect();
+            let perms = permutations_backtrack(&xs);
+            Value::List(perms.into_iter().map(Value::List).collect())
+        }
+        [Value::Integer(n), Value::Integer(k)] if *n >= 0 && *k >= 0 => {
+            let n = *n as usize;
+            let k = *k as usize;
+            let xs: Vec<Value> = (1..=n as i64).map(Value::Integer).collect();
+            let perms = k_permutations_backtrack(&xs, k);
+            Value::List(perms.into_iter().map(Value::List).collect())
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("Permutations".into())), args: other.to_vec() },
+    }
+}
+
+fn combinations_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::List(xs), Value::Integer(k)] if *k >= 0 => {
+            let k = *k as usize;
+            let n = xs.len();
+            let idxs = combinations_indices(n, k);
+            let mut out: Vec<Value> = Vec::with_capacity(idxs.len());
+            for idx in idxs {
+                let mut combo: Vec<Value> = Vec::with_capacity(k);
+                for &i in &idx { combo.push(xs[i].clone()); }
+                out.push(Value::List(combo));
+            }
+            Value::List(out)
+        }
+        [Value::Integer(n), Value::Integer(k)] if *n >= 0 && *k >= 0 => {
+            let n = *n as usize;
+            let k = *k as usize;
+            let idxs = combinations_indices(n, k);
+            let mut out: Vec<Value> = Vec::with_capacity(idxs.len());
+            for idx in idxs {
+                let mut combo: Vec<Value> = Vec::with_capacity(k);
+                for &i in &idx { combo.push(Value::Integer((i + 1) as i64)); }
+                out.push(Value::List(combo));
+            }
+            Value::List(out)
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("Combinations".into())), args: other.to_vec() },
+    }
+}
+
+fn permutations_count_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] if *n >= 0 => {
+            // n!
+            let mut acc: i128 = 1;
+            for k in 2..=(*n as i128) {
+                acc = acc.saturating_mul(k);
+                if acc > i64::MAX as i128 {
+                    return Value::Expr { head: Box::new(Value::Symbol("PermutationsCount".into())), args: vec![Value::Integer(*n)] };
+                }
+            }
+            Value::Integer(acc as i64)
+        }
+        [Value::Integer(n), Value::Integer(k)] if *n >= 0 && *k >= 0 && *k <= *n => {
+            // nPk = n! / (n-k)!
+            let n_i = *n;
+            let k_i = *k;
+            let n = n_i as i128;
+            let k = k_i as i128;
+            let mut acc: i128 = 1;
+            for x in (n - k + 1)..=n {
+                acc = acc.saturating_mul(x);
+                if acc > i64::MAX as i128 {
+                    return Value::Expr { head: Box::new(Value::Symbol("PermutationsCount".into())), args: vec![Value::Integer(n_i), Value::Integer(k_i)] };
+                }
+            }
+            Value::Integer(acc as i64)
+        }
+        [Value::Integer(n), Value::Integer(k)] if *k > *n || *k < 0 => Value::Integer(0),
+        other => Value::Expr { head: Box::new(Value::Symbol("PermutationsCount".into())), args: other.to_vec() },
+    }
+}
+
+fn combinations_count_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n), Value::Integer(k)] => binomial_fn(ev, vec![Value::Integer(*n), Value::Integer(*k)]),
+        other => Value::Expr { head: Box::new(Value::Symbol("CombinationsCount".into())), args: other.to_vec() },
+    }
+}
+
 fn to_degrees_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     match args.as_slice() {
         [v] => match to_f64_scalar(v) {
@@ -1731,6 +2719,270 @@ fn to_degrees_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         other => {
             Value::Expr { head: Box::new(Value::Symbol("ToDegrees".into())), args: other.to_vec() }
         }
+    }
+}
+
+// ----- Number theory -----
+
+fn gcd_ext_i64(a: i64, b: i64) -> (i64, i64, i64) {
+    // returns (g, x, y) s.t. ax + by = g
+    let (mut old_r, mut r) = (a, b);
+    let (mut old_s, mut s) = (1i64, 0i64);
+    let (mut old_t, mut t) = (0i64, 1i64);
+    while r != 0 {
+        let q = old_r / r;
+        let tmp_r = old_r - q * r; old_r = r; r = tmp_r;
+        let tmp_s = old_s - q * s; old_s = s; s = tmp_s;
+        let tmp_t = old_t - q * t; old_t = t; t = tmp_t;
+    }
+    (old_r.abs(), old_s, old_t)
+}
+
+fn is_prime_i64(n: i64) -> bool {
+    if n < 2 { return false; }
+    if n % 2 == 0 { return n == 2; }
+    if n % 3 == 0 { return n == 3; }
+    let mut i: i64 = 5;
+    while i * i <= n {
+        if n % i == 0 || n % (i + 2) == 0 { return false; }
+        i += 6;
+    }
+    true
+}
+
+fn next_prime_from(n: i64) -> i64 {
+    let mut k = if n < 2 { 2 } else { n + 1 };
+    while !is_prime_i64(k) { k += 1; }
+    k
+}
+
+fn extended_gcd_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(a), Value::Integer(b)] => {
+            let (g, x, y) = gcd_ext_i64(*a, *b);
+            Value::List(vec![Value::Integer(g), Value::Integer(x), Value::Integer(y)])
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ExtendedGCD".into())), args: other.to_vec() },
+    }
+}
+
+fn mod_inverse_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(a), Value::Integer(m)] if *m != 0 => {
+            let (g, x, _) = gcd_ext_i64(a.rem_euclid(*m), *m);
+            if g == 1 {
+                let inv = x.rem_euclid(*m);
+                Value::Integer(inv)
+            } else {
+                Value::Expr { head: Box::new(Value::Symbol("ModInverse".into())), args: vec![Value::Integer(*a), Value::Integer(*m)] }
+            }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ModInverse".into())), args: other.to_vec() },
+    }
+}
+
+fn chinese_remainder_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // ChineseRemainder[{r1,...},{m1,...}]
+    match args.as_slice() {
+        [Value::List(rs), Value::List(ms)] if rs.len() == ms.len() && !rs.is_empty() => {
+            let mut residues: Vec<i128> = Vec::with_capacity(rs.len());
+            let mut moduli: Vec<i128> = Vec::with_capacity(ms.len());
+            for r in rs {
+                if let Value::Integer(v) = r { residues.push(*v as i128); } else { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; }
+            }
+            for m in ms {
+                if let Value::Integer(v) = m { if *v <= 0 { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; } moduli.push(*v as i128); } else { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; }
+            }
+            // require pairwise coprime moduli
+            for i in 0..moduli.len() {
+                for j in (i+1)..moduli.len() {
+                    if gcd_i128(moduli[i], moduli[j]) != 1 { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; }
+                }
+            }
+            let m_prod: i128 = moduli.iter().product();
+            let mut x: i128 = 0;
+            for i in 0..moduli.len() {
+                let mi = moduli[i];
+                let ai = residues[i].rem_euclid(mi);
+                let Mi = m_prod / mi;
+                // compute inverse of Mi mod mi
+                let (g, inv, _) = {
+                    let a = (Mi % mi) as i64; let b = mi as i64; gcd_ext_i64(a, b)
+                };
+                if g != 1 { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; }
+                let invMi = (inv.rem_euclid(mi as i64)) as i128;
+                x = (x + ai * Mi * invMi).rem_euclid(m_prod);
+            }
+            if x <= i64::MAX as i128 && x >= i64::MIN as i128 { Value::Integer(x as i64) } else { Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] } }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: other.to_vec() },
+    }
+}
+
+fn divides_q_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(a), Value::Integer(b)] => Value::Boolean(b % a == 0),
+        other => Value::Expr { head: Box::new(Value::Symbol("DividesQ".into())), args: other.to_vec() },
+    }
+}
+
+fn coprime_q_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(a), Value::Integer(b)] => Value::Boolean(gcd_i64(*a, *b) == 1),
+        other => Value::Expr { head: Box::new(Value::Symbol("CoprimeQ".into())), args: other.to_vec() },
+    }
+}
+
+fn prime_q_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Boolean(is_prime_i64(*n)),
+        other => Value::Expr { head: Box::new(Value::Symbol("PrimeQ".into())), args: other.to_vec() },
+    }
+}
+
+fn next_prime_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => Value::Integer(next_prime_from(*n)),
+        other => Value::Expr { head: Box::new(Value::Symbol("NextPrime".into())), args: other.to_vec() },
+    }
+}
+
+fn factor_integer_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => {
+            let mut m = (*n).abs() as i128;
+            if m == 0 { return Value::Expr { head: Box::new(Value::Symbol("FactorInteger".into())), args: vec![Value::Integer(*n)] }; }
+            let mut res: Vec<Value> = Vec::new();
+            let mut count = 0i64;
+            while m % 2 == 0 { m /= 2; count += 1; }
+            if count > 0 { res.push(Value::List(vec![Value::Integer(2), Value::Integer(count)])); }
+            let mut f: i128 = 3;
+            while f * f <= m {
+                let mut c = 0i64;
+                while m % f == 0 { m /= f; c += 1; }
+                if c > 0 { if f <= i64::MAX as i128 { res.push(Value::List(vec![Value::Integer(f as i64), Value::Integer(c)])); } else { return Value::Expr { head: Box::new(Value::Symbol("FactorInteger".into())), args: vec![Value::Integer(*n)] }; } }
+                f += 2;
+            }
+            if m > 1 { if m <= i64::MAX as i128 { res.push(Value::List(vec![Value::Integer(m as i64), Value::Integer(1)])); } else { return Value::Expr { head: Box::new(Value::Symbol("FactorInteger".into())), args: vec![Value::Integer(*n)] }; } }
+            Value::List(res)
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("FactorInteger".into())), args: other.to_vec() },
+    }
+}
+
+fn factor_pairs_i64(n: i64) -> Option<Vec<(i64, i64)>> {
+    if n == 0 { return None; }
+    let mut m = n.abs() as i128;
+    let mut res: Vec<(i64, i64)> = Vec::new();
+    let mut c = 0i64;
+    while m % 2 == 0 { m /= 2; c += 1; }
+    if c > 0 { res.push((2, c)); }
+    let mut f: i128 = 3;
+    while f * f <= m {
+        let mut e = 0i64;
+        while m % f == 0 { m /= f; e += 1; }
+        if e > 0 {
+            if f > i64::MAX as i128 { return None; }
+            res.push((f as i64, e));
+        }
+        f += 2;
+    }
+    if m > 1 {
+        if m > i64::MAX as i128 { return None; }
+        res.push((m as i64, 1));
+    }
+    Some(res)
+}
+
+fn prime_factors_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => {
+            if *n <= 1 { return Value::List(vec![]); }
+            match factor_pairs_i64(*n) {
+                Some(pairs) => {
+                    let mut out: Vec<Value> = Vec::new();
+                    for (p, e) in pairs { for _ in 0..e { out.push(Value::Integer(p)); } }
+                    Value::List(out)
+                }
+                None => Value::Expr { head: Box::new(Value::Symbol("PrimeFactors".into())), args: vec![Value::Integer(*n)] },
+            }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("PrimeFactors".into())), args: other.to_vec() },
+    }
+}
+
+fn euler_phi_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] if *n >= 1 => {
+            if *n == 1 { return Value::Integer(1); }
+            if let Some(pairs) = factor_pairs_i64(*n) {
+                let mut phi: i128 = *n as i128;
+                for (p, _) in pairs {
+                    phi = phi / (p as i128) * ((p as i128) - 1);
+                }
+                if phi <= i64::MAX as i128 { Value::Integer(phi as i64) } else { Value::Expr { head: Box::new(Value::Symbol("EulerPhi".into())), args: vec![Value::Integer(*n)] } }
+            } else {
+                Value::Expr { head: Box::new(Value::Symbol("EulerPhi".into())), args: vec![Value::Integer(*n)] }
+            }
+        }
+        [v] => Value::Expr { head: Box::new(Value::Symbol("EulerPhi".into())), args: vec![v.clone()] },
+        other => Value::Expr { head: Box::new(Value::Symbol("EulerPhi".into())), args: other.to_vec() },
+    }
+}
+
+fn mobius_mu_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(n)] => {
+            let m = *n;
+            if m == 0 { return Value::Integer(0); }
+            if m == 1 || m == -1 { return Value::Integer(1); }
+            if let Some(pairs) = factor_pairs_i64(m) {
+                for (_, e) in &pairs { if *e > 1 { return Value::Integer(0); } }
+                let k = pairs.len() as i64;
+                if k % 2 == 0 { Value::Integer(1) } else { Value::Integer(-1) }
+            } else {
+                Value::Expr { head: Box::new(Value::Symbol("MobiusMu".into())), args: vec![Value::Integer(m)] }
+            }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("MobiusMu".into())), args: other.to_vec() },
+    }
+}
+
+fn mod_mul_i64(a: i64, b: i64, m: i64) -> i64 {
+    let m128 = m as i128;
+    let res = ((a as i128).rem_euclid(m128) * (b as i128).rem_euclid(m128)).rem_euclid(m128);
+    res as i64
+}
+
+fn mod_pow_i64(mut base: i64, mut exp: i64, m: i64) -> Option<i64> {
+    if m == 0 { return None; }
+    let mut result: i64 = 1 % m;
+    if exp < 0 {
+        // require inverse of base modulo m
+        let (g, x, _) = gcd_ext_i64(base.rem_euclid(m), m);
+        if g != 1 { return None; }
+        base = x.rem_euclid(m);
+        exp = -exp;
+    }
+    base = base.rem_euclid(m);
+    let mut e = exp as u64;
+    while e > 0 {
+        if (e & 1) == 1 { result = mod_mul_i64(result, base, m); }
+        e >>= 1;
+        if e > 0 { base = mod_mul_i64(base, base, m); }
+    }
+    Some(result)
+}
+
+fn power_mod_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [Value::Integer(a), Value::Integer(b), Value::Integer(m)] if *m != 0 => {
+            match mod_pow_i64(*a, *b, *m) {
+                Some(r) => Value::Integer(r),
+                None => Value::Expr { head: Box::new(Value::Symbol("PowerMod".into())), args: vec![Value::Integer(*a), Value::Integer(*b), Value::Integer(*m)] },
+            }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("PowerMod".into())), args: other.to_vec() },
     }
 }
 

@@ -75,6 +75,12 @@ fn get_model_id(v: &Value) -> Option<i64> {
 }
 
 pub fn register_ml(ev: &mut Evaluator) {
+    // Canonical ML heads (untrained specs)
+    ev.register("Estimator", estimator as NativeFn, Attributes::empty());
+    ev.register("Classifier", classifier as NativeFn, Attributes::empty());
+    ev.register("Regressor", regressor as NativeFn, Attributes::empty());
+    ev.register("Clusterer", clusterer as NativeFn, Attributes::empty());
+
     ev.register("Classify", classify as NativeFn, Attributes::empty());
     ev.register("Predict", predict as NativeFn, Attributes::empty());
     ev.register("Cluster", cluster as NativeFn, Attributes::empty());
@@ -92,6 +98,16 @@ pub fn register_ml(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
+        tool_spec!("Estimator", summary: "Create ML estimator spec (Task/Method)", params: ["opts"], tags: ["ml","estimator"], examples: [
+            Value::String("Estimator[<|Task->\"Classification\", Method->\"Logistic\"|>]".into())
+        ]),
+        tool_spec!("Classifier", summary: "Create classifier spec (Logistic/Baseline)", params: ["opts?"], tags: ["ml","classification"], examples: [
+            Value::String("Classifier[<|Method->\"Logistic\"|>]".into())
+        ]),
+        tool_spec!("Regressor", summary: "Create regressor spec (Linear/Baseline)", params: ["opts?"], tags: ["ml","regression"], examples: [
+            Value::String("Regressor[<|Method->\"Linear\"|>]".into())
+        ]),
+        tool_spec!("Clusterer", summary: "Create clusterer spec", params: ["opts?"], tags: ["ml","clustering"]),
         tool_spec!("Classify", summary: "Train a classifier (baseline/logistic)", params: ["data","opts"], tags: ["ml","classification"]),
         tool_spec!("Predict", summary: "Train a regressor (baseline/linear)", params: ["data","opts"], tags: ["ml","regression"]),
         tool_spec!("Cluster", summary: "Cluster points (prototype)", params: ["data","opts"], tags: ["ml","clustering"]),
@@ -129,7 +145,16 @@ fn is_assoc(v: &Value) -> bool {
 }
 
 fn get_option<'a>(opts: &'a HashMap<String, Value>, key: &str) -> Option<&'a Value> {
-    opts.get(key).or_else(|| opts.get(&key.to_string()))
+    if let Some(v) = opts.get(key) { return Some(v); }
+    // lowerCamelCase alias: lower first char (Epochs->epochs, LearningRate->learningRate, K->k)
+    let mut chars = key.chars();
+    if let Some(first) = chars.next() {
+        let mut alt = String::new();
+        alt.push(first.to_ascii_lowercase());
+        alt.push_str(chars.as_str());
+        if let Some(v) = opts.get(&alt) { return Some(v); }
+    }
+    None
 }
 
 fn parse_opts(ev: &mut Evaluator, args: &[Value]) -> (Vec<Value>, HashMap<String, Value>) {
@@ -189,6 +214,56 @@ fn z_for_conf(level: f64) -> f64 {
     } else {
         1.96
     }
+}
+
+// ---------- Estimator constructors ----------
+
+fn estimator(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Estimator[<|Task->..., Method->...|>]
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Estimator".into())), args }; }
+    let spec = ev.eval(args[0].clone());
+    let mut m = match spec { Value::Assoc(mm) => mm, _ => HashMap::new() };
+    // Normalize Task/Method
+    let task = m.get("Task").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or("Classification".into());
+    let method = m.get("Method").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or_else(|| if task.eq_ignore_ascii_case("Regression") { "Linear".into() } else { "Logistic".into() });
+    m.insert("Task".into(), Value::String(task));
+    m.insert("Method".into(), Value::String(method));
+    m.insert("__type".into(), Value::String("MLEstimator".into()));
+    Value::Assoc(m)
+}
+
+fn classifier(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Classifier[opts?]
+    if args.is_empty() {
+        return Value::Assoc(HashMap::from([
+            ("__type".into(), Value::String("MLEstimator".into())),
+            ("Task".into(), Value::String("Classification".into())),
+            ("Method".into(), Value::String("Logistic".into())),
+        ]));
+    }
+    let mut m = match ev.eval(args[0].clone()) { Value::Assoc(mm) => mm, _ => HashMap::new() };
+    m.insert("Task".into(), Value::String("Classification".into()));
+    if !m.contains_key("Method") { m.insert("Method".into(), Value::String("Logistic".into())); }
+    m.insert("__type".into(), Value::String("MLEstimator".into()));
+    Value::Assoc(m)
+}
+
+fn regressor(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Regressor[opts?]
+    let mut m = if args.is_empty() { HashMap::new() } else { match ev.eval(args[0].clone()) { Value::Assoc(mm) => mm, _ => HashMap::new() } };
+    m.insert("Task".into(), Value::String("Regression".into()));
+    if !m.contains_key("Method") { m.insert("Method".into(), Value::String("Linear".into())); }
+    m.insert("__type".into(), Value::String("MLEstimator".into()));
+    Value::Assoc(m)
+}
+
+fn clusterer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Clusterer[opts?]
+    let mut m = if args.is_empty() { HashMap::new() } else { match ev.eval(args[0].clone()) { Value::Assoc(mm) => mm, _ => HashMap::new() } };
+    m.insert("Task".into(), Value::String("Clustering".into()));
+    if !m.contains_key("Method") { m.insert("Method".into(), Value::String("KMeans".into())); }
+    m.insert("__type".into(), Value::String("MLEstimator".into()));
+    Value::Assoc(m)
 }
 
 // Detect schema and build preprocessing from rows of Assoc or list-of-numeric

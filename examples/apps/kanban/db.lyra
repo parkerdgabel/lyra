@@ -31,7 +31,7 @@ EnsureSchema[conn_] := (
 );
 
 ConnectKanban[] := (
-  MakeDirectory[dbDir, <|"Parents"->True|>];
+MakeDirectory[dbDir, <|"parents"->True|>];
   conn := Connect[DSN[]];
   EnsureSchema[conn];
   conn

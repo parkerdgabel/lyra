@@ -16,8 +16,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("MaxThreads"), schema_int!()),
-                    (String::from("TimeBudgetMs"), schema_int!()),
+                    (String::from("maxThreads"), schema_int!()),
+                    (String::from("timeBudgetMs"), schema_int!()),
                 ]))),
             ]))),
         ], vec![])),
@@ -26,8 +26,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("MaxThreads"), schema_int!()),
-                    (String::from("TimeBudgetMs"), schema_int!()),
+                    (String::from("maxThreads"), schema_int!()),
+                    (String::from("timeBudgetMs"), schema_int!()),
                 ]))),
             ]))),
         ], vec![])),
@@ -35,8 +35,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("MaxThreads"), schema_int!()),
-                    (String::from("TimeBudgetMs"), schema_int!()),
+                    (String::from("maxThreads"), schema_int!()),
+                    (String::from("timeBudgetMs"), schema_int!()),
                 ]))),
             ]))),
         ], vec![])),
@@ -46,8 +46,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("MaxThreads"), schema_int!()),
-                    (String::from("TimeBudgetMs"), schema_int!()),
+                    (String::from("maxThreads"), schema_int!()),
+                    (String::from("timeBudgetMs"), schema_int!()),
                 ]))),
             ]))),
         ], vec![])),
@@ -55,8 +55,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("MaxThreads"), schema_int!()),
-                    (String::from("TimeBudgetMs"), schema_int!()),
+                    (String::from("maxThreads"), schema_int!()),
+                    (String::from("timeBudgetMs"), schema_int!()),
                 ]))),
             ]))),
         ], vec![])),
@@ -71,8 +71,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("TimeoutMs"), schema_int!()),
-                    (String::from("NonBlocking"), schema_bool!()),
+                    (String::from("timeoutMs"), schema_int!()),
+                    (String::from("nonBlocking"), schema_bool!()),
                 ]))),
             ]))),
         ], vec![]), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
@@ -80,8 +80,8 @@ pub fn register_concurrency(ev: &mut Evaluator) {
             (String::from("opts"), Value::Assoc(HashMap::from([
                 (String::from("type"), Value::String(String::from("object"))),
                 (String::from("properties"), Value::Assoc(HashMap::from([
-                    (String::from("TimeoutMs"), schema_int!()),
-                    (String::from("NonBlocking"), schema_bool!()),
+                    (String::from("timeoutMs"), schema_int!()),
+                    (String::from("nonBlocking"), schema_bool!()),
                 ]))),
             ]))),
         ], vec![])),

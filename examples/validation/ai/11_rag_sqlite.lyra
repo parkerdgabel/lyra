@@ -14,5 +14,5 @@ docs := {
 RAGIndex["sqlite://target/tmp/vs.db", docs, <||>];
 
 q := "What improves retrieval?";
-matches := VectorSearch["sqlite://target/tmp/vs.db", q, <|"K"->3, "Hybrid"->"true", "Alpha"->0.5|>];
-RAGAnswer["sqlite://target/tmp/vs.db", q, <|"K"->2|>];
+matches := VectorSearch["sqlite://target/tmp/vs.db", q, <|"k"->3, "Hybrid"->"true", "Alpha"->0.5|>];
+RAGAnswer["sqlite://target/tmp/vs.db", q, <|"k"->2|>];

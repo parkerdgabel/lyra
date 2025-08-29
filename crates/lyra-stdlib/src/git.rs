@@ -21,10 +21,10 @@ fn as_str(v: &Value) -> Option<String> {
 fn cwd_from(ev: &mut Evaluator, args: &[Value]) -> Option<String> {
     for a in args {
         if let Value::Assoc(m) = ev.eval(a.clone()) {
-            if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Cwd") {
+            if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Cwd").or_else(|| m.get("cwd")) {
                 return Some(s.clone());
             }
-            if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Path") {
+            if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Path").or_else(|| m.get("path")) {
                 return Some(s.clone());
             }
         }
@@ -205,13 +205,13 @@ fn git_init(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut bare = false;
     let mut ib: Option<String> = None;
     if let Some(Value::Assoc(m)) = args.get(0) {
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Path") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Path").or_else(|| m.get("path")) {
             path = Some(s.clone());
         }
         if let Some(v) = m.get("Bare") {
             bare = booly(Some(v));
         }
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("InitialBranch") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("InitialBranch").or_else(|| m.get("initialBranch")) {
             ib = Some(s.clone());
         }
     }
@@ -464,10 +464,10 @@ fn git_diff(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut base: Option<String> = None;
     let mut paths: Vec<String> = Vec::new();
     if let Some(Value::Assoc(m)) = args.get(0).map(|v| ev.eval(v.clone())) {
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Base") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Base").or_else(|| m.get("base")) {
             base = Some(s.clone());
         }
-        if let Some(Value::List(vs)) = m.get("Paths") {
+        if let Some(Value::List(vs)) = m.get("Paths").or_else(|| m.get("paths")) {
             for v in vs {
                 if let Some(s) = as_str(&v) {
                     paths.push(s);
@@ -528,12 +528,12 @@ fn git_log(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut limit: i64 = 20;
     let mut fmt = "%H|%an|%ae|%ad|%s".to_string();
     if let Some(Value::Assoc(m)) = args.get(0).map(|v| ev.eval(v.clone())) {
-        if let Some(Value::Integer(n)) = m.get("Limit") {
+        if let Some(Value::Integer(n)) = m.get("Limit").or_else(|| m.get("limit")) {
             if *n > 0 {
                 limit = *n;
             }
         }
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Format") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Format").or_else(|| m.get("format")) {
             fmt = s.clone();
         }
     }
@@ -824,7 +824,7 @@ fn git_smart_commit(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         if let Some(v) = m.get("Conventional") {
             conventional = booly(Some(v));
         }
-        if let Some(v) = m.get("AutoMessage") {
+        if let Some(v) = m.get("AutoMessage").or_else(|| m.get("autoMessage")) {
             auto = booly(Some(v));
         }
     }
@@ -895,10 +895,10 @@ fn git_create_feature_branch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut name_opt: Option<String> = None;
     let mut from: Option<String> = None;
     if let Some(Value::Assoc(m)) = args.get(0).map(|v| ev.eval(v.clone())) {
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Name") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Name").or_else(|| m.get("name")) {
             name_opt = Some(s.clone());
         }
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("From") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("From").or_else(|| m.get("from")) {
             from = Some(s.clone());
         }
     }
@@ -922,10 +922,10 @@ fn git_sync_upstream(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut remote = "origin".to_string();
     let mut rebase = true;
     if let Some(Value::Assoc(m)) = args.get(0).map(|v| ev.eval(v.clone())) {
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Remote") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Remote").or_else(|| m.get("remote")) {
             remote = s.clone();
         }
-        if let Some(v) = m.get("Rebase") {
+        if let Some(v) = m.get("Rebase").or_else(|| m.get("rebase")) {
             rebase = booly(Some(v));
         }
     }

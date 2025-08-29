@@ -131,3 +131,40 @@ fn complex_division_and_abs() {
     let aout = ev.eval(aexpr);
     assert_eq!(aout, Value::Integer(5));
 }
+
+#[test]
+fn listable_singleton_broadcast_and_mismatch() {
+    set_default_registrar(stdlib::register_all);
+    let mut ev = Evaluator::new();
+    // Broadcast scalar and singleton
+    let expr1 = Value::Expr {
+        head: Box::new(sym("Plus")),
+        args: vec![Value::List(vec![Value::Integer(1)]), Value::List(vec![Value::Integer(3), Value::Integer(2)])],
+    };
+    let out1 = ev.eval(expr1);
+    assert_eq!(out1, Value::List(vec![Value::Integer(4), Value::Integer(3)]));
+    // Equal-length elementwise
+    let expr2 = Value::Expr {
+        head: Box::new(sym("Plus")),
+        args: vec![Value::List(vec![Value::Integer(1), Value::Integer(2)]), Value::List(vec![Value::Integer(3), Value::Integer(2)])],
+    };
+    let out2 = ev.eval(expr2);
+    assert_eq!(out2, Value::List(vec![Value::Integer(4), Value::Integer(4)]));
+    // Mismatch yields Failure assoc (message/tag)
+    let expr3 = Value::Expr {
+        head: Box::new(sym("Plus")),
+        args: vec![
+            Value::List(vec![Value::Integer(1), Value::Integer(2)]),
+            Value::List(vec![Value::Integer(3), Value::Integer(2), Value::Integer(4)]),
+        ],
+    };
+    let out3 = ev.eval(expr3);
+    match out3 {
+        Value::Assoc(m) => {
+            let msg_ok = matches!(m.get("message"), Some(Value::String(s)) if s=="Failure");
+            let tag_ok = matches!(m.get("tag"), Some(Value::String(s)) if s=="Listable::lengthMismatch");
+            assert!(msg_ok && tag_ok, "unexpected failure shape: {:?}", m);
+        }
+        other => panic!("expected Failure assoc, got {:?}", other),
+    }
+}

@@ -4,26 +4,25 @@
 *)
 
 tmp := "target/tmp/git-demo";
-MakeDirectory[tmp, <|"Parents"->True|>];
+MakeDirectory[tmp, <|"parents"->True|>];
 
 (* create a file *)
 WriteBytes[tmp<>"/README.md", "Hello git\n"];
 
 (* init repo, add, commit *)
-GitInit[<|"Path"->tmp, "InitialBranch"->"main"|>];
-GitStatus[<|"Cwd"->tmp|>];
-GitAdd["README.md", <|"Cwd"->tmp|>];
-GitCommit["init", <|"Cwd"->tmp|>];
+GitInit[<|"path"->tmp, "initialBranch"->"main"|>];
+GitStatus[<|"cwd"->tmp|>];
+GitAdd["README.md", <|"cwd"->tmp|>];
+GitCommit["init", <|"cwd"->tmp|>];
 
-GitCurrentBranch[<|"Cwd"->tmp|>];
-GitBranchList[<|"Cwd"->tmp|>];
-GitLog[<|"Cwd"->tmp, "Limit"->3|>];
+GitCurrentBranch[<|"cwd"->tmp|>];
+GitBranchList[<|"cwd"->tmp|>];
+GitLog[<|"cwd"->tmp, "limit"->3|>];
 
 (* update file and show diff *)
 WriteBytes[tmp<>"/README.md", "Hello git, updated!\n"];
-GitDiff[<|"Cwd"->tmp, "Base"->"HEAD", "Paths"->{"README.md"}|>];
-GitAdd[{"README.md"}, <|"Cwd"->tmp|>];
-GitCommit["update", <|"Cwd"->tmp|>];
+GitDiff[<|"cwd"->tmp, "base"->"HEAD", "paths"->{"README.md"}|>];
+GitAdd[{"README.md"}, <|"cwd"->tmp|>];
+GitCommit["update", <|"cwd"->tmp|>];
 
-GitStatus[<|"Cwd"->tmp|>];
-
+GitStatus[<|"cwd"->tmp|>];

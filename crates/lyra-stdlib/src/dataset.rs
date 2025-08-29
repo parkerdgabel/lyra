@@ -410,36 +410,9 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
             }
             acc
         }
-        Plan::DistinctOn { input, keys, order_by, keep_last } => {
-            // Build subquery with ROW_NUMBER window
-            let inner = fold_sql(input, SqlBuild::default());
-            if !inner.client_side.is_empty() {
-                acc.client_side.push("DistinctOn".into());
-                return acc;
-            }
-            if let Some(inner_sql) = build_sql_string(&inner) {
-                let ord_sql = if order_by.is_empty() {
-                    keys.iter().map(|k| format!("{} ASC", ident(k))).collect::<Vec<_>>().join(", ")
-                } else {
-                    order_by
-                        .iter()
-                        .map(|(c, asc)| {
-                            format!(
-                                "{} {}",
-                                ident(c),
-                                if *asc ^ *keep_last { "ASC" } else { "DESC" }
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                };
-                let part = keys.iter().map(|k| ident(k)).collect::<Vec<_>>().join(", ");
-                let sub = format!("SELECT t.*, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {}) AS rn FROM ({}) AS t", part, ord_sql, inner_sql);
-                acc.table = Some(format!("({})", sub));
-                acc.where_clause = Some("rn = 1".into());
-                acc.pushed.push("DistinctOn".into());
-                return acc;
-            }
+        Plan::DistinctOn { input, .. } => {
+            // Temporarily disable pushdown; rely on client-side implementation for correctness
+            let _ = fold_sql(input, SqlBuild::default());
             acc.client_side.push("DistinctOn".into());
             acc
         }
@@ -2444,13 +2417,21 @@ fn distinct_on(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let subj = ev.eval(args[0].clone());
     let keys_v = ev.eval(args[1].clone());
     let keys: Vec<String> = match keys_v {
-        Value::List(vs) => vs
-            .into_iter()
-            .filter_map(|v| match v {
-                Value::String(s) | Value::Symbol(s) => Some(s),
-                _ => None,
-            })
-            .collect(),
+        Value::List(vs) => {
+            let mut out: Vec<String> = Vec::new();
+            for v in vs {
+                match v {
+                    Value::String(s) | Value::Symbol(s) => out.push(s),
+                    Value::List(inner) => {
+                        for iv in inner {
+                            if let Value::String(s) | Value::Symbol(s) = iv { out.push(s); }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out
+        }
         _ => Vec::new(),
     };
     let (order_by, keep_last) = if args.len() >= 3 {
@@ -2498,6 +2479,20 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("__DatasetSelect", select_general as NativeFn, Attributes::empty());
     ev.register("__DatasetDescribe", describe_general as NativeFn, Attributes::empty());
     ev.register("FilterRows", filter_rows as NativeFn, Attributes::HOLD_ALL);
+    // Public Filter with dispatch: dataset -> FilterRows; list -> __ListFilter
+    fn filter_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Filter".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                // Expect Filter[ds, pred] -> FilterRows[pred, ds]
+                let ds = Value::Assoc(m);
+                let pred = args[1].clone(); // held
+                filter_rows(ev, vec![pred, ds])
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("__ListFilter".into())), args: vec![args[1].clone(), args[0].clone()] },
+        }
+    }
+    ev.register("Filter", filter_dispatch as NativeFn, Attributes::HOLD_ALL);
     ev.register("LimitRows", limit_rows as NativeFn, Attributes::empty());
     ev.register("WithColumns", with_columns as NativeFn, Attributes::HOLD_ALL);
     ev.register("Count", count_ds as NativeFn, Attributes::empty());
@@ -2512,22 +2507,110 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("__DatasetFromDbTable", dataset_from_db_table as NativeFn, Attributes::empty());
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
     ev.register("Agg", agg as NativeFn, Attributes::empty());
-    ev.register("Join", join_ds as NativeFn, Attributes::empty());
-    ev.register("Sort", sort_ds as NativeFn, Attributes::empty());
+    // Public Join with dispatch: dataset+dataset -> join_ds; otherwise -> __ListJoin
+    fn join_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Join".into())), args } }
+        let a0 = ev.eval(args[0].clone());
+        let a1 = ev.eval(args[1].clone());
+        let is_ds = |v: &Value| matches!(v, Value::Assoc(m) if m.contains_key("__dataset"));
+        if is_ds(&a0) && is_ds(&a1) {
+            join_ds(ev, vec![a0, a1].into_iter().chain(args.into_iter().skip(2)).collect())
+        } else {
+            Value::Expr { head: Box::new(Value::Symbol("__ListJoin".into())), args }
+        }
+    }
+    ev.register("Join", join_dispatch as NativeFn, Attributes::empty());
+    // Public Sort with dispatch: dataset -> __DatasetSort; list -> __ListSort
+    fn sort_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Sort".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                // Reattach evaluated first arg
+                let mut new_args = vec![Value::Assoc(m)];
+                new_args.extend(args.into_iter().skip(1));
+                Value::Expr { head: Box::new(Value::Symbol("__DatasetSort".into())), args: new_args }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("__ListSort".into())), args },
+        }
+    }
+    ev.register("Sort", sort_dispatch as NativeFn, Attributes::empty());
     ev.register("__DatasetSort", sort_ds as NativeFn, Attributes::empty());
-    ev.register("Distinct", distinct_ds as NativeFn, Attributes::empty());
+    // Public Distinct with dispatch: dataset -> __DatasetDistinct; list -> __ListDistinct (Unique)
+    fn distinct_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Distinct".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                let mut new_args = vec![Value::Assoc(m)];
+                new_args.extend(args.into_iter().skip(1));
+                Value::Expr { head: Box::new(Value::Symbol("__DatasetDistinct".into())), args: new_args }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("__ListDistinct".into())), args: vec![args[0].clone()] },
+        }
+    }
+    ev.register("Distinct", distinct_dispatch as NativeFn, Attributes::empty());
     ev.register("__DatasetDistinct", distinct_ds as NativeFn, Attributes::empty());
     ev.register("DistinctOn", distinct_on as NativeFn, Attributes::empty());
+    // Alias: DistinctBy -> DistinctOn
+    fn distinct_by_alias(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        Value::Expr { head: Box::new(Value::Symbol("DistinctOn".into())), args }
+    }
+    ev.register("DistinctBy", distinct_by_alias as NativeFn, Attributes::empty());
     ev.register("RenameCols", rename_cols as NativeFn, Attributes::empty());
     ev.register("Union", union_general as NativeFn, Attributes::empty());
     ev.register("Concat", concat_general as NativeFn, Attributes::empty());
     ev.register("UnionByPosition", union_by_position as NativeFn, Attributes::empty());
-    ev.register("Offset", offset_general as NativeFn, Attributes::empty());
+    // Public Offset dispatch: dataset -> __DatasetOffset; list -> Drop[list, n]
+    fn offset_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Offset".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                Value::Expr { head: Box::new(Value::Symbol("__DatasetOffset".into())), args: vec![Value::Assoc(m), args[1].clone()] }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("Drop".into())), args },
+        }
+    }
+    ev.register("Offset", offset_dispatch as NativeFn, Attributes::empty());
     ev.register("__DatasetOffset", offset_general as NativeFn, Attributes::empty());
-    ev.register("Head", head_general as NativeFn, Attributes::empty());
+    // Public Head dispatch: dataset -> __DatasetHead; list -> Take[list, n]
+    fn head_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Head".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                Value::Expr { head: Box::new(Value::Symbol("__DatasetHead".into())), args: vec![Value::Assoc(m), args[1].clone()] }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("Take".into())), args },
+        }
+    }
+    ev.register("Head", head_dispatch as NativeFn, Attributes::empty());
     ev.register("__DatasetHead", head_general as NativeFn, Attributes::empty());
-    ev.register("Tail", tail_general as NativeFn, Attributes::empty());
+    // Public Tail dispatch: dataset -> __DatasetTail; list -> fallback unevaluated (could be improved later)
+    fn tail_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                Value::Expr { head: Box::new(Value::Symbol("__DatasetTail".into())), args: vec![Value::Assoc(m), args[1].clone()] }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args },
+        }
+    }
+    ev.register("Tail", tail_dispatch as NativeFn, Attributes::empty());
     ev.register("__DatasetTail", tail_general as NativeFn, Attributes::empty());
+    // Aliases: Aggregate -> Agg; Limit -> Head/LimitRows
+    fn aggregate_alias(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        Value::Expr { head: Box::new(Value::Symbol("Agg".into())), args }
+    }
+    ev.register("Aggregate", aggregate_alias as NativeFn, Attributes::empty());
+    fn limit_alias(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        // Prefer dataset-aware when possible
+        if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Limit".into())), args } }
+        match ev.eval(args[0].clone()) {
+            Value::Assoc(m) if m.contains_key("__dataset") => {
+                Value::Expr { head: Box::new(Value::Symbol("LimitRows".into())), args: vec![Value::Assoc(m), args[1].clone()] }
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("Take".into())), args },
+        }
+    }
+    ev.register("Limit", limit_alias as NativeFn, Attributes::empty());
     ev.register("Describe", describe_general as NativeFn, Attributes::empty());
     ev.register("col", col_fn as NativeFn, Attributes::empty());
     ev.register("Cast", cast_fn as NativeFn, Attributes::empty());
@@ -2539,24 +2622,28 @@ pub fn register_dataset(ev: &mut Evaluator) {
         tool_spec!("ReadCSVDataset", summary: "Read CSV file(s) into a Dataset", params: ["path","opts?"], tags: ["dataset","io","csv"], examples: [Value::String("ds := ReadCSVDataset[\"data.csv\"]".into())]),
         tool_spec!("ReadJsonLinesDataset", summary: "Read JSON Lines file(s) into a Dataset", params: ["path","opts?"], tags: ["dataset","io","json"], examples: [Value::String("ds := ReadJsonLinesDataset[\"data.jsonl\"]".into())]),
         tool_spec!("Collect", summary: "Materialize Dataset to list of rows", params: ["dataset"], tags: ["dataset","io"], examples: [Value::String("Collect[ds]  ==> {<|...|>,...}".into())]),
-        tool_spec!("Select", summary: "Select a subset/rename of columns", params: ["dataset","cols"], tags: ["dataset","transform","select"], examples: [Value::String("Select[ds, {\"a\"}]".into())]),
+        tool_spec!("Dataset.Select", summary: "Select a subset/rename of columns", params: ["dataset","cols"], tags: ["dataset","transform","select"], examples: [Value::String("Select[ds, {\"a\"}]".into())]),
         tool_spec!("SelectCols", summary: "Select columns by names", params: ["dataset","cols"], tags: ["dataset","transform","select"]),
         tool_spec!("RenameCols", summary: "Rename columns by mapping", params: ["dataset","mapping"], tags: ["dataset","transform","select"]),
         tool_spec!("FilterRows", summary: "Filter rows by predicate function", params: ["dataset","pred"], tags: ["dataset","transform","filter"], examples: [Value::String("FilterRows[ds, #a > 1 &]".into())]),
+        tool_spec!("Filter", summary: "Filter rows (dataset) or elements (list)", params: ["dataset","pred","opts?"], tags: ["dataset","transform","filter"]),
         tool_spec!("WithColumns", summary: "Add/derive columns", params: ["dataset","defs"], tags: ["dataset","transform"], examples: [Value::String("WithColumns[ds, <|\"b\"->(#a*2 &)|>]".into())]),
         tool_spec!("GroupBy", summary: "Group rows by keys", params: ["dataset","keys"], tags: ["dataset","groupby"], examples: [Value::String("GroupBy[ds, {\"a\"}]".into())]),
         tool_spec!("Agg", summary: "Aggregate with functions", params: ["dataset","aggs"], tags: ["dataset","aggregate"], examples: [Value::String("Agg[ds, <|\"count\"->Count|>]".into())]),
-        tool_spec!("Join", summary: "Join datasets (inner/left/right/outer)", params: ["left","right","on","opts?"], tags: ["dataset","join"], examples: [Value::String("Join[left, right, {\"id\"}]".into())]),
-        tool_spec!("Sort", summary: "Sort rows by columns", params: ["dataset","by"], tags: ["dataset","sort"], examples: [Value::String("Sort[ds, {<|\"col\"->\"a\", \"Asc\"->True|>}]".into())]),
+        tool_spec!("Aggregate", summary: "Alias for Agg", params: ["dataset","aggs"], tags: ["dataset","aggregate"]),
+        tool_spec!("Dataset.Join", summary: "Join datasets (inner/left/right/outer)", params: ["left","right","on","opts?"], tags: ["dataset","join"], examples: [Value::String("Join[left, right, {\"id\"}]".into())]),
+        tool_spec!("Dataset.Sort", summary: "Sort rows by columns", params: ["dataset","by"], tags: ["dataset","sort"], examples: [Value::String("Sort[ds, {<|\"col\"->\"a\", \"Asc\"->True|>}]".into())]),
         tool_spec!("Distinct", summary: "Distinct rows (optional subset of columns)", params: ["dataset","cols?"], tags: ["dataset","distinct"]),
         tool_spec!("DistinctOn", summary: "Distinct on keys with order/keep-last", params: ["dataset","keys","opts?"], tags: ["dataset","distinct"]),
+        tool_spec!("DistinctBy", summary: "Alias for DistinctOn", params: ["dataset","keys","opts?"], tags: ["dataset","distinct"]),
         tool_spec!("Union", summary: "Union datasets (auto union by columns)", params: ["datasets"], tags: ["dataset","set"]),
         tool_spec!("Concat", summary: "Concatenate rows (append) without de-dupe", params: ["datasets"], tags: ["dataset","set"]),
         tool_spec!("UnionByPosition", summary: "Union lists row-wise by position", params: ["lists"], tags: ["dataset","set"]),
         tool_spec!("Offset", summary: "Skip first n rows", params: ["dataset","n"], tags: ["dataset","transform"]),
+        tool_spec!("Limit", summary: "Alias for Head on Dataset", params: ["dataset","n"], tags: ["dataset","inspect"]),
         tool_spec!("Head", summary: "Take first n rows", params: ["dataset","n"], tags: ["dataset","inspect"]),
         tool_spec!("Tail", summary: "Take last n rows", params: ["dataset","n"], tags: ["dataset","inspect"]),
-        tool_spec!("Count", summary: "Row count (Dataset-aware)", params: ["dataset"], tags: ["dataset","info"], examples: [Value::String("Count[ds]".into())]),
+        tool_spec!("Dataset.Count", summary: "Row count (Dataset-aware)", params: ["dataset"], tags: ["dataset","info"], examples: [Value::String("Count[ds]".into())]),
         tool_spec!("Columns", summary: "List of column names", params: ["dataset"], tags: ["dataset","schema"], examples: [Value::String("Columns[ds]  ==> {\"a\",\"b\"}".into())]),
         tool_spec!("DatasetSchema", summary: "Infer schema for Dataset", params: ["dataset"], tags: ["dataset","schema"]),
         tool_spec!("ExplainDataset", summary: "Explain logical plan", params: ["dataset"], tags: ["dataset","explain"], examples: [Value::String("ExplainDataset[ds]".into())]),

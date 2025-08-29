@@ -27,6 +27,19 @@ pub fn register_testing(ev: &mut Evaluator) {
     ev.register("TestRun", test_run_fn as NativeFn, Attributes::empty());
     ev.register("TestSpec", test_spec_report_fn as NativeFn, Attributes::empty());
     ev.register("TestJSON", test_json_report_fn as NativeFn, Attributes::empty());
+
+    // Echo helpers used by runtime smoke tests to validate attributes and Explain
+    ev.register("OrderlessEcho", echo_list as NativeFn, Attributes::ORDERLESS);
+    ev.register(
+        "FlatEcho",
+        echo_list as NativeFn,
+        Attributes::HOLD_ALL | Attributes::FLAT,
+    );
+    ev.register(
+        "FlatOrderlessEcho",
+        echo_list as NativeFn,
+        Attributes::HOLD_ALL | Attributes::FLAT | Attributes::ORDERLESS,
+    );
 }
 
 pub fn register_testing_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -43,6 +56,22 @@ pub fn register_testing_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool
     register_if(ev, pred, "TestRun", test_run_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "TestSpec", test_spec_report_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "TestJSON", test_json_report_fn as NativeFn, Attributes::empty());
+    // Echo helpers (filtered)
+    register_if(ev, pred, "OrderlessEcho", echo_list as NativeFn, Attributes::ORDERLESS);
+    register_if(
+        ev,
+        pred,
+        "FlatEcho",
+        echo_list as NativeFn,
+        Attributes::HOLD_ALL | Attributes::FLAT,
+    );
+    register_if(
+        ev,
+        pred,
+        "FlatOrderlessEcho",
+        echo_list as NativeFn,
+        Attributes::HOLD_ALL | Attributes::FLAT | Attributes::ORDERLESS,
+    );
 }
 
 // --- Helpers
@@ -89,6 +118,11 @@ fn as_string(v: &Value) -> Option<String> {
 
 fn deep_equal(a: &Value, b: &Value) -> bool {
     a == b
+}
+
+// Simple echo that returns its arguments as a list; attributes on the head control behavior
+fn echo_list(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    Value::List(args)
 }
 
 fn to_assoc(mut pairs: Vec<(impl Into<String>, Value)>) -> Value {
@@ -619,7 +653,7 @@ fn run_case(ev: &mut Evaluator, m: &HashMap<String, Value>, counts: &mut (i64, i
     };
     if timeout_ms > 0 {
         let mut o: HashMap<String, Value> = HashMap::new();
-        o.insert("TimeBudgetMs".into(), Value::Integer(timeout_ms));
+        o.insert("timeBudgetMs".into(), Value::Integer(timeout_ms));
         eval_target =
             Value::expr(Value::Symbol("Scope".into()), vec![Value::Assoc(o), eval_target]);
     }
@@ -684,7 +718,7 @@ fn run_case_with_bindings(
     };
     if timeout_ms > 0 {
         let mut o: HashMap<String, Value> = HashMap::new();
-        o.insert("TimeBudgetMs".into(), Value::Integer(timeout_ms));
+        o.insert("timeBudgetMs".into(), Value::Integer(timeout_ms));
         eval_target =
             Value::expr(Value::Symbol("Scope".into()), vec![Value::Assoc(o), eval_target]);
     }

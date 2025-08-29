@@ -52,7 +52,7 @@ FormatRow[row_] := (
 
 ListTodos[conn_, opts_, flags_] := (
   filter := If[AssocContainsKeyQ[flags, "done"], "done", If[AssocContainsKeyQ[flags, "all"], "all", "open"]];
-  project := Lookup[opts, "project"];
+  project := Get[opts, "project"];
   where := If[filter=="all", "1=1", If[filter=="done", "done=1", "done=0"]];
   where2 := If[project==Null, where, StringJoin[{where, " AND (project = '", project, "')"}]];
   sql := StringJoin[{"SELECT id, title, done, coalesce(project,'') AS project, coalesce(prio,0) AS prio, datetime(created_at,'unixepoch') AS created FROM todos WHERE ", where2, " ORDER BY done, prio DESC, created_at DESC"}];
@@ -72,7 +72,7 @@ ListTodos[conn_, opts_, flags_] := (
 );
 
 AddTodo[conn_, title_, opts_] := (
-  project := Lookup[opts, "project"]; pr := Lookup[opts, "prio"];
+  project := Get[opts, "project"]; pr := Get[opts, "prio"];
   Exec[conn, "INSERT INTO todos (title, project, prio, created_at, done) VALUES ($title, $project, $prio, strftime('%s','now'), 0)", <|"title"->title, "project"->project, "prio"->pr|>];
   Puts["Added."]
 );
@@ -100,7 +100,7 @@ ClearDone[conn_] := (
 Args := ArgsParse[{"--project", "--prio", "--all", "--done"}];
 Rest := Part[Args, "Rest"]; Opts := Part[Args, "Options"]; Flags := Part[Args, "Flags"];
 
-MakeDirectory[dbDir, <|"Parents"->True|>];
+MakeDirectory[dbDir, <|"parents"->True|>];
 conn := Connect[dsn]; EnsureSchema[conn];
 
 cmdIdx := If[Length[Rest] >= 1 && RegexIsMatch[Part[Rest,1], ".*\\.lyra$"], 2, 1];

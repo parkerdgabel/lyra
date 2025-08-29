@@ -2,6 +2,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `MatrixNorm` | `MatrixNorm[A, p]` | Matrix p-norm: 2 (spectral via SVD), 1 (max column sum), Infinity (max row sum). |
 | `NDAdd` | `NDAdd[a, b]` | Elementwise addition with broadcast |
 | `NDArgMax` | `NDArgMax[a, axis?]` | Argmax index per axis or flattened |
 | `NDArray` | `NDArray[spec]` | Create NDArray from list/shape/data (held) |
@@ -31,6 +32,15 @@
 | `NDTanh` | `NDTanh[a]` | Elementwise tanh |
 | `NDTranspose` | `NDTranspose[a, perm?]` | Transpose array axes |
 | `NDType` | `NDType[a]` | Element type (f64/i64/...) of array |
+
+## `MatrixNorm`
+
+- Usage: `MatrixNorm[A, p]`
+- Summary: Matrix p-norm: 2 (spectral via SVD), 1 (max column sum), Infinity (max row sum).
+- Examples:
+  - `MatrixNorm[{{1,2},{3,4}}, 2]  ==> largest singular value`
+  - `MatrixNorm[{{1,2},{-3,4}}, 1]  ==> max column sum`
+  - `MatrixNorm[{{1,2},{-3,4}}, Infinity]  ==> max row sum`
 
 ## `NDArray`
 

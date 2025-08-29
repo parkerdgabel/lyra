@@ -102,7 +102,7 @@ pub fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     // Evaluate Messages if it's a symbol/expression
-    let msgs_val = match opts.get("Messages") {
+    let msgs_val = match opts.get("Messages").or_else(|| opts.get("messages")) {
         Some(v) => ev.eval(v.clone()),
         None => Value::List(vec![]),
     };
@@ -144,7 +144,7 @@ pub fn chat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let _ = ev.eval(span_start);
 
     // Stream tokens if requested
-    let stream = match opts.get("Stream") {
+    let stream = match opts.get("Stream").or_else(|| opts.get("stream")) {
         Some(Value::Boolean(b)) => *b,
         Some(Value::String(s)) | Some(Value::Symbol(s)) => {
             let ls = s.to_lowercase();
@@ -191,7 +191,7 @@ fn complete(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     for a in &args {
         if let Value::Assoc(m) = a {
-            if let Some(Value::String(s)) = m.get("Prompt") {
+            if let Some(Value::String(s)) = m.get("Prompt").or_else(|| m.get("prompt")) {
                 prompt = s.clone();
             }
         }
@@ -212,7 +212,7 @@ pub fn embed(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     for a in &args {
         match a {
             Value::Assoc(m) => {
-                if let Some(v) = m.get("Text") {
+                if let Some(v) = m.get("Text").or_else(|| m.get("text")) {
                     match v {
                         Value::String(s) => texts.push(s.clone()),
                         Value::List(items) => {

@@ -46,7 +46,7 @@ pub fn register_vector(ev: &mut Evaluator) {
                 params: ["optsOrDsn"],
                 tags: ["vector","store"],
                 examples: [
-                    Value::String("vs := VectorStore[<|Name->\"vs\", Dims->3|>]".into())
+                    Value::String("vs := VectorStore[<|name->\"vs\", dims->3|>]".into())
                 ]
             ),
             tool_spec!(
@@ -55,7 +55,7 @@ pub fn register_vector(ev: &mut Evaluator) {
                 params: ["store","rows"],
                 tags: ["vector","upsert"],
                 examples: [
-                    Value::String("VectorUpsert[vs, {<|Id->\"a\", Vec->{0.1,0.2,0.3}|>}]".into())
+                    Value::String("VectorUpsert[vs, {<|id->\"a\", vec->{0.1,0.2,0.3}|>}]".into())
                 ]
             ),
             tool_spec!(
@@ -113,7 +113,7 @@ fn assoc_str(m: &HashMap<String, Value>, k: &str) -> Option<String> {
 
 fn store_name_arg(arg: Option<&Value>) -> String {
     match arg {
-        Some(Value::Assoc(m)) => assoc_str(m, "Name").unwrap_or_else(|| "default".into()),
+        Some(Value::Assoc(m)) => assoc_str(m, "Name").or_else(|| assoc_str(m, "name")).unwrap_or_else(|| "default".into()),
         Some(Value::String(s)) | Some(Value::Symbol(s)) => s.clone(),
         _ => "default".into(),
     }
@@ -164,10 +164,10 @@ fn vector_store(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut dims: usize = 3;
     match &args[0] {
         Value::Assoc(m) => {
-            if let Some(s) = assoc_str(m, "Name") {
+            if let Some(s) = assoc_str(m, "Name").or_else(|| assoc_str(m, "name")) {
                 name = s;
             }
-            if let Some(Value::Integer(n)) = m.get("Dims") {
+            if let Some(Value::Integer(n)) = m.get("Dims").or_else(|| m.get("dims")) {
                 dims = (*n).max(1) as usize;
             }
         }

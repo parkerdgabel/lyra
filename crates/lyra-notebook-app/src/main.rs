@@ -8,6 +8,7 @@ fn main() {
             cmd_new_notebook,
             cmd_open_notebook,
             cmd_execute_cell,
+            cmd_execute_cell_nocache,
             cmd_execute_cell_events,
             cmd_execute_cell_stream,
             cmd_execute_text,
@@ -27,6 +28,18 @@ fn main() {
             cmd_editor_builtins,
             cmd_editor_diagnostics,
             cmd_editor_doc,
+            cmd_cache_info,
+            cmd_editor_defs,
+            cmd_editor_refs,
+            cmd_editor_rename,
+            cmd_ping,
+            cmd_cache_set_enabled,
+            cmd_cache_clear,
+            cmd_cache_gc,
+            cmd_cache_set_salt,
+            cmd_cache_get_salt,
+            cmd_lang_operators,
+            cmd_editor_context,
         ])
         .run(tauri::generate_context!())
         .expect("error while running lyra-notebook-app");

@@ -3,20 +3,25 @@
 | Function | Usage | Summary |
 |---|---|---|
 | `Agg` | `Agg[ds, aggs]` | Aggregate groups to single rows |
+| `Aggregate` | `Aggregate[group, spec]` | Aggregate grouped data (stub) |
 | `Cast` | `Cast[value, type]` | Cast a value to a target type (string, integer, real, boolean). |
 | `Coalesce` | `Coalesce[values…]` | First non-null value |
 | `Concat` | `Concat[inputs]` | Concatenate datasets by rows (schema-union) |
-| `ConcatLayer` | `ConcatLayer[axis]` | Concatenate along axis |
+| `ConcatLayer` | `ConcatLayer[opts?]` | Concatenate along channel/feature axis |
 | `DatasetFromRows` | `DatasetFromRows[rows]` | Create dataset from list of row assocs |
 | `DatasetSchema` | `DatasetSchema[ds]` | Describe schema for a dataset |
 | `Distinct` | `Distinct[ds, cols?]` | Drop duplicate rows (optionally by columns) |
+| `DistinctBy` | `DistinctBy[dataset, keys, opts?]` | Alias for DistinctOn |
 | `DistinctOn` | `DistinctOn[ds, keys, orderBy?, keepLast?]` | Keep one row per key with order policy |
 | `ExplainDataset` | `ExplainDataset[ds]` | Inspect logical plan for a dataset |
 | `ExplainSQL` | `ExplainSQL[ds]` | Render SQL for pushdown-capable parts |
+| `FilterFIR` | `FilterFIR[x, coeffs, opts?]` | Finite impulse response filter (stub) |
+| `FilterIIR` | `FilterIIR[x, coeffs, opts?]` | Infinite impulse response filter (stub) |
 | `FilterRows` | `FilterRows[ds, pred]` | Filter rows by predicate (held) |
 | `GroupBy` | `GroupBy[ds, keys]` | Group rows by key(s) |
 | `JoinLines` | `JoinLines[lines]` | Join list into lines with 
  |
+| `Limit` | `Limit[dataset, n]` | Alias for Head on Dataset |
 | `RenameCols` | `RenameCols[ds, mapping]` | Rename columns via mapping |
 | `SelectCols` | `SelectCols[ds, cols]` | Select subset of columns by name |
 | `Table` | `Table[conn, name]` | Reference a table as a Dataset |
@@ -32,6 +37,14 @@
 - Tags: dataset, aggregate
 - Examples:
   - `Agg[grouped, <|"n"->Count[], "avg"->Mean[salary]|>]  ==> ds'`
+
+## `Aggregate`
+
+- Usage: `Aggregate[group, spec]`
+- Summary: Aggregate grouped data (stub)
+- Tags: frame, group, aggregate
+- Examples:
+  - `Aggregate[g, <|Count->True|>]`
 
 ## `Coalesce`
 
@@ -49,6 +62,20 @@
 - Examples:
   - `ExplainDataset[ds]  ==> <|plan->...|>`
 
+## `FilterFIR`
+
+- Usage: `FilterFIR[x, coeffs, opts?]`
+- Summary: Finite impulse response filter (stub)
+- Examples:
+  - `FilterFIR[{1,2,3}, {0.2,0.2,0.2}]  ==> {...}`
+
+## `FilterIIR`
+
+- Usage: `FilterIIR[x, coeffs, opts?]`
+- Summary: Infinite impulse response filter (stub)
+- Examples:
+  - `FilterIIR[{1,2,3}, {1.0, -0.5}]  ==> {...}`
+
 ## `FilterRows`
 
 - Usage: `FilterRows[ds, pred]`
@@ -61,7 +88,7 @@
 
 - Usage: `GroupBy[ds, keys]`
 - Summary: Group rows by key(s)
-- Tags: dataset, groupby
+- Tags: frame, group
 - Examples:
   - `GroupBy[ds, dept]  ==> grouped`
 

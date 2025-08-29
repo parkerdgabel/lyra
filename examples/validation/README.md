@@ -7,7 +7,7 @@ How to run
 Scripts
 - 00-basics.lyra: literals, arithmetic, booleans, comments, grouping
 - 01-strings-interpolation.lyra: strings, escaping, interpolation
-- 02-lists-assoc.lyra: lists, associations, Part/Lookup, dot access
+- 02-lists-assoc.lyra: lists, associations, Part/Get, dot access
 - 03-calls-operators.lyra: call forms, pipeline, prefix/postfix/infix, apply, map
 - 04-lambdas-and-pure-functions.lyra: lambdas, slots, `&`, immediate calls
 - 05-rules-patterns.lyra: blanks, named/typed blanks, PatternTest, alternatives, rules/conditions
@@ -27,4 +27,3 @@ Scripts
 Notes
 - Some scripts require network or specific features (e.g., concurrency) enabled when building stdlib.
 - Outputs are printed by lyra-runner; expected results are noted in comments.
-

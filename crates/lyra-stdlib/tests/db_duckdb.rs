@@ -19,7 +19,7 @@ fn duckdb_join_and_list_tables() {
     stdlib::register_all(&mut ev);
     let conn = eval_str(&mut ev, "Connect[\"duckdb::memory:\"]");
     // Create tables
-    let _ = eval_str(&mut ev, &format!("Exec[{}, \"CREATE TABLE a(id INTEGER, x INTEGER); CREATE TABLE b(id INTEGER, y INTEGER, z INTEGER); CREATE TABLE c(id INTEGER, v INTEGER); CREATE TABLE d(id INTEGER, grp INTEGER, v INTEGER)\"]", lyra_core::pretty::format_value(&conn)));
+    let _ = eval_str(&mut ev, &format!("Execute[{}, \"CREATE TABLE a(id INTEGER, x INTEGER); CREATE TABLE b(id INTEGER, y INTEGER, z INTEGER); CREATE TABLE c(id INTEGER, v INTEGER); CREATE TABLE d(id INTEGER, grp INTEGER, v INTEGER)\"]", lyra_core::pretty::format_value(&conn)));
     // Insert rows
     let rows_a = Value::List(vec![
         Value::assoc(vec![("id", Value::Integer(1)), ("x", Value::Integer(10))]),

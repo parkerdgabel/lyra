@@ -52,12 +52,36 @@ fn prefix_postfix_and_infix_forms() {
     assert_eq!(fmt("x // f"), "f[x]");
     // Chain postfix
     assert_eq!(fmt("x // f // g"), "g[f[x]]");
+    // Postfix with compound RHS: x // f[a,b] => (f[a,b])[x]
+    assert_eq!(fmt("x // f[a,b]"), "f[a, b][x]");
     // Chain prefix (right-assoc)
     assert_eq!(fmt("f @ g @ x"), "f[g[x]]");
     // Infix a ~ f ~ b => f[a, b]
     assert_eq!(fmt("a ~ f ~ b"), "f[a, b]");
     // Mixed chaining: a ~ f ~ b ~ g ~ c => g[f[a, b], c]
     assert_eq!(fmt("a ~ f ~ b ~ g ~ c"), "g[f[a, b], c]");
+}
+
+#[test]
+fn pipelines_are_left_associative_and_tight_rhs() {
+    // Single pipeline
+    assert_eq!(fmt("x |> f"), "f[x]");
+    assert_eq!(fmt("x |> f[a]"), "f[x, a]");
+    // Chained pipelines with compound RHS: x |> f |> g[a] => g[f[x], a]
+    assert_eq!(fmt("x |> f |> g[a]"), "g[f[x], a]");
+    // Realistic example: Range[1000] |> Shuffle |> Partition[50]
+    assert_eq!(
+        fmt("Range[1000] |> Shuffle |> Partition[50]"),
+        "Partition[Shuffle[Range[1000]], 50]"
+    );
+    // Mixed with postfix: x // f |> g[a] => g[f[x], a]
+    assert_eq!(fmt("x // f |> g[a]"), "g[f[x], a]");
+}
+
+#[test]
+fn plus_plus_is_error() {
+    let mut p = Parser::from_source("{1,2} ++ {3,2}");
+    assert!(p.parse_all().is_err());
 }
 
 #[test]

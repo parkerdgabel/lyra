@@ -14,6 +14,9 @@ pub fn register_logic(ev: &mut Evaluator) {
     ev.register("When", when_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Unless", unless_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Switch", switch_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("While", while_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Do", do_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("For", for_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Equal", equal as NativeFn, Attributes::LISTABLE);
     ev.register("Less", less as NativeFn, Attributes::LISTABLE);
     ev.register("LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
@@ -54,6 +57,9 @@ pub fn register_logic(ev: &mut Evaluator) {
         tool_spec!("Not", summary: "Logical NOT", params: ["x"], tags: ["logic"], input_schema: schema_object_value(vec![ (String::from("x"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))) ], vec![String::from("x")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
         tool_spec!("EvenQ", summary: "Is integer even?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
         tool_spec!("OddQ", summary: "Is integer odd?", params: ["n"], tags: ["logic","math"], input_schema: schema_object_value(vec![ (String::from("n"), Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))) ], vec![String::from("n")]), output_schema: Value::Assoc(std::collections::HashMap::from([(String::from("type"), Value::String(String::from("boolean")))]))),
+        tool_spec!("While", summary: "Repeat body while test is True", params: ["test","body"], tags: ["logic","control"], examples: [Value::String("i:=0; While[i<3, i:=i+1]".into())]),
+        tool_spec!("Do", summary: "Execute body n times", params: ["body","n"], tags: ["logic","control"], examples: [Value::String("i:=0; Do[i:=i+1, 3]".into())]),
+        tool_spec!("For", summary: "C-style loop with init/test/step", params: ["init","test","step","body"], tags: ["logic","control"], examples: [Value::String("i:=0; For[i:=0, i<3, i:=i+1, Null]".into())]),
     ]);
 }
 
@@ -62,6 +68,9 @@ pub fn register_logic_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) 
     register_if(ev, pred, "When", when_fn as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "Unless", unless_fn as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "Switch", switch_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "While", while_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "Do", do_fn as NativeFn, Attributes::HOLD_ALL);
+    register_if(ev, pred, "For", for_fn as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "Equal", equal as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "Less", less as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "LessEqual", less_equal as NativeFn, Attributes::LISTABLE);
@@ -120,6 +129,42 @@ fn and_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::Boolean(true)
+}
+
+// While[test, body]
+fn while_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("While".into())), args }; }
+    loop {
+        let t = ev.eval(args[0].clone());
+        if !matches!(t, Value::Boolean(true)) { break; }
+        let _ = ev.eval(args[1].clone());
+    }
+    Value::Symbol("Null".into())
+}
+
+// Do[body, n]
+fn do_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Do".into())), args }; }
+    let n = match ev.eval(args[1].clone()) { Value::Integer(k) if k >= 0 => k as usize, other => return Value::Expr { head: Box::new(Value::Symbol("Do".into())), args: vec![args[0].clone(), other] } };
+    for _ in 0..n { let _ = ev.eval(args[0].clone()); }
+    Value::Symbol("Null".into())
+}
+
+// For[init, test, step, body]
+fn for_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 4 { return Value::Expr { head: Box::new(Value::Symbol("For".into())), args }; }
+    let init = args[0].clone();
+    let test = args[1].clone();
+    let step = args[2].clone();
+    let body = args[3].clone();
+    let _ = ev.eval(init);
+    loop {
+        let t = ev.eval(test.clone());
+        if !matches!(t, Value::Boolean(true)) { break; }
+        let _ = ev.eval(body.clone());
+        let _ = ev.eval(step.clone());
+    }
+    Value::Symbol("Null".into())
 }
 fn or_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     for a in args {

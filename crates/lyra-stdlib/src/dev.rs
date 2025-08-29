@@ -221,6 +221,30 @@ fn collect_semantic_issues(v: &Value, path: &str, out: &mut Vec<Value>) {
             } else {
                 ""
             };
+            // Deprecated names (prefer canonical forms)
+            let mut deprecated: Option<(&str, &str)> = None;
+            match hname {
+                "AssocGet" => deprecated = Some(("AssocGet", "Get")),
+                "Lookup" => deprecated = Some(("Lookup", "Get")),
+                "AssocContainsKeyQ" => deprecated = Some(("AssocContainsKeyQ", "ContainsKeyQ")),
+                "StringLength" => deprecated = Some(("StringLength", "Length")),
+                "StringSplit" => deprecated = Some(("StringSplit", "Split")),
+                "SetUnion" => deprecated = Some(("SetUnion", "Union")),
+                "SetIntersection" => deprecated = Some(("SetIntersection", "Intersection")),
+                "SetDifference" => deprecated = Some(("SetDifference", "Difference")),
+                "ListUnion" => deprecated = Some(("ListUnion", "Union")),
+                "ListIntersection" => deprecated = Some(("ListIntersection", "Intersection")),
+                "ListDifference" => deprecated = Some(("ListDifference", "Difference")),
+                "HttpServer" => deprecated = Some(("HttpServer", "HttpServe/HttpServeRoutes")),
+                _ => {}
+            }
+            if let Some((old, newn)) = deprecated {
+                out.push(Value::Assoc(HashMap::from([
+                    ("rule".into(), Value::String("deprecated-name".into())),
+                    ("path".into(), Value::String(path.into())),
+                    ("message".into(), Value::String(format!("Use {} instead of {}", newn, old))),
+                ])));
+            }
             // Equal[x,x]
             if hname == "Equal" && args.len() == 2 && args[0] == args[1] {
                 out.push(Value::Assoc(HashMap::from([
@@ -312,7 +336,35 @@ fn collect_semantic_issues(v: &Value, path: &str, out: &mut Vec<Value>) {
             }
         }
         Assoc(m) => {
+            // Option key casing: prefer lowerCamelCase for known keys
+            let mut key_map: HashMap<&str, &str> = HashMap::from([
+                ("TimeoutMs", "timeoutMs"),
+                ("MaxThreads", "maxThreads"),
+                ("TimeBudgetMs", "timeBudgetMs"),
+                ("Port", "port"),
+                ("Host", "host"),
+                ("ReadTimeoutMs", "readTimeoutMs"),
+                ("WriteTimeoutMs", "writeTimeoutMs"),
+                ("Headers", "headers"),
+                ("FollowRedirects", "followRedirects"),
+                ("DisableTlsVerify", "disableTlsVerify"),
+                ("MaxBodyBytes", "maxBodyBytes"),
+                ("Query", "query"),
+                ("Form", "form"),
+                ("Json", "json"),
+                ("Multipart", "multipart"),
+                ("As", "as"),
+                ("Cookies", "cookies"),
+            ]);
             for (k, a) in m.iter() {
+                if let Some(newk) = key_map.get(k.as_str()) {
+                    let msg = format!("Use lowerCamelCase option key: {}", newk);
+                    out.push(Value::Assoc(HashMap::from([
+                        ("rule".into(), Value::String("option-casing".into())),
+                        ("path".into(), Value::String(path.into())),
+                        ("message".into(), Value::String(msg)),
+                    ])));
+                }
                 let sub =
                     if path.is_empty() { format!(".{}", k) } else { format!("{}.{}", path, k) };
                 collect_semantic_issues(a, &sub, out);

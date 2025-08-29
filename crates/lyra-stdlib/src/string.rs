@@ -9,7 +9,7 @@ use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 
 pub fn register_string(ev: &mut Evaluator) {
-    ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
+    // Length is provided generically; remove legacy StringLength
     ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
     ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
     ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
@@ -21,7 +21,8 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("StringTrimSuffix", string_trim_suffix as NativeFn, Attributes::LISTABLE);
     ev.register("StringTrimChars", string_trim_chars as NativeFn, Attributes::LISTABLE);
     ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
-    ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
+    // Canonical Split
+    ev.register("Split", string_split as NativeFn, Attributes::empty());
     ev.register("SplitLines", split_lines as NativeFn, Attributes::LISTABLE);
     ev.register("JoinLines", join_lines as NativeFn, Attributes::empty());
     ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
@@ -29,6 +30,7 @@ pub fn register_string(ev: &mut Evaluator) {
     // Q-suffixed predicate aliases
     ev.register("StartsWithQ", starts_with as NativeFn, Attributes::LISTABLE);
     ev.register("EndsWithQ", ends_with as NativeFn, Attributes::LISTABLE);
+    // String-specific replace APIs (do not shadow core Replace/ReplaceFirst)
     ev.register("StringReplace", string_replace as NativeFn, Attributes::empty());
     ev.register("StringReplaceFirst", string_replace_first as NativeFn, Attributes::empty());
     ev.register("StringReverse", string_reverse as NativeFn, Attributes::LISTABLE);
@@ -60,6 +62,7 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("HtmlUnescape", html_unescape_fn as NativeFn, Attributes::LISTABLE);
     ev.register("UrlEncode", url_encode_fn as NativeFn, Attributes::LISTABLE);
     ev.register("UrlDecode", url_decode_fn as NativeFn, Attributes::LISTABLE);
+    // (Legacy URLEncode/URLDecode removed pre-release; use UrlEncode/UrlDecode)
     ev.register("JsonEscape", json_escape_fn as NativeFn, Attributes::LISTABLE);
     ev.register("JsonUnescape", json_unescape_fn as NativeFn, Attributes::LISTABLE);
     ev.register("UrlFormEncode", url_form_encode_fn as NativeFn, Attributes::LISTABLE);
@@ -77,18 +80,26 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     ev.register("RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     ev.register("RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
+    ev.register("RegexSplit", regex_split_fn as NativeFn, Attributes::empty());
+    ev.register("RegexGroups", regex_groups_fn as NativeFn, Attributes::empty());
+    ev.register("RegexCaptureNames", regex_capture_names_fn as NativeFn, Attributes::empty());
     // Date/time helpers
     ev.register("ParseDate", parse_date_fn as NativeFn, Attributes::empty());
     ev.register("FormatDate", format_date_fn as NativeFn, Attributes::empty());
     ev.register("DateDiff", date_diff_fn as NativeFn, Attributes::empty());
+    // Tier1 Unicode helpers (stubs)
+    ev.register("NormalizeUnicode", normalize_unicode as NativeFn, Attributes::LISTABLE);
+    ev.register("CaseFold", case_fold as NativeFn, Attributes::LISTABLE);
+    ev.register("Transliterate", transliterate as NativeFn, Attributes::LISTABLE);
+    ev.register("RemoveDiacritics", remove_diacritics as NativeFn, Attributes::LISTABLE);
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        tool_spec!("StringLength", summary: "Length of string (Unicode scalars)", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("StringLength[\"hello\"]  ==> 5".into())]),
         tool_spec!("ToUpper", summary: "Uppercase string", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("ToUpper[\"hi\"]  ==> \"HI\"".into())]),
         tool_spec!("ToLower", summary: "Lowercase string", params: ["s"], tags: ["string","text"], examples: [lyra_core::value::Value::String("ToLower[\"Hi\"]  ==> \"hi\"".into())]),
         tool_spec!("StringJoin", summary: "Concatenate list of parts", params: ["parts"], tags: ["string","text"], examples: [lyra_core::value::Value::String("StringJoin[{\"a\",\"b\"}]  ==> \"ab\"".into())]),
-        tool_spec!("StringSplit", summary: "Split string by separator", params: ["s","sep?"], tags: ["string","text"]),
+        // String helpers
+        tool_spec!("Split", summary: "Split string by separator", params: ["s","sep?"], tags: ["string","text"]),
         tool_spec!("StringContains", summary: "Does string contain substring?", params: ["s","substr"], tags: ["string","predicate"]),
         tool_spec!("StartsWith", summary: "Starts with prefix?", params: ["s","prefix"], tags: ["string","predicate"]),
         tool_spec!("EndsWith", summary: "Ends with suffix?", params: ["s","suffix"], tags: ["string","predicate"]),
@@ -97,6 +108,7 @@ pub fn register_string(ev: &mut Evaluator) {
         tool_spec!("StringTrim", summary: "Trim whitespace from both ends", params: ["s"], tags: ["string","text"]),
         tool_spec!("UrlEncode", summary: "Percent-encode string", params: ["s"], tags: ["string","url"]),
         tool_spec!("UrlDecode", summary: "Decode percent-encoding", params: ["s"], tags: ["string","url"]),
+        // URLEncode/URLDecode legacy alias docs removed (use UrlEncode/UrlDecode)
         tool_spec!("HtmlEscape", summary: "Escape HTML entities", params: ["s"], tags: ["string","html"]),
         tool_spec!("HtmlUnescape", summary: "Unescape HTML entities", params: ["s"], tags: ["string","html"]),
         tool_spec!("JsonEscape", summary: "Escape for JSON string literal", params: ["s"], tags: ["string","json"]),
@@ -106,6 +118,13 @@ pub fn register_string(ev: &mut Evaluator) {
         tool_spec!("RegexFind", summary: "Find first regex match", params: ["pattern","s"], tags: ["string","regex"]),
         tool_spec!("RegexFindAll", summary: "Find all regex matches", params: ["pattern","s"], tags: ["string","regex"]),
         tool_spec!("RegexReplace", summary: "Replace by regex (fn or string)", params: ["pattern","s","repl"], tags: ["string","regex"]),
+        tool_spec!("RegexSplit", summary: "Split string by regex pattern", params: ["pattern","s"], tags: ["string","regex"], examples: [Value::String("RegexSplit[\",\", \"a,b,c\"]  ==> {\"a\",\"b\",\"c\"}".into())]),
+        tool_spec!("RegexGroups", summary: "Capture groups of first match", params: ["pattern","s"], tags: ["string","regex"], examples: [Value::String("RegexGroups[\"(a)(b)\", \"ab\"]  ==> {\"a\",\"b\"}".into())]),
+        tool_spec!("RegexCaptureNames", summary: "Named capture group order", params: ["pattern"], tags: ["string","regex"], examples: [Value::String("RegexCaptureNames[\"(?P<x>a)(?P<y>b)\"]  ==> {\"x\",\"y\"}".into())]),
+        tool_spec!("NormalizeUnicode", summary: "Normalize to NFC/NFD/NFKC/NFKD", params: ["s","form?"], tags: ["string","unicode"]),
+        tool_spec!("CaseFold", summary: "Unicode case-fold", params: ["s"], tags: ["string","unicode"]),
+        tool_spec!("Transliterate", summary: "Transliterate to ASCII (stub)", params: ["s"], tags: ["string","unicode"]),
+        tool_spec!("RemoveDiacritics", summary: "Strip diacritics (stub)", params: ["s"], tags: ["string","unicode"]),
         tool_spec!("TemplateRender", summary: "Render Mustache-like template", params: ["template","data","opts?"], tags: ["string","template"], examples: [Value::String("TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]  ==> \"Hello Lyra!\"".into())]),
         tool_spec!("HtmlTemplate", summary: "Render HTML/XML template with data and options", params: ["templateOrPath","data","opts?"], tags: ["string","template","html","xml"], examples: [
             Value::String("HtmlTemplate[\\\"<b>{{name}}</b>\\\", <|name->\\\"X\\\"|>]  ==> \\\"<b>X</b>\\\"".into()),
@@ -122,7 +141,6 @@ pub fn register_string(ev: &mut Evaluator) {
 }
 
 pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
-    register_if(ev, pred, "StringLength", string_length as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ToLower", to_lower as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "StringJoin", string_join as NativeFn, Attributes::empty());
@@ -134,7 +152,7 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "StringTrimSuffix", string_trim_suffix as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "StringTrimChars", string_trim_chars as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "StringContains", string_contains as NativeFn, Attributes::empty());
-    register_if(ev, pred, "StringSplit", string_split as NativeFn, Attributes::empty());
+    // Split already registered as canonical
     register_if(ev, pred, "SplitLines", split_lines as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "JoinLines", join_lines as NativeFn, Attributes::empty());
     register_if(ev, pred, "StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
@@ -204,6 +222,9 @@ pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "RegexFind", regex_find_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexFindAll", regex_find_all_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "RegexReplace", regex_replace_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegexSplit", regex_split_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegexGroups", regex_groups_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RegexCaptureNames", regex_capture_names_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "ParseDate", parse_date_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "FormatDate", format_date_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "DateDiff", date_diff_fn as NativeFn, Attributes::empty());
@@ -535,6 +556,45 @@ fn regex_replace_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn regex_split_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x) => x, v => return Value::Expr { head: Box::new(Value::Symbol("RegexSplit".into())), args: vec![v, p.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x) | Value::Symbol(x) => x, v => return Value::Expr { head: Box::new(Value::Symbol("RegexSplit".into())), args: vec![Value::String(ss), v] } };
+            match compile_regex(&pp) {
+                Ok(re) => Value::List(re.split(&ss).map(|t| Value::String(t.to_string())).collect()),
+                Err(_) => Value::Expr { head: Box::new(Value::Symbol("RegexSplit".into())), args: vec![Value::String(ss), Value::String(pp)] },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexSplit".into())), args },
+    }
+}
+
+fn regex_groups_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s, p] => {
+            let ss = match ev.eval(s.clone()) { Value::String(x) => x, v => return Value::Expr { head: Box::new(Value::Symbol("RegexGroups".into())), args: vec![v, p.clone()] } };
+            let pp = match ev.eval(p.clone()) { Value::String(x) | Value::Symbol(x) => x, v => return Value::Expr { head: Box::new(Value::Symbol("RegexGroups".into())), args: vec![Value::String(ss), v] } };
+            match compile_regex(&pp) {
+                Ok(re) => {
+                    if let Some(caps) = re.captures(&ss) { Value::List(caps.iter().skip(1).map(|m| m.map(|mm| Value::String(mm.as_str().to_string())).unwrap_or(Value::Symbol("Null".into()))).collect()) } else { Value::Symbol("Null".into()) }
+                }
+                Err(_) => Value::Expr { head: Box::new(Value::Symbol("RegexGroups".into())), args: vec![Value::String(ss), Value::String(pp)] },
+            }
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("RegexGroups".into())), args },
+    }
+}
+
+fn regex_capture_names_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("RegexCaptureNames".into())), args }; }
+    let pat = match ev.eval(args[0].clone()) { Value::String(x) | Value::Symbol(x) => x, v => return Value::Expr { head: Box::new(Value::Symbol("RegexCaptureNames".into())), args: vec![v] } };
+    match compile_regex(&pat) {
+        Ok(re) => Value::List(re.capture_names().filter_map(|n| n.map(|s| Value::String(s.to_string()))).collect()),
+        Err(_) => Value::Expr { head: Box::new(Value::Symbol("RegexCaptureNames".into())), args: vec![Value::String(pat)] },
+    }
+}
+
 // -------------- Date/time helpers --------------
 fn parse_date_flexible(s: &str) -> Option<i64> {
     // Try RFC3339
@@ -691,6 +751,55 @@ fn date_diff_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+// -------- Tier1 Unicode helpers (minimal stubs) --------
+fn normalize_unicode(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // NormalizeUnicode[s, form?] -> stub returns s
+    match args.as_slice() {
+        [s, _form] => s.clone(),
+        [s] => s.clone(),
+        _ => Value::Expr { head: Box::new(Value::Symbol("NormalizeUnicode".into())), args },
+    }
+}
+
+fn case_fold(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s] => match ev.eval(s.clone()) {
+            Value::String(t) => Value::String(t.to_lowercase()),
+            v => Value::Expr { head: Box::new(Value::Symbol("CaseFold".into())), args: vec![v] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("CaseFold".into())), args },
+    }
+}
+
+fn transliterate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Minimal stub: fallback to CaseFold then strip non-ASCII
+    match args.as_slice() {
+        [s] => match ev.eval(s.clone()) {
+            Value::String(t) => {
+                let folded = t.to_lowercase();
+                let ascii: String = folded.chars().map(|c| if c.is_ascii() { c } else { '?' }).collect();
+                Value::String(ascii)
+            }
+            v => Value::Expr { head: Box::new(Value::Symbol("Transliterate".into())), args: vec![v] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Transliterate".into())), args },
+    }
+}
+
+fn remove_diacritics(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s] => match ev.eval(s.clone()) {
+            Value::String(t) => {
+                // crude strip: keep ASCII only, replace others with base char fallback
+                let filtered: String = t.chars().filter(|c| !c.is_ascii() || c.is_ascii_graphic() || c.is_ascii_whitespace()).collect();
+                Value::String(filtered)
+            }
+            v => Value::Expr { head: Box::new(Value::Symbol("RemoveDiacritics".into())), args: vec![v] },
+        },
+        _ => Value::Expr { head: Box::new(Value::Symbol("RemoveDiacritics".into())), args },
+    }
+}
+
 fn string_trim_chars(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     fn trim_set(s: &str, set: &str) -> String {
         let mut start = 0usize;
@@ -772,7 +881,7 @@ fn string_split(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Value::String(s) => {
                 Value::List(s.split_whitespace().map(|p| Value::String(p.to_string())).collect())
             }
-            v => Value::Expr { head: Box::new(Value::Symbol("StringSplit".into())), args: vec![v] },
+            v => Value::Expr { head: Box::new(Value::Symbol("Split".into())), args: vec![v] },
         },
         [a, b] => {
             let aa = ev.eval(a.clone());
@@ -785,13 +894,10 @@ fn string_split(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         Value::List(s.split(&d).map(|p| Value::String(p.to_string())).collect())
                     }
                 }
-                (aa, bb) => Value::Expr {
-                    head: Box::new(Value::Symbol("StringSplit".into())),
-                    args: vec![aa, bb],
-                },
+                (aa, bb) => Value::Expr { head: Box::new(Value::Symbol("Split".into())), args: vec![aa, bb] },
             }
         }
-        _ => Value::Expr { head: Box::new(Value::Symbol("StringSplit".into())), args },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Split".into())), args },
     }
 }
 
@@ -2467,7 +2573,7 @@ fn html_render_block(
                 let mut depth = 1i32;
                 let mut k = i;
                 let mut inner_start = i;
-                let close_tag = format!("/{}", name);
+                    let _close_tag = format!("/{}", name);
                 while k < chars.len() {
                     if chars[k] == '{' && k + 1 < chars.len() && chars[k + 1] == '{' {
                         let triple2 = k + 2 < chars.len() && chars[k + 2] == '{';
@@ -2822,7 +2928,7 @@ fn collect_named_slots(
                 // parse name within quotes
                 let name = t[5..].trim().trim_matches('"').to_string();
                 // find closing {{/slot}}
-                let mut depth = 1i32; let mut k = i; let mut inner_start = i; let mut inner_end = i; let mut end_pos = i;
+                let mut depth = 1i32; let mut k = i; let inner_start = i; let mut inner_end = i; let mut end_pos = i;
                 while k < chars.len() {
                     if chars[k] == '{' && k + 1 < chars.len() && chars[k + 1] == '{' {
                         let triple2 = k + 2 < chars.len() && chars[k + 2] == '{';

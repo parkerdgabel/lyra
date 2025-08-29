@@ -28,7 +28,7 @@ fn apply_and_compose() {
         }
         _ => panic!(),
     }
-    let r = eval_str("Compose[Times, Plus][2]"); // Times[Plus[2]] -> invalid, but Compose should produce a function; apply to x: f(g(x))
+    let _r = eval_str("Compose[Times, Plus][2]"); // Times[Plus[2]] -> invalid, but Compose should produce a function; apply to x: f(g(x))
                                                  // We'll compose simple numeric functions: Compose[(#*2)&, (#+3)&][10]
     let r = eval_str("Compose[(#*2)&, (#+3)&][10]");
     assert_eq!(r, Value::Integer(26));

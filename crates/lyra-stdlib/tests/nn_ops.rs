@@ -10,9 +10,9 @@ fn pooling_avg_forward() {
     stdlib::register_all(&mut ev);
 
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![Value::expr(
-            Value::Symbol("PoolingLayer".into()),
+            Value::Symbol("Pooling".into()),
             vec![
                 Value::String("Avg".into()),
                 Value::Integer(2),
@@ -27,7 +27,7 @@ fn pooling_avg_forward() {
         Value::Integer(3),
         Value::Integer(5),
     ]);
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, x]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, x]));
     if let Value::List(xs) = y {
         assert_eq!(xs.len(), 2);
         let a = match &xs[0] {
@@ -52,14 +52,14 @@ fn embedding_returns_dim() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![Value::expr(
-            Value::Symbol("EmbeddingLayer".into()),
+            Value::Symbol("Embedding".into()),
             vec![Value::Integer(100), Value::Integer(7)],
         )])],
     ));
 
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, Value::Integer(3)]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, Value::Integer(3)]));
     if let Value::List(xs) = y {
         assert_eq!(xs.len(), 7);
     } else {
@@ -72,19 +72,19 @@ fn conv1d_softmax_probs() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![
             Value::expr(
-                Value::Symbol("ConvolutionLayer".into()),
+                Value::Symbol("Convolution1D".into()),
                 vec![Value::Integer(3), Value::Integer(2)],
             ),
-            Value::expr(Value::Symbol("SoftmaxLayer".into()), vec![]),
+            Value::expr(Value::Symbol("Softmax".into()), vec![]),
         ])],
     ));
 
     let x =
         Value::List(vec![Value::Real(0.1), Value::Real(-0.2), Value::Real(0.3), Value::Real(0.0)]);
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, x]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, x]));
     if let Value::List(xs) = y {
         assert!(!xs.is_empty());
         let mut sum = 0.0;

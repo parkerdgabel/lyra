@@ -8,6 +8,7 @@
 | `DFS` | `DFS[graph, start, opts?]` | Depth-first search order |
 | `Graph` | `Graph[opts?]` | Create a graph handle |
 | `GraphInfo` | `GraphInfo[graph]` | Summary and counts for graph |
+| `GraphNetwork` | `GraphNetwork[nodes, edges, opts?]` | Construct a graph network from nodes/edges |
 | `KCore` | `KCore[graph, k]` | Induced subgraph with k-core |
 | `KCoreDecomposition` | `KCoreDecomposition[graph]` | K-core index per node |
 | `MaxFlow` | `MaxFlow[graph, src, dst]` | Maximum flow value and cut |

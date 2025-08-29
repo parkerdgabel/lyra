@@ -18,22 +18,19 @@ fn construct_basic_layers() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
 
-    let lin = ev.eval(Value::expr(Value::Symbol("LinearLayer".into()), vec![Value::Integer(8)]));
+    let lin = ev.eval(Value::expr(Value::Symbol("Dense".into()), vec![Value::Integer(8)]));
     assert!(is_layer(&lin));
 
-    let relu = ev.eval(Value::expr(
-        Value::Symbol("ActivationLayer".into()),
-        vec![Value::String("ReLU".into())],
-    ));
+    let relu = ev.eval(Value::expr(Value::Symbol("Relu".into()), vec![]));
     assert!(is_layer(&relu));
 
-    let drop = ev.eval(Value::expr(Value::Symbol("DropoutLayer".into()), vec![Value::Real(0.25)]));
+    let drop = ev.eval(Value::expr(Value::Symbol("Dropout".into()), vec![Value::Real(0.25)]));
     assert!(is_layer(&drop));
 
-    let flat = ev.eval(Value::expr(Value::Symbol("FlattenLayer".into()), vec![]));
+    let flat = ev.eval(Value::expr(Value::Symbol("Flatten".into()), vec![]));
     assert!(is_layer(&flat));
 
-    let sm = ev.eval(Value::expr(Value::Symbol("SoftmaxLayer".into()), vec![]));
+    let sm = ev.eval(Value::expr(Value::Symbol("Softmax".into()), vec![]));
     assert!(is_layer(&sm));
 }
 
@@ -42,20 +39,17 @@ fn net_chain_with_layers() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![
-            Value::expr(Value::Symbol("LinearLayer".into()), vec![Value::Integer(16)]),
-            Value::expr(
-                Value::Symbol("ActivationLayer".into()),
-                vec![Value::String("ReLU".into())],
-            ),
-            Value::expr(Value::Symbol("DropoutLayer".into()), vec![Value::Real(0.1)]),
+            Value::expr(Value::Symbol("Dense".into()), vec![Value::Integer(16)]),
+            Value::expr(Value::Symbol("Relu".into()), vec![]),
+            Value::expr(Value::Symbol("Dropout".into()), vec![Value::Real(0.1)]),
         ])],
     ));
 
     // Ensure NetProperty["Layers"] returns a list
     let layers = ev.eval(Value::expr(
-        Value::Symbol("NetProperty".into()),
+        Value::Symbol("Property".into()),
         vec![net.clone(), Value::String("Layers".into())],
     ));
     if let Value::List(xs) = layers {
@@ -66,7 +60,7 @@ fn net_chain_with_layers() {
 
     // LayerSummaries include key params
     let ls = ev.eval(Value::expr(
-        Value::Symbol("NetProperty".into()),
+        Value::Symbol("Property".into()),
         vec![net.clone(), Value::String("LayerSummaries".into())],
     ));
     if let Value::List(xs) = ls {
@@ -95,9 +89,9 @@ fn linear_bias_false_zero_input() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![Value::expr(
-            Value::Symbol("LinearLayer".into()),
+            Value::Symbol("Dense".into()),
             vec![
                 Value::Integer(3),
                 Value::Assoc([("Bias".into(), Value::Boolean(false))].into_iter().collect()),
@@ -111,7 +105,7 @@ fn linear_bias_false_zero_input() {
         Value::Integer(0),
         Value::Integer(0),
     ]);
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, x]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, x]));
     if let Value::List(xs) = y {
         for v in xs {
             match v {
@@ -130,14 +124,14 @@ fn activation_unknown_defaults_relu() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![Value::expr(
-            Value::Symbol("ActivationLayer".into()),
+            Value::Symbol("__ActivationLayer".into()),
             vec![Value::String("Bogus".into())],
         )])],
     ));
     let x = Value::List(vec![Value::Real(-2.0), Value::Real(3.0)]);
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, x]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, x]));
     if let Value::List(xs) = y {
         let a = match &xs[0] {
             Value::Real(r) => *r,
@@ -161,15 +155,15 @@ fn net_chain_linear_softmax_forward() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let net = ev.eval(Value::expr(
-        Value::Symbol("NetChain".into()),
+        Value::Symbol("Sequential".into()),
         vec![Value::List(vec![
-            Value::expr(Value::Symbol("LinearLayer".into()), vec![Value::Integer(2)]),
-            Value::expr(Value::Symbol("SoftmaxLayer".into()), vec![]),
+            Value::expr(Value::Symbol("Dense".into()), vec![Value::Integer(2)]),
+            Value::expr(Value::Symbol("Softmax".into()), vec![]),
         ])],
     ));
 
     let x = Value::List(vec![Value::Real(1.0), Value::Real(-1.0), Value::Real(0.5)]);
-    let y = ev.eval(Value::expr(Value::Symbol("NetApply".into()), vec![net, x]));
+    let y = ev.eval(Value::expr(Value::Symbol("Predict".into()), vec![net, x]));
     if let Value::List(xs) = y {
         assert_eq!(xs.len(), 2);
         let mut sum = 0.0f64;

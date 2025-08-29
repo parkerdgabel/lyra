@@ -16,7 +16,9 @@ uuid = { version = "1", features = ["v7", "serde"] }
 parking_lot = "0.12"
 anyhow = { workspace = true }
 lazy_static = { version = "1" }
-tauri = { version = "1", optional = true }
+tauri = { version = "2", optional = true }
+regex = "1"
+base64 = "0.22"
 
 [features]
 default = []

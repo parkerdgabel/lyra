@@ -215,7 +215,8 @@ expr //. rule      # ReplaceRepeated (until fixed point)
 
 # Additional operator forms (WL-compatible)
 f @ x              # Prefix: f[x]
-x // f             # Postfix: f[x]
+x // f             # Postfix: strict right-apply → f[x]
+x |> f[a,b]        # Pipeline: inject as first arg → f[x, a, b]
 a ~ f ~ b          # Infix: f[a, b]
 ```
 
@@ -296,9 +297,9 @@ model = NetChain[{
 
 # Training
 trained = NetTrain[model, trainingData, 
-    MaxTrainingRounds -> 100,
-    LearningRate -> 0.001,
-    BatchSize -> 32
+    epochs -> 100,
+    learningRate -> 0.001,
+    batchSize -> 32
 ];
 
 # Evaluation
@@ -337,17 +338,17 @@ Await[f]  # -> 42
 Note: In this branch today, the following primitives are available and scoped with simple budgets:
 ```lyra
 # Futures and data-parallel (with optional per-call budgets)
-Future[expr, <|MaxThreads->2, TimeBudgetMs->200|>]
+Future[expr, <|maxThreads->2, timeBudgetMs->200|>]
 Await[future]
-ParallelMap[(x)=>f[x], {1,2,3,4}, <|MaxThreads->4|>]
-ParallelTable[Times[i,i], {i, 1, 10}, <|TimeBudgetMs->500|>]
-ParallelEvaluate[{Plus[1,2], Times[2,3]}, <|MaxThreads->2|>]
+ParallelMap[(x)=>f[x], {1,2,3,4}, <|maxThreads->4|>]
+ParallelTable[Times[i,i], {i, 1, 10}, <|timeBudgetMs->500|>]
+ParallelEvaluate[{Plus[1,2], Times[2,3]}, <|maxThreads->2|>]
 
 # Structured scopes with budgets (cooperative)
-Scope[<|MaxThreads->2, TimeBudgetMs->100|>, ParallelTable[BusyWait[20], {i,1,6}]]
+Scope[<|maxThreads->2, timeBudgetMs->100|>, ParallelTable[BusyWait[20], {i,1,6}]]
 
 # Start a reusable scope, run work inside it, then cancel all and end it
-sid = StartScope[<|MaxThreads->4|>];
+sid = StartScope[<|maxThreads->4|>];
 InScope[sid, f = Future[BusyWait[100]]; g = Future[BusyWait[100]]];
 CancelScope[sid];
 {Await[f], Await[g]}  (* returns failures with tag Cancel::abort *)

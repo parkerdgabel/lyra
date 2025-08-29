@@ -8,10 +8,11 @@
 | `Download` | `Download[url, path, opts]` | Download URL to file (http/https) |
 | `DownloadStream` | `DownloadStream[url, path, opts]` | Stream download URL directly to file |
 | `Glob` | `Glob[pattern]` | Expand glob pattern to matching paths |
+| `GlobalAvgPool2D` | `GlobalAvgPool2D[opts?]` | Global average pooling per channel over HxW |
 | `GlobalClustering` | `GlobalClustering[graph]` | Global clustering coefficient |
 | `Gunzip` | `Gunzip[dataOrPath, opts?]` | Gunzip-decompress a string or a .gz file; optionally write to path. |
 | `Gzip` | `Gzip[dataOrPath, opts?]` | Gzip-compress a string or a file; optionally write to path. |
-| `Remove` | `Remove[path, opts?]` | Remove a file or directory (Recursive option) |
+| `Remove` | `Remove[target|path, value?|opts?]` | Remove from a collection/structure or remove a file/directory (dispatched). Overloads: Remove[target, value?]; Remove[path, opts?] |
 | `RemoveContainer` | `RemoveContainer[id, opts?]` | Remove a container |
 | `RemoveImage` | `RemoveImage[ref]` | Remove local image |
 | `RemoveNetwork` | `RemoveNetwork[name]` | Remove network |
@@ -19,8 +20,12 @@
 | `RemoveVolume` | `RemoveVolume[name]` | Remove volume |
 | `Tar` | `Tar[dest, inputs, opts?]` | Create a .tar (optionally .tar.gz) archive from inputs. |
 | `TarExtract` | `TarExtract[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
+| `Untar` | `Untar[src, dest]` | Extract a .tar or .tar.gz archive into a directory. |
+| `Unzip` | `Unzip[pairs|src, dest?]` | Unzip list of pairs or extract a .zip (dispatched). Overloads: Unzip[pairs]; Unzip[src, dest] |
+| `Watch` | `Watch[path, handler, opts?]` | Watch directory and stream events (held) |
 | `WatchDirectory` | `WatchDirectory[path, handler, opts?]` | Watch directory and stream events (held) |
-| `Zip` | `Zip[dest, inputs]` | Create a .zip archive from files/directories. |
+| `Write` | `Write[logger|assoc, msg|key, opts?|value]` | Write to a Logger or set key in an association (dispatched). Overloads: Write[logger, msg, opts?]; Write[assoc, key, value] |
+| `Zip` | `Zip[a|dest, b|inputs]` | Zip lists into pairs or create a .zip archive (dispatched). Overloads: Zip[a, b]; Zip[dest, inputs] |
 | `ZipExtract` | `ZipExtract[src, dest]` | Extract a .zip archive into a directory. |
 
 ## `Download`
@@ -38,6 +43,14 @@
 - Tags: fs, path, glob
 - Examples:
   - `Glob["**/*.lyra"]  ==> {"examples/app.lyra", ...}`
+
+## `GlobalAvgPool2D`
+
+- Usage: `GlobalAvgPool2D[opts?]`
+- Summary: Global average pooling per channel over HxW
+- Tags: nn, layer
+- Examples:
+  - `Sequential[{GlobalAvgPool2D[<|InputChannels->16, Height->7, Width->7|>], Dense[<|Output->10|>], Softmax[]}]`
 
 ## `Gunzip`
 
@@ -59,8 +72,8 @@
 
 ## `Remove`
 
-- Usage: `Remove[path, opts?]`
-- Summary: Remove a file or directory (Recursive option)
+- Usage: `Remove[target|path, value?|opts?]`
+- Summary: Remove from a collection/structure or remove a file/directory (dispatched). Overloads: Remove[target, value?]; Remove[path, opts?]
 - Tags: generic, collection
 - Examples:
   - `Remove[{1,2,3}, 2]  ==> {1,3}`
@@ -87,10 +100,17 @@
 - Examples:
   - `TarExtract["/tmp/bundle.tar", "/tmp/untar"]  ==> <|"path"->"/tmp/untar"|>`
 
+## `Write`
+
+- Usage: `Write[logger|assoc, msg|key, opts?|value]`
+- Summary: Write to a Logger or set key in an association (dispatched). Overloads: Write[logger, msg, opts?]; Write[assoc, key, value]
+- Examples:
+  - `Write[<|"a"->1|>, "b", 2]  ==> <|"a"->1, "b"->2|>`
+
 ## `Zip`
 
-- Usage: `Zip[dest, inputs]`
-- Summary: Create a .zip archive from files/directories.
+- Usage: `Zip[a|dest, b|inputs]`
+- Summary: Zip lists into pairs or create a .zip archive (dispatched). Overloads: Zip[a, b]; Zip[dest, inputs]
 - Tags: fs, archive
 - Examples:
   - `Zip["/tmp/bundle.zip", {"/tmp/a.txt", "/tmp/dir"}]  ==> <|"path"->"/tmp/bundle.zip", ...|>`

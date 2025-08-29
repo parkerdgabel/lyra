@@ -230,7 +230,7 @@ pub(crate) fn parse_input(ev: &mut Evaluator, v: Value) -> Result<InputKind, Str
 
 fn resolve_glob_paths(
     patterns: &[String],
-    _opts: &std::collections::HashMap<String, Value>,
+    opts: &std::collections::HashMap<String, Value>,
 ) -> Vec<String> {
     #[cfg(feature = "text_glob")]
     {

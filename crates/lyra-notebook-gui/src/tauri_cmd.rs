@@ -5,6 +5,7 @@ use crate::api;
 use lyra_notebook_core as nbcore;
 use serde_json::json;
 use tauri::Manager;
+use tauri::Emitter;
 use anyhow::Result;
 use lyra_notebook_kernel as kernel;
 use uuid::Uuid;
@@ -20,6 +21,13 @@ pub fn cmd_execute_cell(sessionId: String, cellId: String) -> Result<kernel::Exe
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
     let cid = Uuid::try_parse(&cellId).map_err(|e| e.to_string())?;
     api::execute_cell(sid, cid).map_err(|e| e.to_string())
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_execute_cell_nocache(sessionId: String, cellId: String) -> Result<kernel::ExecResult, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    let cid = Uuid::try_parse(&cellId).map_err(|e| e.to_string())?;
+    api::execute_cell_nocache(sid, cid).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
@@ -54,10 +62,10 @@ pub fn cmd_execute_text(sessionId: String, text: String) -> Result<crate::api::E
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
-pub fn cmd_execute_all(sessionId: String, ids: Option<Vec<String>>, method: Option<String>) -> Result<Vec<kernel::ExecResult>, String> {
+pub fn cmd_execute_all(sessionId: String, ids: Option<Vec<String>>, method: Option<String>, ignoreCache: Option<bool>) -> Result<Vec<kernel::ExecResult>, String> {
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
     let ids_parsed: Option<Vec<Uuid>> = ids.map(|v| v.into_iter().filter_map(|s| Uuid::try_parse(&s).ok()).collect());
-    api::execute_all(sid, ids_parsed, method).map_err(|e| e.to_string())
+    api::execute_all(sid, ids_parsed, method, ignoreCache.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
@@ -95,7 +103,7 @@ pub fn cmd_execute_cell_stream(app: tauri::AppHandle, sessionId: String, cellId:
             let sid_s = sid.to_string();
             let _res = sess.execute_cell_with_cb(cid, kernel::ExecutionOpts::default(), |ev| {
                 let payload = json!({ "sessionId": sid_s, "event": ev });
-                let _ = app.emit_all("lyra://exec", payload.clone());
+                let _ = app.emit("lyra://exec", payload.clone());
             });
             return Ok(true);
         }
@@ -136,6 +144,82 @@ pub fn cmd_editor_doc(name: String) -> Result<Option<api::EditorDoc>, String> {
     Ok(api::editor_doc(name))
 }
 
+// LSP basics: defs/refs/rename
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_editor_defs(sessionId: String, name: String) -> Result<Vec<api::EditorLocation>, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::editor_defs(sid, &name))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_editor_refs(sessionId: String, name: String) -> Result<Vec<api::EditorLocation>, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::editor_refs(sid, &name))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_editor_rename(sessionId: String, old: String, newName: String) -> Result<nbcore::schema::Notebook, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    api::editor_rename(sid, &old, &newName).map_err(|e| e.to_string())
+}
+
+// --- Health ---
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_ping(sessionId: String) -> Result<bool, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::ping(sid))
+}
+
+// Cache UX
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_set_enabled(sessionId: String, enabled: bool) -> Result<bool, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::set_cache_enabled(sid, enabled))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_clear(sessionId: String) -> Result<bool, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::cache_clear(sid))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_gc(sessionId: String, maxBytes: u64) -> Result<api::CacheGcResult, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::cache_gc(sid, maxBytes))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_info(sessionId: String) -> Result<api::CacheInfo, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::cache_info(sid))
+}
+
+// Cache salt
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_set_salt(sessionId: String, salt: Option<String>) -> Result<bool, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::cache_set_salt(sid, salt))
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_cache_get_salt(sessionId: String) -> Result<Option<String>, String> {
+    let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
+    Ok(api::cache_get_salt(sid))
+}
+
+// Language info + editor context
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_lang_operators() -> Result<Vec<api::LangOperator>, String> {
+    Ok(api::lang_operators())
+}
+
+#[cfg_attr(feature = "tauri_cmd", tauri::command)]
+pub fn cmd_editor_context(text: String, offset: u32) -> Result<api::EditorContext, String> {
+    Ok(api::editor_context(text, offset))
+}
+
 // --- Data Table commands ---
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
@@ -151,25 +235,25 @@ pub fn cmd_table_close(sessionId: String, handle: String) -> Result<bool, String
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
-pub fn cmd_table_schema(sessionId: String, handle: String) -> Result<api::TableSchema, String> {
+pub fn cmd_table_schema(sessionId: String, handle: String, timeoutMs: Option<u32>) -> Result<api::TableSchema, String> {
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
-    api::table_schema(sid, handle).map_err(|e| e.to_string())
+    api::table_schema(sid, handle, timeoutMs.map(|v| v as u64)).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
-pub fn cmd_table_query(sessionId: String, handle: String, query: api::TableQuery) -> Result<api::TableQueryResp, String> {
+pub fn cmd_table_query(sessionId: String, handle: String, query: api::TableQuery, timeoutMs: Option<u32>) -> Result<api::TableQueryResp, String> {
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
-    api::table_query(sid, handle, query).map_err(|e| e.to_string())
+    api::table_query(sid, handle, query, timeoutMs.map(|v| v as u64)).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
-pub fn cmd_table_stats(sessionId: String, handle: String, columns: Option<Vec<String>>, query: Option<api::TableQuery>) -> Result<serde_json::Value, String> {
+pub fn cmd_table_stats(sessionId: String, handle: String, columns: Option<Vec<String>>, query: Option<api::TableQuery>, timeoutMs: Option<u32>) -> Result<serde_json::Value, String> {
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
-    api::table_stats(sid, handle, columns, query).map_err(|e| e.to_string())
+    api::table_stats(sid, handle, columns, query, timeoutMs.map(|v| v as u64)).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(feature = "tauri_cmd", tauri::command)]
-pub fn cmd_table_export(sessionId: String, handle: String, format: String) -> Result<String, String> {
+pub fn cmd_table_export(sessionId: String, handle: String, format: String, query: Option<api::TableQuery>, columns: Option<Vec<String>>) -> Result<String, String> {
     let sid = Uuid::try_parse(&sessionId).map_err(|e| e.to_string())?;
-    api::table_export(sid, handle, format).map_err(|e| e.to_string())
+    api::table_export(sid, handle, format, query, columns).map_err(|e| e.to_string())
 }

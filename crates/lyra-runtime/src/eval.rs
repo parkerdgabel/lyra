@@ -214,7 +214,7 @@ impl ThreadLimiter {
 }
 
 #[derive(Clone, Debug)]
-struct DocEntry {
+pub struct DocEntry {
     summary: String,
     params: Vec<String>,
     examples: Vec<String>,
@@ -1208,20 +1208,56 @@ pub fn register_introspection(ev: &mut Evaluator) {
 }
 
 fn listable_thread(ev: &mut Evaluator, f: NativeFn, args: Vec<Value>) -> Value {
-    // Determine length: max length of list args (scalars broadcast)
-    let len = args
-        .iter()
-        .filter_map(|a| if let Value::List(v) = a { Some(v.len()) } else { None })
-        .max()
-        .unwrap_or(0);
+    // Option B: broadcast scalars and length-1 lists; require equal lengths otherwise.
+    // Determine target length from list args with len > 1; mismatch yields Failure.
+    let mut target_len: Option<usize> = None;
+    let mut saw_list = false;
+    let mut arg_lens: Vec<i64> = Vec::with_capacity(args.len());
+    for a in &args {
+        if let Value::List(v) = a {
+            saw_list = true;
+            let l = v.len();
+            arg_lens.push(l as i64);
+            if l > 1 {
+                match target_len {
+                    None => target_len = Some(l),
+                    Some(t) if t == l => {}
+                    Some(_) => {
+                        // length mismatch → Failure
+                        let mut m = std::collections::HashMap::new();
+                        m.insert("message".into(), Value::String("Failure".into()));
+                        m.insert("tag".into(), Value::String("Listable::lengthMismatch".into()));
+                        m.insert("argLens".into(), Value::List(arg_lens.iter().map(|n| Value::Integer(*n)).collect()));
+                        return Value::Assoc(m);
+                    }
+                }
+            }
+        } else {
+            arg_lens.push(0);
+        }
+    }
+    if !saw_list {
+        // Should not happen (caller checks any list), but be safe: just call f normally.
+        let evald: Vec<Value> = args.into_iter().map(|x| ev.eval(x)).collect();
+        return f(ev, evald);
+    }
+    let len = target_len.unwrap_or(1);
     let mut out = Vec::with_capacity(len);
     for i in 0..len {
         let mut elem_args = Vec::with_capacity(args.len());
         for a in &args {
             match a {
                 Value::List(vs) => {
-                    let idx = if i < vs.len() { i } else { vs.len() - 1 };
-                    elem_args.push(vs[idx].clone());
+                    let l = vs.len();
+                    if l == 0 {
+                        // Empty list → propagate empty result consistently
+                        elem_args.push(Value::List(vec![]));
+                    } else if l == 1 {
+                        elem_args.push(vs[0].clone());
+                    } else {
+                        // l > 1 implies len == l due to check above
+                        elem_args.push(vs[i].clone());
+                    }
                 }
                 other => elem_args.push(other.clone()),
             }
@@ -1257,12 +1293,12 @@ fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
                 if *n > 0 {
                     opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
                 }
             }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
                 if *ms > 0 {
                     opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -1330,6 +1366,14 @@ fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("Cancel".into())), args };
     }
+    // Allow Cancel[FSWatch] to route to stdlib's CancelWatch
+    if let Value::Assoc(m) = ev.eval(args[0].clone()) {
+        if let Some(Value::String(t)) = m.get("__type") {
+            if t == "FSWatch" {
+                return ev.eval(Value::Expr { head: Box::new(Value::Symbol("CancelWatch".into())), args: vec![Value::Assoc(m)] });
+            }
+        }
+    }
     // Accept FutureId[...] or integer id
     let id_opt = match &args[0] {
         Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
@@ -1385,12 +1429,12 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
                 if *n > 0 {
                     opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
                 }
             }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
                 if *ms > 0 {
                     opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -1477,12 +1521,12 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
                 if *n > 0 {
                     opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
                 }
             }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
                 if *ms > 0 {
                     opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -1642,12 +1686,12 @@ fn map_async(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // If options are provided, apply MaxThreads/TimeBudget to the current evaluator for the duration of this call
     let (old_lim, old_dead) = (ev.thread_limiter.clone(), ev.deadline);
     if let Some(Value::Assoc(m)) = &opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
             if *n > 0 {
                 ev.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
             }
         }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
             if *ms > 0 {
                 ev.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
             }
@@ -1719,12 +1763,12 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut opt_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+            if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
                 if *n > 0 {
                     opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
                 }
             }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
                 if *ms > 0 {
                     opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -1821,7 +1865,7 @@ fn send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut call_deadline: Option<Instant> = None;
     if args.len() >= 3 {
         if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeoutMs").or_else(|| m.get("timeoutMs")) {
                 if *ms > 0 {
                     call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -1865,7 +1909,7 @@ fn receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut call_deadline: Option<Instant> = None;
     if args.len() >= 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs") {
+            if let Some(Value::Integer(ms)) = m.get("TimeoutMs").or_else(|| m.get("timeoutMs")) {
                 if *ms > 0 {
                     call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
                 }
@@ -2224,12 +2268,12 @@ fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut ev2 = Evaluator::with_env(ev.env.clone());
     ev2.cancel_token = Some(Arc::new(AtomicBool::new(false)));
     if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
             if *n > 0 {
                 ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
             }
         }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
             if *ms > 0 {
                 ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
             }
@@ -2270,12 +2314,12 @@ fn start_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut ctx =
         ScopeCtx { cancel: Arc::new(AtomicBool::new(false)), limiter: None, deadline: None };
     if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads") {
+        if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
             if *n > 0 {
                 ctx.limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
             }
         }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs") {
+        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
             if *ms > 0 {
                 ctx.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
             }

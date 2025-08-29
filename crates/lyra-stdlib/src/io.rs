@@ -20,6 +20,985 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+// ---------------- UI backend trait + registry ----------------
+trait UiBackend: Send + Sync {
+    fn prompt_string(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn prompt_password(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn confirm(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn select_one(
+        &self,
+        msg: &str,
+        items: &[(String, String)],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value;
+    fn progress_create(&self, total: i64, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn progress_advance(&self, id: i64, n: i64) -> Value;
+    fn progress_finish(&self, id: i64) -> Value;
+    fn render_table(
+        &self,
+        headers: &[String],
+        rows: &[Vec<String>],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value;
+    fn render_box(&self, text: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn select_many(
+        &self,
+        msg: &str,
+        items: &[(String, String)],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value;
+    fn notify(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn spinner_start(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value;
+    fn spinner_stop(&self, id: i64) -> Value;
+}
+
+struct TerminalBackend;
+impl UiBackend for TerminalBackend {
+    fn prompt_string(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        print!("{} ", msg);
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut s = String::new();
+        match std::io::stdin().read_line(&mut s) {
+            Ok(_) => {
+                let t = s.trim_end_matches(['\n', '\r']).to_string();
+                if t.is_empty() {
+                    if let Some(v) = opts.get("Default") { return v.clone(); }
+                }
+                Value::String(t)
+            }
+            Err(e) => failure("UI::prompt", &e.to_string()),
+        }
+    }
+    fn prompt_password(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        // Plaintext fallback (no masking)
+        print!("{} ", msg);
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut s = String::new();
+        match std::io::stdin().read_line(&mut s) {
+            Ok(_) => {
+                let t = s.trim_end_matches(['\n', '\r']).to_string();
+                if t.is_empty() {
+                    if let Some(v) = opts.get("Default") { return v.clone(); }
+                }
+                Value::String(t)
+            }
+            Err(e) => failure("UI::prompt", &e.to_string()),
+        }
+    }
+    fn confirm(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        let default = matches!(opts.get("Default"), Some(Value::Boolean(true)));
+        print!("{} {} ", msg, if default {"[Y/n]"} else {"[y/N]"});
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut s = String::new();
+        match std::io::stdin().read_line(&mut s) {
+            Ok(_) => {
+                let t = s.trim().to_ascii_lowercase();
+                if t.is_empty() { return Value::Boolean(default); }
+                Value::Boolean(t == "y" || t == "yes")
+            }
+            Err(e) => failure("UI::prompt", &e.to_string()),
+        }
+    }
+    fn select_one(
+        &self,
+        msg: &str,
+        items: &[(String, String)],
+        _opts: &std::collections::HashMap<String, Value>,
+    ) -> Value {
+        println!("{}", msg);
+        for (i, (name, _)) in items.iter().enumerate() {
+            println!("  {}. {}", i + 1, name);
+        }
+        print!("Select (1-{}): ", items.len());
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut s = String::new();
+        let _ = std::io::stdin().read_line(&mut s);
+        if let Ok(n) = s.trim().parse::<usize>() {
+            if n >= 1 && n <= items.len() {
+                return Value::String(items[n - 1].1.clone());
+            }
+        }
+        Value::Symbol("Null".into())
+    }
+    fn progress_create(&self, total: i64, _opts: &std::collections::HashMap<String, Value>) -> Value {
+        let id = pb_next();
+        pb_reg().lock().unwrap().insert(id, PState { total, cur: 0 });
+        Value::Integer(id)
+    }
+    fn progress_advance(&self, id: i64, n: i64) -> Value {
+        if let Some(st) = pb_reg().lock().unwrap().get_mut(&id) {
+            st.cur += n;
+            Value::Boolean(true)
+        } else {
+            Value::Boolean(false)
+        }
+    }
+    fn progress_finish(&self, id: i64) -> Value {
+        pb_reg().lock().unwrap().remove(&id);
+        Value::Boolean(true)
+    }
+    fn render_table(
+        &self,
+        headers: &[String],
+        rows: &[Vec<String>],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value {
+        Value::String(term_render_table(headers, rows, opts))
+    }
+    fn render_box(&self, text: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        Value::String(term_render_box(text, opts))
+    }
+    fn select_many(
+        &self,
+        msg: &str,
+        items: &[(String, String)],
+        _opts: &std::collections::HashMap<String, Value>,
+    ) -> Value {
+        println!("{}", msg);
+        for (i, (name, _)) in items.iter().enumerate() {
+            println!("  {}. {}", i + 1, name);
+        }
+        print!("Select (e.g., 1,3,4): ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let mut s = String::new();
+        let _ = std::io::stdin().read_line(&mut s);
+        let mut out: Vec<Value> = Vec::new();
+        for tok in s.split(|c: char| c == ',' || c.is_whitespace()) {
+            if let Ok(n) = tok.trim().parse::<usize>() {
+                if n >= 1 && n <= items.len() {
+                    out.push(Value::String(items[n - 1].1.clone()));
+                }
+            }
+        }
+        Value::List(out)
+    }
+    fn notify(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        let level = opts.get("Level").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.to_ascii_lowercase()), _ => None });
+        let mut theme = ui_term_theme().lock().unwrap().clone();
+        // Per-call override
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = opts.get("AccentColor") { theme.accent = Some(s.clone()); }
+        let mut col_name: Option<String> = None;
+        if let Some(lv) = level.as_deref() {
+            let pick = |s: &Option<String>| s.clone();
+            col_name = match lv {
+                "success" => pick(&theme.palette.success),
+                "warning" => pick(&theme.palette.warning),
+                "error" => pick(&theme.palette.error),
+                "info" => pick(&theme.palette.info).or_else(|| theme.palette.primary.clone()),
+                _ => None,
+            };
+        }
+        if col_name.is_none() { col_name = theme.accent.clone().or_else(|| theme.palette.primary.clone()); }
+        let (start, end) = term_accent_codes(col_name.as_deref());
+        if let Some(lv) = level.as_deref() {
+            let tag_owned = match lv { "success" => "SUCCESS".to_string(), "warning" => "WARNING".to_string(), "error" => "ERROR".to_string(), "info" => "INFO".to_string(), _ => lv.to_ascii_uppercase() };
+            if !start.is_empty() { eprint!("{}", start); }
+            eprint!("[{}]", tag_owned);
+            if !end.is_empty() { eprint!("{}", end); }
+            eprintln!(" {}", msg);
+        } else {
+            if !start.is_empty() { eprint!("{}", start); }
+            eprint!("•");
+            if !end.is_empty() { eprint!("{}", end); }
+            eprintln!(" {}", msg);
+        }
+        Value::Boolean(true)
+    }
+    fn spinner_start(&self, msg: &str, _opts: &std::collections::HashMap<String, Value>) -> Value {
+        spinner_start_thread(msg)
+    }
+    fn spinner_stop(&self, id: i64) -> Value { spinner_stop_thread(id) }
+}
+
+struct NullBackend;
+impl UiBackend for NullBackend {
+    fn prompt_string(&self, _msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(v) = opts.get("Default") { return v.clone(); }
+        Value::Symbol("Null".into())
+    }
+    fn prompt_password(&self, _msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(v) = opts.get("Default") { return v.clone(); }
+        Value::Symbol("Null".into())
+    }
+    fn confirm(&self, _msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(Value::Boolean(b)) = opts.get("Default") { return Value::Boolean(*b); }
+        Value::Boolean(false)
+    }
+    fn select_one(
+        &self,
+        _msg: &str,
+        items: &[(String, String)],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value {
+        if let Some(v) = opts.get("Default") { return v.clone(); }
+        if let Some(Value::Integer(i)) = opts.get("DefaultIndex") {
+            let idx = (*i as isize - 1).max(0) as usize;
+            if idx < items.len() { return Value::String(items[idx].1.clone()); }
+        }
+        Value::Symbol("Null".into())
+    }
+    fn progress_create(&self, _total: i64, _opts: &std::collections::HashMap<String, Value>) -> Value {
+        Value::Symbol("Null".into())
+    }
+    fn progress_advance(&self, _id: i64, _n: i64) -> Value { Value::Boolean(true) }
+    fn progress_finish(&self, _id: i64) -> Value { Value::Boolean(true) }
+    fn render_table(
+        &self,
+        _headers: &[String],
+        _rows: &[Vec<String>],
+        _opts: &std::collections::HashMap<String, Value>,
+    ) -> Value { Value::String(String::new()) }
+    fn render_box(&self, text: &str, _opts: &std::collections::HashMap<String, Value>) -> Value { Value::String(text.to_string()) }
+    fn select_many(
+        &self,
+        _msg: &str,
+        items: &[(String, String)],
+        opts: &std::collections::HashMap<String, Value>,
+    ) -> Value {
+        if let Some(Value::List(vs)) = opts.get("Default") { return Value::List(vs.clone()); }
+        if let Some(Value::List(vs)) = opts.get("DefaultIndex") {
+            let mut out: Vec<Value> = Vec::new();
+            for v in vs {
+                if let Value::Integer(i) = v {
+                    let idx = (*i as isize - 1).max(0) as usize;
+                    if idx < items.len() { out.push(Value::String(items[idx].1.clone())); }
+                }
+            }
+            return Value::List(out);
+        }
+        Value::Symbol("Null".into())
+    }
+    fn notify(&self, _msg: &str, _opts: &std::collections::HashMap<String, Value>) -> Value { Value::Boolean(true) }
+    fn spinner_start(&self, _msg: &str, _opts: &std::collections::HashMap<String, Value>) -> Value { Value::Symbol("Null".into()) }
+    fn spinner_stop(&self, _id: i64) -> Value { Value::Boolean(true) }
+}
+
+static UI_BACKEND: OnceLock<Mutex<Box<dyn UiBackend + Send + Sync>>> = OnceLock::new();
+static UI_BACKEND_NAME: OnceLock<Mutex<String>> = OnceLock::new();
+static UI_THEME_NAME: OnceLock<Mutex<String>> = OnceLock::new();
+#[derive(Clone, Default)]
+struct UiPalette { primary: Option<String>, success: Option<String>, warning: Option<String>, error: Option<String>, info: Option<String>, background: Option<String>, surface: Option<String>, text: Option<String> }
+#[cfg(feature = "ui_egui")]
+#[derive(Clone, Default)]
+struct UiThemeOpts { accent: Option<String>, rounding: Option<f32>, font_size: Option<f32>, compact: bool, spacing_scale: Option<f32>, palette: UiPalette }
+#[cfg(feature = "ui_egui")]
+static UI_THEME_OPTS: OnceLock<Mutex<UiThemeOpts>> = OnceLock::new();
+
+#[derive(Clone, Default)]
+struct TermTheme { accent: Option<String>, compact: bool, palette: TermPalette }
+#[derive(Clone, Default)]
+struct TermPalette { primary: Option<String>, success: Option<String>, warning: Option<String>, error: Option<String>, info: Option<String>, background: Option<String>, text: Option<String> }
+static UI_TERM_THEME: OnceLock<Mutex<TermTheme>> = OnceLock::new();
+
+fn ui_backend() -> &'static Mutex<Box<dyn UiBackend + Send + Sync>> {
+    UI_BACKEND.get_or_init(|| Mutex::new(Box::new(TerminalBackend)))
+}
+fn ui_backend_name() -> &'static Mutex<String> {
+    UI_BACKEND_NAME.get_or_init(|| Mutex::new("terminal".to_string()))
+}
+fn ui_theme_name() -> &'static Mutex<String> {
+    UI_THEME_NAME.get_or_init(|| Mutex::new("system".to_string()))
+}
+#[cfg(feature = "ui_egui")]
+fn ui_theme_opts() -> &'static Mutex<UiThemeOpts> { UI_THEME_OPTS.get_or_init(|| Mutex::new(UiThemeOpts::default())) }
+fn ui_term_theme() -> &'static Mutex<TermTheme> { UI_TERM_THEME.get_or_init(|| Mutex::new(TermTheme::default())) }
+
+fn set_ui_backend(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetUiBackend".into())), args };
+    }
+    let mode_s = match ev.eval(args[0].clone()) {
+        Value::String(s) | Value::Symbol(s) => s.to_ascii_lowercase(),
+        other => return Value::Expr { head: Box::new(Value::Symbol("SetUiBackend".into())), args: vec![other] },
+    };
+    let (name, boxed): (String, Box<dyn UiBackend + Send + Sync>) = match mode_s.as_str() {
+        "terminal" | "auto" => ("terminal".into(), Box::new(TerminalBackend)),
+        "null" => ("null".into(), Box::new(NullBackend)),
+        "gui" | "egui" => match mk_egui_backend() {
+            Some(b) => ("gui".into(), b),
+            None => ("terminal".into(), Box::new(TerminalBackend)),
+        },
+        _ => ("terminal".into(), Box::new(TerminalBackend)),
+    };
+    *ui_backend().lock().unwrap() = boxed;
+    *ui_backend_name().lock().unwrap() = name;
+    Value::Boolean(true)
+}
+
+fn get_ui_backend(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("GetUiBackend".into())), args };
+    }
+    Value::String(ui_backend_name().lock().unwrap().clone())
+}
+
+fn set_ui_theme(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() || args.len() > 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("SetUiTheme".into())), args };
+    }
+    let mode = match ev.eval(args[0].clone()) {
+        Value::String(s) | Value::Symbol(s) => s.to_ascii_lowercase(),
+        other => return Value::Expr { head: Box::new(Value::Symbol("SetUiTheme".into())), args: vec![other] },
+    };
+    let mode = match mode.as_str() { "system" | "light" | "dark" => mode, _ => "system".into() };
+    *ui_theme_name().lock().unwrap() = mode;
+    // Parse optional options
+    let mut accent: Option<String> = None;
+    let mut rounding: Option<f32> = None;
+    let mut font_size: Option<f32> = None;
+    let mut compact: bool = false;
+    let mut spacing_scale: Option<f32> = None;
+    // Palette
+    let mut pal = UiPalette::default();
+    if args.len() == 2 {
+        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
+            if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("AccentColor") { accent = Some(s.clone()); }
+            if let Some(Value::Integer(n)) = m.get("Rounding") { rounding = Some(*n as f32); }
+            if let Some(Value::Integer(n)) = m.get("FontSize") { font_size = Some(*n as f32); }
+            if let Some(Value::Boolean(b)) = m.get("Compact") { compact = *b; }
+            if let Some(Value::Integer(n)) = m.get("SpacingScale") { spacing_scale = Some(*n as f32); }
+            if let Some(Value::Assoc(pm)) = m.get("Palette") {
+                let get = |k: &str| pm.get(k).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+                pal.primary = get("Primary"); pal.success = get("Success"); pal.warning = get("Warning"); pal.error = get("Error"); pal.info = get("Info"); pal.background = get("Background"); pal.surface = get("Surface"); pal.text = get("Text");
+                if accent.is_none() { accent = pal.primary.clone(); }
+            }
+        }
+    }
+    // Store opts
+    #[cfg(feature = "ui_egui")]
+    {
+        let mut o = ui_theme_opts().lock().unwrap();
+        o.accent = accent.clone();
+        o.rounding = rounding;
+        o.font_size = font_size;
+        o.compact = compact;
+        o.spacing_scale = spacing_scale;
+        o.palette = pal.clone();
+    }
+    {
+        let mut t = ui_term_theme().lock().unwrap();
+        t.accent = accent.or_else(|| pal.primary.clone());
+        t.compact = compact;
+        t.palette = TermPalette { primary: pal.primary.clone(), success: pal.success.clone(), warning: pal.warning.clone(), error: pal.error.clone(), info: pal.info.clone(), background: pal.background.clone(), text: pal.text.clone() };
+    }
+    Value::Boolean(true)
+}
+
+fn get_ui_theme(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if !args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("GetUiTheme".into())), args };
+    }
+    Value::String(ui_theme_name().lock().unwrap().clone())
+}
+
+#[cfg(feature = "ui_egui")]
+fn mk_egui_backend() -> Option<Box<dyn UiBackend + Send + Sync>> {
+    Some(Box::new(EguiBackend {}))
+}
+#[cfg(not(feature = "ui_egui"))]
+fn mk_egui_backend() -> Option<Box<dyn UiBackend + Send + Sync>> { None }
+
+#[cfg(feature = "ui_egui")]
+struct EguiBackend {}
+#[cfg(feature = "ui_egui")]
+impl UiBackend for EguiBackend {
+    fn prompt_string(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(v) = egui_modal_prompt_string(msg, opts, false) { v } else { Value::Symbol("Null".into()) }
+    }
+    fn prompt_password(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(v) = egui_modal_prompt_string(msg, opts, true) { v } else { Value::Symbol("Null".into()) }
+    }
+    fn confirm(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        Value::Boolean(egui_modal_confirm(msg, opts))
+    }
+    fn select_one(&self, msg: &str, items: &[(String, String)], opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(v) = egui_modal_select_one(msg, items, opts) { v } else { Value::Symbol("Null".into()) }
+    }
+    fn progress_create(&self, total: i64, opts: &std::collections::HashMap<String, Value>) -> Value {
+        let msg = opts.get("Message").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or_default();
+        let accent = parse_theme_overrides(opts).accent.and_then(|s| egui_parse_color32(&s));
+        let id = pb_next();
+        egui_progress_send(ProgressCmd::Create { id, total, msg, accent });
+        Value::Integer(id)
+    }
+    fn progress_advance(&self, id: i64, n: i64) -> Value {
+        egui_progress_send(ProgressCmd::Advance { id, n });
+        Value::Boolean(true)
+    }
+    fn progress_finish(&self, id: i64) -> Value {
+        egui_progress_send(ProgressCmd::Finish { id });
+        Value::Boolean(true)
+    }
+    fn render_table(&self, headers: &[String], rows: &[Vec<String>], opts: &std::collections::HashMap<String, Value>) -> Value {
+        let overrides = parse_theme_overrides(opts);
+        egui_show_table("Table", headers.to_vec(), rows.to_vec(), Some(overrides));
+        Value::String(String::new())
+    }
+    fn render_box(&self, text: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        let overrides = parse_theme_overrides(opts);
+        egui_show_box("Text", text.to_string(), Some(overrides));
+        Value::String(String::new())
+    }
+    fn select_many(&self, msg: &str, items: &[(String, String)], opts: &std::collections::HashMap<String, Value>) -> Value {
+        if let Some(vs) = egui_modal_select_many(msg, items, opts) { Value::List(vs) } else { Value::Symbol("Null".into()) }
+    }
+    fn notify(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value { egui_show_notify(msg, opts) }
+    fn spinner_start(&self, msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+        let id = pb_next();
+        let accent = parse_theme_overrides(opts).accent.and_then(|s| egui_parse_color32(&s));
+        egui_progress_send(ProgressCmd::Create { id, total: -1, msg: msg.to_string(), accent });
+        Value::Integer(id)
+    }
+    fn spinner_stop(&self, id: i64) -> Value { egui_progress_send(ProgressCmd::Finish { id }); Value::Boolean(true) }
+}
+
+#[cfg(feature = "ui_egui")]
+#[derive(Clone, Default)]
+struct ThemeOverrides { accent: Option<String>, rounding: Option<f32>, font_size: Option<f32>, compact: Option<bool>, spacing_scale: Option<f32> }
+
+#[cfg(feature = "ui_egui")]
+fn parse_theme_overrides(opts: &std::collections::HashMap<String, Value>) -> ThemeOverrides {
+    let mut o = ThemeOverrides::default();
+    if let Some(Value::String(s)) | Some(Value::Symbol(s)) = opts.get("AccentColor") { o.accent = Some(s.clone()); }
+    if let Some(Value::Integer(n)) = opts.get("Rounding") { o.rounding = Some(*n as f32); }
+    if let Some(Value::Integer(n)) = opts.get("FontSize") { o.font_size = Some(*n as f32); }
+    if let Some(Value::Boolean(b)) = opts.get("Compact") { o.compact = Some(*b); }
+    if let Some(Value::Integer(n)) = opts.get("SpacingScale") { o.spacing_scale = Some(*n as f32); }
+    o
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_apply_theme(cc: &eframe::CreationContext<'_>) {
+    let name = ui_theme_name().lock().unwrap().clone();
+    match name.as_str() {
+        "light" => cc.egui_ctx.set_visuals(egui::Visuals::light()),
+        "dark" => cc.egui_ctx.set_visuals(egui::Visuals::dark()),
+        _ => { /* system: leave defaults */ }
+    }
+    // Extended theme options
+    let opts = ui_theme_opts().lock().unwrap().clone();
+    let mut style = (*cc.egui_ctx.style()).clone();
+    // Accent color: selection + hyperlink
+    if let Some(ac) = opts.accent.as_ref().or_else(|| opts.palette.primary.as_ref()) {
+        if let Some(col) = egui_parse_color32(ac) {
+            style.visuals.selection.bg_fill = col;
+            style.visuals.hyperlink_color = col;
+            // Buttons & interactive widgets
+            style.visuals.widgets.active.bg_fill = col;
+            style.visuals.widgets.hovered.bg_fill = egui_color_tint(col, 1.1);
+            style.visuals.widgets.inactive.bg_stroke.color = col;
+        }
+    }
+    // Background / Surface / Text
+    if let Some(bg) = opts.palette.background.as_ref().and_then(|s| egui_parse_color32(s)) { style.visuals.window_fill = bg; style.visuals.extreme_bg_color = bg; }
+    if let Some(sf) = opts.palette.surface.as_ref().and_then(|s| egui_parse_color32(s)) { style.visuals.panel_fill = sf; }
+    if let Some(tx) = opts.palette.text.as_ref().and_then(|s| egui_parse_color32(s)) { style.visuals.override_text_color = Some(tx); }
+    // Rounding
+    if let Some(r) = opts.rounding {
+        let rr = egui::Rounding::same(r);
+        style.visuals.widgets.noninteractive.rounding = rr;
+        style.visuals.widgets.inactive.rounding = rr;
+        style.visuals.widgets.active.rounding = rr;
+        style.visuals.widgets.hovered.rounding = rr;
+        style.visuals.window_rounding = rr;
+        style.visuals.menu_rounding = rr;
+    }
+    // Font size
+    if let Some(sz) = opts.font_size {
+        use egui::{FontId, TextStyle};
+        for ts in [TextStyle::Body, TextStyle::Button, TextStyle::Small, TextStyle::Monospace, TextStyle::Heading] {
+            style.text_styles.insert(ts.clone(), FontId::proportional(match ts { TextStyle::Heading => sz * 1.2, TextStyle::Small => sz * 0.9, _ => sz }));
+        }
+    }
+    // Spacing / compact
+    if opts.compact || opts.spacing_scale.is_some() {
+        let scale = opts.spacing_scale.unwrap_or(if opts.compact { 0.8 } else { 1.0 });
+        style.spacing.item_spacing *= scale;
+        style.spacing.window_margin *= scale;
+        style.spacing.button_padding *= scale;
+        style.spacing.menu_margin *= scale;
+    }
+    cc.egui_ctx.set_style(style);
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_apply_theme_with_overrides(cc: &eframe::CreationContext<'_>, overrides: Option<ThemeOverrides>) {
+    egui_apply_theme(cc);
+    if overrides.is_none() { return; }
+    let ov = overrides.unwrap();
+    let mut style = (*cc.egui_ctx.style()).clone();
+    if let Some(ac) = ov.accent.as_ref() {
+        if let Some(col) = egui_parse_color32(ac) {
+            style.visuals.selection.bg_fill = col;
+            style.visuals.hyperlink_color = col;
+            style.visuals.widgets.active.bg_fill = col;
+            style.visuals.widgets.hovered.bg_fill = egui_color_tint(col, 1.1);
+            style.visuals.widgets.inactive.bg_stroke.color = col;
+        }
+    }
+    if let Some(r) = ov.rounding { let rr = egui::Rounding::same(r); style.visuals.widgets.noninteractive.rounding = rr; style.visuals.widgets.inactive.rounding = rr; style.visuals.widgets.active.rounding = rr; style.visuals.widgets.hovered.rounding = rr; style.visuals.window_rounding = rr; style.visuals.menu_rounding = rr; }
+    if let Some(sz) = ov.font_size {
+        use egui::{FontId, TextStyle};
+        for ts in [TextStyle::Body, TextStyle::Button, TextStyle::Small, TextStyle::Monospace, TextStyle::Heading] {
+            style.text_styles.insert(ts.clone(), FontId::proportional(match ts { TextStyle::Heading => sz * 1.2, TextStyle::Small => sz * 0.9, _ => sz }));
+        }
+    }
+    if ov.compact.unwrap_or(false) || ov.spacing_scale.is_some() {
+        let scale = ov.spacing_scale.unwrap_or(if ov.compact.unwrap_or(false) { 0.8 } else { 1.0 });
+        style.spacing.item_spacing *= scale; style.spacing.window_margin *= scale; style.spacing.button_padding *= scale; style.spacing.menu_margin *= scale;
+    }
+    cc.egui_ctx.set_style(style);
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_theme_accent() -> Option<egui::Color32> {
+    let opts = ui_theme_opts().lock().unwrap().clone();
+    opts.accent.as_ref().and_then(|s| egui_parse_color32(s))
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_color_tint(c: egui::Color32, f: f32) -> egui::Color32 {
+    let [r,g,b,a] = c.to_array();
+    let rf = ((r as f32 * f).round() as i32).clamp(0,255) as u8;
+    let gf = ((g as f32 * f).round() as i32).clamp(0,255) as u8;
+    let bf = ((b as f32 * f).round() as i32).clamp(0,255) as u8;
+    egui::Color32::from_rgba_premultiplied(rf, gf, bf, a)
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_modal_prompt_string(
+    msg: &str,
+    opts: &std::collections::HashMap<String, Value>,
+    is_password: bool,
+) -> Option<Value> {
+    use std::sync::mpsc::{channel, Sender};
+    let (tx, rx) = channel::<Value>();
+    let default = opts.get("Default").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or_default();
+    let title = if is_password { "Password" } else { "Prompt" };
+    let title_owned = title.to_string();
+    let msg_owned = msg.to_string();
+    let default_owned = default.clone();
+    let is_pw = is_password;
+    let overrides = parse_theme_overrides(opts);
+    let res = eframe::run_native(
+        &title_owned,
+        eframe::NativeOptions::default(),
+        Box::new(move |cc| { egui_apply_theme_with_overrides(cc, Some(overrides)); Box::new(ModalApp::new_prompt(msg_owned, default_owned, is_pw, tx)) }),
+    );
+    match res { Ok(_) => rx.recv().ok(), Err(_) => None }
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_modal_confirm(
+    msg: &str,
+    opts: &std::collections::HashMap<String, Value>,
+) -> bool {
+    use std::sync::mpsc::channel;
+    let (tx, rx) = channel::<Value>();
+    let default_yes = matches!(opts.get("Default"), Some(Value::Boolean(true)));
+    let msg_owned = msg.to_string();
+    let overrides = parse_theme_overrides(opts);
+    let _ = eframe::run_native(
+        "Confirm",
+        eframe::NativeOptions::default(),
+        Box::new(move |cc| { egui_apply_theme_with_overrides(cc, Some(overrides)); Box::new(ModalApp::new_confirm(msg_owned, default_yes, tx)) }),
+    );
+    rx.recv().ok().and_then(|v| if let Value::Boolean(b) = v { Some(b) } else { None }).unwrap_or(default_yes)
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_modal_select_one(
+    msg: &str,
+    items: &[(String, String)],
+    opts: &std::collections::HashMap<String, Value>,
+) -> Option<Value> {
+    use std::sync::mpsc::channel;
+    let (tx, rx) = channel::<Value>();
+    let title = "Select";
+    let title_owned = title.to_string();
+    let msg_owned = msg.to_string();
+    let items_vec = items.to_vec();
+    let overrides = parse_theme_overrides(opts);
+    let res = eframe::run_native(
+        &title_owned,
+        eframe::NativeOptions::default(),
+        Box::new(move |cc| { egui_apply_theme_with_overrides(cc, Some(overrides)); Box::new(ModalApp::new_select(msg_owned, items_vec, tx)) }),
+    );
+    match res { Ok(_) => rx.recv().ok(), Err(_) => None }
+}
+
+#[cfg(feature = "ui_egui")]
+enum ModalKind {
+    Prompt { is_password: bool },
+    Confirm { default_yes: bool },
+    Select,
+    SelectMany,
+}
+
+#[cfg(feature = "ui_egui")]
+struct ModalApp {
+    kind: ModalKind,
+    msg: String,
+    input: String,
+    items: Vec<(String, String)>,
+    selected: usize,
+    selected_flags: Vec<bool>,
+    tx: std::sync::mpsc::Sender<Value>,
+}
+
+#[cfg(feature = "ui_egui")]
+impl ModalApp {
+    fn new_prompt(msg: String, default: String, is_password: bool, tx: std::sync::mpsc::Sender<Value>) -> Self {
+        ModalApp { kind: ModalKind::Prompt { is_password }, msg, input: default, items: vec![], selected: 0, selected_flags: vec![], tx }
+    }
+    fn new_confirm(msg: String, default_yes: bool, tx: std::sync::mpsc::Sender<Value>) -> Self {
+        ModalApp { kind: ModalKind::Confirm { default_yes }, msg, input: String::new(), items: vec![], selected: 0, selected_flags: vec![], tx }
+    }
+    fn new_select(msg: String, items: Vec<(String,String)>, tx: std::sync::mpsc::Sender<Value>) -> Self {
+        ModalApp { kind: ModalKind::Select, msg, input: String::new(), items, selected: 0, selected_flags: vec![], tx }
+    }
+    fn new_select_many(msg: String, items: Vec<(String,String)>, defaults: Vec<bool>, tx: std::sync::mpsc::Sender<Value>) -> Self {
+        let mut flags = defaults;
+        if flags.len() != items.len() { flags = vec![false; items.len()]; }
+        ModalApp { kind: ModalKind::SelectMany, msg, input: String::new(), items, selected: 0, selected_flags: flags, tx }
+    }
+}
+
+#[cfg(feature = "ui_egui")]
+impl eframe::App for ModalApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        use egui::{CentralPanel, Label, RichText, TextEdit};
+        CentralPanel::default().show(ctx, |ui| {
+            ui.heading(&self.msg);
+            ui.separator();
+            match self.kind {
+                ModalKind::Prompt { is_password } => {
+                    let te = TextEdit::singleline(&mut self.input);
+                    if is_password { ui.add(te.password(true)); } else { ui.add(te); }
+                    ui.horizontal(|ui| {
+                        if ui.button("OK").clicked() {
+                            let _ = self.tx.send(Value::String(self.input.clone()));
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                    });
+                }
+                ModalKind::Confirm { default_yes } => {
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() { let _ = self.tx.send(Value::Boolean(true)); ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                        if ui.button("No").clicked() { let _ = self.tx.send(Value::Boolean(false)); ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                    });
+                    ui.label(RichText::new(if default_yes {"Default: Yes"} else {"Default: No"}).italics());
+                }
+                ModalKind::Select => {
+                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                        for (i, (name, _)) in self.items.iter().enumerate() {
+                            if ui.selectable_label(self.selected == i, name).clicked() {
+                                self.selected = i;
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("OK").clicked() {
+                            if let Some((_n, v)) = self.items.get(self.selected) {
+                                let _ = self.tx.send(Value::String(v.clone()));
+                            }
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                    });
+                }
+                ModalKind::SelectMany => {
+                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                        for (i, (name, _)) in self.items.iter().enumerate() {
+                            if i >= self.selected_flags.len() { self.selected_flags.resize(self.items.len(), false); }
+                            ui.checkbox(&mut self.selected_flags[i], name);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("OK").clicked() {
+                            let mut out: Vec<Value> = Vec::new();
+                            for (i, (_n, v)) in self.items.iter().enumerate() {
+                                if self.selected_flags.get(i).copied().unwrap_or(false) {
+                                    out.push(Value::String(v.clone()));
+                                }
+                            }
+                            let _ = self.tx.send(Value::List(out));
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                    });
+                }
+            }
+        });
+    }
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_modal_select_many(
+    msg: &str,
+    items: &[(String, String)],
+    opts: &std::collections::HashMap<String, Value>,
+) -> Option<Vec<Value>> {
+    use std::sync::mpsc::channel;
+    let (tx, rx) = channel::<Value>();
+    // Build default flags from opts
+    let mut flags: Vec<bool> = vec![false; items.len()];
+    if let Some(Value::List(vals)) = opts.get("Default") {
+        for (i, (_name, v)) in items.iter().enumerate() {
+            if vals.iter().any(|x| matches!(x, Value::String(s) | Value::Symbol(s) if s == v)) {
+                flags[i] = true;
+            }
+        }
+    } else if let Some(Value::List(idxs)) = opts.get("DefaultIndex") {
+        for idxv in idxs {
+            if let Value::Integer(n) = idxv { let j = (*n as isize - 1).max(0) as usize; if j < flags.len() { flags[j] = true; } }
+        }
+    }
+    let title_owned = "Select Many".to_string();
+    let msg_owned = msg.to_string();
+    let items_vec = items.to_vec();
+    let overrides = parse_theme_overrides(opts);
+    let res = eframe::run_native(
+        &title_owned,
+        eframe::NativeOptions::default(),
+        Box::new(move |cc| { egui_apply_theme_with_overrides(cc, Some(overrides)); Box::new(ModalApp::new_select_many(msg_owned, items_vec, flags, tx)) }),
+    );
+    match res { Ok(_) => rx.recv().ok().and_then(|v| if let Value::List(vs) = v { Some(vs) } else { None }), Err(_) => None }
+}
+
+// ---------- Egui progress window ----------
+#[cfg(feature = "ui_egui")]
+enum ProgressCmd {
+    Create { id: i64, total: i64, msg: String, accent: Option<egui::Color32> },
+    Advance { id: i64, n: i64 },
+    Finish { id: i64 },
+}
+
+#[cfg(feature = "ui_egui")]
+static PROG_TX: OnceLock<Mutex<Option<std::sync::mpsc::Sender<ProgressCmd>>>> = OnceLock::new();
+
+#[cfg(feature = "ui_egui")]
+fn egui_progress_send(cmd: ProgressCmd) {
+    use std::sync::mpsc::channel;
+    let tx_opt = PROG_TX.get_or_init(|| Mutex::new(None));
+    {
+        let mut guard = tx_opt.lock().unwrap();
+        if guard.is_none() {
+            // Spawn progress app
+            let (tx, rx) = channel::<ProgressCmd>();
+            *guard = Some(tx.clone());
+            std::thread::spawn(move || {
+                let _ = eframe::run_native(
+                    "Progress",
+                    eframe::NativeOptions::default(),
+                    Box::new(move |cc| { egui_apply_theme(cc); Box::new(ProgressApp::new(rx)) }),
+                );
+            });
+        }
+    }
+    // Send after ensured
+    if let Some(ref tx) = *tx_opt.lock().unwrap() { let _ = tx.send(cmd); }
+}
+
+#[cfg(feature = "ui_egui")]
+struct ProgressState { total: i64, cur: i64, msg: String, accent: Option<egui::Color32> }
+
+#[cfg(feature = "ui_egui")]
+struct ProgressApp {
+    rx: std::sync::mpsc::Receiver<ProgressCmd>,
+    bars: std::collections::HashMap<i64, ProgressState>,
+    tick: usize,
+}
+
+#[cfg(feature = "ui_egui")]
+impl ProgressApp {
+    fn new(rx: std::sync::mpsc::Receiver<ProgressCmd>) -> Self { Self { rx, bars: std::collections::HashMap::new(), tick: 0 } }
+}
+
+#[cfg(feature = "ui_egui")]
+impl eframe::App for ProgressApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Drain channel
+        while let Ok(cmd) = self.rx.try_recv() {
+            match cmd {
+                ProgressCmd::Create { id, total, msg, accent } => { self.bars.insert(id, ProgressState { total, cur: 0, msg, accent }); },
+                ProgressCmd::Advance { id, n } => { if let Some(st) = self.bars.get_mut(&id) { st.cur += n; } },
+                ProgressCmd::Finish { id } => { self.bars.remove(&id); },
+            }
+        }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Progress");
+            ui.separator();
+            let mut ids: Vec<i64> = self.bars.keys().copied().collect();
+            ids.sort();
+            for id in ids {
+                if let Some(st) = self.bars.get(&id) {
+                    if st.total > 0 {
+                        let frac = (st.cur as f32 / st.total as f32).clamp(0.0, 1.0);
+                        let label = if !st.msg.is_empty() { format!("#{id} {} ({}/{})", st.msg, st.cur, st.total) } else { format!("#{id} ({}/{})", st.cur, st.total) };
+                        let mut pb = egui::widgets::ProgressBar::new(frac).text(label);
+                        if let Some(ac) = st.accent.or_else(|| egui_theme_accent()) { pb = pb.fill(ac); }
+                        ui.add(pb);
+                    } else {
+                        let frames = ["|","/","-","\\"];
+                        let f = frames[self.tick % frames.len()];
+                        let label = if !st.msg.is_empty() { format!("#{id} {} {}", f, st.msg) } else { format!("#{id} {}", f) };
+                        if let Some(ac) = st.accent.or_else(|| egui_theme_accent()) { ui.label(egui::RichText::new(label).color(ac)); } else { ui.label(label); }
+                    }
+                }
+            }
+            if self.bars.is_empty() {
+                ui.label("No active tasks.");
+            }
+        });
+        self.tick = self.tick.wrapping_add(1);
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+    }
+}
+
+// ---------- Egui helpers for notify/table/box ----------
+#[cfg(feature = "ui_egui")]
+fn egui_show_notify(msg: &str, opts: &std::collections::HashMap<String, Value>) -> Value {
+    let title = opts.get("Title").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or_else(|| "Notification".into());
+    let timeout_ms = opts
+        .get("TimeoutMs").or_else(|| opts.get("timeoutMs"))
+        .and_then(|v| if let Value::Integer(n) = v { Some(*n as u64) } else { None })
+        .unwrap_or(2000);
+    let close_on_click = opts.get("CloseOnClick").and_then(|v| if let Value::Boolean(b) = v { Some(*b) } else { None }).unwrap_or(true);
+    let close_on_esc = opts.get("CloseOnEsc").and_then(|v| if let Value::Boolean(b) = v { Some(*b) } else { None }).unwrap_or(true);
+    let show_dismiss = opts.get("ShowDismiss").and_then(|v| if let Value::Boolean(b) = v { Some(*b) } else { None }).unwrap_or(true);
+    let msg_owned = msg.to_string();
+    // Determine accent from Level if not explicitly provided
+    let mut overrides = parse_theme_overrides(opts);
+    if overrides.accent.is_none() {
+        let level = opts.get("Level").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.to_ascii_lowercase()), _ => None });
+        if let Some(lv) = level.as_deref() {
+            let pal = ui_theme_opts().lock().unwrap().palette.clone();
+            overrides.accent = match lv {
+                "success" => pal.success,
+                "warning" => pal.warning,
+                "error" => pal.error,
+                "info" => pal.info.or(pal.primary),
+                _ => pal.primary,
+            };
+        }
+    }
+    let level = opts.get("Level").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.to_ascii_lowercase()), _ => None });
+    std::thread::spawn(move || {
+        let _ = eframe::run_native(
+            &title,
+            eframe::NativeOptions::default(),
+            Box::new(move |cc| { egui_apply_theme_with_overrides(cc, Some(overrides)); Box::new(NotifyApp::new(msg_owned.clone(), timeout_ms).with_level(level).with_behavior(close_on_click, close_on_esc, show_dismiss)) }),
+        );
+    });
+    Value::Boolean(true)
+}
+
+#[cfg(feature = "ui_egui")]
+struct NotifyApp { msg: String, left: u64, start: std::time::Instant, level: Option<String>, close_on_click: bool, close_on_esc: bool, show_dismiss: bool }
+#[cfg(feature = "ui_egui")]
+impl NotifyApp {
+    fn new(msg: String, timeout_ms: u64) -> Self { Self { msg, left: timeout_ms, start: std::time::Instant::now(), level: None, close_on_click: true, close_on_esc: true, show_dismiss: true } }
+    fn with_level(mut self, level: Option<String>) -> Self { self.level = level; self }
+    fn with_behavior(mut self, close_on_click: bool, close_on_esc: bool, show_dismiss: bool) -> Self { self.close_on_click = close_on_click; self.close_on_esc = close_on_esc; self.show_dismiss = show_dismiss; self }
+}
+#[cfg(feature = "ui_egui")]
+impl eframe::App for NotifyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let icon = match self.level.as_deref() { Some("success") => "✓", Some("warning") => "⚠", Some("error") => "✕", _ => "ℹ" };
+            let color = match self.level.as_deref() {
+                Some("success") => ui_theme_opts().lock().unwrap().palette.success.clone().and_then(|s| egui_parse_color32(&s)),
+                Some("warning") => ui_theme_opts().lock().unwrap().palette.warning.clone().and_then(|s| egui_parse_color32(&s)),
+                Some("error") => ui_theme_opts().lock().unwrap().palette.error.clone().and_then(|s| egui_parse_color32(&s)),
+                Some("info") => ui_theme_opts().lock().unwrap().palette.info.clone().and_then(|s| egui_parse_color32(&s)).or_else(|| ui_theme_opts().lock().unwrap().palette.primary.clone().and_then(|s| egui_parse_color32(&s))),
+                _ => ui_theme_opts().lock().unwrap().palette.primary.clone().and_then(|s| egui_parse_color32(&s)),
+            };
+            ui.horizontal(|ui| {
+                if let Some(c) = color { ui.label(egui::RichText::new(icon).color(c).strong()); } else { ui.label(icon); }
+                if let Some(c) = color { ui.label(egui::RichText::new(&self.msg).color(c)); } else { ui.label(&self.msg); }
+            });
+            if self.show_dismiss && ui.button("Dismiss").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+        });
+        if self.close_on_click {
+            let clicked = ctx.input(|i| i.pointer.any_click());
+            if clicked { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+        }
+        if self.close_on_esc {
+            let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+            if esc { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+        }
+        let elapsed = self.start.elapsed();
+        if elapsed.as_millis() as u64 >= self.left { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+    }
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_show_table(title: &str, headers: Vec<String>, rows: Vec<Vec<String>>, overrides: Option<ThemeOverrides>) {
+    let title_owned = title.to_string();
+    std::thread::spawn(move || {
+        let _ = eframe::run_native(
+            &title_owned,
+            eframe::NativeOptions::default(),
+            Box::new(move |cc| { egui_apply_theme_with_overrides(cc, overrides.clone()); Box::new(TableApp::new(headers, rows)) }),
+        );
+    });
+}
+
+#[cfg(feature = "ui_egui")]
+struct TableApp { headers: Vec<String>, rows: Vec<Vec<String>> }
+#[cfg(feature = "ui_egui")]
+impl TableApp { fn new(headers: Vec<String>, rows: Vec<Vec<String>>) -> Self { Self { headers, rows } } }
+#[cfg(feature = "ui_egui")]
+impl eframe::App for TableApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+                egui::Grid::new("table_grid").striped(true).show(ui, |ui| {
+                    for h in &self.headers { ui.label(egui::RichText::new(h).strong()); }
+                    ui.end_row();
+                    for row in &self.rows {
+                        for (i, cell) in row.iter().enumerate() {
+                            let text = if i < self.headers.len() { cell } else { cell };
+                            ui.label(text);
+                        }
+                        ui.end_row();
+                    }
+                });
+            });
+        });
+    }
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_show_box(title: &str, text: String, overrides: Option<ThemeOverrides>) {
+    let title_owned = title.to_string();
+    std::thread::spawn(move || {
+        let t = text.clone();
+        let _ = eframe::run_native(
+            &title_owned,
+            eframe::NativeOptions::default(),
+            Box::new(move |cc| { egui_apply_theme_with_overrides(cc, overrides.clone()); Box::new(TextApp::new(t.clone())) }),
+        );
+    });
+}
+#[cfg(feature = "ui_egui")]
+struct TextApp { text: String }
+#[cfg(feature = "ui_egui")]
+impl TextApp { fn new(text: String) -> Self { Self { text } } }
+#[cfg(feature = "ui_egui")]
+impl eframe::App for TextApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let mut te = egui::TextEdit::multiline(&mut self.text);
+            te = te.desired_width(f32::INFINITY);
+            ui.add(te);
+        });
+    }
+}
+
 pub fn register_io(ev: &mut Evaluator) {
     ev.register("ReadFile", read_file as NativeFn, Attributes::empty());
     ev.register("WriteFile", write_file as NativeFn, Attributes::empty());
@@ -51,12 +1030,20 @@ pub fn register_io(ev: &mut Evaluator) {
     ev.register("XdgDirs", xdg_dirs as NativeFn, Attributes::empty());
     ev.register("EnvExpand", env_expand as NativeFn, Attributes::empty());
     ev.register("ReadStdin", read_stdin as NativeFn, Attributes::empty());
-    // CLI ergonomics
+    // CLI ergonomics / UI
     ev.register("ArgsParse", args_parse as NativeFn, Attributes::empty());
+    ev.register("SetUiBackend", set_ui_backend as NativeFn, Attributes::empty());
+    ev.register("GetUiBackend", get_ui_backend as NativeFn, Attributes::empty());
+    ev.register("SetUiTheme", set_ui_theme as NativeFn, Attributes::empty());
+    ev.register("GetUiTheme", get_ui_theme as NativeFn, Attributes::empty());
     ev.register("Prompt", prompt as NativeFn, Attributes::empty());
     ev.register("Confirm", confirm as NativeFn, Attributes::empty());
     ev.register("PasswordPrompt", password_prompt as NativeFn, Attributes::empty());
-    ev.register("Select", select_fn as NativeFn, Attributes::empty());
+    ev.register("PromptSelect", prompt_select_fn as NativeFn, Attributes::empty());
+    ev.register("PromptSelectMany", prompt_select_many_fn as NativeFn, Attributes::empty());
+    ev.register("Notify", notify_fn as NativeFn, Attributes::empty());
+    ev.register("SpinnerStart", spinner_start_fn as NativeFn, Attributes::empty());
+    ev.register("SpinnerStop", spinner_stop_fn as NativeFn, Attributes::empty());
     ev.register("ProgressBar", progress_bar as NativeFn, Attributes::empty());
     ev.register("ProgressAdvance", progress_advance as NativeFn, Attributes::empty());
     ev.register("ProgressFinish", progress_finish as NativeFn, Attributes::empty());
@@ -171,10 +1158,18 @@ pub fn register_io_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "SetEnv", set_env as NativeFn, Attributes::empty());
     register_if(ev, pred, "ReadStdin", read_stdin as NativeFn, Attributes::empty());
     register_if(ev, pred, "ArgsParse", args_parse as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetUiBackend", set_ui_backend as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GetUiBackend", get_ui_backend as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SetUiTheme", set_ui_theme as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GetUiTheme", get_ui_theme as NativeFn, Attributes::empty());
     register_if(ev, pred, "Prompt", prompt as NativeFn, Attributes::empty());
     register_if(ev, pred, "Confirm", confirm as NativeFn, Attributes::empty());
     register_if(ev, pred, "PasswordPrompt", password_prompt as NativeFn, Attributes::empty());
-    register_if(ev, pred, "Select", select_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PromptSelect", prompt_select_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "PromptSelectMany", prompt_select_many_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Notify", notify_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SpinnerStart", spinner_start_fn as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SpinnerStop", spinner_stop_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "ProgressBar", progress_bar as NativeFn, Attributes::empty());
     register_if(ev, pred, "ProgressAdvance", progress_advance as NativeFn, Attributes::empty());
     register_if(ev, pred, "ProgressFinish", progress_finish as NativeFn, Attributes::empty());
@@ -614,38 +1609,7 @@ fn table_simple(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             data.push(items.iter().map(|v| lyra_core::pretty::format_value(v)).collect());
         }
     }
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
-    for row in &data {
-        for (i, cell) in row.iter().enumerate() {
-            if i < widths.len() {
-                widths[i] = widths[i].max(cell.chars().count());
-            } else {
-                widths.push(cell.chars().count());
-            }
-        }
-    }
-    let pad = 1usize;
-    let mut out = String::new();
-    if !headers.is_empty() {
-        for (i, h) in headers.iter().enumerate() {
-            let w = widths.get(i).cloned().unwrap_or(0) + pad;
-            out.push_str(&format!("{:width$}", h, width = w));
-        }
-        out.push('\n');
-        for (i, _) in headers.iter().enumerate() {
-            let w = widths.get(i).cloned().unwrap_or(0) + pad;
-            out.push_str(&"-".repeat(w));
-        }
-        out.push('\n');
-    }
-    for row in &data {
-        for (i, cell) in row.iter().enumerate() {
-            let w = widths.get(i).cloned().unwrap_or(0) + pad;
-            out.push_str(&format!("{:width$}", cell, width = w));
-        }
-        out.push('\n');
-    }
-    Value::String(out)
+    ui_backend().lock().unwrap().render_table(&headers, &data, &opts)
 }
 
 fn rule_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -688,15 +1652,71 @@ fn box_text(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     } else {
         std::collections::HashMap::new()
     };
+    ui_backend().lock().unwrap().render_box(&text, &opts)
+}
+
+// Terminal render helpers for backend
+fn term_render_table(
+    headers: &[String],
+    data: &[Vec<String>],
+    opts: &std::collections::HashMap<String, Value>,
+) -> String {
+    let mut theme = ui_term_theme().lock().unwrap().clone();
+    if let Some(Value::String(s)) | Some(Value::Symbol(s)) = opts.get("AccentColor") { theme.accent = Some(s.clone()); }
+    if let Some(Value::Boolean(b)) = opts.get("Compact") { theme.compact = *b; }
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
+    for row in data.iter() {
+        for (i, cell) in row.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = widths[i].max(cell.chars().count());
+            } else {
+                widths.push(cell.chars().count());
+            }
+        }
+    }
+    let pad = if theme.compact { 0usize } else { 1usize };
+    let mut out = String::new();
+    if !headers.is_empty() {
+        let (start, end) = term_accent_codes(theme.accent.as_deref());
+        for (i, h) in headers.iter().enumerate() {
+            let w = widths.get(i).cloned().unwrap_or(0) + pad;
+            if !start.is_empty() { out.push_str(start); }
+            out.push_str(&format!("{:width$}", h, width = w));
+            if !end.is_empty() { out.push_str(end); }
+        }
+        out.push('\n');
+        for (i, _) in headers.iter().enumerate() {
+            let w = widths.get(i).cloned().unwrap_or(0) + pad;
+            if !start.is_empty() { out.push_str(start); }
+            out.push_str(&"-".repeat(w));
+            if !end.is_empty() { out.push_str(end); }
+        }
+        out.push('\n');
+    }
+    for row in data.iter() {
+        for (i, cell) in row.iter().enumerate() {
+            let w = widths.get(i).cloned().unwrap_or(0) + pad;
+            out.push_str(&format!("{:width$}", cell, width = w));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+fn term_render_box(
+    text: &str,
+    opts: &std::collections::HashMap<String, Value>,
+) -> String {
+    let mut theme = ui_term_theme().lock().unwrap().clone();
+    if let Some(Value::String(s)) | Some(Value::Symbol(s)) = opts.get("AccentColor") { theme.accent = Some(s.clone()); }
+    if let Some(Value::Boolean(b)) = opts.get("Compact") { theme.compact = *b; }
     let padding = opts
         .get("Padding")
         .and_then(|v| if let Value::Integer(n) = v { Some(*n as usize) } else { None })
-        .unwrap_or(1);
+        .unwrap_or_else(|| if theme.compact { 0 } else { 1 });
     let border = opts
         .get("Border")
-        .and_then(
-            |v| if let Value::String(s) | Value::Symbol(s) = v { Some(s.clone()) } else { None },
-        )
+        .and_then(|v| if let Value::String(s) | Value::Symbol(s) = v { Some(s.clone()) } else { None })
         .unwrap_or("+-|".into());
     let mut chars = border.chars();
     let tl = chars.next().unwrap_or('+');
@@ -706,22 +1726,73 @@ fn box_text(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let maxw = lines.iter().map(|l| visible_width(l)).max().unwrap_or(0);
     let inner = maxw + 2 * padding;
     let mut out = String::new();
+    let (start, end) = term_accent_codes(theme.accent.as_deref());
+    if !start.is_empty() { out.push_str(start); }
     out.push(tl);
     out.push_str(&tr.to_string().repeat(inner));
     out.push(tl);
+    if !end.is_empty() { out.push_str(end); }
     out.push('\n');
     for ln in lines {
+        if !start.is_empty() { out.push_str(start); }
         out.push(vbar);
+        if !end.is_empty() { out.push_str(end); }
         out.push_str(&" ".repeat(padding));
         out.push_str(ln);
         out.push_str(&" ".repeat(inner - visible_width(ln)));
+        if !start.is_empty() { out.push_str(start); }
         out.push(vbar);
+        if !end.is_empty() { out.push_str(end); }
         out.push('\n');
     }
+    if !start.is_empty() { out.push_str(start); }
     out.push(tl);
     out.push_str(&tr.to_string().repeat(inner));
     out.push(tl);
-    Value::String(out)
+    if !end.is_empty() { out.push_str(end); }
+    out
+}
+
+fn term_accent_codes(name: Option<&str>) -> (&'static str, &'static str) {
+    if let Some(n) = name { if let Some(code) = ansi_code_for_color(n) { return (code, "\x1b[0m"); } }
+    ("", "")
+}
+
+fn ansi_code_for_color(name: &str) -> Option<&'static str> {
+    match name.to_ascii_lowercase().as_str() {
+        "black" => Some("\x1b[30m"),
+        "red" => Some("\x1b[31m"),
+        "green" => Some("\x1b[32m"),
+        "yellow" => Some("\x1b[33m"),
+        "blue" => Some("\x1b[34m"),
+        "magenta" => Some("\x1b[35m"),
+        "cyan" => Some("\x1b[36m"),
+        "white" => Some("\x1b[37m"),
+        "gray" | "grey" => Some("\x1b[90m"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "ui_egui")]
+fn egui_parse_color32(s: &str) -> Option<egui::Color32> {
+    let lower = s.trim().to_ascii_lowercase();
+    match lower.as_str() {
+        "black" => Some(egui::Color32::BLACK),
+        "white" => Some(egui::Color32::WHITE),
+        "gray" | "grey" => Some(egui::Color32::GRAY),
+        "red" => Some(egui::Color32::from_rgb(255,0,0)),
+        "green" => Some(egui::Color32::from_rgb(0,255,0)),
+        "blue" => Some(egui::Color32::from_rgb(0,128,255)),
+        "yellow" => Some(egui::Color32::from_rgb(255,255,0)),
+        "magenta" | "purple" => Some(egui::Color32::from_rgb(255,0,255)),
+        "cyan" | "teal" => Some(egui::Color32::from_rgb(0,255,255)),
+        _ => {
+            // hex #RRGGBB
+            let h = lower.trim_start_matches('#');
+            if h.len() == 6 { if let (Ok(r), Ok(g), Ok(b)) = (u8::from_str_radix(&h[0..2],16), u8::from_str_radix(&h[2..4],16), u8::from_str_radix(&h[4..6],16)) { return Some(egui::Color32::from_rgb(r,g,b)); } }
+            None
+        }
+    }
 }
 
 fn columns_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1522,13 +2593,8 @@ fn prompt(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return Value::Expr { head: Box::new(Value::Symbol("Prompt".into())), args };
     }
     let msg = to_string_arg(ev, args[0].clone());
-    print!("{} ", msg);
-    let _ = std::io::Write::flush(&mut std::io::stdout());
-    let mut s = String::new();
-    match std::io::stdin().read_line(&mut s) {
-        Ok(_) => Value::String(s.trim_end_matches(['\n', '\r']).to_string()),
-        Err(e) => failure("IO::prompt", &e.to_string()),
-    }
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().prompt_string(&msg, &opts)
 }
 
 fn confirm(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1536,16 +2602,8 @@ fn confirm(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return Value::Expr { head: Box::new(Value::Symbol("Confirm".into())), args };
     }
     let msg = to_string_arg(ev, args[0].clone());
-    print!("{} [y/N] ", msg);
-    let _ = std::io::Write::flush(&mut std::io::stdout());
-    let mut s = String::new();
-    match std::io::stdin().read_line(&mut s) {
-        Ok(_) => {
-            let t = s.trim().to_ascii_lowercase();
-            Value::Boolean(t == "y" || t == "yes")
-        }
-        Err(e) => failure("IO::prompt", &e.to_string()),
-    }
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().confirm(&msg, &opts)
 }
 
 fn password_prompt(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1553,19 +2611,13 @@ fn password_prompt(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return Value::Expr { head: Box::new(Value::Symbol("PasswordPrompt".into())), args };
     }
     let msg = to_string_arg(ev, args[0].clone());
-    // Plaintext fallback (no masking)
-    print!("{} ", msg);
-    let _ = std::io::Write::flush(&mut std::io::stdout());
-    let mut s = String::new();
-    match std::io::stdin().read_line(&mut s) {
-        Ok(_) => Value::String(s.trim_end_matches(['\n', '\r']).to_string()),
-        Err(e) => failure("IO::prompt", &e.to_string()),
-    }
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().prompt_password(&msg, &opts)
 }
 
-fn select_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn prompt_select_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("Select".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("PromptSelect".into())), args };
     }
     let msg = to_string_arg(ev, args[0].clone());
     let choices = match ev.eval(args[1].clone()) {
@@ -1594,20 +2646,52 @@ fn select_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             .collect::<Vec<_>>(),
         _ => vec![],
     };
-    println!("{}", msg);
-    for (i, (name, _)) in choices.iter().enumerate() {
-        println!("  {}. {}", i + 1, name);
+    let opts = if args.len() > 2 { match ev.eval(args[2].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().select_one(&msg, &choices, &opts)
+}
+
+fn prompt_select_many_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("PromptSelectMany".into())), args };
     }
-    print!("Select (1-{}): ", choices.len());
-    let _ = std::io::Write::flush(&mut std::io::stdout());
-    let mut s = String::new();
-    let _ = std::io::stdin().read_line(&mut s);
-    if let Ok(n) = s.trim().parse::<usize>() {
-        if n >= 1 && n <= choices.len() {
-            return Value::String(choices[n - 1].1.clone());
-        }
+    let msg = to_string_arg(ev, args[0].clone());
+    let choices = match ev.eval(args[1].clone()) {
+        Value::List(xs) => xs
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::String(s) | Value::Symbol(s) => Some((s.clone(), s)),
+                Value::Assoc(m) => m
+                    .get("name")
+                    .and_then(|n| match n { Value::String(ns) | Value::Symbol(ns) => Some(ns.clone()), _ => None })
+                    .zip(m.get("value").and_then(|n| match n { Value::String(ns) | Value::Symbol(ns) => Some(ns.clone()), _ => None })),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        _ => vec![],
+    };
+    let opts = if args.len() > 2 { match ev.eval(args[2].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().select_many(&msg, &choices, &opts)
+}
+
+fn notify_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        return Value::Expr { head: Box::new(Value::Symbol("Notify".into())), args };
     }
-    Value::Symbol("Null".into())
+    let msg = to_string_arg(ev, args[0].clone());
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().notify(&msg, &opts)
+}
+
+fn spinner_start_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let msg = if args.is_empty() { String::from("") } else { to_string_arg(ev, args[0].clone()) };
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().spinner_start(&msg, &opts)
+}
+
+fn spinner_stop_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("SpinnerStop".into())), args } }
+    let id = match ev.eval(args[0].clone()) { Value::Integer(n) => n, _ => 0 };
+    ui_backend().lock().unwrap().spinner_stop(id)
 }
 
 #[derive(Clone)]
@@ -1625,6 +2709,45 @@ fn pb_next() -> i64 {
     PB_NEXT.get_or_init(|| AtomicI64::new(1)).fetch_add(1, Ordering::Relaxed)
 }
 
+// Simple terminal spinner implementation
+struct SpinState { stop: std::sync::Arc<std::sync::atomic::AtomicBool> }
+static SPIN_REG: OnceLock<Mutex<std::collections::HashMap<i64, SpinState>>> = OnceLock::new();
+static SPIN_NEXT: OnceLock<AtomicI64> = OnceLock::new();
+fn spin_reg() -> &'static Mutex<std::collections::HashMap<i64, SpinState>> {
+    SPIN_REG.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+fn spin_next() -> i64 { SPIN_NEXT.get_or_init(|| AtomicI64::new(1)).fetch_add(1, Ordering::Relaxed) }
+fn spinner_start_thread(msg: &str) -> Value {
+    use std::thread;
+    use std::time::Duration;
+    let id = spin_next();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop2 = stop.clone();
+    let msg_owned = msg.to_string();
+    thread::spawn(move || {
+        let frames = ["|","/","-","\\"];
+        let mut i = 0usize;
+        while !stop2.load(std::sync::atomic::Ordering::Relaxed) {
+            eprint!("\r{} {}", frames[i % frames.len()], msg_owned);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            i += 1;
+            thread::sleep(Duration::from_millis(100));
+        }
+        eprint!("\r{}\r", " ".repeat(msg_owned.len() + 2));
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    });
+    spin_reg().lock().unwrap().insert(id, SpinState { stop });
+    Value::Integer(id)
+}
+fn spinner_stop_thread(id: i64) -> Value {
+    if let Some(st) = spin_reg().lock().unwrap().remove(&id) {
+        st.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        Value::Boolean(true)
+    } else {
+        Value::Boolean(false)
+    }
+}
+
 fn progress_bar(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Expr { head: Box::new(Value::Symbol("ProgressBar".into())), args };
@@ -1633,43 +2756,25 @@ fn progress_bar(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Value::Integer(n) if n > 0 => n,
         _ => 0,
     };
-    let id = pb_next();
-    pb_reg().lock().unwrap().insert(id, PState { total, cur: 0 });
-    Value::Integer(id)
+    let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new() } } else { std::collections::HashMap::new() };
+    ui_backend().lock().unwrap().progress_create(total, &opts)
 }
 
 fn progress_advance(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() {
         return Value::Expr { head: Box::new(Value::Symbol("ProgressAdvance".into())), args };
     }
-    let id = match ev.eval(args[0].clone()) {
-        Value::Integer(n) => n,
-        _ => 0,
-    };
-    let n = if args.len() > 1 {
-        match ev.eval(args[1].clone()) {
-            Value::Integer(n) => n,
-            _ => 1,
-        }
-    } else {
-        1
-    };
-    if let Some(st) = pb_reg().lock().unwrap().get_mut(&id) {
-        st.cur += n;
-    }
-    Value::Boolean(true)
+    let id = match ev.eval(args[0].clone()) { Value::Integer(n) => n, _ => 0 };
+    let n = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Integer(n) => n, _ => 1 } } else { 1 };
+    ui_backend().lock().unwrap().progress_advance(id, n)
 }
 
 fn progress_finish(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("ProgressFinish".into())), args };
     }
-    let id = match ev.eval(args[0].clone()) {
-        Value::Integer(n) => n,
-        _ => 0,
-    };
-    pb_reg().lock().unwrap().remove(&id);
-    Value::Boolean(true)
+    let id = match ev.eval(args[0].clone()) { Value::Integer(n) => n, _ => 0 };
+    ui_backend().lock().unwrap().progress_finish(id)
 }
 
 // ---------------- JSON ----------------
@@ -2155,25 +3260,25 @@ fn csv_opts_from(ev: &mut Evaluator, v: Option<Value>) -> CsvOpts {
     let mut o =
         CsvOpts { delim: ',', quote: '"', header: true, eol: "\n", columns: None, headers: None };
     if let Some(Value::Assoc(m)) = v.map(|x| ev.eval(x)) {
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Delimiter") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Delimiter").or_else(|| m.get("delimiter")) {
             if let Some(c) = s.chars().next() {
                 o.delim = c;
             }
         }
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Quote") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("Quote").or_else(|| m.get("quote")) {
             if let Some(c) = s.chars().next() {
                 o.quote = c;
             }
         }
-        if let Some(Value::Boolean(b)) = m.get("Header") {
+        if let Some(Value::Boolean(b)) = m.get("Header").or_else(|| m.get("header")) {
             o.header = *b;
         }
-        if let Some(Value::String(s)) = m.get("Eol") {
+        if let Some(Value::String(s)) = m.get("Eol").or_else(|| m.get("eol")) {
             if s == "\r\n" {
                 o.eol = "\r\n";
             }
         }
-        if let Some(Value::List(cols_v)) = m.get("Columns") {
+        if let Some(Value::List(cols_v)) = m.get("Columns").or_else(|| m.get("columns")) {
             let cols: Vec<String> = cols_v
                 .iter()
                 .filter_map(|v| match v {
@@ -2185,7 +3290,7 @@ fn csv_opts_from(ev: &mut Evaluator, v: Option<Value>) -> CsvOpts {
                 o.columns = Some(cols);
             }
         }
-        if let Some(Value::List(cols_v)) = m.get("Headers") {
+        if let Some(Value::List(cols_v)) = m.get("Headers").or_else(|| m.get("headers")) {
             let cols: Vec<String> = cols_v
                 .iter()
                 .filter_map(|v| match v {

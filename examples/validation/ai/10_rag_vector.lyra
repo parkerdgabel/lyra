@@ -3,7 +3,7 @@
   Run: lyra-runner --file examples/validation/ai/10_rag_vector.lyra
 *)
 
-VectorStore[<|"Name"->"mem", "Dims"->8|>];
+VectorStore[<|"name"->"mem", "dims"->8|>];
 
 docs := {
   <|"id"->"d1", "text"->"Lyra is a compute system for AI."|>,
@@ -14,6 +14,6 @@ docs := {
 RAGIndex["mem", docs, <||>];
 
 q := "What helps answer questions?";
-matches := RAGRetrieve["mem", q, <|"K"->2|>];
+matches := RAGRetrieve["mem", q, <|"k"->2|>];
 ctx := RAGAssembleContext[matches, <|"MaxChars"->2000|>];
-RAGAnswer["mem", q, <|"K"->2|>];
+RAGAnswer["mem", q, <|"k"->2|>];

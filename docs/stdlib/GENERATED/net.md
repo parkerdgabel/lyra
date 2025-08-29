@@ -26,9 +26,9 @@
 | `HttpStreamClose` | `HttpStreamClose[streamId]` | Close a streaming HTTP handle. |
 | `HttpStreamRead` | `HttpStreamRead[streamId, maxBytes?]` | Read a chunk from a streaming HTTP handle; returns <\|"chunk"->bytes, "done"->bool\|>. |
 | `HttpStreamRequest` | `HttpStreamRequest[method, url, opts?]` | Start a streaming HTTP request; returns headers, status, and a stream handle. |
-| `NetChain` | `NetChain[layers, opts]` | Construct a sequential network from layers |
-| `NetInitialize` | `NetInitialize[net, opts]` | Initialize network parameters |
+| `Initialize` | `Initialize[net, opts?]` | Initialize a network (dispatch to NetInitialize) |
 | `PathMatch` | `PathMatch[pattern, path]` | Match a path pattern like /users/:id against a path |
+| `Respond` | `Respond[body, status?, headers?]` | Construct HTTP response from body/status/headers |
 | `RespondBytes` | `RespondBytes[bytes, opts]` | Build a binary response for HttpServe |
 | `RespondFile` | `RespondFile[path, opts]` | Build a file response for HttpServe |
 | `RespondHtml` | `RespondHtml[html, opts]` | Build an HTML response for HttpServe |
@@ -41,17 +41,17 @@
 - Usage: `AuthJwtApply[opts, handler, req]`
 - Summary: Verify JWT on request and call handler or return 401.
 - Examples:
-  - `AuthJwtApply[<|"Secret"->"s"|>, (r)=>RespondText["ok"], <||>]  ==> <|"status"->401, ...|>`
-  - `tok := JwtSign[<|"sub"->"u1"|>, "s", <|"Alg"->"HS256"|>]`
+  - `AuthJwtApply[<|secret->"s"|>, (r)=>RespondText["ok"], <||>]  ==> <|"status"->401, ...|>`
+  - `tok := JwtSign[<|"sub"->"u1"|>, "s", <|alg->"HS256"|>]`
   - `req := <|"headers"-><|"Authorization"->StringJoin[{"Bearer ", tok}]|>|>`
-  - `AuthJwtApply[<|"Secret"->"s"|>, (r)=>RespondText["ok"], req]  ==> <|"status"->200, ...|>`
+  - `AuthJwtApply[<|secret->"s"|>, (r)=>RespondText["ok"], req]  ==> <|"status"->200, ...|>`
 
 ## `Cors`
 
 - Usage: `Cors[opts, handler]`
 - Summary: Build CORS middleware (wraps handler).
 - Examples:
-  - `srv := HttpServe[Cors[<|"AllowOrigin"->"*"|>, (req)=>RespondText["ok"]], <|"Port"->0|>]`
+  - `srv := HttpServe[Cors[<|allowOrigin->"*"|>, (req)=>RespondText["ok"]], <|port->0|>]`
   - `HttpServerStop[srv]`
 
 ## `CorsApply`
@@ -59,14 +59,14 @@
 - Usage: `CorsApply[opts, handler, req]`
 - Summary: Apply CORS preflight/headers using options and handler.
 - Examples:
-  - `CorsApply[<|"AllowOrigin"->"*", "AllowMethods"->"GET"|>, (r)=>RespondText["ok"], <|"method"->"OPTIONS", "headers"-><||>|>]  ==> <|"status"->204, ...|>`
+  - `CorsApply[<|allowOrigin->"*", allowMethods->"GET"|>, (r)=>RespondText["ok"], <|"method"->"OPTIONS", "headers"-><||>|>]  ==> <|"status"->204, ...|>`
 
 ## `HttpDownloadCached`
 
 - Usage: `HttpDownloadCached[url, path, opts?]`
 - Summary: Download a URL to a file with ETag/TTL caching; returns path and bytes written.
 - Examples:
-  - `HttpDownloadCached["https://httpbin.org/get", "/tmp/get.json", <|"TtlMs"->60000|>]  ==> <|"path"->..., "from_cache"->True|>`
+  - `HttpDownloadCached["https://httpbin.org/get", "/tmp/get.json", <|ttlMs->60000|>]  ==> <|"path"->..., "from_cache"->True|>`
 
 ## `HttpGet`
 
@@ -90,7 +90,7 @@
 - Summary: Generic HTTP request via options object
 - Tags: net, http
 - Examples:
-  - `HttpRequest[<|"Method"->"GET", "Url"->"https://example.com"|>]`
+  - `HttpRequest[<|method->"GET", url->"https://example.com"|>]`
 
 ## `HttpRetry`
 
@@ -105,9 +105,7 @@
 - Summary: Start an HTTP server and handle requests with a function
 - Tags: net, http, server
 - Examples:
-  - `srv := HttpServe[(req) => RespondText["ok"], <|"Port"->0|>]`
-  - `HttpServerAddr[srv]  ==> "127.0.0.1:PORT"`
-  - `HttpServerStop[srv]`
+  - `HttpServe[(req)=>RespondText["ok"], <|host->"127.0.0.1", port->0|>]`
 
 ## `HttpStreamClose`
 
@@ -140,10 +138,18 @@
 - Examples:
   - `PathMatch["/users/:id", "/users/42"]  ==> <|id->"42"|>`
 
+## `Respond`
+
+- Usage: `Respond[body, status?, headers?]`
+- Summary: Construct HTTP response from body/status/headers
+- Examples:
+  - `Respond["ok", 200]  ==> <|"Status"->200, ...|>`
+  - `Respond["Json", <|"a"->1|>]  ==> <|"Status"->200, "Body"->"{\"a\":1}", ...|>`
+
 ## `RespondText`
 
 - Usage: `RespondText[text, opts]`
 - Summary: Build a text response for HttpServe
 - Tags: http, server
 - Examples:
-  - `RespondText["ok", <|"Status"->200|>]`
+  - `RespondText["ok", <|status->200|>]`

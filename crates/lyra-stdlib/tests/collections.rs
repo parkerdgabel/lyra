@@ -15,10 +15,7 @@ fn set_basics_and_ops() {
             Value::Integer(3),
         ])],
     ));
-    let sz = ev.eval(Value::Expr {
-        head: Box::new(Value::Symbol("SetSize".into())),
-        args: vec![v.clone()],
-    });
+    let sz = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Length".into())), args: vec![v.clone()] });
     assert_eq!(sz, Value::Integer(3));
     let mq = ev.eval(Value::Expr {
         head: Box::new(Value::Symbol("SetMemberQ".into())),
@@ -33,9 +30,8 @@ fn set_basics_and_ops() {
         Value::Symbol("SetFromList".into()),
         vec![Value::List(vec![Value::Integer(2), Value::Integer(4)])],
     ));
-    let u = ev.eval(Value::expr(Value::Symbol("SetUnion".into()), vec![s1, s2]));
-    let us =
-        ev.eval(Value::Expr { head: Box::new(Value::Symbol("SetSize".into())), args: vec![u] });
+    let u = ev.eval(Value::expr(Value::Symbol("Union".into()), vec![s1, s2]));
+    let us = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Length".into())), args: vec![u] });
     assert_eq!(us, Value::Integer(3));
     let s3 = ev.eval(Value::expr(
         Value::Symbol("SetFromList".into()),
@@ -45,9 +41,8 @@ fn set_basics_and_ops() {
         Value::Symbol("SetFromList".into()),
         vec![Value::List(vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)])],
     ));
-    let inter = ev.eval(Value::expr(Value::Symbol("SetIntersection".into()), vec![s3, s4]));
-    let isz =
-        ev.eval(Value::Expr { head: Box::new(Value::Symbol("SetSize".into())), args: vec![inter] });
+    let inter = ev.eval(Value::expr(Value::Symbol("Intersection".into()), vec![s3, s4]));
+    let isz = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Length".into())), args: vec![inter] });
     assert_eq!(isz, Value::Integer(2));
     let s5 = ev.eval(Value::expr(
         Value::Symbol("SetFromList".into()),
@@ -57,9 +52,8 @@ fn set_basics_and_ops() {
         Value::Symbol("SetFromList".into()),
         vec![Value::List(vec![Value::Integer(2), Value::Integer(5)])],
     ));
-    let diff = ev.eval(Value::expr(Value::Symbol("SetDifference".into()), vec![s5, s6]));
-    let dsz =
-        ev.eval(Value::Expr { head: Box::new(Value::Symbol("SetSize".into())), args: vec![diff] });
+    let diff = ev.eval(Value::expr(Value::Symbol("Difference".into()), vec![s5, s6]));
+    let dsz = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Length".into())), args: vec![diff] });
     assert_eq!(dsz, Value::Integer(2));
 }
 
@@ -68,7 +62,7 @@ fn list_set_ops() {
     let mut ev = Evaluator::new();
     stdlib::register_all(&mut ev);
     let u = ev.eval(Value::expr(
-        Value::Symbol("ListUnion".into()),
+        Value::Symbol("Union".into()),
         vec![
             Value::List(vec![Value::Integer(1), Value::Integer(2), Value::Integer(2)]),
             Value::List(vec![Value::Integer(2), Value::Integer(3)]),
@@ -76,7 +70,7 @@ fn list_set_ops() {
     ));
     assert!(matches!(u, Value::List(v) if v.len()==3));
     let i = ev.eval(Value::expr(
-        Value::Symbol("ListIntersection".into()),
+        Value::Symbol("Intersection".into()),
         vec![
             Value::List(vec![
                 Value::Integer(1),
@@ -89,7 +83,7 @@ fn list_set_ops() {
     ));
     assert!(matches!(i, Value::List(v) if v.len()==1));
     let d = ev.eval(Value::expr(
-        Value::Symbol("ListDifference".into()),
+        Value::Symbol("Difference".into()),
         vec![
             Value::List(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]),
             Value::List(vec![Value::Integer(2)]),

@@ -8,7 +8,16 @@ use std::path::{Path, PathBuf};
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 pub fn register_module(ev: &mut Evaluator) {
-    ev.register("Using", using as NativeFn, Attributes::empty());
+    // When package support is enabled, prefer package::Using for package path semantics.
+    // Expose file-based module loader under a different name to avoid conflicts.
+    #[cfg(not(feature = "package"))]
+    {
+        ev.register("Using", using as NativeFn, Attributes::empty());
+    }
+    #[cfg(feature = "package")]
+    {
+        ev.register("UsingFile", using as NativeFn, Attributes::empty());
+    }
     ev.register("Exported", exported as NativeFn, Attributes::empty());
     ev.register("ModuleInfo", module_info as NativeFn, Attributes::empty());
     ev.register("ResolveRelative", resolve_relative as NativeFn, Attributes::empty());

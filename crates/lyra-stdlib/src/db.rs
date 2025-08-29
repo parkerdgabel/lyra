@@ -76,9 +76,14 @@ pub fn fetch_table_rows(conn_id: i64, table: &str) -> Option<Vec<Value>> {
         ConnectorKind::Mock => st.mock_tables.get(table).cloned(),
         #[cfg(feature = "db_sqlite")]
         ConnectorKind::Sqlite => {
-            let dsn = st.dsn.clone();
+            let query = format!("SELECT * FROM {}", table);
+            let res = if let Some(c) = st.sqlite_conn.as_ref() {
+                fetch_sqlite_rows_conn(&mut *c.lock().unwrap(), &query)
+            } else {
+                fetch_sqlite_rows(&st.dsn, &query)
+            };
             drop(reg);
-            fetch_sqlite_rows(&dsn, &format!("SELECT * FROM {}", table)).ok()
+            res.ok()
         }
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => {
@@ -103,7 +108,18 @@ pub fn db_table_columns(conn_id: i64, table: &str) -> Option<Vec<String>> {
             })
         }),
         #[cfg(feature = "db_sqlite")]
-        ConnectorKind::Sqlite => list_sqlite_columns(&st.dsn, table).ok(),
+        ConnectorKind::Sqlite => {
+            #[cfg(feature = "db_sqlite")]
+            {
+                if let Some(c) = st.sqlite_conn.as_ref() {
+                    list_sqlite_columns_conn(&mut *c.lock().unwrap(), table).ok()
+                } else {
+                    list_sqlite_columns(&st.dsn, table).ok()
+                }
+            }
+            #[cfg(not(feature = "db_sqlite"))]
+            { None }
+        }
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => list_duckdb_columns(&st.dsn, table).ok(),
     }
@@ -286,9 +302,16 @@ fn list_tables(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             Value::List(st.mock_tables.keys().cloned().map(Value::String).collect())
         }
         #[cfg(feature = "db_sqlite")]
-        ConnectorKind::Sqlite => match list_sqlite_tables(&st.dsn) {
-            Ok(names) => Value::List(names.into_iter().map(Value::String).collect()),
-            Err(_) => Value::List(vec![]),
+        ConnectorKind::Sqlite => {
+            let res = if let Some(c) = st.sqlite_conn.as_ref() {
+                list_sqlite_tables_conn(&mut *c.lock().unwrap())
+            } else {
+                list_sqlite_tables(&st.dsn)
+            };
+            match res {
+                Ok(names) => Value::List(names.into_iter().map(Value::String).collect()),
+                Err(_) => Value::List(vec![]),
+            }
         },
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => match list_duckdb_tables(&st.dsn) {
@@ -363,20 +386,15 @@ fn table_to_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // SQL[conn, "select ...", params?] -> returns a Dataset (rows) for SELECT; other statements return affected rows count
 fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args };
-    }
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Query".into())), args }; }
     let conn_id = match get_conn(&args[0]) {
         Some(id) => id,
-        None => return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args },
+        None => return Value::Expr { head: Box::new(Value::Symbol("Query".into())), args },
     };
     let sql = match ev.eval(args[1].clone()) {
         Value::String(s) | Value::Symbol(s) => s,
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("SQL".into())),
-                args: vec![args[0].clone(), other],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("Query".into())), args: vec![args[0].clone(), other] }
         }
     };
     let params_map = if args.len() >= 3 {
@@ -391,7 +409,7 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) {
         Some(s) => s.clone(),
-        None => return Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args },
+        None => return Value::Expr { head: Box::new(Value::Symbol("Query".into())), args },
     };
     drop(reg);
     match st.kind {
@@ -411,34 +429,38 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 });
             }
             // Not supported by mock
-            Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args }
+            Value::Expr { head: Box::new(Value::Symbol("Query".into())), args }
         }
         #[cfg(feature = "db_sqlite")]
         ConnectorKind::Sqlite => {
             // Only support SELECT queries for now; detect by leading keyword
             if sql.trim().to_ascii_lowercase().starts_with("select ") {
                 if let Some(pm) = &params_map {
-                    match fetch_sqlite_rows_prepared(&st.dsn, &sql, pm) {
-                        Ok(rows) => {
-                            return ev.eval(Value::Expr {
-                                head: Box::new(Value::Symbol("DatasetFromRows".into())),
-                                args: vec![Value::List(rows)],
-                            })
-                        }
-                        Err(_) => {}
-                    }
-                }
-                match fetch_sqlite_rows(&st.dsn, &sql) {
-                    Ok(rows) => {
+                    let res = if let Some(c) = st.sqlite_conn.as_ref() {
+                        fetch_sqlite_rows_prepared_conn(&mut *c.lock().unwrap(), &sql, pm)
+                    } else {
+                        fetch_sqlite_rows_prepared(&st.dsn, &sql, pm)
+                    };
+                    if let Ok(rows) = res {
                         return ev.eval(Value::Expr {
                             head: Box::new(Value::Symbol("DatasetFromRows".into())),
                             args: vec![Value::List(rows)],
-                        })
+                        });
                     }
-                    Err(_) => {}
+                }
+                let res = if let Some(c) = st.sqlite_conn.as_ref() {
+                    fetch_sqlite_rows_conn(&mut *c.lock().unwrap(), &sql)
+                } else {
+                    fetch_sqlite_rows(&st.dsn, &sql)
+                };
+                if let Ok(rows) = res {
+                    return ev.eval(Value::Expr {
+                        head: Box::new(Value::Symbol("DatasetFromRows".into())),
+                        args: vec![Value::List(rows)],
+                    });
                 }
             }
-            Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args }
+            Value::Expr { head: Box::new(Value::Symbol("Query".into())), args }
         }
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => {
@@ -464,7 +486,7 @@ fn sql_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     Err(_) => {}
                 }
             }
-            Value::Expr { head: Box::new(Value::Symbol("SQL".into())), args }
+            Value::Expr { head: Box::new(Value::Symbol("Query".into())), args }
         }
     }
 }
@@ -547,7 +569,13 @@ fn sql_to_rows(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
         }
         #[cfg(feature = "db_sqlite")]
-        ConnectorKind::Sqlite => fetch_sqlite_rows(&st.dsn, &sql).unwrap_or_default(),
+        ConnectorKind::Sqlite => {
+            if let Some(c) = st.sqlite_conn.as_ref() {
+                fetch_sqlite_rows_conn(&mut *c.lock().unwrap(), &sql).unwrap_or_default()
+            } else {
+                fetch_sqlite_rows(&st.dsn, &sql).unwrap_or_default()
+            }
+        },
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => fetch_duckdb_rows(&st.dsn, &sql).unwrap_or_default(),
     };
@@ -563,6 +591,10 @@ struct CursorState {
     sql: String,
     offset: i64,
     fetch_size: i64,
+    #[cfg(feature = "db_sqlite")]
+    sqlite_conn: Option<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>,
+    #[cfg(feature = "db_duckdb")]
+    duckdb_conn: Option<std::sync::Arc<std::sync::Mutex<duckdb::Connection>>>,
 }
 
 static CUR_REG: OnceLock<Mutex<HashMap<i64, CursorState>>> = OnceLock::new();
@@ -638,7 +670,17 @@ fn sql_cursor(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     cur_reg()
         .lock()
         .unwrap()
-        .insert(id, CursorState { kind: st.kind, dsn: st.dsn, sql, offset: 0, fetch_size });
+        .insert(id, CursorState {
+            kind: st.kind,
+            dsn: st.dsn,
+            sql,
+            offset: 0,
+            fetch_size,
+            #[cfg(feature = "db_sqlite")]
+            sqlite_conn: st.sqlite_conn.clone(),
+            #[cfg(feature = "db_duckdb")]
+            duckdb_conn: st.duckdb_conn.clone(),
+        });
     cursor_handle(id)
 }
 
@@ -669,7 +711,13 @@ fn fetch_cursor(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let rows = match st.kind {
         ConnectorKind::Mock => Vec::new(),
         #[cfg(feature = "db_sqlite")]
-        ConnectorKind::Sqlite => fetch_sqlite_rows(&st.dsn, &paged_sql).unwrap_or_default(),
+        ConnectorKind::Sqlite => {
+            if let Some(c) = st.sqlite_conn.as_ref() {
+                fetch_sqlite_rows_conn(&mut *c.lock().unwrap(), &paged_sql).unwrap_or_default()
+            } else {
+                fetch_sqlite_rows(&st.dsn, &paged_sql).unwrap_or_default()
+            }
+        },
         #[cfg(feature = "db_duckdb")]
         ConnectorKind::DuckDb => fetch_duckdb_rows(&st.dsn, &paged_sql).unwrap_or_default(),
     };
@@ -1208,8 +1256,9 @@ pub fn register_db(ev: &mut Evaluator) {
     ev.register("ListTables", list_tables as NativeFn, Attributes::empty());
     ev.register("RegisterTable", register_table as NativeFn, Attributes::empty());
     ev.register("Table", table_to_dataset as NativeFn, Attributes::empty());
-    ev.register("SQL", sql_query as NativeFn, Attributes::empty());
-    ev.register("Exec", exec_query as NativeFn, Attributes::empty());
+    // Canonical names: Query (SELECT) and Execute (DDL/DML)
+    ev.register("Query", sql_query as NativeFn, Attributes::empty());
+    ev.register("Execute", exec_query as NativeFn, Attributes::empty());
     // ExplainSQL is implemented in dataset.rs to access the logical plan
     // Internal helpers
     ev.register("__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
@@ -1234,8 +1283,8 @@ pub fn register_db(ev: &mut Evaluator) {
         tool_spec!("ListTables", summary: "List tables on a connection", params: ["conn"], tags: ["db","sql","schema"], examples: [Value::String("ListTables[conn]  ==> {\"t\"}".into())]),
         tool_spec!("RegisterTable", summary: "Register in-memory rows as a table (mock)", params: ["conn","name","rows"], tags: ["db","sql","table"], examples: [Value::String("RegisterTable[conn, \"t\", {<|\"id\"->1|>}]".into())]),
         tool_spec!("Table", summary: "Reference a table as a Dataset", params: ["conn","name"], tags: ["db","sql","dataset"], examples: [Value::String("ds := Table[conn, \"t\"]".into())]),
-        tool_spec!("SQL", summary: "Run a SELECT query and return rows", params: ["conn","sql","params?"], tags: ["db","sql","query"], examples: [Value::String("SQL[conn, \"select 1 as x\"]  ==> {<|x->1|>}".into())]),
-        tool_spec!("Exec", summary: "Execute DDL/DML (non-SELECT)", params: ["conn","sql","params?"], tags: ["db","sql","query"], examples: [Value::String("Exec[conn, \"create table t(id int)\"]".into())]),
+        tool_spec!("Query", summary: "Run a SELECT query and return rows", params: ["conn","sql","opts?"], tags: ["db","sql","query"], examples: [Value::String("Query[conn, \"select 1 as x\"]  ==> {<|x->1|>}".into())]),
+        tool_spec!("Execute", summary: "Execute DDL/DML (non-SELECT)", params: ["conn","sql","opts?"], tags: ["db","sql","query"], examples: [Value::String("Execute[conn, \"create table t(id int)\"]".into())]),
         tool_spec!("SQLCursor", summary: "Run a query and return a cursor handle", params: ["conn","sql","params?"], tags: ["db","sql","cursor"], examples: [Value::String("cur := SQLCursor[conn, \"select 1\"]".into())]),
         tool_spec!("Fetch", summary: "Fetch next batch of rows from a cursor", params: ["cursor","limit?"], tags: ["db","sql","cursor"], examples: [Value::String("Fetch[cur, 100]".into())]),
         tool_spec!("Begin", summary: "Begin a transaction", params: ["conn"], tags: ["db","sql","tx"], examples: [Value::String("Begin[conn]".into())]),
@@ -1269,7 +1318,7 @@ pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Commit", commit_tx as NativeFn, Attributes::empty());
     register_if(ev, pred, "Rollback", rollback_tx as NativeFn, Attributes::empty());
     register_if(ev, pred, "Ping", ping as NativeFn, Attributes::empty());
-    register_if(ev, pred, "Exec", exec_query as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Execute", exec_query as NativeFn, Attributes::empty());
     register_if(ev, pred, "Fetch", fetch_cursor as NativeFn, Attributes::empty());
     register_if(ev, pred, "InsertRows", insert_rows as NativeFn, Attributes::empty());
     register_if(ev, pred, "UpsertRows", upsert_rows as NativeFn, Attributes::empty());
@@ -1277,30 +1326,27 @@ pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "RegisterTable", register_table as NativeFn, Attributes::empty());
     register_if(ev, pred, "ListTables", list_tables as NativeFn, Attributes::empty());
     register_if(ev, pred, "Table", table_to_dataset as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SQL", sql_query as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Query", sql_query as NativeFn, Attributes::empty());
     register_if(ev, pred, "SQLCursor", sql_cursor as NativeFn, Attributes::empty());
     register_if(ev, pred, "__SQLToRows", sql_to_rows as NativeFn, Attributes::empty());
     register_if(ev, pred, "ConnectionInfo", connection_info as NativeFn, Attributes::empty());
     register_if(ev, pred, "CursorInfo", cursor_info as NativeFn, Attributes::empty());
 }
 
-// Exec[conn, sql, params?] -> executes non-SELECT (DDL/DML); returns Boolean success
+// Execute[conn, sql, opts?] -> executes non-SELECT (DDL/DML); returns Boolean success
 fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args };
+        return Value::Expr { head: Box::new(Value::Symbol("Execute".into())), args };
     }
     let conn_id = match get_conn(&args[0]) {
         Some(id) => id,
-        None => return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args },
+        None => return Value::Expr { head: Box::new(Value::Symbol("Execute".into())), args },
     };
     #[allow(unused_variables)]
     let sql = match ev.eval(args[1].clone()) {
         Value::String(s) | Value::Symbol(s) => s,
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("Exec".into())),
-                args: vec![args[0].clone(), other],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("Execute".into())), args: vec![args[0].clone(), other] }
         }
     };
     let _params_map = if args.len() >= 3 {
@@ -1314,7 +1360,7 @@ fn exec_query(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let reg = conn_reg().lock().unwrap();
     let st = match reg.get(&conn_id) {
         Some(s) => s.clone(),
-        None => return Value::Expr { head: Box::new(Value::Symbol("Exec".into())), args },
+        None => return Value::Expr { head: Box::new(Value::Symbol("Execute".into())), args },
     };
     drop(reg);
     match st.kind {
@@ -1377,9 +1423,55 @@ fn list_sqlite_tables(dsn: &str) -> rusqlite::Result<Vec<String>> {
 }
 
 #[cfg(feature = "db_sqlite")]
+fn list_sqlite_tables_conn(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY 1",
+    )?;
+    let iter = stmt.query_map([], |row| row.get::<usize, String>(0))?;
+    let mut out = Vec::new();
+    for r in iter {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
 fn fetch_sqlite_rows(dsn: &str, sql: &str) -> rusqlite::Result<Vec<Value>> {
     use rusqlite::types::ValueRef;
     let conn = sqlite_open(dsn)?;
+    let mut stmt = conn.prepare(sql)?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).map(|s| s.to_string()).unwrap_or_default())
+        .collect();
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut m: HashMap<String, Value> = HashMap::new();
+        for i in 0..col_count {
+            let key = col_names.get(i).cloned().unwrap_or_else(|| format!("col{}", i + 1));
+            let v = match row.get_ref(i)? {
+                ValueRef::Null => Value::Symbol("Null".into()),
+                ValueRef::Integer(n) => Value::Integer(n),
+                ValueRef::Real(f) => Value::Real(f),
+                ValueRef::Text(t) => Value::String(String::from_utf8_lossy(t).to_string()),
+                ValueRef::Blob(b) => {
+                    Value::String(base64::engine::general_purpose::STANDARD.encode(b))
+                }
+            };
+            m.insert(key, v);
+        }
+        out.push(Value::Assoc(m));
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn fetch_sqlite_rows_conn(
+    conn: &mut rusqlite::Connection,
+    sql: &str,
+) -> rusqlite::Result<Vec<Value>> {
+    use rusqlite::types::ValueRef;
     let mut stmt = conn.prepare(sql)?;
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
@@ -1486,6 +1578,57 @@ fn fetch_sqlite_rows_prepared(
             m.insert(key, v);
         }
         out.push(Value::Assoc(m));
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn fetch_sqlite_rows_prepared_conn(
+    conn: &mut rusqlite::Connection,
+    sql: &str,
+    params: &HashMap<String, Value>,
+) -> rusqlite::Result<Vec<Value>> {
+    use rusqlite::params_from_iter;
+    let (sql2, vals) = prepare_sql_and_params(sql, params);
+    let mut stmt = conn.prepare(&sql2)?;
+    let col_count = stmt.column_count();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).map(|s| s.to_string()).unwrap_or_default())
+        .collect();
+    let mut rows = stmt.query(params_from_iter(vals))?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut m: HashMap<String, Value> = HashMap::new();
+        for i in 0..col_count {
+            let key = col_names.get(i).cloned().unwrap_or_else(|| format!("col{}", i + 1));
+            let v = match row.get_ref(i)? {
+                rusqlite::types::ValueRef::Null => Value::Symbol("Null".into()),
+                rusqlite::types::ValueRef::Integer(n) => Value::Integer(n),
+                rusqlite::types::ValueRef::Real(f) => Value::Real(f),
+                rusqlite::types::ValueRef::Text(t) => {
+                    Value::String(String::from_utf8_lossy(t).to_string())
+                }
+                rusqlite::types::ValueRef::Blob(b) => {
+                    Value::String(base64::engine::general_purpose::STANDARD.encode(b))
+                }
+            };
+            m.insert(key, v);
+        }
+        out.push(Value::Assoc(m));
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "db_sqlite")]
+fn list_sqlite_columns_conn(
+    conn: &mut rusqlite::Connection,
+    table: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info('{}')", table.replace("'", "''")))?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row.get::<usize, String>(1)?);
     }
     Ok(out)
 }

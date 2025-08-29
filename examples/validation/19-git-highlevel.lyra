@@ -4,13 +4,13 @@
 *)
 
 root := "target/tmp/git-hl";
-MakeDirectory[root, <|"Parents"->True|>];
+MakeDirectory[root, <|"parents"->True|>];
 
-GitEnsureRepo[<|"Path"->root, "InitialBranch"->"main", "GitIgnore"->"target\n*.log\n"|>];
-GitStatusSummary[<|"Cwd"->root|>];
+GitEnsureRepo[<|"path"->root, "initialBranch"->"main", "GitIgnore"->"target\n*.log\n"|>];
+GitStatusSummary[<|"cwd"->root|>];
 
 (* feature branch *)
-GitFeatureBranch[<|"Cwd"->root, "Name"->"feat/demo"|>];
+GitFeatureBranch[<|"cwd"->root, "name"->"feat/demo"|>];
 WriteBytes[root<>"/demo.txt", "hello\n"];
-GitSmartCommit[<|"Cwd"->root, "AutoMessage"->"true"|>];
-GitStatusSummary[<|"Cwd"->root|>];
+GitSmartCommit[<|"cwd"->root, "autoMessage"->"true"|>];
+GitStatusSummary[<|"cwd"->root|>];

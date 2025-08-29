@@ -117,7 +117,7 @@ lazy_static! {
 
         // Collections
         for s in [
-            "HashSet","SetFromList","SetToList","SetInsert","SetRemove","SetMemberQ","SetSize","SetEmptyQ","SetUnion","SetIntersection","SetDifference","SetSubsetQ","SetEqualQ","ListUnion","ListIntersection","ListDifference","Bag","BagAdd","BagRemove","BagCount","BagSize","BagUnion","BagIntersection","BagDifference","Queue","Enqueue","Dequeue","Peek","QueueSize","QueueEmptyQ","Stack","Push","Pop","Top","StackSize","StackEmptyQ","PriorityQueue","PQInsert","PQPop","PQPeek","PQSize","PQEmptyQ",
+            "HashSet","SetFromList","SetToList","SetInsert","SetRemove","SetMemberQ","SetUnion","SetIntersection","SetDifference","SetSubsetQ","SetEqualQ","ListUnion","ListIntersection","ListDifference","Bag","BagAdd","BagRemove","BagCount","BagUnion","BagIntersection","BagDifference","Queue","Enqueue","Dequeue","Peek","Stack","Push","Pop","Top","PriorityQueue","PQInsert","PQPop","PQPeek",
         ] { m.insert(s, E { features: &["collections"], effects: &[] }); }
 
         // NDArray
@@ -126,9 +126,17 @@ lazy_static! {
         ] { m.insert(s, E { features: &["ndarray"], effects: &[] }); }
 
         // ML & NN
-        for s in ["Classify","Predict","Cluster","FeatureExtract","DimensionReduce","MLApply","MLProperty","ClassifyMeasurements","PredictMeasurements","MLCrossValidate","MLTune"] { m.insert(s, E { features: &["ml"], effects: &[] }); }
         for s in [
-            "NetChain","NetInitialize","NetTrain","NetApply","NetSummary","NetProperty","NetEncoder","NetDecoder","NetGraph","LinearLayer","ActivationLayer","DropoutLayer","FlattenLayer","SoftmaxLayer","ConvolutionLayer","PoolingLayer","BatchNormLayer","ReshapeLayer","TransposeLayer","ConcatLayer","AddLayer","MulLayer","EmbeddingLayer","LayerNormLayer",
+            "Estimator","Classifier","Regressor","Clusterer",
+            "Classify","Predict","Cluster","FeatureExtract","DimensionReduce","MLApply","MLProperty","ClassifyMeasurements","PredictMeasurements","MLCrossValidate","MLTune",
+        ] { m.insert(s, E { features: &["ml"], effects: &[] }); }
+        for s in [
+            // internal NN entry points
+            "NetChain","NetInitialize","NetTrain","NetApply","NetSummary","NetProperty","NetEncoder","NetDecoder","NetGraph",
+            // old layer heads (kept for now)
+            "LinearLayer","ActivationLayer","DropoutLayer","FlattenLayer","SoftmaxLayer","ConvolutionLayer","PoolingLayer","BatchNormLayer","ReshapeLayer","TransposeLayer","ConcatLayer","AddLayer","MulLayer","EmbeddingLayer","LayerNormLayer",
+            // canonical heads
+            "Network","Sequential","GraphNetwork","Initializer","Dense","Convolution1D","Convolution2D","DepthwiseConv2D","ConvTranspose2D","SeparableConv2D","Pooling","Pooling2D","GlobalAvgPool2D","BatchNorm","LayerNorm","GroupNorm","Residual","Upsample2D","ResidualBlock","Dropout","Flatten","Reshape","Embedding","__TransposeLayer","__ConcatLayer","__AddLayer","__MulLayer",
         ] { m.insert(s, E { features: &["nn"], effects: &[] }); }
 
         // Containers (Docker/etc.)

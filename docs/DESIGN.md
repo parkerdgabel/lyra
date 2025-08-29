@@ -26,9 +26,9 @@ Scope: Full language re-architecture, from parser to packages
 3. Syntax (Reader/Printer)
 - WL-like base: `f[x,y]`, `{a,b}`, `<|"k"->v|>`, `(* comments *)`.
 - Modern niceties:
-  - Pipelines: `expr |> f[opts] |> g`.
+  - Pipelines: `expr |> f[opts] |> g` injects into first argument (e.g., `x |> f[a,b]` → `f[x,a,b]`).
   - Dot calls: `obj.method[a,b]`.
-  - WL operator forms: `f @ x` (prefix), `x // f` (postfix), `a ~ f ~ b` (infix), `expr /. rule` (ReplaceAll), `expr //. rule` (ReplaceRepeated).
+  - WL operator forms: `f @ x` (prefix → `f[x]`), `x // f` (postfix strict right-apply → `f[x]`), `a ~ f ~ b` (infix → `f[a,b]`), `expr /. rule` (ReplaceAll), `expr //. rule` (ReplaceRepeated).
   - Lambdas: `(x,y) => body` and slots `#1 &`.
   - Interpolation: `"sum={Total[x]}"`.
   - Ranges/slices: `a[[i]]`, `a[[i;;j;;k]]`.
@@ -44,7 +44,7 @@ Scope: Full language re-architecture, from parser to packages
 5. Concurrency Model
 - Structured concurrency with cancellation and resource budgets.
 - Scopes & Budgets (implemented):
-  - `Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]` (HoldAll)
+  - `Scope[<|maxThreads->n, timeBudgetMs->ms|>, body]` (HoldAll)
     - Applies a per-scope cooperative cancel token, a thread budget (limiter), and a wall-clock deadline (Instant-based) while evaluating `body`.
     - Workers spawned by `Future`, `ParallelMap`, and `ParallelTable` inherit the scope token, limiter, and deadline.
   - `StartScope[opts] -> ScopeId[id]`, `InScope[ScopeId[id], body]`, `CancelScope[ScopeId[id]]`, `EndScope[ScopeId[id]]` for group cancellation and lifecycle control across statements.
@@ -141,7 +141,7 @@ Phase 0 — Bootstrap (Weeks 1–2)
 Phase 1 — Evaluation + Concurrency Foundations (Weeks 3–5)
 - Deliverables:
   - `lyra-runtime`: attribute-aware evaluator (Hold*, Listable, Orderless), Sequence splicing, Condition.
-  - Concurrency primitives: Future/Await, ParallelMap; basic `Scope` with `MaxThreads` and `TimeBudgetMs`; cooperative cancellation points.
+  - Concurrency primitives: Future/Await, ParallelMap; basic `Scope` with `maxThreads` and `timeBudgetMs`; cooperative cancellation points.
   - `lyra-stdlib` v0: lists/strings/numeric basics; schema builders; Explain minimal.
 - Acceptance:
   - Correct evaluation for attribute subset; Listable threading tests pass.

@@ -134,31 +134,7 @@ fn set_member_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn set_size(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("SetSize".into())), args };
-    }
-    match get_set(&args[0]) {
-        Some(id) => {
-            let reg = set_reg().lock().unwrap();
-            Value::Integer(reg.get(&id).map(|s| s.elems.len() as i64).unwrap_or(0))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("SetSize".into())), args },
-    }
-}
-
-fn set_empty_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("SetEmptyQ".into())), args };
-    }
-    match get_set(&args[0]) {
-        Some(id) => {
-            let reg = set_reg().lock().unwrap();
-            Value::Boolean(reg.get(&id).map(|s| s.elems.is_empty()).unwrap_or(true))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("SetEmptyQ".into())), args },
-    }
-}
+// Legacy SetSize/SetEmptyQ removed; use Length/EmptyQ
 
 fn set_union(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
@@ -663,30 +639,7 @@ fn queue_peek(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         None => Value::Expr { head: Box::new(Value::Symbol("Peek".into())), args },
     }
 }
-fn queue_size(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("QueueSize".into())), args };
-    }
-    match get_queue(&args[0]) {
-        Some(id) => {
-            let reg = queue_reg().lock().unwrap();
-            Value::Integer(reg.get(&id).map(|s| s.q.len() as i64).unwrap_or(0))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("QueueSize".into())), args },
-    }
-}
-fn queue_empty_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("QueueEmptyQ".into())), args };
-    }
-    match get_queue(&args[0]) {
-        Some(id) => {
-            let reg = queue_reg().lock().unwrap();
-            Value::Boolean(reg.get(&id).map(|s| s.q.is_empty()).unwrap_or(true))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("QueueEmptyQ".into())), args },
-    }
-}
+// Legacy QueueSize/QueueEmptyQ removed; use Length/EmptyQ
 
 // Stack
 #[derive(Clone)]
@@ -771,30 +724,7 @@ fn top(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         None => Value::Expr { head: Box::new(Value::Symbol("Top".into())), args },
     }
 }
-fn stack_size(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("StackSize".into())), args };
-    }
-    match get_stack(&args[0]) {
-        Some(id) => {
-            let reg = stack_reg().lock().unwrap();
-            Value::Integer(reg.get(&id).map(|s| s.s.len() as i64).unwrap_or(0))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("StackSize".into())), args },
-    }
-}
-fn stack_empty_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("StackEmptyQ".into())), args };
-    }
-    match get_stack(&args[0]) {
-        Some(id) => {
-            let reg = stack_reg().lock().unwrap();
-            Value::Boolean(reg.get(&id).map(|s| s.s.is_empty()).unwrap_or(true))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("StackEmptyQ".into())), args },
-    }
-}
+// Legacy StackSize/StackEmptyQ removed; use Length/EmptyQ
 
 // -------- Priority Queue (min/max by value_order_key) --------
 #[derive(Clone)]
@@ -905,30 +835,7 @@ fn pq_peek(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         None => Value::Expr { head: Box::new(Value::Symbol("PQPeek".into())), args },
     }
 }
-fn pq_size(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("PQSize".into())), args };
-    }
-    match get_pq(&args[0]) {
-        Some(id) => {
-            let reg = pq_reg().lock().unwrap();
-            Value::Integer(reg.get(&id).map(|s| s.items.len() as i64).unwrap_or(0))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("PQSize".into())), args },
-    }
-}
-fn pq_empty_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("PQEmptyQ".into())), args };
-    }
-    match get_pq(&args[0]) {
-        Some(id) => {
-            let reg = pq_reg().lock().unwrap();
-            Value::Boolean(reg.get(&id).map(|s| s.items.is_empty()).unwrap_or(true))
-        }
-        None => Value::Expr { head: Box::new(Value::Symbol("PQEmptyQ".into())), args },
-    }
-}
+// Legacy PQSize/PQEmptyQ removed; use Length/EmptyQ
 
 pub fn register_collections(ev: &mut Evaluator) {
     // Set
@@ -938,17 +845,14 @@ pub fn register_collections(ev: &mut Evaluator) {
     ev.register("SetInsert", set_insert as NativeFn, Attributes::empty());
     ev.register("SetRemove", set_remove as NativeFn, Attributes::empty());
     ev.register("SetMemberQ", set_member_q as NativeFn, Attributes::empty());
-    ev.register("SetSize", set_size as NativeFn, Attributes::empty());
-    ev.register("SetEmptyQ", set_empty_q as NativeFn, Attributes::empty());
-    ev.register("SetUnion", set_union as NativeFn, Attributes::empty());
-    ev.register("SetIntersection", set_intersection as NativeFn, Attributes::empty());
-    ev.register("SetDifference", set_difference as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed in favor of Length/EmptyQ
+    ev.register("__SetUnion", set_union as NativeFn, Attributes::empty());
+    ev.register("__SetIntersection", set_intersection as NativeFn, Attributes::empty());
+    ev.register("__SetDifference", set_difference as NativeFn, Attributes::empty());
     ev.register("SetSubsetQ", set_subset_q as NativeFn, Attributes::empty());
     ev.register("SetEqualQ", set_equal_q as NativeFn, Attributes::empty());
     // List set ops
-    ev.register("ListUnion", list_union as NativeFn, Attributes::empty());
-    ev.register("ListIntersection", list_intersection as NativeFn, Attributes::empty());
-    ev.register("ListDifference", list_difference as NativeFn, Attributes::empty());
+    // List-based set ops are handled in dispatch; internal entry points kept private if needed
     // Bag
     ev.register("Bag", bag_create as NativeFn, Attributes::empty());
     ev.register("BagAdd", bag_add as NativeFn, Attributes::empty());
@@ -963,22 +867,19 @@ pub fn register_collections(ev: &mut Evaluator) {
     ev.register("Enqueue", enqueue as NativeFn, Attributes::empty());
     ev.register("Dequeue", dequeue as NativeFn, Attributes::empty());
     ev.register("Peek", queue_peek as NativeFn, Attributes::empty());
-    ev.register("QueueSize", queue_size as NativeFn, Attributes::empty());
-    ev.register("QueueEmptyQ", queue_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed in favor of Length/EmptyQ
     // Stack
     ev.register("Stack", stack_create as NativeFn, Attributes::empty());
     ev.register("Push", push as NativeFn, Attributes::empty());
     ev.register("Pop", pop as NativeFn, Attributes::empty());
     ev.register("Top", top as NativeFn, Attributes::empty());
-    ev.register("StackSize", stack_size as NativeFn, Attributes::empty());
-    ev.register("StackEmptyQ", stack_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed in favor of Length/EmptyQ
     // Priority Queue
     ev.register("PriorityQueue", pq_create as NativeFn, Attributes::empty());
     ev.register("PQInsert", pq_insert as NativeFn, Attributes::empty());
     ev.register("PQPop", pq_pop as NativeFn, Attributes::empty());
     ev.register("PQPeek", pq_peek as NativeFn, Attributes::empty());
-    ev.register("PQSize", pq_size as NativeFn, Attributes::empty());
-    ev.register("PQEmptyQ", pq_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed in favor of Length/EmptyQ
 }
 
 pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
@@ -988,16 +889,13 @@ pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     register_if(ev, pred, "SetInsert", set_insert as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetRemove", set_remove as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetMemberQ", set_member_q as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SetSize", set_size as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SetEmptyQ", set_empty_q as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SetUnion", set_union as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SetIntersection", set_intersection as NativeFn, Attributes::empty());
-    register_if(ev, pred, "SetDifference", set_difference as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed
+    register_if(ev, pred, "__SetUnion", set_union as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__SetIntersection", set_intersection as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__SetDifference", set_difference as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetSubsetQ", set_subset_q as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetEqualQ", set_equal_q as NativeFn, Attributes::empty());
-    register_if(ev, pred, "ListUnion", list_union as NativeFn, Attributes::empty());
-    register_if(ev, pred, "ListIntersection", list_intersection as NativeFn, Attributes::empty());
-    register_if(ev, pred, "ListDifference", list_difference as NativeFn, Attributes::empty());
+    // List-based set ops are handled in dispatch
     register_if(ev, pred, "Bag", bag_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagAdd", bag_add as NativeFn, Attributes::empty());
     register_if(ev, pred, "BagRemove", bag_remove as NativeFn, Attributes::empty());
@@ -1010,18 +908,15 @@ pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     register_if(ev, pred, "Enqueue", enqueue as NativeFn, Attributes::empty());
     register_if(ev, pred, "Dequeue", dequeue as NativeFn, Attributes::empty());
     register_if(ev, pred, "Peek", queue_peek as NativeFn, Attributes::empty());
-    register_if(ev, pred, "QueueSize", queue_size as NativeFn, Attributes::empty());
-    register_if(ev, pred, "QueueEmptyQ", queue_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed
     register_if(ev, pred, "Stack", stack_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "Push", push as NativeFn, Attributes::empty());
     register_if(ev, pred, "Pop", pop as NativeFn, Attributes::empty());
     register_if(ev, pred, "Top", top as NativeFn, Attributes::empty());
-    register_if(ev, pred, "StackSize", stack_size as NativeFn, Attributes::empty());
-    register_if(ev, pred, "StackEmptyQ", stack_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed
     register_if(ev, pred, "PriorityQueue", pq_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQInsert", pq_insert as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQPop", pq_pop as NativeFn, Attributes::empty());
     register_if(ev, pred, "PQPeek", pq_peek as NativeFn, Attributes::empty());
-    register_if(ev, pred, "PQSize", pq_size as NativeFn, Attributes::empty());
-    register_if(ev, pred, "PQEmptyQ", pq_empty_q as NativeFn, Attributes::empty());
+    // Legacy size/empty functions removed
 }

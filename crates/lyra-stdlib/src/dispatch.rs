@@ -7,14 +7,22 @@ pub fn register_dispatch(ev: &mut Evaluator) {
     // Register after list and dataset so we override conflicting names with a dispatcher.
     ev.register("Join", join_dispatch as NativeFn, Attributes::empty());
     ev.register("Union", union_dispatch as NativeFn, Attributes::empty());
+    ev.register("Intersection", intersection_dispatch as NativeFn, Attributes::empty());
+    ev.register("Difference", difference_dispatch as NativeFn, Attributes::empty());
     ev.register("Select", select_dispatch as NativeFn, Attributes::empty());
+    ev.register("Drop", drop_dispatch as NativeFn, Attributes::empty());
+    ev.register("Delete", delete_dispatch as NativeFn, Attributes::empty());
+    ev.register("Write", write_dispatch as NativeFn, Attributes::empty());
     ev.register("Filter", filter_dispatch as NativeFn, Attributes::HOLD_ALL);
     ev.register("Head", head_dispatch as NativeFn, Attributes::empty());
     ev.register("Tail", tail_dispatch as NativeFn, Attributes::empty());
     ev.register("Offset", offset_dispatch as NativeFn, Attributes::empty());
     ev.register("Sort", sort_dispatch as NativeFn, Attributes::empty());
+    // SortBy dispatcher to route to assoc or list versions
+    ev.register("SortBy", sortby_dispatch as NativeFn, Attributes::HOLD_ALL);
     ev.register("Distinct", distinct_dispatch as NativeFn, Attributes::empty());
     // Generic verbs
+    ev.register("Upsert", upsert_dispatch as NativeFn, Attributes::empty());
     ev.register("Insert", insert_dispatch as NativeFn, Attributes::empty());
     ev.register("Remove", remove_dispatch as NativeFn, Attributes::empty());
     ev.register("Add", add_dispatch as NativeFn, Attributes::empty());
@@ -23,10 +31,15 @@ pub fn register_dispatch(ev: &mut Evaluator) {
     ev.register("EmptyQ", emptyq_dispatch as NativeFn, Attributes::empty());
     ev.register("Count", count_dispatch as NativeFn, Attributes::empty());
     ev.register("Search", search_dispatch as NativeFn, Attributes::empty());
+    ev.register("Split", split_dispatch as NativeFn, Attributes::empty());
+    ev.register("Reset", reset_dispatch as NativeFn, Attributes::empty());
     ev.register("Close", close_dispatch as NativeFn, Attributes::empty());
     ev.register("Columns", columns_dispatch as NativeFn, Attributes::empty());
     ev.register("Contains", contains_dispatch as NativeFn, Attributes::empty());
     ev.register("ContainsQ", contains_dispatch as NativeFn, Attributes::empty());
+    ev.register("Get", get_dispatch as NativeFn, Attributes::empty());
+    ev.register("SubsetQ", subsetq_dispatch as NativeFn, Attributes::empty());
+    ev.register("EqualQ", equalq_dispatch as NativeFn, Attributes::empty());
     // Common aliases/patterns
     ev.register("MemberQ", contains_dispatch as NativeFn, Attributes::empty());
     ev.register("ContainsKeyQ", contains_key_dispatch as NativeFn, Attributes::empty());
@@ -39,6 +52,32 @@ pub fn register_dispatch(ev: &mut Evaluator) {
     ev.register("Export", export_dispatch as NativeFn, Attributes::empty());
     ev.register("Sniff", sniff_dispatch as NativeFn, Attributes::empty());
 
+    // Tensor/List shared names and NN/ML generic verbs
+    ev.register("Transpose", transpose_dispatch as NativeFn, Attributes::empty());
+    ev.register("ArgMax", argmax_dispatch as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Clip", clip_dispatch as NativeFn, Attributes::empty());
+    ev.register("Relu", relu_dispatch as NativeFn, Attributes::empty());
+    ev.register("Sigmoid", sigmoid_dispatch as NativeFn, Attributes::empty());
+    ev.register("Gelu", gelu_dispatch as NativeFn, Attributes::empty());
+    ev.register("Softmax", softmax_dispatch as NativeFn, Attributes::empty());
+    ev.register("Power", power_dispatch as NativeFn, Attributes::empty());
+    ev.register("Train", train_dispatch as NativeFn, Attributes::empty());
+    ev.register("Evaluate", evaluate_dispatch as NativeFn, Attributes::empty());
+    ev.register("CrossValidate", crossvalidate_dispatch as NativeFn, Attributes::empty());
+    ev.register("Tune", tune_dispatch as NativeFn, Attributes::empty());
+    ev.register("Predict", predict_dispatch as NativeFn, Attributes::empty());
+    ev.register("Initialize", initialize_dispatch as NativeFn, Attributes::empty());
+    ev.register("Property", property_dispatch as NativeFn, Attributes::empty());
+    ev.register("Summary", summary_dispatch as NativeFn, Attributes::empty());
+
+    // Tensor-aware elementwise math
+    ev.register("Exp", exp_dispatch as NativeFn, Attributes::empty());
+    ev.register("Log", log_dispatch as NativeFn, Attributes::empty());
+    ev.register("Sqrt", sqrt_dispatch as NativeFn, Attributes::empty());
+    ev.register("Sin", sin_dispatch as NativeFn, Attributes::empty());
+    ev.register("Cos", cos_dispatch as NativeFn, Attributes::empty());
+    ev.register("Tanh", tanh_dispatch as NativeFn, Attributes::empty());
+
     #[cfg(feature = "tools")]
     {
         use crate::{tool_spec, tools::add_specs};
@@ -48,9 +87,40 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                 summary: "Concatenate lists or join datasets",
                 params: ["a","b","opts?"],
                 tags: ["generic","list","dataset"],
+                input_schema: Value::Assoc(HashMap::from([
+                    ("type".into(), Value::String("object".into())),
+                    ("properties".into(), Value::Assoc(HashMap::from([
+                        ("a".into(), Value::Assoc(HashMap::from([
+                            ("type".into(), Value::String("array".into())),
+                        ]))),
+                        ("b".into(), Value::Assoc(HashMap::from([
+                            ("type".into(), Value::String("array".into())),
+                        ]))),
+                    ]))),
+                    ("required".into(), Value::List(vec![Value::String("a".into()), Value::String("b".into())])),
+                ])),
                 examples: [
                     Value::String("Join[{1,2}, {3,4}]  ==> {1,2,3,4}".into()),
                     Value::String("ds1 := DatasetFromRows[{<|id->1|>}] ; ds2 := DatasetFromRows[{<|id->1|>}]; Join[ds1, ds2, {\"id\"}]".into()),
+                ]
+            ),
+            tool_spec!(
+                "SubsetQ",
+                summary: "Is a subset of b? (sets, lists)",
+                params: ["a","b"],
+                tags: ["generic","set","list"],
+                examples: [
+                    Value::String("SubsetQ[HashSet[{1,2}], HashSet[{1,2,3}]]  ==> True".into()),
+                    Value::String("SubsetQ[{1,2}, {1,2,3}]  ==> True".into()),
+                ]
+            ),
+            tool_spec!(
+                "EqualQ",
+                summary: "Structural equality for sets and handles",
+                params: ["a","b"],
+                tags: ["generic","set"],
+                examples: [
+                    Value::String("EqualQ[HashSet[{1,2}], HashSet[{2,1}]]  ==> True".into()),
                 ]
             ),
             tool_spec!(
@@ -114,7 +184,7 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                 examples: [
                     Value::String("Info[Graph[]]  ==> <|nodes->..., edges->...|>".into()),
                     Value::String("Info[DatasetFromRows[{<|a->1|>}]]  ==> <|Type->\"Dataset\", Rows->1, Columns->{\"a\"}|>".into()),
-                    Value::String("Info[VectorStore[<|Name->\"vs\"|>]]  ==> <|Type->\"VectorStore\", Name->\"vs\", Count->0|>".into()),
+                    Value::String("Info[VectorStore[<|name->\"vs\"|>]]  ==> <|Type->\"VectorStore\", Name->\"vs\", Count->0|>".into()),
                     Value::String("Info[HashSet[{1,2,3}]]  ==> <|Type->\"Set\", Size->3|>".into()),
                     Value::String("Info[Queue[]]  ==> <|Type->\"Queue\", Size->0|>".into()),
                     Value::String("Info[Index[\"/tmp/idx.db\"]]  ==> <|indexPath->..., numDocs->...|>".into()),
@@ -132,7 +202,7 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                     Value::String("Length[\"ok\"]  ==> 2".into()),
                     Value::String("Length[Queue[]]  ==> 0".into()),
                     Value::String("Length[DatasetFromRows[{<|a->1|>}]]  ==> 1".into()),
-                    Value::String("vs := VectorStore[<|Name->\"vs\"|>]; Length[vs]  ==> 0".into()),
+                    Value::String("vs := VectorStore[<|name->\"vs\"|>]; Length[vs]  ==> 0".into()),
                 ]
             ),
             tool_spec!(
@@ -145,7 +215,7 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                     Value::String("EmptyQ[\"\"]  ==> True".into()),
                     Value::String("EmptyQ[Queue[]]  ==> True".into()),
                     Value::String("EmptyQ[DatasetFromRows[{}]]  ==> True".into()),
-                    Value::String("vs := VectorStore[<|Name->\"vs\"|>]; EmptyQ[vs]  ==> True".into()),
+                    Value::String("vs := VectorStore[<|name->\"vs\"|>]; EmptyQ[vs]  ==> True".into()),
                 ]
             ),
             tool_spec!(
@@ -166,7 +236,7 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                 params: ["target","query","opts?"],
                 tags: ["generic","search"],
                 examples: [
-                    Value::String("Search[VectorStore[<|Name->\"vs\"|>], {0.1,0.2,0.3}]".into()),
+                    Value::String("Search[VectorStore[<|name->\"vs\"|>], {0.1,0.2,0.3}]".into()),
                     Value::String("idx := Index[\"/tmp/idx.db\"]; Search[idx, \"foo\"]".into()),
                 ]
             ),
@@ -392,6 +462,123 @@ pub fn register_dispatch(ev: &mut Evaluator) {
                     Value::String("Keys[f]  (* Columns *)".into()),
                 ]
             ),
+            tool_spec!(
+                "SortBy",
+                summary: "Sort list by key or assoc by derived key",
+                params: ["f","subject"],
+                tags: ["generic","sort"],
+                examples: [
+                    Value::String("SortBy[StringLength, {\"a\",\"bbb\",\"cc\"}]  ==> {\"a\",\"cc\",\"bbb\"}".into()),
+                    Value::String("SortBy[(k,v)->k, <|\"b\"->2, \"a\"->1|>]  ==> <|\"a\"->1, \"b\"->2|>".into()),
+                ]
+            ),
+            tool_spec!(
+                "Shape",
+                summary: "Shape of a tensor",
+                params: ["x"],
+                tags: ["tensor"],
+                examples: [ Value::String("Shape[Tensor[{{1,2,3},{4,5,6}}]]  ==> {2, 3}".into()) ]
+            ),
+            tool_spec!(
+                "Reshape",
+                summary: "Reshape a tensor to given dims (supports -1)",
+                params: ["x","dims"],
+                tags: ["tensor"],
+                examples: [ Value::String("Reshape[Tensor[{{1,2,3},{4,5,6}}], {3,2}]".into()) ]
+            ),
+            tool_spec!(
+                "Relu",
+                summary: "ReLU activation: tensor op or zero-arg layer",
+                params: ["x?"],
+                tags: ["tensor","nn","activation"],
+                examples: [
+                    Value::String("Relu[{-1,2,-3}]  ==> {0,2,0}".into()),
+                    Value::String("Relu[]  (* layer spec *)".into()),
+                ]
+            ),
+            tool_spec!(
+                "Softmax",
+                summary: "Softmax activation: zero-arg layer (tensor variant TBD)",
+                params: ["x?","opts?"],
+                tags: ["nn","activation"],
+                examples: [ Value::String("Softmax[]  (* layer spec *)".into()) ]
+            ),
+            tool_spec!(
+                "Sigmoid",
+                summary: "Sigmoid activation: tensor op or zero-arg layer",
+                params: ["x?"],
+                tags: ["tensor","nn","activation"],
+                examples: [
+                    Value::String("Sigmoid[{-1,0,1}]  ==> {~0.2689, 0.5, ~0.7311}".into()),
+                    Value::String("Sigmoid[]  (* layer spec *)".into()),
+                ]
+            ),
+            tool_spec!(
+                "Gelu",
+                summary: "GELU activation (tanh approx): tensor op or zero-arg layer",
+                params: ["x?"],
+                tags: ["tensor","nn","activation"],
+                examples: [ Value::String("Gelu[]  (* layer spec *)".into()) ]
+            ),
+            tool_spec!(
+                "Train",
+                summary: "Train a network or ML estimator (dispatched)",
+                params: ["obj","data","opts?"],
+                tags: ["nn","ml","train"],
+                examples: [ Value::String("Train[Sequential[{Dense[<|Output->4|>], Relu[]}], ds, <|Epochs->5|>]".into()) ]
+            ),
+            tool_spec!(
+                "Initialize",
+                summary: "Initialize a network or estimator (dispatched)",
+                params: ["obj","opts?"],
+                tags: ["nn","net"],
+                examples: [ Value::String("Initialize[Sequential[{Dense[<|Output->4|>]}]]".into()) ]
+            ),
+            tool_spec!(
+                "Predict",
+                summary: "Predict using a network or estimator (dispatched)",
+                params: ["obj","x","opts?"],
+                tags: ["nn","ml","inference"],
+                examples: [
+                    Value::String("Predict[Sequential[{Relu[]}], {1,2,3}]".into()),
+                    Value::String("(* Tensor input *) net := Sequential[{Convolution2D[<|Output->4, KernelSize->3, Padding->1, InputChannels->1, Height->28, Width->28|>]}]; Shape[Predict[net, Tensor[(* 1x28x28 data *)]]]  ==> {4,28,28}".into())
+                ]
+            ),
+            tool_spec!(
+                "Evaluate",
+                summary: "Evaluate an ML model on data (dispatched)",
+                params: ["model","data","opts?"],
+                tags: ["ml","metrics"],
+                examples: [ Value::String("Evaluate[model, val, <|Metrics->{Accuracy}|>]".into()) ]
+            ),
+            tool_spec!(
+                "CrossValidate",
+                summary: "Cross-validate estimator + data (dispatched)",
+                params: ["obj","data","opts?"],
+                tags: ["ml","cv"],
+                examples: [ Value::String("CrossValidate[Classifier[<|Method->\"Logistic\"|>], train, <|k->5|>]".into()) ]
+            ),
+            tool_spec!(
+                "Tune",
+                summary: "Hyperparameter search for estimator (dispatched)",
+                params: ["obj","data","opts?"],
+                tags: ["ml","tune"],
+                examples: [ Value::String("Tune[Regressor[<|Method->\"Linear\"|>], train, <|SearchSpace-><|L2->{0.0,1e-2}|>|>]".into()) ]
+            ),
+            tool_spec!(
+                "Property",
+                summary: "Property of a network or ML estimator (dispatched)",
+                params: ["obj","key"],
+                tags: ["nn","ml","introspect"],
+                examples: [ Value::String("Property[Sequential[{Dense[]}], \"Kind\"]".into()) ]
+            ),
+            tool_spec!(
+                "Summary",
+                summary: "Summary of a network or estimator (dispatched)",
+                params: ["obj"],
+                tags: ["nn","introspect"],
+                examples: [ Value::String("Summary[Sequential[{Dense[]}]]".into()) ]
+            ),
         ];
         add_specs(specs);
     }
@@ -415,6 +602,366 @@ fn is_frame_handle(v: &Value) -> bool {
         }
     }
     false
+}
+
+fn is_packed_array(v: &Value) -> bool { matches!(v, Value::PackedArray { .. }) }
+
+fn transpose_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        // Layer constructor form: Transpose[]
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__TransposeLayer".into())), args });
+    }
+    let first = ev.eval(args[0].clone());
+    if is_packed_array(&first) {
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDTranspose".into())), args });
+    }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__ListTranspose".into())), args })
+}
+
+fn argmax_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ArgMax".into())), args }; }
+    let first = ev.eval(args[0].clone());
+    if is_packed_array(&first) {
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDArgMax".into())), args });
+    }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__ListArgMax".into())), args })
+}
+
+fn train_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Train".into())), args }; }
+    let obj = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &obj {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="Net") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NetTrain".into())), args });
+        }
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="MLEstimator") {
+            // Train[estimator, data, opts?] -> Classify/Predict/Cluster
+            let task = m.get("Task").and_then(|v| match v { Value::String(s) | Value::Symbol(s) => Some(s.clone()), _ => None }).unwrap_or("Classification".into());
+            let method = m.get("Method").cloned();
+            let data = if args.len() >= 2 { ev.eval(args[1].clone()) } else { Value::List(vec![]) };
+            let mut opts_map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            if args.len() >= 3 {
+                if let Value::Assoc(mm) = ev.eval(args[2].clone()) { opts_map = mm; }
+            }
+            if let Some(mv) = method { opts_map.insert("Method".into(), mv); }
+            let opts_v = Value::Assoc(opts_map);
+            let head = if task.eq_ignore_ascii_case("Regression") { "Predict" } else if task.eq_ignore_ascii_case("Clustering") { "Cluster" } else { "Classify" };
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol(head.into())), args: vec![data, opts_v] });
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Train".into())), args }
+}
+
+fn initialize_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Initialize".into())), args }; }
+    let obj = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &obj {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="Net") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NetInitialize".into())), args });
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Initialize".into())), args }
+}
+
+fn property_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Property".into())), args }; }
+    let obj = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &obj {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="Net") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NetProperty".into())), args });
+        }
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="MLModel") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("MLProperty".into())), args });
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Property".into())), args }
+}
+
+fn summary_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Summary".into())), args }; }
+    let obj = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &obj {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="Net") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NetSummary".into())), args });
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Summary".into())), args }
+}
+
+fn clip_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Clip[x, {min,max}] or Clip[x, min, max]
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Clip".into())), args }; }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) {
+        match args.as_slice() {
+            [_, bounds] => {
+                // bounds may be {min,max}
+                let b = ev.eval(bounds.clone());
+                if let Value::List(ref vs) = b {
+                    if vs.len() == 2 {
+                        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args: vec![x, vs[0].clone(), vs[1].clone()] });
+                    }
+                }
+                Value::Expr { head: Box::new(Value::Symbol("Clip".into())), args: vec![x, b] }
+            }
+            [_, minv, maxv] => {
+                let minv = ev.eval(minv.clone());
+                let maxv = ev.eval(maxv.clone());
+                ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDClip".into())), args: vec![x, minv, maxv] })
+            }
+            _ => Value::Expr { head: Box::new(Value::Symbol("Clip".into())), args: vec![x] },
+        }
+    } else {
+        // Defer to math Clip
+        let mut real_args = vec![x];
+        real_args.extend(args.into_iter().skip(1).map(|a| ev.eval(a)));
+        ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathClip".into())), args: real_args })
+    }
+}
+
+fn relu_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        // Layer constructor form: Relu[] => __ActivationLayer["Relu"]
+        return ev.eval(Value::Expr {
+            head: Box::new(Value::Symbol("__ActivationLayer".into())),
+            args: vec![Value::String("Relu".into())],
+        });
+    }
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Relu".into())), args }; }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) {
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDRelu".into())), args: vec![x] });
+    }
+    // Scalar numeric fallback: max(0,x)
+    match x {
+        Value::Integer(n) => Value::Integer(n.max(0)),
+        Value::Real(r) => Value::Real(if r < 0.0 { 0.0 } else { r }),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Relu".into())), args: vec![x] },
+    }
+}
+
+fn power_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Power[a, b] -> NDPow when any tensor present else math Power
+    if args.len() != 2 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathPower".into())), args }); }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    if is_packed_array(&a) || is_packed_array(&b) {
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDPow".into())), args: vec![a, b] });
+    }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathPower".into())), args: vec![a, b] })
+}
+
+fn exp_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathExp".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDExp".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathExp".into())), args: vec![x] })
+}
+
+fn log_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathLog".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDLog".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathLog".into())), args: vec![x] })
+}
+
+fn sqrt_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathSqrt".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDSqrt".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathSqrt".into())), args: vec![x] })
+}
+
+fn sin_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathSin".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDSin".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathSin".into())), args: vec![x] })
+}
+
+fn cos_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathCos".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDCos".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathCos".into())), args: vec![x] })
+}
+
+fn tanh_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() {
+        // Layer constructor form: Tanh[]
+        return ev.eval(Value::Expr {
+            head: Box::new(Value::Symbol("__ActivationLayer".into())),
+            args: vec![Value::String("Tanh".into())],
+        });
+    }
+    if args.len() != 1 { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathTanh".into())), args }); }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) { return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDTanh".into())), args: vec![x] }); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("__MathTanh".into())), args: vec![x] })
+}
+
+fn sigmoid_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Zero-arg: layer constructor; One-arg: tensor/scalar elementwise
+    if args.is_empty() {
+        return ev.eval(Value::Expr {
+            head: Box::new(Value::Symbol("__ActivationLayer".into())),
+            args: vec![Value::String("Sigmoid".into())],
+        });
+    }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Sigmoid".into())), args };
+    }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) {
+        // NDMap[x, (#|->1/(1+Exp[-#]))]
+        let body = Value::expr(
+            Value::symbol("Divide"),
+            vec![
+                Value::Integer(1),
+                Value::expr(
+                    Value::symbol("Plus"),
+                    vec![
+                        Value::Integer(1),
+                        Value::expr(
+                            Value::symbol("Exp"),
+                            vec![Value::expr(Value::symbol("Times"), vec![Value::Integer(-1), Value::slot(None)])],
+                        ),
+                    ],
+                ),
+            ],
+        );
+        let f = Value::PureFunction { params: None, body: Box::new(body) };
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDMap".into())), args: vec![x, f] });
+    }
+    match x {
+        Value::Integer(n) => {
+            let xr = n as f64;
+            Value::Real(1.0 / (1.0 + (-xr).exp()))
+        }
+        Value::Real(r) => Value::Real(1.0 / (1.0 + (-r).exp())),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Sigmoid".into())), args: vec![x] },
+    }
+}
+
+fn gelu_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Zero-arg: layer constructor; One-arg: elementwise GELU approx via tanh
+    if args.is_empty() {
+        return ev.eval(Value::Expr {
+            head: Box::new(Value::Symbol("__ActivationLayer".into())),
+            args: vec![Value::String("GELU".into())],
+        });
+    }
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Gelu".into())), args };
+    }
+    let x = ev.eval(args[0].clone());
+    if is_packed_array(&x) {
+        // 0.5*x*(1 + tanh(0.79788456*(x + 0.044715*x^3)))
+        let tanh_body = Value::expr(
+            Value::symbol("Times"),
+            vec![
+                Value::Real(0.5),
+                Value::slot(None),
+                Value::expr(
+                    Value::symbol("Plus"),
+                    vec![
+                        Value::Integer(1),
+                        Value::expr(
+                            Value::symbol("Tanh"),
+                            vec![Value::expr(
+                                Value::symbol("Times"),
+                                vec![
+                                    Value::Real(0.79788456),
+                                    Value::expr(
+                                        Value::symbol("Plus"),
+                                        vec![
+                                            Value::slot(None),
+                                            Value::expr(
+                                                Value::symbol("Times"),
+                                                vec![
+                                                    Value::Real(0.044715),
+                                                    Value::expr(Value::symbol("Power"), vec![Value::slot(None), Value::Integer(3)]),
+                                                ],
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            )],
+                        ),
+                    ],
+                ),
+            ],
+        );
+        let f = Value::PureFunction { params: None, body: Box::new(tanh_body) };
+        return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NDMap".into())), args: vec![x, f] });
+    }
+    match x {
+        Value::Integer(n) => {
+            let u = n as f64;
+            let k = (0.79788456 * (u + 0.044715 * u * u * u)).tanh();
+            Value::Real(0.5 * u * (1.0 + k))
+        }
+        Value::Real(u) => {
+            let k = (0.79788456 * (u + 0.044715 * u * u * u)).tanh();
+            Value::Real(0.5 * u * (1.0 + k))
+        }
+        _ => Value::Expr { head: Box::new(Value::Symbol("Gelu".into())), args: vec![x] },
+    }
+}
+fn softmax_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Softmax[] (layer) or Softmax[tensor, Axis->…] in future
+    if args.is_empty() {
+        return ev.eval(Value::Expr {
+            head: Box::new(Value::Symbol("__ActivationLayer".into())),
+            args: vec![Value::String("Softmax".into())],
+        });
+    }
+    // Tensor softmax not implemented; leave unevaluated or pass through
+    Value::Expr { head: Box::new(Value::Symbol("Softmax".into())), args }
+}
+
+fn predict_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Predict".into())), args }; }
+    let obj = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &obj {
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="Net") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("NetApply".into())), args });
+        }
+        if matches!(m.get("__type"), Some(Value::String(t)) if t=="MLModel") {
+            return ev.eval(Value::Expr { head: Box::new(Value::Symbol("MLApply".into())), args });
+        }
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Predict".into())), args }
+}
+
+fn evaluate_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Evaluate".into())), args }; }
+    let model = ev.eval(args[0].clone());
+    if let Value::Assoc(m) = &model {
+        if !matches!(m.get("__type"), Some(Value::String(t)) if t=="MLModel") { return Value::Expr { head: Box::new(Value::Symbol("Evaluate".into())), args }; }
+    } else { return Value::Expr { head: Box::new(Value::Symbol("Evaluate".into())), args }; }
+    // Read task via MLProperty[model, "Task"]
+    let task = ev.eval(Value::Expr { head: Box::new(Value::Symbol("MLProperty".into())), args: vec![model.clone(), Value::String("Task".into())] });
+    let data = ev.eval(args[1].clone());
+    let opts = if args.len() >= 3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+    let head = match task { Value::String(s) | Value::Symbol(s) if s.eq_ignore_ascii_case("Regression") => "PredictMeasurements", _ => "ClassifyMeasurements" };
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol(head.into())), args: vec![model, data, opts] })
+}
+
+fn crossvalidate_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // CrossValidate[estimator|spec, data, opts?] -> MLCrossValidate[data, opts]
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("CrossValidate".into())), args }; }
+    let data = ev.eval(args[1].clone());
+    let opts = if args.len() >= 3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("MLCrossValidate".into())), args: vec![Value::Symbol("Null".into()), data, opts] })
+}
+
+fn tune_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Tune[estimator|spec, data, opts?] -> MLTune[data, opts]
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Tune".into())), args }; }
+    let data = ev.eval(args[1].clone());
+    let opts = if args.len() >= 3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("MLTune".into())), args: vec![data, opts] })
 }
 
 fn describe_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -544,6 +1091,27 @@ fn keys_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::expr(Value::symbol("Keys"), vec![subj])
 }
 
+fn get_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [subj, key] | [subj, key, _] => {
+            let s = ev.eval(subj.clone());
+            if let Value::Assoc(m) = s {
+                let k = ev.eval(key.clone());
+                let dk = args.get(2).map(|v| ev.eval(v.clone()));
+                if let Value::String(ks) | Value::Symbol(ks) = k {
+                    if let Some(v) = m.get(&ks) {
+                        return v.clone();
+                    } else if let Some(defv) = dk { return defv; }
+                    else { return Value::Symbol("Null".into()); }
+                }
+                return Value::Symbol("Null".into());
+            }
+        }
+        _ => {}
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Get".into())), args }
+}
+
 fn contains_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 { return Value::expr(Value::symbol("Contains"), args); }
     let container = ev.eval(args[0].clone());
@@ -569,9 +1137,10 @@ fn contains_key_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 { return Value::expr(Value::symbol("ContainsKeyQ"), args); }
     let subject = ev.eval(args[0].clone());
     let key = ev.eval(args[1].clone());
-    // Assoc: use AssocContainsKeyQ
-    if matches!(subject, Value::Assoc(_)) {
-        return ev.eval(Value::expr(Value::symbol("AssocContainsKeyQ"), vec![subject, key]));
+    // Assoc: check key directly
+    if let Value::Assoc(m) = &subject {
+        if let Value::String(s) | Value::Symbol(s) = &key { return Value::Boolean(m.contains_key(s)); }
+        return Value::Boolean(false);
     }
     // Dataset/Frame/List-of-assoc rows: check Columns
     if is_frame_handle(&subject) || is_dataset_handle(&subject) || list_is_assoc_rows(&subject) {
@@ -831,16 +1400,81 @@ fn union_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             return Value::expr(Value::symbol("Union"), evald);
         }
     }
-    // If any are Set handles, use SetUnion
+    // If any are Set handles, use set-specific impl
     if evald.iter().any(|v| is_set_handle(v)) {
-        return ev.eval(Value::expr(Value::symbol("SetUnion"), evald));
+        return ev.eval(Value::expr(Value::symbol("__SetUnion"), evald));
     }
-    // Default for lists: ListUnion (order-stable)
+    // Default for lists: order-stable union
     if all_lists(&evald) {
-        return ev.eval(Value::expr(Value::symbol("ListUnion"), evald));
+        use std::collections::HashSet;
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut out: Vec<Value> = Vec::new();
+        for v in &evald {
+            if let Value::List(xs) = v {
+                for x in xs {
+                    let k = lyra_runtime::eval::value_order_key(x);
+                    if seen.insert(k) { out.push(x.clone()); }
+                }
+            }
+        }
+        return Value::List(out);
     }
     // Fallback: leave unevaluated
     Value::expr(Value::symbol("Union"), evald)
+}
+
+fn upsert_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::expr(Value::symbol("Upsert"), args); }
+    let target = ev.eval(args[0].clone());
+    let rows = ev.eval(args[1].clone());
+    if is_graph_handle(&target) {
+        let is_edge_assoc = |v: &Value| -> bool {
+            if let Value::Assoc(m) = v { m.contains_key("src") || m.contains_key("Src") || m.contains_key("dst") || m.contains_key("Dst") } else { false }
+        };
+        let name = match &rows {
+            Value::Assoc(_) if is_edge_assoc(&rows) => "UpsertEdges",
+            Value::List(xs) if xs.iter().any(|x| is_edge_assoc(x)) => "UpsertEdges",
+            _ => "UpsertNodes",
+        };
+        return ev.eval(Value::expr(Value::symbol(name), vec![target, rows]));
+    }
+    if is_vector_store_handle(&target) || matches!(target, Value::String(_) | Value::Symbol(_)) {
+        return ev.eval(Value::expr(Value::symbol("VectorUpsert"), vec![target, rows]));
+    }
+    Value::expr(Value::symbol("Upsert"), vec![target, rows])
+}
+
+fn intersection_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::expr(Value::symbol("Intersection"), args); }
+    let evald: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
+    // Sets: defer to set-specific impl
+    if evald.iter().any(|v| is_set_handle(v)) {
+        return ev.eval(Value::expr(Value::symbol("__SetIntersection"), evald));
+    }
+    // Lists: support binary intersection
+    if evald.len() == 2 { if let (Value::List(la), Value::List(lb)) = (&evald[0], &evald[1]) {
+        use std::collections::HashSet; let sb: HashSet<String> = lb.iter().map(|x| lyra_runtime::eval::value_order_key(x)).collect();
+        let mut seen: HashSet<String> = HashSet::new(); let mut out = Vec::new();
+        for x in la { let k = lyra_runtime::eval::value_order_key(x); if sb.contains(&k) && seen.insert(k.clone()) { out.push(x.clone()); } }
+        return Value::List(out);
+    }}
+    Value::expr(Value::symbol("Intersection"), evald)
+}
+
+fn difference_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::expr(Value::symbol("Difference"), args); }
+    let evald: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
+    // Sets: defer to set-specific impl
+    if evald.iter().any(|v| is_set_handle(v)) {
+        return ev.eval(Value::expr(Value::symbol("__SetDifference"), evald));
+    }
+    // Lists: support binary difference a \ b
+    if evald.len() == 2 { if let (Value::List(la), Value::List(lb)) = (&evald[0], &evald[1]) {
+        use std::collections::HashSet; let sb: HashSet<String> = lb.iter().map(|x| lyra_runtime::eval::value_order_key(x)).collect();
+        let mut out = Vec::new(); for x in la { if !sb.contains(&lyra_runtime::eval::value_order_key(x)) { out.push(x.clone()); } }
+        return Value::List(out);
+    }}
+    Value::expr(Value::symbol("Difference"), evald)
 }
 
 fn select_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -859,6 +1493,51 @@ fn select_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     {
         Value::expr(Value::symbol("Select"), vec![subj, spec])
     }
+}
+
+fn drop_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::expr(Value::symbol("Drop"), args); }
+    let subj = ev.eval(args[0].clone());
+    let n = match ev.eval(args[1].clone()) { Value::Integer(k) => k, other => return Value::expr(Value::symbol("Drop"), vec![subj, other]) };
+    if matches!(subj, Value::Assoc(_)) {
+        return ev.eval(Value::expr(Value::symbol("__AssocDrop"), vec![subj, Value::Integer(n)]));
+    }
+    if let Value::List(items) = subj {
+        let len = items.len() as i64;
+        let k = if n >= 0 { n.min(len).max(0) } else { (-n).min(len).max(0) } as usize;
+        let slice: Vec<Value> = if n >= 0 { items.into_iter().skip(k).collect() } else { items.into_iter().take((len as usize).saturating_sub(k)).collect() };
+        return Value::List(slice);
+    }
+    Value::expr(Value::symbol("Drop"), vec![subj, Value::Integer(n)])
+}
+
+fn delete_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::expr(Value::symbol("Delete"), args); }
+    let subj = ev.eval(args[0].clone());
+    let spec = ev.eval(args[1].clone());
+    if matches!(subj, Value::Assoc(_)) { return ev.eval(Value::expr(Value::symbol("__AssocDelete"), vec![subj, spec])); }
+    if is_vector_store_handle(&subj) || matches!(subj, Value::String(_) | Value::Symbol(_)) {
+        return ev.eval(Value::expr(Value::symbol("VectorDelete"), vec![subj, spec]));
+    }
+    Value::expr(Value::symbol("Delete"), vec![subj, spec])
+}
+
+fn write_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 3 { return Value::expr(Value::symbol("Write"), args); }
+    let subj = ev.eval(args[0].clone());
+    let key = ev.eval(args[1].clone());
+    let val = ev.eval(args[2].clone());
+    if matches!(subj, Value::Assoc(_)) { return ev.eval(Value::expr(Value::symbol("__AssocSet"), vec![subj, key, val])); }
+    Value::expr(Value::symbol("Write"), vec![subj, key, val])
+}
+
+fn reset_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::expr(Value::symbol("Reset"), args); }
+    let subj = ev.eval(args[0].clone());
+    if is_vector_store_handle(&subj) || matches!(subj, Value::String(_) | Value::Symbol(_)) {
+        return ev.eval(Value::expr(Value::symbol("VectorReset"), vec![subj]));
+    }
+    Value::expr(Value::symbol("Reset"), vec![subj])
 }
 
 fn filter_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -948,6 +1627,18 @@ fn sort_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     #[cfg(not(feature = "dataset"))]
     { return Value::expr(Value::symbol("Sort"), args.into_iter().map(|a| ev.eval(a)).collect()); }
+}
+
+fn sortby_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Expect SortBy[f, subject]
+    if args.len() != 2 { return Value::expr(Value::symbol("SortBy"), args); }
+    let f = args[0].clone();
+    let subj = ev.eval(args[1].clone());
+    match subj {
+        Value::Assoc(_) => Value::expr(Value::symbol("__AssocSortBy"), vec![f, subj]),
+        Value::List(_) => Value::expr(Value::symbol("__ListSortBy"), vec![f, subj]),
+        other => Value::expr(Value::symbol("SortBy"), vec![f, other]),
+    }
 }
 
 fn distinct_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1232,7 +1923,7 @@ fn export_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let opts = if args.len()>=3 { match ev.eval(args[2].clone()) { Value::Assoc(m)=>m, _=> HashMap::new() } } else { HashMap::new() };
     let path = match dest { Value::String(s)|Value::Symbol(s)=> s, _=> return Value::expr(Value::symbol("Export"), vec![value, dest, Value::Assoc(opts)]) };
     // Decide by extension if not overridden
-    let mut ty = opt_lookup(&opts, "Type").and_then(|v| str_of(v)).unwrap_or_else(|| ext_lower(&path).unwrap_or_else(|| String::from("json"))).to_ascii_uppercase();
+    let ty = opt_lookup(&opts, "Type").and_then(|v| str_of(v)).unwrap_or_else(|| ext_lower(&path).unwrap_or_else(|| String::from("json"))).to_ascii_uppercase();
     match ty.as_str() {
         "CSV" | "TSV" => {
             // Normalize to rows
@@ -1519,6 +2210,9 @@ fn add_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if is_pq_handle(&target) {
         return ev.eval(Value::expr(Value::symbol("PQInsert"), vec![target, value]));
     }
+    if let Some(path) = looks_like_index_assoc(&target) {
+        return ev.eval(Value::expr(Value::symbol("IndexAdd"), vec![Value::String(path), value]));
+    }
     // Fallback: leave unevaluated
     Value::expr(Value::symbol("Add"), vec![target, value])
 }
@@ -1559,23 +2253,23 @@ fn info_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return ev.eval(Value::expr(Value::symbol("IndexInfo"), vec![Value::String(path)]));
     }
     if is_set_handle(&target) {
-        let n = ev.eval(Value::expr(Value::symbol("SetSize"), vec![target.clone()]));
+        let n = ev.eval(Value::expr(Value::symbol("Length"), vec![target.clone()]));
         let mut m = HashMap::new(); m.insert("Type".into(), Value::String("Set".into())); m.insert("Size".into(), n); return Value::Assoc(m);
     }
     if is_bag_handle(&target) {
-        let n = ev.eval(Value::expr(Value::symbol("BagSize"), vec![target.clone()]));
+        let n = ev.eval(Value::expr(Value::symbol("Count"), vec![target.clone()]));
         let mut m = HashMap::new(); m.insert("Type".into(), Value::String("Bag".into())); m.insert("Size".into(), n); return Value::Assoc(m);
     }
     if is_queue_handle(&target) {
-        let n = ev.eval(Value::expr(Value::symbol("QueueSize"), vec![target.clone()]));
+        let n = ev.eval(Value::expr(Value::symbol("Length"), vec![target.clone()]));
         let mut m = HashMap::new(); m.insert("Type".into(), Value::String("Queue".into())); m.insert("Size".into(), n); return Value::Assoc(m);
     }
     if is_stack_handle(&target) {
-        let n = ev.eval(Value::expr(Value::symbol("StackSize"), vec![target.clone()]));
+        let n = ev.eval(Value::expr(Value::symbol("Length"), vec![target.clone()]));
         let mut m = HashMap::new(); m.insert("Type".into(), Value::String("Stack".into())); m.insert("Size".into(), n); return Value::Assoc(m);
     }
     if is_pq_handle(&target) {
-        let n = ev.eval(Value::expr(Value::symbol("PQSize"), vec![target.clone()]));
+        let n = ev.eval(Value::expr(Value::symbol("Length"), vec![target.clone()]));
         let mut m = HashMap::new(); m.insert("Type".into(), Value::String("PriorityQueue".into())); m.insert("Size".into(), n); return Value::Assoc(m);
     }
     if is_vector_store_handle(&target) {
@@ -1628,12 +2322,15 @@ fn length_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             return Value::expr(Value::symbol("Length"), vec![x]);
         }
     }
-    if is_set_handle(&x) { return ev.eval(Value::expr(Value::symbol("SetSize"), vec![x])); }
+    if is_set_handle(&x) {
+        let lst = ev.eval(Value::expr(Value::symbol("SetToList"), vec![x]));
+        return match lst { Value::List(v) => Value::Integer(v.len() as i64), _ => Value::Integer(0) };
+    }
     if is_vector_store_handle(&x) { return ev.eval(Value::expr(Value::symbol("VectorCount"), vec![x])); }
     if is_bag_handle(&x) { return ev.eval(Value::expr(Value::symbol("BagSize"), vec![x])); }
-    if is_queue_handle(&x) { return ev.eval(Value::expr(Value::symbol("QueueSize"), vec![x])); }
-    if is_stack_handle(&x) { return ev.eval(Value::expr(Value::symbol("StackSize"), vec![x])); }
-    if is_pq_handle(&x) { return ev.eval(Value::expr(Value::symbol("PQSize"), vec![x])); }
+    if is_queue_handle(&x) || is_stack_handle(&x) || is_pq_handle(&x) {
+        return ev.eval(Value::expr(Value::symbol("Length"), vec![x]));
+    }
     match x {
         Value::List(v) => Value::Integer(v.len() as i64),
         Value::String(s) => Value::Integer(s.chars().count() as i64),
@@ -1671,12 +2368,12 @@ fn emptyq_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         let n = ev.eval(Value::expr(Value::symbol("VectorCount"), vec![x]));
         return match n { Value::Integer(k) => Value::Boolean(k == 0), _ => Value::Boolean(false) };
     }
-    if is_set_handle(&x) { return ev.eval(Value::expr(Value::symbol("SetEmptyQ"), vec![x])); }
-    if is_queue_handle(&x) { return ev.eval(Value::expr(Value::symbol("QueueEmptyQ"), vec![x])); }
-    if is_stack_handle(&x) { return ev.eval(Value::expr(Value::symbol("StackEmptyQ"), vec![x])); }
-    if is_pq_handle(&x) { return ev.eval(Value::expr(Value::symbol("PQEmptyQ"), vec![x])); }
+    if is_set_handle(&x) || is_queue_handle(&x) || is_stack_handle(&x) || is_pq_handle(&x) {
+        let n = ev.eval(Value::expr(Value::symbol("Length"), vec![x]));
+        return match n { Value::Integer(k) => Value::Boolean(k == 0), _ => Value::Boolean(false) };
+    }
     if is_bag_handle(&x) {
-        let n = ev.eval(Value::expr(Value::symbol("BagSize"), vec![x]));
+        let n = ev.eval(Value::expr(Value::symbol("Count"), vec![x]));
         return match n { Value::Integer(k) => Value::Boolean(k == 0), _ => Value::Boolean(false) };
     }
     match x {
@@ -1715,7 +2412,10 @@ fn count_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         // VectorStore accepts a Name string or assoc handle
         return ev.eval(Value::expr(Value::symbol("VectorCount"), vec![x]));
     }
-    if is_set_handle(&x) { return ev.eval(Value::expr(Value::symbol("SetSize"), vec![x])); }
+    if is_set_handle(&x) {
+        let lst = ev.eval(Value::expr(Value::symbol("SetToList"), vec![x]));
+        return match lst { Value::List(v) => Value::Integer(v.len() as i64), _ => Value::Integer(0) };
+    }
     if is_queue_handle(&x) { return ev.eval(Value::expr(Value::symbol("QueueSize"), vec![x])); }
     if is_stack_handle(&x) { return ev.eval(Value::expr(Value::symbol("StackSize"), vec![x])); }
     if is_pq_handle(&x) { return ev.eval(Value::expr(Value::symbol("PQSize"), vec![x])); }
@@ -1744,6 +2444,32 @@ fn search_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::expr(Value::symbol("Search"), vec![target, query])
 }
 
+fn subsetq_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::expr(Value::symbol("SubsetQ"), args); }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    if is_set_handle(&a) && is_set_handle(&b) {
+        return ev.eval(Value::expr(Value::symbol("SetSubsetQ"), vec![a, b]));
+    }
+    if let (Value::List(la), Value::List(lb)) = (&a, &b) {
+        use std::collections::HashSet;
+        let sb: HashSet<String> = lb.iter().map(|x| lyra_runtime::eval::value_order_key(x)).collect();
+        let sub = la.iter().all(|x| sb.contains(&lyra_runtime::eval::value_order_key(x)));
+        return Value::Boolean(sub);
+    }
+    Value::expr(Value::symbol("SubsetQ"), vec![a, b])
+}
+
+fn equalq_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::expr(Value::symbol("EqualQ"), args); }
+    let a = ev.eval(args[0].clone());
+    let b = ev.eval(args[1].clone());
+    if is_set_handle(&a) && is_set_handle(&b) {
+        return ev.eval(Value::expr(Value::symbol("SetEqualQ"), vec![a, b]));
+    }
+    Value::expr(Value::symbol("EqualQ"), vec![a, b])
+}
+
 fn close_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 { return Value::expr(Value::symbol("Close"), args); }
     let x = ev.eval(args[0].clone());
@@ -1754,4 +2480,18 @@ fn close_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return ev.eval(Value::expr(Value::symbol("__DBClose"), vec![x]));
     }
     Value::expr(Value::symbol("Close"), vec![x])
+}
+fn split_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [s] | [s, _] => {
+            let subj = ev.eval(s.clone());
+            if matches!(subj, Value::String(_)) {
+                let mut pass = vec![subj];
+                if args.len() == 2 { pass.push(args[1].clone()); }
+                return ev.eval(Value::Expr { head: Box::new(Value::Symbol("Split".into())), args: pass });
+            }
+        }
+        _ => {}
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Split".into())), args }
 }

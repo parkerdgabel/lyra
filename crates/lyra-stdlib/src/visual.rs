@@ -117,15 +117,22 @@ fn wrap_bytes_output(
     bytes: Vec<u8>,
     opts: Option<&std::collections::HashMap<String, Value>>,
 ) -> Value {
-    // Currently return base64url string by default
-    let enc = opts
+    // Opt-in rich display: Output->{ Format: "display", Mime?: "png"|"jpeg" }
+    let (fmt, _qual) = opts.map(encoding_format).unwrap_or(("png".into(), None));
+    let mut display = opts
         .and_then(|m| m.get("Output"))
-        .and_then(|v| if let Value::Assoc(mm) = v { mm.get("Encoding").cloned() } else { None })
-        .and_then(|v| if let Value::String(s) = v { Some(s) } else { None })
-        .unwrap_or_else(|| "base64url".into());
-    match enc.as_str() {
-        _ => Value::String(base64url_encode(&bytes)),
+        .and_then(|v| if let Value::Assoc(mm) = v { Some(mm) } else { None })
+        .and_then(|mm| mm.get("Format").or(mm.get("format")))
+        .and_then(|v| if let Value::String(s) = v { Some(s.to_lowercase()) } else { None })
+        .map(|s| s == "display")
+        .unwrap_or(false);
+    if !display && crate::display::prefer_display() { display = true; }
+    if display {
+        let mime = match fmt.as_str() { "png" => "image/png", "jpg" | "jpeg" => "image/jpeg", other => other };
+        return crate::display::display_bytes(mime, bytes);
     }
+    // Default: base64url string for backward compatibility
+    Value::String(base64url_encode(&bytes))
 }
 
 fn pick_palette(n: usize) -> Vec<image::Rgba<u8>> {
@@ -616,13 +623,11 @@ fn parse_encoded_bar(
 
 fn parse_size_from_opts(opts: &std::collections::HashMap<String, Value>) -> (u32, u32) {
     let w = opts
-        .get("Width")
-        .or_else(|| opts.get("width"))
+        .get("Width").or_else(|| opts.get("width"))
         .and_then(|v| if let Value::Integer(i) = v { Some(*i as u32) } else { None })
         .unwrap_or(640);
     let h = opts
-        .get("Height")
-        .or_else(|| opts.get("height"))
+        .get("Height").or_else(|| opts.get("height"))
         .and_then(|v| if let Value::Integer(i) = v { Some(*i as u32) } else { None })
         .unwrap_or(400);
     (w, h)

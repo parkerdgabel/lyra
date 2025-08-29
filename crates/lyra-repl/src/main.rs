@@ -338,10 +338,10 @@ mod reedline_mode {
             std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>,
         > = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         let assoc_keys = std::sync::Arc::new(vec![
-            "MaxThreads".into(),
-            "TimeBudgetMs".into(),
-            "Import".into(),
-            "Except".into(),
+            "maxThreads".into(),
+            "timeBudgetMs".into(),
+            "import".into(),
+            "except".into(),
             "replacement".into(),
             "inPlace".into(),
             "dryRun".into(),
@@ -955,7 +955,7 @@ impl Completer for ReplHelper {
         let trimmed = line[..pos].trim_start();
         if trimmed.starts_with(':') {
             let cmd_word = trimmed.trim_start_matches(':');
-            let (start, word) = current_symbol_token(cmd_word, word_start_pos_in_substr(line, pos));
+            let (_start, word) = current_symbol_token(cmd_word, word_start_pos_in_substr(line, pos));
             let mut cands: Vec<Pair> = Vec::new();
             // commands
             for c in self.repl_cmds.iter().filter(|c| c.starts_with(&word)) {
@@ -2270,10 +2270,10 @@ fn main() -> Result<()> {
         "set".into(),
     ];
     let common_option_keys = vec![
-        "MaxThreads".into(),
-        "TimeBudgetMs".into(),
-        "Import".into(),
-        "Except".into(),
+        "maxThreads".into(),
+        "timeBudgetMs".into(),
+        "import".into(),
+        "except".into(),
         "replacement".into(),
         "inPlace".into(),
         "dryRun".into(),
@@ -2301,7 +2301,7 @@ fn main() -> Result<()> {
         .completion_prompt_limit(50)
         .build();
     let mut rl = Editor::<ReplHelper, DefaultHistory>::with_config(rl_cfg)?;
-    rl.set_history_ignore_dups(true);
+    let _ = rl.set_history_ignore_dups(true);
     rl.set_history_ignore_space(true);
     rl.set_edit_mode(rustyline::EditMode::Emacs);
     // Enable bracketed paste and fuzzy completion when available
@@ -3067,7 +3067,7 @@ fn format_value_color(v: &Value, trunc: Option<TruncateCfg>, assoc_mode: AssocMo
         .to_string(),
         Value::PackedArray { shape, .. } => format!(
             "{}[{}]",
-            "PackedArray".yellow(),
+            "Tensor".yellow(),
             shape.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("x")
         )
         .to_string(),
@@ -3144,7 +3144,7 @@ fn format_value_color(v: &Value, trunc: Option<TruncateCfg>, assoc_mode: AssocMo
             out.push_str("<|\n");
             for (i, k) in keys[..take].iter().enumerate() {
                 let kq = format!("\"{}\"", k).cyan();
-                let pad = if keyw > key_strs[i].len() { keyw - key_strs[i].len() } else { 0 };
+                let _pad = if keyw > key_strs[i].len() { keyw - key_strs[i].len() } else { 0 };
                 let val = format_value_color(m.get(*k).unwrap(), trunc, assoc_mode);
                 out.push_str(&format!("  {:<width$} -> {}", kq, val, width = keyw));
                 if i + 1 < take {

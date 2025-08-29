@@ -13,7 +13,11 @@ type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("Keys", keys as NativeFn, Attributes::empty());
     ev.register("Values", values as NativeFn, Attributes::empty());
-    ev.register("Lookup", lookup as NativeFn, Attributes::empty());
+    // Canonical mapping helpers
+    ev.register("MapValues", association_map as NativeFn, Attributes::empty());
+    ev.register("MapKeys", association_map_keys as NativeFn, Attributes::empty());
+    ev.register("MapKeyValues", association_map_kv as NativeFn, Attributes::empty());
+    ev.register("MapPairs", association_map_pairs as NativeFn, Attributes::empty());
     ev.register("AssociationMap", association_map as NativeFn, Attributes::empty());
     ev.register("AssociationMapKeys", association_map_keys as NativeFn, Attributes::empty());
     ev.register("AssociationMapKV", association_map_kv as NativeFn, Attributes::empty());
@@ -21,22 +25,26 @@ pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("Merge", merge as NativeFn, Attributes::empty());
     ev.register("KeySort", key_sort as NativeFn, Attributes::empty());
     ev.register("SortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
+    // Internal alias to allow a public SortBy dispatcher to take over
+    ev.register("__AssocSortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
-    // Immutable assoc utilities
-    ev.register("AssocGet", assoc_get as NativeFn, Attributes::empty());
-    ev.register("AssocContainsKeyQ", assoc_contains_key_q as NativeFn, Attributes::empty());
-    ev.register("AssocSet", assoc_set as NativeFn, Attributes::empty());
-    ev.register("AssocDelete", assoc_delete as NativeFn, Attributes::empty());
-    ev.register("AssocSelect", assoc_select as NativeFn, Attributes::empty());
-    ev.register("AssocDrop", assoc_drop as NativeFn, Attributes::empty());
-    ev.register("AssocInvert", assoc_invert as NativeFn, Attributes::empty());
-    ev.register("AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    // Immutable assoc utilities (internal names only)
+    ev.register("__AssocSet", assoc_set as NativeFn, Attributes::empty());
+    ev.register("__AssocDelete", assoc_delete as NativeFn, Attributes::empty());
+    ev.register("__AssocSelect", assoc_select as NativeFn, Attributes::empty());
+    ev.register("__AssocDrop", assoc_drop as NativeFn, Attributes::empty());
+    ev.register("__AssocInvert", assoc_invert as NativeFn, Attributes::empty());
+    ev.register("__AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    // Canonical verbs for associations
+    ev.register("Write", assoc_set as NativeFn, Attributes::empty());
+    ev.register("Delete", assoc_delete as NativeFn, Attributes::empty());
+    ev.register("RenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    ev.register("Invert", assoc_invert as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
     add_specs(vec![
         tool_spec!("Keys", summary: "List keys of an association", params: ["assoc"], tags: ["assoc"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
         tool_spec!("Values", summary: "List values of an association", params: ["assoc"], tags: ["assoc"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("array")))]))),
-        tool_spec!("Lookup", summary: "Lookup value from association", params: ["assoc","key","default"], tags: ["assoc"]),
         tool_spec!("Merge", summary: "Merge associations with optional combiner", params: ["args"], tags: ["assoc"], examples: [
             Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([(
@@ -61,7 +69,11 @@ pub fn register_assoc(ev: &mut Evaluator) {
 pub fn register_assoc_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Keys", keys as NativeFn, Attributes::empty());
     register_if(ev, pred, "Values", values as NativeFn, Attributes::empty());
-    register_if(ev, pred, "Lookup", lookup as NativeFn, Attributes::empty());
+    // Legacy Lookup removed (use Get via dispatcher)
+    register_if(ev, pred, "MapValues", association_map as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MapKeys", association_map_keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MapKeyValues", association_map_kv as NativeFn, Attributes::empty());
+    register_if(ev, pred, "MapPairs", association_map_pairs as NativeFn, Attributes::empty());
     register_if(ev, pred, "AssociationMap", association_map as NativeFn, Attributes::empty());
     register_if(
         ev,
@@ -82,20 +94,16 @@ pub fn register_assoc_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) 
     register_if(ev, pred, "KeySort", key_sort as NativeFn, Attributes::empty());
     register_if(ev, pred, "SortBy", sort_by as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "GroupBy", group_by as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocGet", assoc_get as NativeFn, Attributes::empty());
-    register_if(
-        ev,
-        pred,
-        "AssocContainsKeyQ",
-        assoc_contains_key_q as NativeFn,
-        Attributes::empty(),
-    );
-    register_if(ev, pred, "AssocSet", assoc_set as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocDelete", assoc_delete as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocSelect", assoc_select as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocDrop", assoc_drop as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocInvert", assoc_invert as NativeFn, Attributes::empty());
-    register_if(ev, pred, "AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocSet", assoc_set as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocDelete", assoc_delete as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocSelect", assoc_select as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocDrop", assoc_drop as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocInvert", assoc_invert as NativeFn, Attributes::empty());
+    register_if(ev, pred, "__AssocRenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Write", assoc_set as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Delete", assoc_delete as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RenameKeys", assoc_rename_keys as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Invert", assoc_invert as NativeFn, Attributes::empty());
 }
 
 fn keys(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -118,19 +126,7 @@ fn values(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn lookup(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    match args.as_slice() {
-        [assoc, Value::String(k)] => match ev.eval(assoc.clone()) {
-            Value::Assoc(m) => m.get(k).cloned().unwrap_or(Value::Symbol("Null".into())),
-            other => other,
-        },
-        [assoc, Value::String(k), default] => match ev.eval(assoc.clone()) {
-            Value::Assoc(m) => m.get(k).cloned().unwrap_or(ev.eval(default.clone())),
-            other => other,
-        },
-        _ => Value::Expr { head: Box::new(Value::Symbol("Lookup".into())), args },
-    }
-}
+// Legacy Lookup removed (use Get via dispatcher)
 
 fn association_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
@@ -371,14 +367,12 @@ fn assoc_get(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 .unwrap_or(ev.eval(default.clone())),
             other => other,
         },
-        _ => Value::Expr { head: Box::new(Value::Symbol("AssocGet".into())), args },
+        _ => Value::Expr { head: Box::new(Value::Symbol("Get".into())), args },
     }
 }
 
 fn assoc_contains_key_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("AssocContainsKeyQ".into())), args };
-    }
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("ContainsKeyQ".into())), args }; }
     match ev.eval(args[0].clone()) {
         Value::Assoc(m) => {
             let k = match &args[1] {
@@ -392,9 +386,7 @@ fn assoc_contains_key_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 fn assoc_set(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 3 {
-        return Value::Expr { head: Box::new(Value::Symbol("AssocSet".into())), args };
-    }
+    if args.len() != 3 { return Value::Expr { head: Box::new(Value::Symbol("__AssocSet".into())), args }; }
     match ev.eval(args[0].clone()) {
         Value::Assoc(mut m) => {
             let k = match &args[1] {

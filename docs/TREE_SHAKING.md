@@ -65,7 +65,7 @@ Core Keep Set
 Symbol→Feature & Effects Registry (compiler side)
 - Examples (illustrative, maintained centrally in registry.rs):
   - "StringLength" → features: ["string"], effects: []
-  - "StringSplit" → ["string"], []
+  - "Split" → ["string"], []
   - "HttpGet" → ["net_https"], ["net"]
   - "SqliteQuery" → ["db_sqlite"], ["fs","db"]
   - "ImageRead" → ["image"], ["fs"]
@@ -104,7 +104,7 @@ pub fn register_minimal(ev: &mut lyra_runtime::Evaluator) {
     let mut keep: HashSet<&'static str> = HashSet::new();
     // filled by analyzer
     keep.extend([
-        "StringLength", "StringSplit", // …
+        "StringLength", "Split", // …
     ]);
     lyra_stdlib::register_selected(ev, &keep);
 }
@@ -132,7 +132,7 @@ Capabilities Manifest (JSON)
 ```
 {
   "capabilities": ["net", "fs"],
-  "symbols": ["HttpGet", "StringSplit"],
+  "symbols": ["HttpGet", "Split"],
   "features": ["net_https", "string"]
 }
 ```

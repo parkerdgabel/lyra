@@ -143,7 +143,7 @@ fn run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut input: Option<Vec<u8>> = None;
     if let Some(Value::Assoc(m)) = opts.as_ref() {
-        if let Some(Value::String(dir)) | Some(Value::Symbol(dir)) = m.get("Cwd") {
+        if let Some(Value::String(dir)) | Some(Value::Symbol(dir)) = m.get("Cwd").or_else(|| m.get("cwd")) {
             c.current_dir(dir);
         }
         if let Some(Value::Assoc(env)) = m.get("Env") {
@@ -164,7 +164,7 @@ fn run(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     let timeout_ms = match opts.as_ref().and_then(|v| {
         if let Value::Assoc(m) = v {
-            m.get("TimeoutMs")
+            m.get("TimeoutMs").or_else(|| m.get("timeoutMs"))
         } else {
             None
         }
@@ -291,7 +291,7 @@ fn popen(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     c.args(&argv);
     c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(Value::Assoc(m)) = opts.as_ref() {
-        if let Some(Value::String(dir)) | Some(Value::Symbol(dir)) = m.get("Cwd") {
+        if let Some(Value::String(dir)) | Some(Value::Symbol(dir)) = m.get("Cwd").or_else(|| m.get("cwd")) {
             c.current_dir(dir);
         }
         if let Some(Value::Assoc(env)) = m.get("Env") {
@@ -385,7 +385,7 @@ fn read_process(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         .get(1)
         .and_then(|v| {
             if let Value::Assoc(m) = ev.eval(v.clone()) {
-                m.get("Stream").and_then(|x| {
+                m.get("Stream").or_else(|| m.get("stream")).and_then(|x| {
                     if let Value::String(s) | Value::Symbol(s) = x {
                         Some(s.clone())
                     } else {

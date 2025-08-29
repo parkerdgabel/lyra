@@ -2197,7 +2197,7 @@ pub fn register_graphs(ev: &mut Evaluator) {
     #[cfg(feature = "tools")]
     {
         use lyra_core::value::Value;
-        use std::collections::HashMap;
+        // removed unused import
         add_specs(vec![
             tool_spec!(
                 "Graph",

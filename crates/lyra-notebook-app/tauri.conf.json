@@ -1,34 +1,22 @@
 {
-  "$schema": "https://schema.tauri.app/config/1",
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lyra Notebook",
+  "version": "0.1.0",
+  "identifier": "com.lyra.notebook",
   "build": {
-    "beforeBuildCommand": "",
-    "beforeDevCommand": "",
-    "distDir": "ui",
-    "devPath": "ui",
-    "withGlobalTauri": true
+    "beforeBuildCommand": "npm --prefix solid ci --silent || npm --prefix solid install --silent && npm --prefix solid run build",
+    "beforeDevCommand": "npm --prefix solid ci --silent || npm --prefix solid install --silent && npm --prefix solid run dev",
+    "frontendDist": "ui-solid-dist",
+    "devUrl": "http://localhost:5173"
   },
-  "package": {
-    "productName": "Lyra Notebook",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": true
-    },
-    "bundle": {
-      "active": false,
-      "identifier": "com.lyra.notebook",
-      "targets": ["app"],
-      "icon": []
-    },
+  "app": {
     "windows": [
       {
         "title": "Lyra Notebook",
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false,
-        "url": "index.html"
+        "fullscreen": false
       }
     ]
   }

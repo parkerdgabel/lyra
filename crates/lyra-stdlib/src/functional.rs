@@ -439,7 +439,11 @@ fn catch_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }),
         _ => None,
     };
-    let handlers = ev.eval(args[1].clone());
+    // Use handlers as given if already a list or assoc; otherwise, evaluate to resolve a symbol/expr.
+    let handlers = match &args[1] {
+        Value::Assoc(_) | Value::List(_) => args[1].clone(),
+        _ => ev.eval(args[1].clone()),
+    };
     // Assoc form: <| tag -> handlerOrValue, _ -> default |> (existing)
     let (mut handler_opt, mut default_opt) = match &handlers {
         Value::Assoc(m) => {

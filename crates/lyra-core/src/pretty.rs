@@ -14,8 +14,9 @@ pub fn format_value(v: &Value) -> String {
         Value::Rational { num, den } => format!("{}/{}", num, den),
         Value::Complex { re, im } => format!("Complex[{}, {}]", format_value(re), format_value(im)),
         Value::PackedArray { shape, .. } => {
+            // Pretty-print numeric packed arrays as Tensor[shape]
             let dims: Vec<String> = shape.iter().map(|d| d.to_string()).collect();
-            format!("PackedArray[{{{}}}]", dims.join(", "))
+            format!("Tensor[{{{}}}]", dims.join(", "))
         }
         Value::String(s) => format!("\"{}\"", s),
         Value::Symbol(s) => s.clone(),

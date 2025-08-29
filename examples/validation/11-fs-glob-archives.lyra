@@ -5,8 +5,8 @@
 
 tmp := "target/tmp/fs";
 _ := Remove[tmp, <|"Recursive"->True|>];
-MakeDirectory[tmp, <|"Parents"->True|>];
-MakeDirectory[PathJoin[{tmp, "sub"}], <|"Parents"->True|>];
+MakeDirectory[tmp, <|"parents"->True|>];
+MakeDirectory[PathJoin[{tmp, "sub"}], <|"parents"->True|>];
 "A" >> PathJoin[{tmp, "a.txt"}];
 "B" >> PathJoin[{tmp, "sub", "b.log"}];
 

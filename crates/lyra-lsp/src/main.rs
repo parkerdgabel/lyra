@@ -440,10 +440,131 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
         let mut sel = extract_word_in_range(&text, range);
+        let (word_at_cursor, word_range) = word_at(&text, range.start);
         if sel.is_none() {
-            sel = Some(word_at(&text, range.start).0);
+            sel = Some(word_at_cursor.clone());
         }
         let mut actions: Vec<CodeActionOrCommand> = Vec::new();
+        // Quick fixes for canonical naming / option casing
+        let deprecated_map: std::collections::HashMap<&str, &str> = std::collections::HashMap::from([
+            ("AssocGet", "Get"),
+            ("Lookup", "Get"),
+            ("AssocContainsKeyQ", "ContainsKeyQ"),
+            ("StringLength", "Length"),
+            ("StringSplit", "Split"),
+            ("SetUnion", "Union"),
+            ("SetIntersection", "Intersection"),
+            ("SetDifference", "Difference"),
+            ("ListUnion", "Union"),
+            ("ListIntersection", "Intersection"),
+            ("ListDifference", "Difference"),
+            ("HttpServer", "HttpServe"),
+        ]);
+        let option_map: std::collections::HashMap<&str, &str> = std::collections::HashMap::from([
+            ("TimeoutMs", "timeoutMs"), ("MaxThreads", "maxThreads"), ("TimeBudgetMs", "timeBudgetMs"),
+            ("Port", "port"), ("Host", "host"), ("ReadTimeoutMs", "readTimeoutMs"), ("WriteTimeoutMs", "writeTimeoutMs"),
+            ("Headers", "headers"), ("FollowRedirects", "followRedirects"), ("DisableTlsVerify", "disableTlsVerify"),
+            ("MaxBodyBytes", "maxBodyBytes"), ("Query", "query"), ("Form", "form"), ("Json", "json"),
+            ("Multipart", "multipart"), ("As", "as"), ("Cookies", "cookies"),
+        ]);
+        if let Some(name) = sel.clone().filter(|s| !s.is_empty()) {
+            if let Some(&new_name) = deprecated_map.get(name.as_str()) {
+                let edit = lsp::WorkspaceEdit {
+                    changes: Some(
+                        std::iter::once((uri.clone(), vec![TextEdit { range: word_range, new_text: new_name.to_string() }]))
+                            .collect(),
+                    ),
+                    document_changes: None,
+                    ..Default::default()
+                };
+                actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                    title: format!("Replace {} with {}", name, new_name),
+                    kind: Some(CodeActionKind::QUICKFIX),
+                    diagnostics: None,
+                    edit: Some(edit),
+                    command: None,
+                    is_preferred: Some(true),
+                    disabled: None,
+                    data: None,
+                }));
+            }
+            if let Some(&new_key) = option_map.get(name.as_str()) {
+                let edit = lsp::WorkspaceEdit {
+                    changes: Some(
+                        std::iter::once((uri.clone(), vec![TextEdit { range: word_range, new_text: new_key.to_string() }]))
+                            .collect(),
+                    ),
+                    document_changes: None,
+                    ..Default::default()
+                };
+                actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                    title: format!("Replace option {} with {}", name, new_key),
+                    kind: Some(CodeActionKind::QUICKFIX),
+                    diagnostics: None,
+                    edit: Some(edit),
+                    command: None,
+                    is_preferred: Some(false),
+                    disabled: None,
+                    data: None,
+                }));
+            }
+            // Fix all: deprecated names
+            if deprecated_map.values().next().is_some() {
+                let mut edits: Vec<TextEdit> = Vec::new();
+                for (old, newn) in deprecated_map.iter() {
+                    let re = Regex::new(&format!(r"\b{}\b", regex::escape(old))).unwrap();
+                    for (li, line) in text.lines().enumerate() {
+                        for m in re.find_iter(line) {
+                            edits.push(TextEdit {
+                                range: Range { start: Position::new(li as u32, m.start() as u32), end: Position::new(li as u32, m.end() as u32) },
+                                new_text: newn.to_string(),
+                            });
+                        }
+                    }
+                }
+                if !edits.is_empty() {
+                    let edit = lsp::WorkspaceEdit { changes: Some(std::iter::once((uri.clone(), edits)).collect()), document_changes: None, ..Default::default() };
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: String::from("Fix deprecated names (file)"),
+                        kind: Some(CodeActionKind::SOURCE_FIX_ALL),
+                        diagnostics: None,
+                        edit: Some(edit),
+                        command: None,
+                        is_preferred: Some(false),
+                        disabled: None,
+                        data: None,
+                    }));
+                }
+            }
+            // Fix all: option casing
+            if option_map.values().next().is_some() {
+                let mut edits: Vec<TextEdit> = Vec::new();
+                for (old, newk) in option_map.iter() {
+                    let re = Regex::new(&format!(r"\b{}\b", regex::escape(old))).unwrap();
+                    for (li, line) in text.lines().enumerate() {
+                        for m in re.find_iter(line) {
+                            edits.push(TextEdit {
+                                range: Range { start: Position::new(li as u32, m.start() as u32), end: Position::new(li as u32, m.end() as u32) },
+                                new_text: newk.to_string(),
+                            });
+                        }
+                    }
+                }
+                if !edits.is_empty() {
+                    let edit = lsp::WorkspaceEdit { changes: Some(std::iter::once((uri.clone(), edits)).collect()), document_changes: None, ..Default::default() };
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: String::from("Fix option casing (file)"),
+                        kind: Some(CodeActionKind::SOURCE_FIX_ALL),
+                        diagnostics: None,
+                        edit: Some(edit),
+                        command: None,
+                        is_preferred: Some(false),
+                        disabled: None,
+                        data: None,
+                    }));
+                }
+            }
+        }
         if let Some(root) = uri.to_file_path().ok().and_then(|p| discover_project_root(&p)) {
             let key = root.to_string_lossy().to_string();
             if let Some(name) = sel.clone().filter(|s| !s.is_empty()) {

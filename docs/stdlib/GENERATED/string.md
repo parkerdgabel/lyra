@@ -2,6 +2,7 @@
 
 | Function | Usage | Summary |
 |---|---|---|
+| `CaseFold` | `CaseFold[s]` | Unicode case-fold |
 | `EndsWith` | `EndsWith[s, suffix]` | True if string ends with suffix |
 | `HtmlAttr` | `HtmlAttr[s]` | Escape string for HTML attribute context |
 | `HtmlEscape` | `HtmlEscape[s]` | Escape string for HTML |
@@ -11,13 +12,19 @@
 | `HtmlUnescape` | `HtmlUnescape[s]` | Unescape HTML-escaped string |
 | `JsonEscape` | `JsonEscape[s]` | Escape string for JSON |
 | `JsonUnescape` | `JsonUnescape[s]` | Unescape JSON-escaped string |
+| `NormalizeUnicode` | `NormalizeUnicode[s, form?]` | Normalize to NFC/NFD/NFKC/NFKD |
+| `RegexCaptureNames` | `RegexCaptureNames[pattern]` | Ordered list of named capture groups. |
 | `RegexFind` | `RegexFind[s, pattern]` | Find first regex capture groups |
 | `RegexFindAll` | `RegexFindAll[s, pattern]` | Find all regex capture groups |
+| `RegexGroups` | `RegexGroups[pattern, s]` | Capture groups of first match. |
 | `RegexMatch` | `RegexMatch[s, pattern]` | Return first regex match |
 | `RegexMatchQ` | `RegexMatchQ[pattern, s]` | Alias: regex predicate (Boolean) |
 | `RegexReplace` | `RegexReplace[s, pattern, repl]` | Replace matches using regex |
+| `RegexSplit` | `RegexSplit[pattern, s]` | Split string by regex pattern. |
+| `RemoveDiacritics` | `RemoveDiacritics[s]` | Strip diacritics (stub) |
 | `SafeHtml` | `SafeHtml[s]` | Mark string as safe HTML (no escaping) |
 | `Slugify` | `Slugify[s]` | Slugify for URLs |
+| `Split` | `Split[s, sep]` | Split string by separator |
 | `StartsWith` | `StartsWith[s, prefix]` | True if string starts with prefix |
 | `StringChars` | `StringChars[s]` | Split string into list of characters |
 | `StringContains` | `StringContains[s, substr]` | Does string contain substring? |
@@ -28,7 +35,6 @@
 | `StringInterpolateWith` | `StringInterpolateWith[fmt, resolver]` | Interpolate with custom resolver |
 | `StringJoin` | `StringJoin[parts]` | Concatenate list of parts. |
 | `StringJoinWith` | `StringJoinWith[parts, sep]` | Join strings with a separator |
-| `StringLength` | `StringLength[s]` | Length of string (Unicode scalar count). |
 | `StringPadLeft` | `StringPadLeft[s, width, pad?]` | Pad left to width with char |
 | `StringPadRight` | `StringPadRight[s, width, pad?]` | Pad right to width with char |
 | `StringQ` | `StringQ[x]` | Is value a string? |
@@ -37,7 +43,6 @@
 | `StringReplaceFirst` | `StringReplaceFirst[s, from, to]` | Replace first substring match |
 | `StringReverse` | `StringReverse[s]` | Reverse characters in a string |
 | `StringSlice` | `StringSlice[s, start, len?]` | Slice by start and optional length |
-| `StringSplit` | `StringSplit[s, sep]` | Split string by separator |
 | `StringTrim` | `StringTrim[s]` | Trim whitespace from both ends |
 | `StringTrimChars` | `StringTrimChars[s, chars]` | Trim characters from ends |
 | `StringTrimLeft` | `StringTrimLeft[s]` | Trim from left |
@@ -66,6 +71,7 @@
 | `ToolsUnregister` | `ToolsUnregister[id|name]` | Unregister a tool by id or name. |
 | `Top` | `Top[list, k, opts?]` | Take top-k items (optionally by key). |
 | `TopologicalSort` | `TopologicalSort[graph]` | Topologically sort DAG nodes |
+| `Transliterate` | `Transliterate[s]` | Transliterate to ASCII (stub) |
 | `UrlDecode` | `UrlDecode[s]` | Decode percent-encoded string |
 | `UrlEncode` | `UrlEncode[s]` | Percent-encode string for URLs |
 
@@ -106,6 +112,14 @@
 - Examples:
   - `t := HtmlTemplateCompile["<i>{{msg}}</i>"]; HtmlTemplateRender[t, <|msg->"hi"|>]  ==> "<i>hi</i>"`
 
+## `RegexCaptureNames`
+
+- Usage: `RegexCaptureNames[pattern]`
+- Summary: Ordered list of named capture groups.
+- Tags: string, regex
+- Examples:
+  - `RegexCaptureNames["(?P<x>a)(?P<y>b)"]  ==> {"x","y"}`
+
 ## `RegexFindAll`
 
 - Usage: `RegexFindAll[s, pattern]`
@@ -113,6 +127,23 @@
 - Tags: string, regex
 - Examples:
   - `RegexFindAll[\"a1 b22\", \"\\d+\"]  ==> {\"1\",\"22\"}`
+
+## `RegexGroups`
+
+- Usage: `RegexGroups[pattern, s]`
+- Summary: Capture groups of first match.
+- Tags: string, regex
+- Examples:
+  - `RegexGroups["(a)(b)", "ab"]  ==> {"a","b"}`
+
+## `RegexSplit`
+
+- Usage: `RegexSplit[pattern, s]`
+- Summary: Split string by regex pattern.
+- Tags: string, regex
+- Examples:
+  - `RegexSplit[",", "a,b,c"]  ==> {"a","b","c"}`
+  - `Split["a|b|c", "|"]  ==> {"a","b","c"}`
 
 ## `SafeHtml`
 
@@ -129,6 +160,14 @@
 - Tags: string, url
 - Examples:
   - `Slugify["Hello, World!"]  ==> "hello-world"`
+
+## `Split`
+
+- Usage: `Split[s, sep]`
+- Summary: Split string by separator
+- Tags: string, text
+- Examples:
+  - `Split["a,b,c", ","]  ==> {"a","b","c"}`
 
 ## `StartsWith`
 
@@ -175,14 +214,6 @@
 - Examples:
   - `StringJoinWith[{"a","b"}, "-"]  ==> "a-b"`
 
-## `StringLength`
-
-- Usage: `StringLength[s]`
-- Summary: Length of string (Unicode scalar count).
-- Tags: string, text
-- Examples:
-  - `StringLength["hello"]  ==> 5`
-
 ## `StringPadLeft`
 
 - Usage: `StringPadLeft[s, width, pad?]`
@@ -190,28 +221,12 @@
 - Examples:
   - `StringPadLeft["7", 3, "0"]  ==> "007"`
 
-## `StringReplace`
-
-- Usage: `StringReplace[s, from, to]`
-- Summary: Replace all substring matches
-- Tags: string, replace
-- Examples:
-  - `StringReplace["foo bar", "o", "0"]  ==> "f00 bar"`
-
 ## `StringReverse`
 
 - Usage: `StringReverse[s]`
 - Summary: Reverse characters in a string
 - Examples:
   - `StringReverse["abc"]  ==> "cba"`
-
-## `StringSplit`
-
-- Usage: `StringSplit[s, sep]`
-- Summary: Split string by separator
-- Tags: string, text
-- Examples:
-  - `StringSplit["a,b,c", ","]  ==> {"a","b","c"}`
 
 ## `StringTrim`
 

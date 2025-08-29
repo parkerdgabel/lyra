@@ -249,7 +249,7 @@ fn pull_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn build_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn build_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("BuildImage".into())), args };
     }
@@ -394,7 +394,7 @@ fn tag_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn push_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn push_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("PushImage".into())), args };
     }
@@ -418,7 +418,7 @@ fn push_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn save_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn save_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("SaveImage".into())), args };
     }
@@ -442,7 +442,7 @@ fn save_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::String(String::from(""))
 }
 
-fn load_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn load_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("LoadImage".into())), args };
     }
@@ -465,7 +465,7 @@ fn load_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn list_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn list_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("ListImages".into())), args };
     }
@@ -488,7 +488,7 @@ fn list_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn inspect_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn inspect_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("InspectImage".into())), args };
     }
@@ -511,7 +511,7 @@ fn inspect_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn remove_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn remove_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("RemoveImage".into())), args };
     }
@@ -539,7 +539,7 @@ fn remove_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(true)
 }
 
-fn prune_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn prune_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 1 {
         return Value::Expr { head: Box::new(Value::Symbol("PruneImages".into())), args };
     }
@@ -563,7 +563,7 @@ fn prune_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn search_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn search_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("SearchImages".into())), args };
     }
@@ -594,7 +594,7 @@ fn search_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn image_history(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn image_history(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("ImageHistory".into())), args };
     }
@@ -620,7 +620,7 @@ fn image_history(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn inspect_registry_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn inspect_registry_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("InspectRegistryImage".into())), args };
     }
@@ -652,7 +652,7 @@ fn inspect_registry_image(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Assoc(HashMap::new())
 }
 
-fn export_images(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn export_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("ExportImages".into())), args };
     }
@@ -744,16 +744,11 @@ fn stop_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("StopContainer".into())), args };
     }
-    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
+    if let Some((rt_id, cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
-            let is_docker = {
-                let reg = rt_reg().lock().unwrap();
-                reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false)
-            };
-            if is_docker {
-                return containers_docker::docker_stop_container(&get_rt_dsn(rt_id), cid);
-            }
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { return containers_docker::docker_stop_container(&get_rt_dsn(rt_id), cid); }
         }
         return Value::Boolean(true);
     }
@@ -769,16 +764,11 @@ fn remove_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 2 {
         return Value::Expr { head: Box::new(Value::Symbol("RemoveContainer".into())), args };
     }
-    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
+    if let Some((rt_id, cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
-            let is_docker = {
-                let reg = rt_reg().lock().unwrap();
-                reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false)
-            };
-            if is_docker {
-                return containers_docker::docker_remove_container(&get_rt_dsn(rt_id), cid);
-            }
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { return containers_docker::docker_remove_container(&get_rt_dsn(rt_id), cid); }
         }
         return Value::Boolean(true);
     }
@@ -849,16 +839,11 @@ fn inspect_container(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 2 {
         return Value::Expr { head: Box::new(Value::Symbol("InspectContainer".into())), args };
     }
-    if let Some((_rt_id, _cid)) = get_container(&args[1]) {
+    if let Some((rt_id, cid)) = get_container(&args[1]) {
         #[cfg(feature = "containers_docker")]
         {
-            let is_docker = {
-                let reg = rt_reg().lock().unwrap();
-                reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false)
-            };
-            if is_docker {
-                return containers_docker::docker_inspect_container(&get_rt_dsn(rt_id), cid);
-            }
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { return containers_docker::docker_inspect_container(&get_rt_dsn(rt_id), cid); }
         }
     }
     Value::Assoc(HashMap::new())
@@ -874,16 +859,11 @@ fn list_containers(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() < 1 {
         return Value::Expr { head: Box::new(Value::Symbol("ListContainers".into())), args };
     }
-    if let Some(_rt_id) = get_runtime(&args[0]) {
+    if let Some(rt_id) = get_runtime(&args[0]) {
         #[cfg(feature = "containers_docker")]
         {
-            let is_docker = {
-                let reg = rt_reg().lock().unwrap();
-                reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false)
-            };
-            if is_docker {
-                return containers_docker::docker_list_containers(&get_rt_dsn(rt_id));
-            }
+            let is_docker = { let reg = rt_reg().lock().unwrap(); reg.get(&rt_id).map(|s| matches!(s.kind, RuntimeKind::Docker)).unwrap_or(false) };
+            if is_docker { return containers_docker::docker_list_containers(&get_rt_dsn(rt_id)); }
         }
     }
     Value::Expr {

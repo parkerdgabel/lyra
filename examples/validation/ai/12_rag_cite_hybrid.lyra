@@ -3,7 +3,7 @@
   Run: lyra-runner --file examples/validation/ai/12_rag_cite_hybrid.lyra
 *)
 
-VectorStore[<|"Name"->"mem", "Dims"->8|>];
+VectorStore[<|"name"->"mem", "dims"->8|>];
 docs := {
   <|"id"->"a1", "text"->"Apples are tasty."|>,
   <|"id"->"b2", "text"->"Bananas are yellow."|>,
@@ -11,5 +11,5 @@ docs := {
 };
 RAGIndex["mem", docs, <||>];
 
-matches := HybridSearch["mem", "red", <|"K"->2|>];
-Cite[matches, <|"Style"->"markdown"|>];
+matches := HybridSearch["mem", "red", <|"k"->2|>];
+Cite[matches, <|"style"->"markdown"|>];

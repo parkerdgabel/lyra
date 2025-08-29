@@ -16,11 +16,18 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Range", range as NativeFn, Attributes::empty());
     ev.register("Join", join as NativeFn, Attributes::empty());
     ev.register("Reverse", reverse as NativeFn, Attributes::empty());
+    ev.register("First", first_fn as NativeFn, Attributes::empty());
+    ev.register("Last", last_fn as NativeFn, Attributes::empty());
+    ev.register("Rest", rest_fn as NativeFn, Attributes::empty());
+    ev.register("Init", init_fn as NativeFn, Attributes::empty());
     ev.register("Total", total as NativeFn, Attributes::empty());
     ev.register("Flatten", flatten as NativeFn, Attributes::empty());
     ev.register("Partition", partition as NativeFn, Attributes::empty());
     ev.register("Transpose", transpose as NativeFn, Attributes::empty());
+    // Internal alias for dispatcher
+    ev.register("__ListTranspose", transpose as NativeFn, Attributes::empty());
     ev.register("Map", map_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("MapThread", map_thread_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Filter", filter as NativeFn, Attributes::HOLD_ALL);
     ev.register("Reject", reject as NativeFn, Attributes::HOLD_ALL);
     ev.register("Any", any_fn as NativeFn, Attributes::HOLD_ALL);
@@ -29,25 +36,56 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Position", position_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Take", take_fn as NativeFn, Attributes::empty());
     ev.register("Drop", drop_fn as NativeFn, Attributes::empty());
+    ev.register("Tail", tail_fn as NativeFn, Attributes::empty());
     ev.register("TakeWhile", take_while_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("DropWhile", drop_while_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Zip", zip_fn as NativeFn, Attributes::empty());
     ev.register("Unzip", unzip_fn as NativeFn, Attributes::empty());
     ev.register("Sort", sort_fn as NativeFn, Attributes::empty());
+    // Internal alias for cross-module dispatchers
+    ev.register("__ListSort", sort_fn as NativeFn, Attributes::empty());
+    // List SortBy and friends (dispatched via public SortBy in dispatch)
+    ev.register("__ListSortBy", sort_by_list_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("MaxBy", max_by_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("MinBy", min_by_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ArgMax", argmax_fn as NativeFn, Attributes::HOLD_ALL);
+    // Internal alias for dispatcher
+    ev.register("__ListArgMax", argmax_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("ArgMin", argmin_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("UniqueBy", unique_by_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Unique", unique_fn as NativeFn, Attributes::empty());
+    // Internal alias to treat Distinct on lists as Unique
+    ev.register("__ListDistinct", unique_fn as NativeFn, Attributes::empty());
+    // Internal aliases for shared names dispatch
+    ev.register("__ListJoin", join as NativeFn, Attributes::empty());
+    ev.register("__ListFilter", filter as NativeFn, Attributes::HOLD_ALL);
     ev.register("Tally", tally_fn as NativeFn, Attributes::empty());
     ev.register("CountBy", count_by_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Reduce", reduce_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Scan", scan_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("MapIndexed", map_indexed_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Slice", slice_list_fn as NativeFn, Attributes::empty());
-    ev.register("PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
-    ev.register("PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
-    ev.register("PackedShape", packed_shape as NativeFn, Attributes::empty());
+    // Internal: conversion helpers for tensor backend
+    ev.register("__PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
+    ev.register("__PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
+    ev.register("__PackedShape", packed_shape as NativeFn, Attributes::empty());
     ev.register("Part", part as NativeFn, Attributes::empty());
+    // Replace/Map at position or key
+    ev.register("ReplacePart", replace_part_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("MapAt", map_at_fn as NativeFn, Attributes::HOLD_ALL);
+    // StableKey: expose canonical comparison key
+    ev.register("StableKey", stable_key_fn as NativeFn, Attributes::empty());
+    // Random list helpers
+    ev.register("RandomChoice", random_choice_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Shuffle", shuffle_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Sample", sample_fn as NativeFn, Attributes::HOLD_ALL);
 
     #[cfg(feature = "tools")]
     add_specs(vec![
+        tool_spec!("First", summary: "First element of a list", params: ["list"], tags: ["list"], examples: [Value::String("First[{1,2,3}]  ==> 1".into())]),
+        tool_spec!("Last", summary: "Last element of a list", params: ["list"], tags: ["list"], examples: [Value::String("Last[{1,2,3}]  ==> 3".into())]),
+        tool_spec!("Rest", summary: "All but first element", params: ["list"], tags: ["list"], examples: [Value::String("Rest[{1,2,3}]  ==> {2,3}".into())]),
+        tool_spec!("Init", summary: "All but last element", params: ["list"], tags: ["list"], examples: [Value::String("Init[{1,2,3}]  ==> {1,2}".into())]),
         tool_spec!("Length", summary: "Length of list or string", params: ["x"], tags: ["list","string"], output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))])), examples: [
             Value::Assoc(HashMap::from([
                 ("args".to_string(), Value::Assoc(HashMap::from([("x".to_string(), Value::List(vec![Value::Integer(1), Value::Integer(2)]))]))),
@@ -76,11 +114,12 @@ pub fn register_list(ev: &mut Evaluator) {
             ("required".to_string(), Value::List(vec![Value::String("list".into())])),
         ])), output_schema: Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("number")))]))),
         tool_spec!("Part", summary: "Index into list/assoc", params: ["subject","index"], tags: ["list","assoc"]),
-        tool_spec!("Range", summary: "Create a numeric range", params: ["a","b"], tags: ["list","math"], input_schema: Value::Assoc(HashMap::from([
+        tool_spec!("Range", summary: "Create a numeric range", params: ["a","b","step?"], tags: ["list","math"], input_schema: Value::Assoc(HashMap::from([
             ("type".to_string(), Value::String("object".into())),
             ("properties".to_string(), Value::Assoc(HashMap::from([
                 ("a".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
                 ("b".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
+                ("step".to_string(), Value::Assoc(HashMap::from([(String::from("type"), Value::String(String::from("integer")))]))),
             ]))),
         ]))),
         tool_spec!("Flatten", summary: "Flatten list by a level", params: ["list","levels"], tags: ["list"], input_schema: Value::Assoc(HashMap::from([
@@ -117,6 +156,18 @@ pub fn register_list(ev: &mut Evaluator) {
         tool_spec!("Zip", summary: "Zip two lists into pairs", params: ["a","b"], tags: ["list","zip"]),
         tool_spec!("Unzip", summary: "Unzip list of pairs into two lists", params: ["pairs"], tags: ["list","zip"]),
         tool_spec!("Sort", summary: "Sort a list by value", params: ["list"], tags: ["list","sort"]),
+        tool_spec!("MaxBy", summary: "Element with maximal derived key", params: ["f","list"], tags: ["list","sort"], examples: [Value::String("MaxBy[StringLength, {\"a\",\"bbb\",\"cc\"}]  ==> \"bbb\"".into())]),
+        tool_spec!("MinBy", summary: "Element with minimal derived key", params: ["f","list"], tags: ["list","sort"], examples: [Value::String("MinBy[StringLength, {\"a\",\"bbb\",\"cc\"}]  ==> \"a\"".into())]),
+        tool_spec!("ArgMax", summary: "1-based index of maximal key", params: ["f","list"], tags: ["list","sort"], examples: [Value::String("ArgMax[Identity, {2,10,5}]  ==> 2".into())]),
+        tool_spec!("ArgMin", summary: "1-based index of minimal key", params: ["f","list"], tags: ["list","sort"], examples: [Value::String("ArgMin[Identity, {2,10,5}]  ==> 1".into())]),
+        tool_spec!("UniqueBy", summary: "Stable dedupe by derived key", params: ["f","list"], tags: ["list","set"], examples: [Value::String("UniqueBy[StringLength, {\"a\",\"bb\",\"c\",\"dd\"}]  ==> {\"a\",\"bb\"}".into())]),
+        tool_spec!("MapThread", summary: "Map function over zipped lists", params: ["f","lists"], tags: ["list","map"], examples: [Value::String("MapThread[Plus, {{1,2},{10,20}}]  ==> {11,22}".into())]),
+        tool_spec!("ReplacePart", summary: "Replace element at index/key", params: ["subject","indexOrKey","value"], tags: ["list","assoc","update"], examples: [Value::String("ReplacePart[{1,2,3}, 2, 9]  ==> {1,9,3}".into())]),
+        tool_spec!("MapAt", summary: "Apply function at index/key", params: ["f","subject","indexOrKey"], tags: ["list","assoc","update"], examples: [Value::String("MapAt[ToUpper, <|\"a\"->\"x\"|>, \"a\"]  ==> <|\"a\"->\"X\"|>".into())]),
+        tool_spec!("StableKey", summary: "Canonical stable key for value", params: ["x"], tags: ["generic","key"], examples: [Value::String("StableKey[<|a->1|>]  ==> \"6:<|a=>0:00000000000000000001|>\"".into())]),
+        tool_spec!("RandomChoice", summary: "Random element from list", params: ["list"], tags: ["random","list"], examples: [Value::String("SeedRandom[1]; RandomChoice[{1,2,3}]".into())]),
+        tool_spec!("Shuffle", summary: "Shuffle list uniformly", params: ["list"], tags: ["random","list"], examples: [Value::String("SeedRandom[1]; Shuffle[{1,2,3}]".into())]),
+        tool_spec!("Sample", summary: "Sample k distinct elements", params: ["list","k"], tags: ["random","list"], examples: [Value::String("SeedRandom[1]; Sample[{1,2,3,4}, 2]".into())]),
         tool_spec!("Unique", summary: "Stable deduplicate a list", params: ["list"], tags: ["list","set"]),
         tool_spec!("Tally", summary: "Counts by value (assoc)", params: ["list"], tags: ["list","aggregate"]),
         tool_spec!("CountBy", summary: "Counts by key function (assoc)", params: ["f","list"], tags: ["list","aggregate"]),
@@ -191,10 +242,45 @@ fn range(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
             Value::List(out)
         }
+        [Value::Integer(a), Value::Integer(b), Value::Integer(step)] => {
+            let (start, end, step) = (*a, *b, *step);
+            if step == 0 {
+                // Invalid step: emit a Failure value
+                return Value::assoc(vec![
+                    ("message", Value::String("Failure".into())),
+                    ("tag", Value::String("Range::stepZero".into())),
+                ]);
+            }
+            let mut out = Vec::new();
+            if step > 0 {
+                if start <= end {
+                    let mut i = start;
+                    while i <= end {
+                        out.push(Value::Integer(i));
+                        i += step;
+                    }
+                }
+            } else {
+                if start >= end {
+                    let mut i = start;
+                    while i >= end {
+                        out.push(Value::Integer(i));
+                        i += step; // step is negative
+                    }
+                }
+            }
+            Value::List(out)
+        }
         [a, b] => {
             let a1 = ev.eval(a.clone());
             let b1 = ev.eval(b.clone());
             range(ev, vec![a1, b1])
+        }
+        [a, b, s] => {
+            let a1 = ev.eval(a.clone());
+            let b1 = ev.eval(b.clone());
+            let s1 = ev.eval(s.clone());
+            range(ev, vec![a1, b1, s1])
         }
         _ => Value::Expr { head: Box::new(Value::Symbol("Range".into())), args },
     }
@@ -225,6 +311,42 @@ fn reverse(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             v.reverse();
             Value::List(v)
         }
+        other => other,
+    }
+}
+
+fn first_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("First".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(items) => items.into_iter().next().unwrap_or(Value::Symbol("Null".into())),
+        other => other,
+    }
+}
+
+fn last_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Last".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(items) => items.into_iter().last().unwrap_or(Value::Symbol("Null".into())),
+        other => other,
+    }
+}
+
+fn rest_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Rest".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(items) => {
+            let mut it = items.into_iter();
+            let _ = it.next();
+            Value::List(it.collect())
+        }
+        other => other,
+    }
+}
+
+fn init_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Init".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(mut items) => { items.pop(); Value::List(items) }
         other => other,
     }
 }
@@ -537,6 +659,31 @@ fn drop_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
+fn tail_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Tail[list, n] returns last n elements; if n < 0, drop last -n elements
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args };
+    }
+    let list = ev.eval(args[0].clone());
+    let n = match ev.eval(args[1].clone()) { Value::Integer(k) => k, other => return Value::Expr { head: Box::new(Value::Symbol("Tail".into())), args: vec![list, other] } };
+    match list {
+        Value::List(items) => {
+            let len = items.len() as i64;
+            if n >= 0 {
+                let take = n.min(len).max(0) as usize;
+                let start = (len - take as i64).max(0) as usize;
+                Value::List(items.into_iter().skip(start).collect())
+            } else {
+                // drop last -n
+                let dropn = (-n).min(len).max(0) as usize;
+                let end = (len as usize).saturating_sub(dropn);
+                Value::List(items.into_iter().take(end).collect())
+            }
+        }
+        other => other,
+    }
+}
+
 // Sort[list] using value_order_key on evaluated items
 fn sort_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
@@ -554,7 +701,117 @@ fn sort_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-// SortBy[f, list]
+// SortBy for lists (internal; dispatched publicly by dispatch::SortBy)
+fn sort_by_list_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("SortBy".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut pairs: Vec<(String, Value)> = items
+                .into_iter()
+                .map(|it| {
+                    let key_v = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it.clone()] });
+                    (lyra_runtime::eval::value_order_key(&key_v), ev.eval(it))
+                })
+                .collect();
+            pairs.sort_by(|(ka, _), (kb, _)| ka.cmp(kb));
+            Value::List(pairs.into_iter().map(|(_, v)| v).collect())
+        }
+        other => other,
+    }
+}
+
+fn max_by_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("MaxBy".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut best: Option<(String, Value)> = None;
+            for it in items {
+                let kv = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it.clone()] });
+                let k = lyra_runtime::eval::value_order_key(&kv);
+                let v = ev.eval(it);
+                match &best { Some((bk, _)) if k <= *bk => {} _ => best = Some((k, v)) }
+            }
+            best.map(|(_, v)| v).unwrap_or(Value::Symbol("Null".into()))
+        }
+        other => other,
+    }
+}
+
+fn min_by_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("MinBy".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut best: Option<(String, Value)> = None;
+            for it in items {
+                let kv = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it.clone()] });
+                let k = lyra_runtime::eval::value_order_key(&kv);
+                let v = ev.eval(it);
+                match &best { Some((bk, _)) if k >= *bk => {} _ => best = Some((k, v)) }
+            }
+            best.map(|(_, v)| v).unwrap_or(Value::Symbol("Null".into()))
+        }
+        other => other,
+    }
+}
+
+fn argmax_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("ArgMax".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut best: Option<(String, i64)> = None;
+            for (i, it) in items.into_iter().enumerate() {
+                let kv = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it] });
+                let k = lyra_runtime::eval::value_order_key(&kv);
+                let pos = (i as i64) + 1;
+                match &best { Some((bk, _)) if k <= *bk => {} _ => best = Some((k, pos)) }
+            }
+            best.map(|(_, p)| Value::Integer(p)).unwrap_or(Value::Symbol("Null".into()))
+        }
+        other => other,
+    }
+}
+
+fn argmin_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("ArgMin".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            let mut best: Option<(String, i64)> = None;
+            for (i, it) in items.into_iter().enumerate() {
+                let kv = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it] });
+                let k = lyra_runtime::eval::value_order_key(&kv);
+                let pos = (i as i64) + 1;
+                match &best { Some((bk, _)) if k >= *bk => {} _ => best = Some((k, pos)) }
+            }
+            best.map(|(_, p)| Value::Integer(p)).unwrap_or(Value::Symbol("Null".into()))
+        }
+        other => other,
+    }
+}
+
+fn unique_by_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("UniqueBy".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(items) => {
+            use std::collections::HashSet;
+            let mut seen: HashSet<String> = HashSet::new();
+            let mut out = Vec::new();
+            for it in items {
+                let key_v = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![it.clone()] });
+                let k = lyra_runtime::eval::value_order_key(&key_v);
+                if seen.insert(k) { out.push(ev.eval(it)); }
+            }
+            Value::List(out)
+        }
+        other => other,
+    }
+}
+
 
 // Unique[list] — stable dedupe using value_order_key of evaluated items
 fn unique_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -573,6 +830,147 @@ fn unique_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     out.push(v);
                 }
             }
+            Value::List(out)
+        }
+        other => other,
+    }
+}
+
+// MapThread[f, {a,b,...}] — zip-with map
+fn map_thread_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("MapThread".into())), args }; }
+    let f = args[0].clone();
+    match ev.eval(args[1].clone()) {
+        Value::List(lists) => {
+            let evald: Vec<Value> = lists.into_iter().map(|x| ev.eval(x)).collect();
+            let mut len = usize::MAX;
+            for v in &evald { if let Value::List(xs) = v { len = len.min(xs.len()); } else { len = 0; } }
+            let mut out = Vec::with_capacity(len);
+            for i in 0..len {
+                let mut call_args = Vec::new();
+                for v in &evald { if let Value::List(xs) = v { call_args.push(xs[i].clone()); } }
+                out.push(ev.eval(Value::Expr { head: Box::new(f.clone()), args: call_args }));
+            }
+            Value::List(out)
+        }
+        other => other,
+    }
+}
+
+// ReplacePart[list|assoc, idxOrKey, new]
+fn replace_part_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 3 { return Value::Expr { head: Box::new(Value::Symbol("ReplacePart".into())), args }; }
+    let subj = ev.eval(args[0].clone());
+    match &args[1] {
+        Value::Integer(i) => {
+            match subj {
+                Value::List(mut items) => {
+                    let idx = *i; if idx <= 0 { return Value::Expr { head: Box::new(Value::Symbol("ReplacePart".into())), args: vec![Value::List(items), Value::Integer(idx), args[2].clone()] }; }
+                    let u = (idx as usize).saturating_sub(1);
+                    if u < items.len() { items[u] = ev.eval(args[2].clone()); }
+                    Value::List(items)
+                }
+                other => other,
+            }
+        }
+        Value::String(k) | Value::Symbol(k) => {
+            match subj {
+                Value::Assoc(mut m) => { m.insert(k.clone(), ev.eval(args[2].clone())); Value::Assoc(m) }
+                other => other,
+            }
+        }
+        other => Value::Expr { head: Box::new(Value::Symbol("ReplacePart".into())), args: vec![subj, other.clone(), args[2].clone()] },
+    }
+}
+
+// MapAt[f, list|assoc, idxOrKey]
+fn map_at_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 3 { return Value::Expr { head: Box::new(Value::Symbol("MapAt".into())), args }; }
+    let f = args[0].clone();
+    let subj = ev.eval(args[1].clone());
+    match &args[2] {
+        Value::Integer(i) => match subj {
+            Value::List(mut items) => {
+                let idx = *i; if idx <= 0 { return Value::List(items); }
+                let u = (idx as usize).saturating_sub(1);
+                if u < items.len() { let cur = ev.eval(items[u].clone()); items[u] = ev.eval(Value::Expr { head: Box::new(f), args: vec![cur] }); }
+                Value::List(items)
+            }
+            other => other,
+        },
+        Value::String(k) | Value::Symbol(k) => match subj {
+            Value::Assoc(mut m) => {
+                if let Some(v0) = m.get(k).cloned() {
+                    let cur = ev.eval(v0);
+                    let nv = ev.eval(Value::Expr { head: Box::new(f.clone()), args: vec![cur] });
+                    m.insert(k.clone(), nv);
+                }
+                Value::Assoc(m)
+            }
+            other => other,
+        },
+        other => Value::Expr { head: Box::new(Value::Symbol("MapAt".into())), args: vec![Value::Expr { head: Box::new(Value::Symbol("Identity".into())), args: vec![] }, subj, other.clone()] },
+    }
+}
+
+fn stable_key_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("StableKey".into())), args }; }
+    let v = ev.eval(args[0].clone());
+    Value::String(lyra_runtime::eval::value_order_key(&v))
+}
+
+// ----- RNG helpers for list ops -----
+fn rng_next_u64(ev: &mut Evaluator) -> u64 {
+    let state_key = "__rng_state";
+    let mut x: u64 = match ev.get_env(state_key) { Some(Value::Integer(n)) => n as u64, _ => {
+        let seed = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1) as u64) | 1;
+        ev.set_env(state_key, Value::Integer(seed as i64)); seed }
+    };
+    // xorshift64*
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27; let r = x.wrapping_mul(2685821657736338717);
+    ev.set_env(state_key, Value::Integer(x as i64));
+    r
+}
+
+fn rng_uniform01(ev: &mut Evaluator) -> f64 { (rng_next_u64(ev) as f64) / (u64::MAX as f64 + 1.0) }
+
+fn random_choice_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("RandomChoice".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(items) => {
+            if items.is_empty() { return Value::Symbol("Null".into()); }
+            let idx = (rng_uniform01(ev) * (items.len() as f64)) as usize;
+            ev.eval(items[idx.min(items.len()-1)].clone())
+        }
+        other => other,
+    }
+}
+
+fn shuffle_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("Shuffle".into())), args }; }
+    match ev.eval(args[0].clone()) {
+        Value::List(mut items) => {
+            let n = items.len();
+            if n <= 1 { return Value::List(items); }
+            let mut i = n - 1; while i > 0 { let j = (rng_uniform01(ev) * ((i+1) as f64)) as usize; items.swap(i, j); i -= 1; }
+            Value::List(items)
+        }
+        other => other,
+    }
+}
+
+fn sample_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("Sample".into())), args }; }
+    let list = ev.eval(args[0].clone());
+    let k = match ev.eval(args[1].clone()) { Value::Integer(n) if n >= 0 => n as usize, other => return Value::Expr { head: Box::new(Value::Symbol("Sample".into())), args: vec![list, other] } };
+    match list {
+        Value::List(items) => {
+            let n = items.len();
+            let kk = k.min(n);
+            let mut idx: Vec<usize> = (0..n).collect();
+            // partial fisher-yates for first kk
+            for i in 0..kk { let j = i + ((rng_uniform01(ev) * ((n - i) as f64)) as usize); idx.swap(i, j.min(n-1)); }
+            let out: Vec<Value> = idx.into_iter().take(kk).map(|i| ev.eval(items[i].clone())).collect();
             Value::List(out)
         }
         other => other,

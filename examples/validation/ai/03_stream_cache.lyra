@@ -6,7 +6,7 @@
 (* Streaming mock chat — prints each token on a line, then returns message assoc *)
 m := Model["mock:echo"];
 msgs := {<|"role"->"user", "content"->"stream these words"|>};
-Chat[m, <|"Messages"->msgs, "Stream"->"true"|>];
+Chat[m, <|"messages"->msgs, "stream"->"true"|>];
 
 (* Tool caching — register simple add tool, call twice with cache *)
 ToolsRegister[<|"id"->"add2", "impl"->"Plus", "params"->{"a","b"}|>];

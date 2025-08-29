@@ -44,6 +44,10 @@ fn stdlib_min_basics() {
     assert_eq!(eval_one("Abs[{-2, 0, 3}]"), "{2, 0, 3}");
     assert_eq!(eval_one("Length[{1,2,3}]"), "3");
     assert_eq!(eval_one("Range[1,5]"), "{1, 2, 3, 4, 5}");
+    assert_eq!(eval_one("Range[0,10,2]"), "{0, 2, 4, 6, 8, 10}");
+    assert_eq!(eval_one("Range[5,1,-2]"), "{5, 3, 1}");
+    // step=0 should emit a Failure; OnFailure should catch and return default
+    assert_eq!(eval_one("OnFailure[Range[1,5,0], \"bad step\"]"), "\"bad step\"");
     assert_eq!(eval_one("Join[{1,2}, {3}]"), "{1, 2, 3}");
     assert_eq!(eval_one("Reverse[{1,2}]"), "{2, 1}");
     assert_eq!(eval_one("Min[3,1,2]"), "1");
@@ -119,6 +123,43 @@ fn stdlib_string_templating() {
     assert_eq!(
         eval_one("StringFormatMap[\"\\{a\\}:\\{b\\}\", <|\"a\"->1, \"b\"->\"x\"|>]"),
         "\"1:x\""
+    );
+}
+
+#[test]
+fn dataset_dispatch_minimal_list_paths() {
+    // Distinct on lists dispatches to Unique
+    assert_eq!(eval_one("Distinct[{1,1,2}]"), "{1, 2}");
+    // Offset and Head dispatch for lists still work via Drop/Take
+    assert_eq!(eval_one("Head[{1,2,3}, 2]"), "{1, 2}");
+    assert_eq!(eval_one("Offset[{1,2,3}, 1]"), "{2, 3}");
+}
+
+#[test]
+fn dataset_dispatch_dataset_ops() {
+    // DistinctBy over a dataset
+    assert_eq!(
+        eval_one("Count[DistinctBy[DatasetFromRows[{<|\"id\"->1|>,<|\"id\"->1|>}], {\"id\"}]]"),
+        "1"
+    );
+}
+
+#[test]
+fn stdlib_template_render_basic() {
+    // Basic Mustache replacement
+    assert_eq!(
+        eval_one("TemplateRender[\"Hello {{name}}!\", <|\"name\"->\"Lyra\"|>]"),
+        "\"Hello Lyra!\""
+    );
+    // HTML-escape only variable content for double braces
+    assert_eq!(
+        eval_one("TemplateRender[\"<i>{{name}}</i>\", <|\"name\"->\"<Lyra>\"|>]"),
+        "\"<i>&lt;Lyra&gt;</i>\""
+    );
+    // Triple mustache unescaped
+    assert_eq!(
+        eval_one("TemplateRender[\"<i>{{{name}}}</i>\", <|\"name\"->\"<Lyra>\"|>]"),
+        "\"<i><Lyra></i>\""
     );
 }
 

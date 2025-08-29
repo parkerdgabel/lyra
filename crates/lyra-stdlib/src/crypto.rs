@@ -298,7 +298,7 @@ fn hash_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn aead_key_gen(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let opts = get_assoc(ev, args.get(0).cloned()).unwrap_or_default();
     let alg = opts
-        .get("Alg")
+        .get("alg").or_else(|| opts.get("Alg"))
         .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
         .unwrap_or_else(|| "ChaCha20-Poly1305".into());
     if alg != "ChaCha20-Poly1305" {
@@ -323,11 +323,11 @@ fn read_key_bytes(ev: &mut Evaluator, v: Value) -> Result<(String, Vec<u8>), Str
     match vv {
         Value::Assoc(m) => {
             let alg = m
-                .get("Alg")
+                .get("alg").or_else(|| m.get("Alg"))
                 .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
                 .ok_or_else(|| "Missing Alg".to_string())?;
             let k = m
-                .get("Key")
+                .get("key").or_else(|| m.get("Key"))
                 .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
                 .ok_or_else(|| "Missing Key".to_string())?;
             let kb = base64url_decode(&k)?;
@@ -354,10 +354,10 @@ fn aead_encrypt(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     let opts = get_assoc(ev, args.get(2).cloned()).unwrap_or_default();
     let aad = opts
-        .get("AAD")
+        .get("aad").or_else(|| opts.get("AAD"))
         .and_then(|v| if let Value::String(s) = v { Some(s.as_bytes().to_vec()) } else { None })
         .unwrap_or_default();
-    let nonce_bytes = if let Some(Value::String(nonce_s)) = opts.get("Nonce") {
+    let nonce_bytes = if let Some(Value::String(nonce_s)) = opts.get("nonce").or_else(|| opts.get("Nonce")) {
         match base64url_decode(nonce_s) {
             Ok(b) => b,
             Err(e) => return failure("Crypto::aead", &format!("Nonce: {}", e)),
@@ -894,17 +894,18 @@ fn jwt_sign(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     let opts = get_assoc(ev, args.get(2).cloned()).unwrap_or_default();
     let alg = opts
-        .get("Alg")
+        .get("alg").or_else(|| opts.get("Alg"))
         .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
         .unwrap_or_else(|| "HS256".into());
-    let kid =
-        opts.get("Kid").and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+    let kid = opts
+        .get("kid").or_else(|| opts.get("Kid"))
+        .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
     let mut header = serde_json::json!({"alg": alg, "typ": "JWT"});
     if let Some(k) = kid {
         header["kid"] = serde_json::Value::String(k);
     }
     // Optionally add exp from ExpIn seconds
-    if let Some(Value::Integer(secs)) = opts.get("ExpIn") {
+    if let Some(Value::Integer(secs)) = opts.get("expIn").or_else(|| opts.get("ExpIn")) {
         if *secs > 0 {
             if let serde_json::Value::Object(mut m) = claims_json.clone() {
                 let _ = m.insert(
@@ -918,7 +919,7 @@ fn jwt_sign(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let payload_b64 = base64url_encode(serde_json::to_vec(&claims_json).unwrap().as_slice());
     let signing_input = format!("{}.{}", header_b64, payload_b64);
     let sig = if alg.eq_ignore_ascii_case("HS256") {
-        let key_enc = opts.get("KeyEncoding").and_then(|v| {
+        let key_enc = opts.get("keyEncoding").or_else(|| opts.get("KeyEncoding")).and_then(|v| {
             if let Value::String(s) = v {
                 Some(s.clone())
             } else {
@@ -957,10 +958,10 @@ fn jwt_verify(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let jwt = as_string(ev, args[0].clone());
     let opts = get_assoc(ev, args.get(2).cloned()).unwrap_or_default();
     let validate_time = opts
-        .get("ValidateTime")
+        .get("validateTime").or_else(|| opts.get("ValidateTime"))
         .and_then(|v| if let Value::Boolean(b) = v { Some(*b) } else { None })
         .unwrap_or(true);
-    let audience = opts.get("Audience").and_then(|v| {
+    let audience = opts.get("audience").or_else(|| opts.get("Audience")).and_then(|v| {
         if let Value::String(s) = v {
             Some(s.clone())
         } else {
@@ -968,7 +969,7 @@ fn jwt_verify(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     });
     let issuer =
-        opts.get("Issuer")
+        opts.get("issuer").or_else(|| opts.get("Issuer"))
             .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() != 3 {

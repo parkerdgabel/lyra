@@ -314,6 +314,9 @@ pub fn register_frame(ev: &mut Evaluator) {
     ev.register("FrameSelect", frame_select as NativeFn, Attributes::empty());
     ev.register("FrameFilter", frame_filter as NativeFn, Attributes::HOLD_ALL);
     ev.register("FrameDescribe", describe_frame as NativeFn, Attributes::empty());
+    // Tier1: GroupBy/Aggregate (stubs)
+    ev.register("GroupBy", frame_group_by as NativeFn, Attributes::empty());
+    ev.register("Aggregate", frame_aggregate as NativeFn, Attributes::empty());
     ev.register("FrameJoin", frame_join as NativeFn, Attributes::empty());
     ev.register("FrameUnion", frame_union as NativeFn, Attributes::empty());
     ev.register("FrameHead", frame_head as NativeFn, Attributes::empty());
@@ -332,6 +335,8 @@ pub fn register_frame(ev: &mut Evaluator) {
         tool_spec!("FrameSelect", summary: "Select/compute columns in Frame", params: ["frame","spec"], tags: ["frame","transform","select"], examples: [Value::String("FrameSelect[f, {\"a\"}]".into())]),
         tool_spec!("FrameFilter", summary: "Filter rows in a Frame", params: ["frame","pred"], tags: ["frame","transform","filter"], examples: [Value::String("FrameFilter[f, #a>1 &]".into())]),
         tool_spec!("FrameDescribe", summary: "Quick stats by columns", params: ["frame","opts?"], tags: ["frame","stats"], examples: [Value::String("FrameDescribe[f]".into())]),
+        tool_spec!("GroupBy", summary: "Group rows by column(s)", params: ["frame","cols"], tags: ["frame","group"], examples: [Value::String("GroupBy[f, {\"a\"}]".into())]),
+        tool_spec!("Aggregate", summary: "Aggregate grouped data (stub)", params: ["group","spec"], tags: ["frame","group","aggregate"], examples: [Value::String("Aggregate[g, <|Count->True|>]".into())]),
         tool_spec!("FrameJoin", summary: "Join two Frames by keys", params: ["left","right","on?","opts?"], tags: ["frame","join"], examples: [Value::String("FrameJoin[f1, f2, {\"id\"}]".into())]),
         tool_spec!("FrameUnion", summary: "Union Frames by columns (schema union)", params: ["frames…"], tags: ["frame","set"], examples: [Value::String("FrameUnion[f1, f2]".into())]),
         tool_spec!("FrameHead", summary: "Take first n rows from Frame", params: ["frame","n?"], tags: ["frame","inspect"], examples: [Value::String("FrameHead[f, 5]".into())]),
@@ -351,6 +356,8 @@ pub fn register_frame_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) 
     register_if(ev, pred, "FrameSelect", frame_select as NativeFn, Attributes::empty());
     register_if(ev, pred, "FrameFilter", frame_filter as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "FrameDescribe", describe_frame as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GroupBy", frame_group_by as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Aggregate", frame_aggregate as NativeFn, Attributes::empty());
     register_if(ev, pred, "FrameJoin", frame_join as NativeFn, Attributes::empty());
     register_if(ev, pred, "FrameUnion", frame_union as NativeFn, Attributes::empty());
     register_if(ev, pred, "FrameHead", frame_head as NativeFn, Attributes::empty());
@@ -368,6 +375,17 @@ fn parse_on_columns(v: &Value) -> Vec<String> {
         Value::String(s) | Value::Symbol(s) => vec![s.clone()],
         _ => vec![],
     }
+}
+
+// -------- Tier1 GroupBy/Aggregate stubs --------
+fn frame_group_by(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // GroupBy[frame, cols]
+    Value::Expr { head: Box::new(Value::Symbol("GroupBy".into())), args }
+}
+
+fn frame_aggregate(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Aggregate[group, <|Agg->...|>]
+    Value::Expr { head: Box::new(Value::Symbol("Aggregate".into())), args }
 }
 
 fn frame_join(ev: &mut Evaluator, args: Vec<Value>) -> Value {

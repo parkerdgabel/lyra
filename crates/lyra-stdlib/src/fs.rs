@@ -39,13 +39,18 @@ pub fn register_fs(ev: &mut Evaluator) {
     ev.register("TempFile", temp_file as NativeFn, Attributes::empty());
     ev.register("TempDir", temp_dir as NativeFn, Attributes::empty());
     ev.register("WatchDirectory", watch_directory as NativeFn, Attributes::HOLD_ALL);
+    // Canonical name
+    ev.register("Watch", watch_canonical as NativeFn, Attributes::HOLD_ALL);
     ev.register("CancelWatch", cancel_watch as NativeFn, Attributes::empty());
     #[cfg(feature = "fs_archive")]
     {
         ev.register("Zip", zip_create as NativeFn, Attributes::empty());
         ev.register("ZipExtract", zip_extract as NativeFn, Attributes::empty());
+        // Canonical names
+        ev.register("Unzip", zip_extract as NativeFn, Attributes::empty());
         ev.register("Tar", tar_create as NativeFn, Attributes::empty());
         ev.register("TarExtract", tar_extract as NativeFn, Attributes::empty());
+        ev.register("Untar", tar_extract as NativeFn, Attributes::empty());
         ev.register("Gzip", gzip_fn as NativeFn, Attributes::empty());
         ev.register("Gunzip", gunzip_fn as NativeFn, Attributes::empty());
     }
@@ -65,15 +70,20 @@ pub fn register_fs(ev: &mut Evaluator) {
         tool_spec!("TempFile", summary: "Create a unique temporary file", params: [], tags: ["fs","io","temp"]),
         tool_spec!("TempDir", summary: "Create a unique temporary directory", params: [], tags: ["fs","io","temp"]),
         tool_spec!("WatchDirectory", summary: "Watch directory and stream events", params: ["path","handler","opts?"], tags: ["fs","watch"]),
+        tool_spec!("Watch", summary: "Watch directory and stream events", params: ["path","handler","opts?"], tags: ["fs","watch"]),
         tool_spec!("CancelWatch", summary: "Cancel a directory watch", params: ["token"], tags: ["fs","watch"]),
         
         // Archive utils
         tool_spec!("Zip", summary: "Create a zip archive", params: ["opts"], tags: ["fs","archive"]),
         tool_spec!("ZipExtract", summary: "Extract a zip archive", params: ["zip","dst","opts?"], tags: ["fs","archive"]),
+        tool_spec!("Unzip", summary: "Extract a zip archive", params: ["zip","dst","opts?"], tags: ["fs","archive"]),
         tool_spec!("Tar", summary: "Create a tar archive", params: ["opts"], tags: ["fs","archive"]),
         tool_spec!("TarExtract", summary: "Extract a tar archive", params: ["tar","dst","opts?"], tags: ["fs","archive"]),
+        tool_spec!("Untar", summary: "Extract a tar archive", params: ["tar","dst","opts?"], tags: ["fs","archive"]),
         tool_spec!("Gzip", summary: "Compress data or file with gzip", params: ["input","opts?"], tags: ["fs","archive","compress"]),
         tool_spec!("Gunzip", summary: "Decompress gzip data or file", params: ["input","opts?"], tags: ["fs","archive","compress"]),
+        tool_spec!("Compress", summary: "Compress data/file (Method->Zstd/Brotli/Lz4)", params: ["input","opts?"], tags: ["fs","archive","compress"]),
+        tool_spec!("Decompress", summary: "Decompress data/file with Method", params: ["input","opts?"], tags: ["fs","archive","compress"]),
     ]);
 }
 
@@ -96,15 +106,20 @@ pub fn register_fs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
         watch_directory as NativeFn,
         Attributes::HOLD_ALL,
     );
+    crate::register_if(ev, pred, "Watch", watch_canonical as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "CancelWatch", cancel_watch as NativeFn, Attributes::empty());
     #[cfg(feature = "fs_archive")]
     {
         crate::register_if(ev, pred, "Zip", zip_create as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "ZipExtract", zip_extract as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Unzip", zip_extract as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "Tar", tar_create as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "TarExtract", tar_extract as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Untar", tar_extract as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "Gzip", gzip_fn as NativeFn, Attributes::empty());
         crate::register_if(ev, pred, "Gunzip", gunzip_fn as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Compress", compress_generic as NativeFn, Attributes::empty());
+        crate::register_if(ev, pred, "Decompress", decompress_generic as NativeFn, Attributes::empty());
     }
 }
 
@@ -122,7 +137,7 @@ fn mkdir(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let path = to_string(ev, args[0].clone());
     let parents = match args.get(1).and_then(|v| {
         if let Value::Assoc(m) = ev.eval(v.clone()) {
-            m.get("Parents").cloned()
+            m.get("Parents").or_else(|| m.get("parents")).cloned()
         } else {
             None
         }
@@ -144,7 +159,7 @@ fn remove(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let path = to_string(ev, args[0].clone());
     let recursive = match args.get(1).and_then(|v| {
         if let Value::Assoc(m) = ev.eval(v.clone()) {
-            m.get("Recursive").cloned()
+            m.get("Recursive").or_else(|| m.get("recursive")).cloned()
         } else {
             None
         }
@@ -176,7 +191,7 @@ fn copy(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let dst = to_string(ev, args[1].clone());
     let recursive = match args.get(2).and_then(|v| {
         if let Value::Assoc(m) = ev.eval(v.clone()) {
-            m.get("Recursive").cloned()
+            m.get("Recursive").or_else(|| m.get("recursive")).cloned()
         } else {
             None
         }
@@ -436,7 +451,7 @@ fn glob(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         HashMap::new()
     };
     let cwd = opts
-        .get("Cwd")
+        .get("Cwd").or_else(|| opts.get("cwd"))
         .and_then(|v| {
             if let Value::String(s) | Value::Symbol(s) = v {
                 Some(PathBuf::from(s))
@@ -445,10 +460,10 @@ fn glob(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             }
         })
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let recursive = matches!(opts.get("Recursive"), Some(Value::Boolean(true)));
-    let dotfiles = matches!(opts.get("Dotfiles"), Some(Value::Boolean(true)));
+    let recursive = matches!(opts.get("Recursive").or_else(|| opts.get("recursive")), Some(Value::Boolean(true)));
+    let dotfiles = matches!(opts.get("Dotfiles").or_else(|| opts.get("dotfiles")), Some(Value::Boolean(true)));
     let includes: Vec<String> = opts
-        .get("Include")
+        .get("Include").or_else(|| opts.get("include"))
         .and_then(|v| {
             if let Value::List(xs) = v {
                 Some(
@@ -468,7 +483,7 @@ fn glob(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         })
         .unwrap_or_default();
     let excludes: Vec<String> = opts
-        .get("Exclude")
+        .get("Exclude").or_else(|| opts.get("exclude"))
         .and_then(|v| {
             if let Value::List(xs) = v {
                 Some(
@@ -686,6 +701,16 @@ fn cancel_watch(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     Value::Boolean(false)
+}
+
+fn watch_canonical(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Watch[path, handler, opts?] -> delegate to WatchDirectory
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Watch".into())), args };
+    }
+    let mut v = vec![args[0].clone(), args[1].clone()];
+    if args.len() >= 3 { v.push(args[2].clone()); }
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("WatchDirectory".into())), args: v })
 }
 
 #[cfg(feature = "fs_archive")]
@@ -985,4 +1010,16 @@ fn gunzip_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     } else {
         Value::String(String::from_utf8_lossy(&out).to_string())
     }
+}
+
+// Tier1: generic Compress/Decompress stubs with Method option (Zstd/Brotli/Lz4)
+fn compress_generic(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Compress[input, <|Method->"Zstd", Level->3, Out->path?|>]
+    // Stub: leave unevaluated until backends wired
+    Value::Expr { head: Box::new(Value::Symbol("Compress".into())), args }
+}
+
+fn decompress_generic(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Decompress[input, <|Method->"Zstd"|>]
+    Value::Expr { head: Box::new(Value::Symbol("Decompress".into())), args }
 }

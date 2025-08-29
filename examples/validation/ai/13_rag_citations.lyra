@@ -3,14 +3,14 @@
   Run: lyra-runner --file examples/validation/ai/13_rag_citations.lyra
 *)
 
-VectorStore[<|"Name"->"mem", "Dims"->8|>];
+VectorStore[<|"name"->"mem", "dims"->8|>];
 docs := {
   <|"id"->"p1", "text"->"Postgres pgvector stores embedding vectors."|>,
   <|"id"->"q1", "text"->"Qdrant is a vector database."|>
 };
 RAGIndex["mem", docs, <||>];
 
-ans := RAGAnswer["mem", "Which systems handle vectors?", <|"K"->2|>];
+ans := RAGAnswer["mem", "Which systems handle vectors?", <|"k"->2|>];
 ans;                                (* show assoc: includes answer, matches, citations *)
 
-Cite[ans, <|"Style"->"markdown", "WithScores"->"true"|>];  (* rendered list *)
+Cite[ans, <|"style"->"markdown", "withScores"->"true"|>];  (* rendered list *)

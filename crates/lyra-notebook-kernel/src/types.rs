@@ -29,7 +29,16 @@ impl DisplayItem {
         Self { mime: "text/plain".into(), data: s.into() }
     }
     pub fn lyra_value_json(v: &lyra_core::value::Value) -> Self {
-        let json = serde_json::to_string(v).unwrap_or_else(|_| "{}".into());
+        // Wrap value in a versioned envelope to allow protocol evolution
+        #[derive(serde::Serialize)]
+        struct Envelope<'a> {
+            #[serde(rename = "__meta")] meta: Meta,
+            value: &'a lyra_core::value::Value,
+        }
+        #[derive(serde::Serialize)]
+        struct Meta { #[serde(rename = "x-lyra-version")] version: u32 }
+        let env = Envelope { meta: Meta { version: 1 }, value: v };
+        let json = serde_json::to_string(&env).unwrap_or_else(|_| "{}".into());
         Self { mime: "application/lyra+value".into(), data: json }
     }
 }

@@ -1,4 +1,5 @@
 use crate::register_if;
+use crate::display;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
@@ -30,17 +31,17 @@ pub fn register_audio(ev: &mut Evaluator) {
 
     #[cfg(feature = "tools")]
     add_specs(vec![
-        tool_spec!("AudioInfo", summary: "Probe audio metadata", params: ["input"], tags: ["audio"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioInfo[<|Path->\"in.wav\"|>]".into())]),
-        tool_spec!("AudioDecode", summary: "Decode audio to raw (s16le) or WAV", params: ["input","opts"], tags: ["audio","decode"], output_schema: schema_str!(), examples: [Value::String("AudioDecode[<|Path->\"in.mp3\"|>, <|Format->\"wav\"|>]".into())]),
+        tool_spec!("AudioInfo", summary: "Probe audio metadata", params: ["input"], tags: ["audio"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioInfo[<|path->\"in.wav\"|>]".into())]),
+        tool_spec!("AudioDecode", summary: "Decode audio to raw (s16le) or WAV", params: ["input","opts"], tags: ["audio","decode"], output_schema: schema_str!(), examples: [Value::String("AudioDecode[<|path->\"in.mp3\"|>, <|format->\"wav\"|>]".into())]),
         tool_spec!("AudioEncode", summary: "Encode raw PCM to WAV", params: ["raw","opts"], tags: ["audio","encode"], output_schema: schema_str!()),
         tool_spec!("AudioConvert", summary: "Convert audio to WAV", params: ["input","format","opts"], tags: ["audio"], output_schema: schema_str!()),
-        tool_spec!("AudioTrim", summary: "Trim audio by time range", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!(), examples: [Value::String("AudioTrim[<|Path->\"in.wav\"|>, <|StartMs->1000, EndMs->2000|>]".into())]),
+        tool_spec!("AudioTrim", summary: "Trim audio by time range", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!(), examples: [Value::String("AudioTrim[<|path->\"in.wav\"|>, <|startMs->1000, endMs->2000|>]".into())]),
         tool_spec!("AudioGain", summary: "Apply gain in dB or linear", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioResample", summary: "Resample to new sample rate", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioConcat", summary: "Concatenate multiple inputs", params: ["inputs","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioFade", summary: "Fade in/out", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
         tool_spec!("AudioChannelMix", summary: "Convert channel count (mono/stereo)", params: ["input","opts"], tags: ["audio","edit"], output_schema: schema_str!()),
-        tool_spec!("AudioSave", summary: "Encode and write audio to path (WAV)", params: ["input","output","encoding"], tags: ["audio","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioSave[<|Path->\"in.wav\"|>, \"out.wav\", <|Format->\"wav\"|>]".into())]),
+        tool_spec!("AudioSave", summary: "Encode and write audio to path (WAV)", params: ["input","output","encoding"], tags: ["audio","io"], output_schema: lyra_core::value::Value::Assoc(HashMap::from([(String::from("type"), lyra_core::value::Value::String(String::from("object")))])), examples: [Value::String("AudioSave[<|path->\"in.wav\"|>, \"out.wav\", <|format->\"wav\"|>]".into())]),
     ]);
 }
 
@@ -63,6 +64,16 @@ fn base64url_encode(data: &[u8]) -> String {
 fn base64url_decode(s: &str) -> Result<Vec<u8>, String> {
     use base64::Engine as _;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s).map_err(|e| e.to_string())
+}
+
+fn wants_display(opts: &std::collections::HashMap<String, Value>) -> bool {
+    let explicit = opts.get("Output")
+        .and_then(|v| if let Value::Assoc(m) = v { Some(m) } else { None })
+        .and_then(|m| m.get("Format").or(m.get("format")))
+        .and_then(|v| if let Value::String(s) = v { Some(s.to_lowercase()) } else { None })
+        .map(|s| s == "display")
+        .unwrap_or(false);
+    explicit || crate::display::prefer_display()
 }
 
 fn read_input_bytes(ev: &mut Evaluator, v: Value) -> Result<Vec<u8>, String> {
@@ -384,7 +395,9 @@ fn audio_decode(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         Value::Assoc(m)
     } else {
         match encode_wav_s16(dec.sample_rate, dec.channels, &dec.samples) {
-            Ok(wav) => Value::String(base64url_encode(&wav)),
+            Ok(wav) => {
+                if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+            }
             Err(e) => failure("Audio::encode", &format!("AudioDecode: {}", e)),
         }
     }
@@ -443,7 +456,11 @@ fn audio_encode(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         return failure("Audio::encode", "Invalid pcm");
     }
     match encode_wav_s16(sr, ch, &samples_f32) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            // Look for opts in args[1]
+            let opts = if args.len() > 1 { match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => std::collections::HashMap::new(), } } else { std::collections::HashMap::new() };
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }
@@ -475,13 +492,21 @@ fn audio_convert(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     match fmt.as_str() {
         "wav" => match encode_wav_s16(dec.sample_rate, dec.channels, &dec.samples) {
-            Ok(wav) => Value::String(base64url_encode(&wav)),
+            Ok(wav) => {
+                if wants_display(&_opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+            }
             Err(e) => failure("Audio::encode", &e),
         },
         "mp3" => {
             #[cfg(feature = "audio_mp3")]
             {
-                return ffmpeg_encode_and_return(dec, "mp3", Some(_opts));
+                // Encode and then wrap depending on Output
+                match ffmpeg_encode_to_bytes(dec, "mp3", Some(_opts.clone())) {
+                    Ok(bytes) => {
+                        if wants_display(&_opts) { display::display_bytes("audio/mpeg", bytes) } else { Value::String(base64url_encode(&bytes)) }
+                    }
+                    Err(e) => failure("Audio::encode", &e),
+                }
             }
             #[cfg(not(feature = "audio_mp3"))]
             {
@@ -491,7 +516,12 @@ fn audio_convert(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         "ogg" | "vorbis" => {
             #[cfg(feature = "audio_ogg_vorbis")]
             {
-                return ffmpeg_encode_and_return(dec, "ogg", Some(_opts));
+                match ffmpeg_encode_to_bytes(dec, "ogg", Some(_opts.clone())) {
+                    Ok(bytes) => {
+                        if wants_display(&_opts) { display::display_bytes("audio/ogg", bytes) } else { Value::String(base64url_encode(&bytes)) }
+                    }
+                    Err(e) => failure("Audio::encode", &e),
+                }
             }
             #[cfg(not(feature = "audio_ogg_vorbis"))]
             {
@@ -504,7 +534,12 @@ fn audio_convert(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         "flac" => {
             #[cfg(feature = "audio_flac")]
             {
-                return ffmpeg_encode_and_return(dec, "flac", Some(_opts));
+                match ffmpeg_encode_to_bytes(dec, "flac", Some(_opts.clone())) {
+                    Ok(bytes) => {
+                        if wants_display(&_opts) { display::display_bytes("audio/flac", bytes) } else { Value::String(base64url_encode(&bytes)) }
+                    }
+                    Err(e) => failure("Audio::encode", &e),
+                }
             }
             #[cfg(not(feature = "audio_flac"))]
             {
@@ -563,7 +598,9 @@ fn audio_trim(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         &[]
     };
     match encode_wav_s16(dec.sample_rate, dec.channels, slice) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }
@@ -600,7 +637,9 @@ fn audio_gain(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         *s = (*s * linear).clamp(-1.0, 1.0);
     }
     match encode_wav_s16(dec.sample_rate, dec.channels, &dec.samples) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }
@@ -695,7 +734,9 @@ fn audio_resample(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         .unwrap_or(dec.sample_rate);
     let out_samples = resample_linear(&dec.samples, dec.channels, dec.sample_rate, target_sr);
     match encode_wav_s16(target_sr, dec.channels, &out_samples) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }
@@ -754,7 +795,9 @@ fn audio_concat(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         out.extend_from_slice(&d.samples);
     }
     match encode_wav_s16(target_sr, target_ch, &out) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }
@@ -816,7 +859,9 @@ fn audio_fade(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     }
     match encode_wav_s16(dec.sample_rate, dec.channels, &dec.samples) {
-        Ok(wav) => Value::String(base64url_encode(&wav)),
+        Ok(wav) => {
+            if wants_display(&opts) { display::display_bytes("audio/wav", wav) } else { Value::String(base64url_encode(&wav)) }
+        }
         Err(e) => failure("Audio::encode", &e),
     }
 }

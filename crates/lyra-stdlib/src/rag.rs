@@ -183,7 +183,7 @@ fn rag_answer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut k: i64 = 5;
     let mut _cite = true;
     if let Some(Value::Assoc(m)) = args.get(2) {
-        if let Some(Value::Integer(n)) = m.get("K") {
+        if let Some(Value::Integer(n)) = m.get("K").or_else(|| m.get("k")) {
             k = *n;
         }
         if let Some(Value::Boolean(b)) = m.get("Cite") {
@@ -263,22 +263,20 @@ fn cite(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let mut with_scores = false;
     let mut max: Option<usize> = None;
     if let Some(Value::Assoc(m)) = args.get(1) {
-        if let Some(Value::String(s)) = m.get("Style") {
-            style = s.clone();
-        }
-        if let Some(Value::Boolean(b)) = m.get("WithScores") {
-            with_scores = *b;
-        }
-        if let Some(Value::String(s)) = m.get("WithScores") {
-            let ls = s.to_lowercase();
-            if ls == "true" || ls == "on" || ls == "1" {
-                with_scores = true;
+        if let Some(Value::String(s)) = m.get("Style") { style = s.clone(); }
+        if let Some(Value::String(s)) = m.get("style") { style = s.clone(); }
+        if let Some(v) = m.get("WithScores").or_else(|| m.get("withScores")) {
+            match v {
+                Value::Boolean(b) => { with_scores = *b; }
+                Value::String(s) | Value::Symbol(s) => {
+                    let ls = s.to_lowercase();
+                    if ls == "true" || ls == "on" || ls == "1" { with_scores = true; }
+                }
+                _ => {}
             }
         }
-        if let Some(Value::Integer(n)) = m.get("Max") {
-            if *n > 0 {
-                max = Some(*n as usize);
-            }
+        if let Some(Value::Integer(n)) = m.get("Max").or_else(|| m.get("max")) {
+            if *n > 0 { max = Some(*n as usize); }
         }
     }
     let list = match &c {

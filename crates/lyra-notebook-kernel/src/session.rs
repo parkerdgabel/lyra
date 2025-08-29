@@ -9,23 +9,28 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 use serde_json as sj;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct SessionSettings {
     pub capture_explain: bool,
     pub max_threads: Option<i64>,
     pub time_budget_ms: Option<i64>,
+    pub enable_cache: bool,
+    pub cache_dir: Option<String>,
+    pub cache_salt: Option<String>,
 }
 
 impl Default for SessionSettings {
     fn default() -> Self {
-        Self { capture_explain: false, max_threads: None, time_budget_ms: None }
+        Self { capture_explain: false, max_threads: None, time_budget_ms: None, enable_cache: true, cache_dir: None, cache_salt: None }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionOpts {
     pub with_init_cells: bool,
+    pub ignore_cache: bool,
 }
 
 pub struct Session {
@@ -34,6 +39,7 @@ pub struct Session {
     ev: Evaluator,
     settings: SessionSettings,
     scope_id: Option<i64>,
+    cache: HashMap<String, Vec<DisplayItem>>,
 }
 
 impl Session {
@@ -42,7 +48,7 @@ impl Session {
         let mut ev = Evaluator::new();
         // Register stdlib so that symbols like Range, Plus, etc. evaluate
         lyra_stdlib::register_all(&mut ev);
-        let mut s = Self { id, nb, ev, settings, scope_id: None };
+        let mut s = Self { id, nb, ev, settings, scope_id: None, cache: HashMap::new() };
         s.start_scope();
         s
     }
@@ -50,6 +56,58 @@ impl Session {
     pub fn id(&self) -> Uuid { self.id }
     pub fn notebook(&self) -> &nb::schema::Notebook { &self.nb }
     pub fn notebook_mut(&mut self) -> &mut nb::schema::Notebook { &mut self.nb }
+
+    // Cache controls
+    pub fn set_cache_enabled(&mut self, on: bool) { self.settings.enable_cache = on; }
+    pub fn clear_cache_memory(&mut self) { self.cache.clear(); }
+    pub fn clear_cache_disk(&self) -> bool {
+        let Some(dir) = self.settings.cache_dir.as_ref() else { return false; };
+        let Ok(rd) = std::fs::read_dir(dir) else { return false; };
+        let mut ok_any = false;
+        for ent in rd.flatten() {
+            if let Some(name) = ent.file_name().to_str() {
+                if name.ends_with(".json") { let _ = std::fs::remove_file(ent.path()); ok_any = true; }
+            }
+        }
+        ok_any
+    }
+    pub fn cache_gc(&self, max_bytes: u64) -> (u64, u64) {
+        let Some(dir) = self.settings.cache_dir.as_ref() else { return (0, 0); };
+        let Ok(rd) = std::fs::read_dir(dir) else { return (0, 0); };
+        let mut files: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = Vec::new();
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+            if let Ok(md) = ent.metadata() {
+                let sz = md.len(); let mt = md.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                files.push((p, sz, mt));
+            }
+        }
+        files.sort_by_key(|(_, _, mt)| *mt); // oldest first
+        let mut total: u64 = files.iter().map(|(_, sz, _)| *sz).sum();
+        if total <= max_bytes { return (0, total); }
+        let mut freed: u64 = 0;
+        for (p, sz, _) in files {
+            if total <= max_bytes { break; }
+            let _ = std::fs::remove_file(p);
+            total = total.saturating_sub(sz);
+            freed = freed.saturating_add(sz);
+        }
+        (freed, total)
+    }
+    pub fn cache_disk_size_bytes(&self) -> (u64, u64) {
+        let Some(dir) = self.settings.cache_dir.as_ref() else { return (0, 0) };
+        let Ok(rd) = std::fs::read_dir(dir) else { return (0, 0) };
+        let mut total: u64 = 0; let mut files: u64 = 0;
+        for ent in rd.flatten() {
+            if ent.path().extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+            if let Ok(md) = ent.metadata() { total = total.saturating_add(md.len()); files = files.saturating_add(1); }
+        }
+        (total, files)
+    }
+
+    pub fn set_cache_salt<S: Into<Option<String>>>(&mut self, salt: S) { self.settings.cache_salt = salt.into(); }
+    pub fn cache_salt(&self) -> Option<String> { self.settings.cache_salt.clone() }
 
     pub fn reset_env(&mut self) { self.ev = Evaluator::new(); }
 
@@ -60,8 +118,8 @@ impl Session {
     fn start_scope(&mut self) -> bool {
         // Build options association for StartScope
         let mut map = lyra_core::value::AssocMap::new();
-        if let Some(n) = self.settings.max_threads { map.insert("MaxThreads".into(), Value::Integer(n)); }
-        if let Some(ms) = self.settings.time_budget_ms { map.insert("TimeBudgetMs".into(), Value::Integer(ms)); }
+        if let Some(n) = self.settings.max_threads { map.insert("maxThreads".into(), Value::Integer(n)); }
+        if let Some(ms) = self.settings.time_budget_ms { map.insert("timeBudgetMs".into(), Value::Integer(ms)); }
         let opts = Value::Assoc(map);
         let call = Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args: vec![opts] };
         let res = self.ev.eval(call);
@@ -106,6 +164,34 @@ impl Session {
         }
     }
 
+    pub fn eval_with_time_budget(&mut self, expr: Value, budget_ms: i64) -> Value {
+        // Start a temporary scope with a custom time budget, evaluate, then end it and restore previous scope
+        let prev = self.scope_id;
+        // Build options association for StartScope
+        let mut map = lyra_core::value::AssocMap::new();
+        map.insert("timeBudgetMs".into(), Value::Integer(budget_ms));
+        let opts = Value::Assoc(map);
+        // Start temporary scope
+        let call = Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args: vec![opts] };
+        let res = self.ev.eval(call);
+        let mut out = Value::Symbol("Null".into());
+        if let Value::Expr { head, args } = res {
+            if matches!(*head, Value::Symbol(ref s) if s=="ScopeId") {
+                if let Some(Value::Integer(id)) = args.get(0) {
+                    // Switch to temporary scope, eval, then end and restore
+                    self.scope_id = Some(*id);
+                    out = self.eval_in_scope(expr);
+                    let _ = self.end_scope();
+                    self.scope_id = prev;
+                    return out;
+                }
+            }
+        }
+        // Fallback: evaluate in current scope if temp scope failed
+        self.scope_id = prev;
+        self.eval_in_scope(expr)
+    }
+
     pub fn preview_rows(&mut self, value: Value, limit: usize) -> Value {
         // For Dataset: Head[value, n] yields first rows (as list of assoc)
         // For Frame: FrameCollect[FrameHead[value, n]] yields list of assoc
@@ -122,7 +208,7 @@ impl Session {
         self.eval_in_scope(expr)
     }
 
-    pub fn execute_cell(&mut self, cell_id: Uuid, _opts: ExecutionOpts) -> ExecResult {
+    pub fn execute_cell(&mut self, cell_id: Uuid, opts: ExecutionOpts) -> ExecResult {
         let start = Instant::now();
         let mut outputs: Vec<DisplayItem> = Vec::new();
         let mut err: Option<String> = None;
@@ -151,6 +237,51 @@ impl Session {
                 vec![]
             }
         };
+
+        // Cache check
+        let cache_key = if self.settings.enable_cache && !opts.ignore_cache {
+            Some(self.compute_cache_key(&input))
+        } else { None };
+        if let Some(ref key) = cache_key {
+            if let Some(saved) = self.cache.get(key) {
+                outputs = saved.clone();
+                // Write outputs + metadata back to notebook cell
+                let mut new_cell = self.nb.cells[pos].clone();
+                new_cell.output = outputs
+                    .iter()
+                    .map(|it| nb::schema::DisplayData { mime: it.mime.clone(), data: it.data.clone(), schema: None, meta: None })
+                    .collect();
+                let dur_ms = start.elapsed().as_millis();
+                let meta = &mut new_cell.meta;
+                let count = meta.get("execCount").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
+                meta.insert("execCount".into(), sj::Value::Number((count as i64).into()));
+                meta.insert("timingMs".into(), sj::Value::Number(sj::Number::from(dur_ms as u64)));
+                meta.insert("cached".into(), sj::Value::Bool(true));
+                meta.remove("error");
+                self.nb.cells[pos] = new_cell;
+                return ExecResult { cell_id, duration_ms: dur_ms, outputs, error: None };
+            }
+            // Try disk cache
+            if let Some(on_disk) = self.try_load_cache(key) {
+                outputs = on_disk.clone();
+                // mirror to memory
+                self.cache.insert(key.clone(), on_disk);
+                let mut new_cell = self.nb.cells[pos].clone();
+                new_cell.output = outputs
+                    .iter()
+                    .map(|it| nb::schema::DisplayData { mime: it.mime.clone(), data: it.data.clone(), schema: None, meta: None })
+                    .collect();
+                let dur_ms = start.elapsed().as_millis();
+                let meta = &mut new_cell.meta;
+                let count = meta.get("execCount").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
+                meta.insert("execCount".into(), sj::Value::Number((count as i64).into()));
+                meta.insert("timingMs".into(), sj::Value::Number(sj::Number::from(dur_ms as u64)));
+                meta.insert("cached".into(), sj::Value::Bool(true));
+                meta.remove("error");
+                self.nb.cells[pos] = new_cell;
+                return ExecResult { cell_id, duration_ms: dur_ms, outputs, error: None };
+            }
+        }
 
         // Evaluate each expression and capture outputs
         for expr in exprs {
@@ -199,6 +330,14 @@ impl Session {
         if let Some(msg) = &err { meta.insert("error".into(), sj::Value::String(msg.clone())); } else { meta.remove("error"); }
         self.nb.cells[pos] = new_cell;
 
+        // Save into cache on success
+        if self.settings.enable_cache && err.is_none() {
+            if let Some(key) = cache_key { 
+                self.cache.insert(key.clone(), outputs.clone());
+                let _ = self.try_store_cache(&key, &outputs);
+            }
+        }
+
         ExecResult { cell_id, duration_ms: dur_ms, outputs, error: err }
     }
 
@@ -241,14 +380,14 @@ impl Session {
         (dur, outputs, err)
     }
 
-    pub fn execute_cell_events(&mut self, cell_id: Uuid, _opts: ExecutionOpts) -> Vec<ExecEvent> {
+    pub fn execute_cell_events(&mut self, cell_id: Uuid, opts: ExecutionOpts) -> Vec<ExecEvent> {
         let mut events = Vec::new();
-        let res = self.execute_cell_with_cb(cell_id, ExecutionOpts::default(), |ev| events.push(ev));
+        let res = self.execute_cell_with_cb(cell_id, opts, |ev| events.push(ev));
         events.push(ExecEvent::Finished { result: res });
         events
     }
 
-    pub fn execute_cell_with_cb<F>(&mut self, cell_id: Uuid, _opts: ExecutionOpts, mut cb: F) -> ExecResult
+    pub fn execute_cell_with_cb<F>(&mut self, cell_id: Uuid, opts: ExecutionOpts, mut cb: F) -> ExecResult
     where
         F: FnMut(ExecEvent),
     {
@@ -287,6 +426,20 @@ impl Session {
                 return ExecResult { cell_id, duration_ms: dur_ms, outputs: vec![], error: Some(msg) };
             }
         };
+        // Cache check
+        if self.settings.enable_cache && !opts.ignore_cache {
+            let key = self.compute_cache_key(&c.input);
+            if let Some(saved) = self.cache.get(&key) {
+                for it in saved.iter().cloned() { cb(ExecEvent::Output { cell_id, item: it }); }
+                let dur_ms = start.elapsed().as_millis();
+                return ExecResult { cell_id, duration_ms: dur_ms, outputs: saved.clone(), error: None };
+            } else if let Some(on_disk) = self.try_load_cache(&key) {
+                self.cache.insert(key.clone(), on_disk.clone());
+                for it in on_disk.iter().cloned() { cb(ExecEvent::Output { cell_id, item: it }); }
+                let dur_ms = start.elapsed().as_millis();
+                return ExecResult { cell_id, duration_ms: dur_ms, outputs: on_disk, error: None };
+            }
+        }
         let mut outputs: Vec<DisplayItem> = Vec::new();
         let mut err: Option<String> = None;
         for expr in exprs {
@@ -329,12 +482,37 @@ impl Session {
         meta.insert("timingMs".into(), sj::Value::Number(sj::Number::from(dur_ms as u64)));
         if let Some(msg) = &err { meta.insert("error".into(), sj::Value::String(msg.clone())); } else { meta.remove("error"); }
         self.nb.cells[pos] = new_cell;
+        // Save to cache on success
+        if self.settings.enable_cache && err.is_none() {
+            let key = self.compute_cache_key(&c.input);
+            self.cache.insert(key.clone(), outputs.clone());
+            let _ = self.try_store_cache(&key, &outputs);
+        }
 
         ExecResult { cell_id, duration_ms: dur_ms, outputs, error: err }
     }
 }
 
 impl Session {
+    fn cache_path(&self, key: &str) -> Option<std::path::PathBuf> {
+        let dir = self.settings.cache_dir.as_ref()?;
+        let mut p = std::path::PathBuf::from(dir);
+        p.push(format!("{}.json", key));
+        Some(p)
+    }
+    fn try_load_cache(&self, key: &str) -> Option<Vec<DisplayItem>> {
+        let path = self.cache_path(key)?;
+        match std::fs::read_to_string(path) {
+            Ok(s) => serde_json::from_str::<Vec<DisplayItem>>(&s).ok(),
+            Err(_) => None,
+        }
+    }
+    fn try_store_cache(&self, key: &str, val: &Vec<DisplayItem>) -> Result<(), ()> {
+        let path = match self.cache_path(key) { Some(p) => p, None => return Err(()) };
+        if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
+        let s = match serde_json::to_string(val) { Ok(s) => s, Err(_) => return Err(()) };
+        std::fs::write(path, s).map_err(|_| ())
+    }
     fn data_url_mime_and_data(s: &str) -> Option<(String, String)> {
         if let Some(rest) = s.strip_prefix("data:") {
             let mut parts = rest.splitn(2, ',');
@@ -380,5 +558,18 @@ impl Session {
             }
         }
         if out.len() == ids.len() { out } else { ids.to_vec() }
+    }
+}
+
+impl Session {
+    fn compute_cache_key(&self, input: &str) -> String {
+        let kernel_ver = env!("CARGO_PKG_VERSION");
+        let nb_ver = nb::schema::CURRENT_VERSION;
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(kernel_ver.as_bytes()); hasher.update(b"|");
+        hasher.update(nb_ver.as_bytes()); hasher.update(b"|");
+        if let Some(s) = self.settings.cache_salt.as_ref() { hasher.update(s.as_bytes()); hasher.update(b"|"); }
+        hasher.update(input.as_bytes());
+        hasher.finalize().to_hex().to_string()
     }
 }

@@ -4,7 +4,7 @@
 *)
 
 tmp := "target/tmp/env";
-MakeDirectory[tmp, <|"Parents"->True|>];
+MakeDirectory[tmp, <|"parents"->True|>];
 dotenv := PathJoin[{tmp, ".env"}];
 "FOO=bar\nHOME_ALIAS=${HOME}\n" >> dotenv;
 

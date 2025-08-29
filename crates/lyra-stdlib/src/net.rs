@@ -43,6 +43,7 @@ pub fn register_net(ev: &mut Evaluator) {
     ev.register("RespondHtml", respond_html as NativeFn, Attributes::empty());
     ev.register("RespondRedirect", respond_redirect as NativeFn, Attributes::empty());
     ev.register("RespondNoContent", respond_no_content as NativeFn, Attributes::empty());
+    ev.register("Respond", respond_dispatch as NativeFn, Attributes::empty());
     ev.register("CookiesHeader", cookies_header as NativeFn, Attributes::empty());
     ev.register("GetResponseCookies", get_response_cookies as NativeFn, Attributes::empty());
     #[cfg(feature = "net_https")]
@@ -59,14 +60,14 @@ pub fn register_net(ev: &mut Evaluator) {
         tool_spec!("HttpOptions", summary: "HTTP OPTIONS request (http/https)", params: ["url","opts"], tags: ["net","http"], effects: ["net.http"]),
         tool_spec!("Download", summary: "Download URL to file (http/https)", params: ["url","path","opts"], tags: ["net","http","fs"], examples: [Value::String("Download[\"https://example.com/image.png\", \"/tmp/image.png\"]".into())], effects: ["net.http","fs.write"]),
         tool_spec!("DownloadStream", summary: "Stream download URL directly to file", params: ["url","path","opts"], tags: ["net","http","fs"], effects: ["net.http","fs.write"]),
-        tool_spec!("HttpServe", summary: "Start an HTTP server and handle requests with a function", params: ["handler","opts"], tags: ["net","http","server"], effects: ["net.listen"]),
+        tool_spec!("HttpServe", summary: "Start an HTTP server and handle requests with a function", params: ["handler","opts"], tags: ["net","http","server"], examples: [Value::String("HttpServe[(req)=>RespondText[\"ok\"], <|host->\"127.0.0.1\", port->0|>]".into())], effects: ["net.listen"]),
         tool_spec!("HttpServeRoutes", summary: "Start an HTTP server with a routes table", params: ["routes","opts"], tags: ["net","http","server"], effects: ["net.listen"]),
         tool_spec!("HttpServerStop", summary: "Stop a running HTTP server by id", params: ["server"], tags: ["net","http","server"], effects: ["net.listen"]),
         tool_spec!("HttpServerAddr", summary: "Get bound address for a server id", params: ["server"], tags: ["net","http","server"], effects: []),
-        tool_spec!("HttpRequest", summary: "Generic HTTP request via options object", params: ["options"], tags: ["net","http"], examples: [Value::String("HttpRequest[<|\"Method\"->\"GET\", \"Url\"->\"https://example.com\"|>]".into())], effects: ["net.http"]),
+        tool_spec!("HttpRequest", summary: "Generic HTTP request via options object", params: ["options"], tags: ["net","http"], examples: [Value::String("HttpRequest[<|method->\"GET\", url->\"https://example.com\"|>]".into())], effects: ["net.http"]),
         tool_spec!("PathMatch", summary: "Match a path pattern like /users/:id against a path", params: ["pattern","path"], tags: ["http","routing"], examples: [Value::String("PathMatch[\"/users/:id\", \"/users/42\"]  ==> <|id->\"42\"|>".into())], effects: []),
         tool_spec!("RespondFile", summary: "Build a file response for HttpServe", params: ["path","opts"], tags: ["http","server"], effects: []),
-        tool_spec!("RespondText", summary: "Build a text response for HttpServe", params: ["text","opts"], tags: ["http","server"], examples: [Value::String("RespondText[\"ok\", <|\"Status\"->200|>]".into())], effects: []),
+        tool_spec!("RespondText", summary: "Build a text response for HttpServe", params: ["text","opts"], tags: ["http","server"], examples: [Value::String("RespondText[\"ok\", <|status->200|>]".into())], effects: []),
         tool_spec!("RespondJson", summary: "Build a JSON response for HttpServe", params: ["value","opts"], tags: ["http","server","json"], effects: []),
         tool_spec!("RespondBytes", summary: "Build a binary response for HttpServe", params: ["bytes","opts"], tags: ["http","server","binary"], effects: []),
         tool_spec!("RespondHtml", summary: "Build an HTML response for HttpServe", params: ["html","opts"], tags: ["http","server","html"], effects: []),
@@ -124,6 +125,7 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "RespondHtml", respond_html as NativeFn, Attributes::empty());
     register_if(ev, pred, "RespondRedirect", respond_redirect as NativeFn, Attributes::empty());
     register_if(ev, pred, "RespondNoContent", respond_no_content as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Respond", respond_dispatch as NativeFn, Attributes::empty());
     register_if(ev, pred, "CookiesHeader", cookies_header as NativeFn, Attributes::empty());
     register_if(
         ev,
@@ -134,6 +136,44 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     );
     #[cfg(feature = "net_https")]
     register_if(ev, pred, "HttpServeTls", http_serve_tls as NativeFn, Attributes::HOLD_ALL);
+}
+
+fn http_server(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("HttpServer".into())), args }; }
+    let a0 = ev.eval(args[0].clone());
+    let a1 = args.get(1).cloned().map(|v| ev.eval(v));
+    match a0 {
+        Value::List(_) | Value::Assoc(_) => {
+            // Treat as routes
+            let mut v = vec![a0]; if let Some(o) = a1 { v.push(o); }
+            ev.eval(Value::Expr { head: Box::new(Value::Symbol("HttpServeRoutes".into())), args: v })
+        }
+        _ => {
+            // Treat as handler function
+            let mut v = vec![a0]; if let Some(o) = a1 { v.push(o); }
+            ev.eval(Value::Expr { head: Box::new(Value::Symbol("HttpServe".into())), args: v })
+        }
+    }
+}
+
+fn respond_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Respond".into())), args }; }
+    let kind = ev.eval(args[0].clone());
+    let rest: Vec<Value> = args.into_iter().skip(1).map(|v| ev.eval(v)).collect();
+    let mut mk = |name: &str, mut rest: Vec<Value>| -> Value { ev.eval(Value::Expr { head: Box::new(Value::Symbol(name.into())), args: { rest.drain(..).collect() } }) };
+    match kind {
+        Value::String(s) | Value::Symbol(s) => match s.as_str() {
+            "Text" => mk("RespondText", rest),
+            "Json" => mk("RespondJson", rest),
+            "Bytes" => mk("RespondBytes", rest),
+            "Html" => mk("RespondHtml", rest),
+            "File" => mk("RespondFile", rest),
+            "Redirect" => mk("RespondRedirect", rest),
+            "NoContent" => mk("RespondNoContent", rest),
+            _ => Value::Expr { head: Box::new(Value::Symbol("Respond".into())), args: vec![Value::String(s)] },
+        },
+        other => Value::Expr { head: Box::new(Value::Symbol("Respond".into())), args: vec![other] },
+    }
 }
 
 fn failure(tag: &str, msg: &str) -> Value {
@@ -193,14 +233,14 @@ fn http_opts_from(ev: &mut Evaluator, v: Option<Value>) -> HttpOpts {
         follow_redirects: None,
     };
     if let Some(Value::Assoc(m)) = v.map(|x| ev.eval(x)) {
-        if let Some(Value::Integer(ms)) = m.get("TimeoutMs") {
+        if let Some(Value::Integer(ms)) = m.get("TimeoutMs").or_else(|| m.get("timeoutMs")) {
             if *ms > 0 {
                 o.timeout_ms = Some(*ms as u64);
             } else {
                 o.timeout_ms = None;
             }
         }
-        if let Some(Value::Assoc(hs)) = m.get("Headers") {
+        if let Some(Value::Assoc(hs)) = m.get("Headers").or_else(|| m.get("headers")) {
             for (k, vv) in hs.iter() {
                 if let Some(s) = match vv {
                     Value::String(s) => Some(s.clone()),
@@ -211,23 +251,23 @@ fn http_opts_from(ev: &mut Evaluator, v: Option<Value>) -> HttpOpts {
                 }
             }
         }
-        if let Some(vq) = m.get("Query") {
+        if let Some(vq) = m.get("Query").or_else(|| m.get("query")) {
             o.query = collect_kv_pairs(ev, vq.clone());
         }
-        if let Some(vf) = m.get("Form") {
+        if let Some(vf) = m.get("Form").or_else(|| m.get("form")) {
             let pairs = collect_kv_pairs(ev, vf.clone());
             if !pairs.is_empty() {
                 o.form_body = Some(pairs);
             }
         }
-        if let Some(vj) = m.get("Json") {
+        if let Some(vj) = m.get("Json").or_else(|| m.get("json")) {
             let vv = ev.eval(vj.clone());
             o.json_body = Some(value_to_json(&vv));
         }
-        if let Some(vm) = m.get("Multipart") {
+        if let Some(vm) = m.get("Multipart").or_else(|| m.get("multipart")) {
             o.multipart = collect_multipart(ev, vm.clone());
         }
-        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("As") {
+        if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("As").or_else(|| m.get("as")) {
             let sl = s.to_ascii_lowercase();
             o.as_kind = match sl.as_str() {
                 "bytes" => AsKind::Bytes,
@@ -237,21 +277,21 @@ fn http_opts_from(ev: &mut Evaluator, v: Option<Value>) -> HttpOpts {
             };
         }
 
-        if let Some(Value::Assoc(cookies)) = m.get("Cookies") {
+        if let Some(Value::Assoc(cookies)) = m.get("Cookies").or_else(|| m.get("cookies")) {
             let cookie = cookies_header_from_assoc(cookies);
             if !cookie.is_empty() {
                 o.headers.push(("Cookie".into(), cookie));
             }
         }
-        if let Some(Value::Boolean(b)) = m.get("DisableTlsVerify") {
+        if let Some(Value::Boolean(b)) = m.get("DisableTlsVerify").or_else(|| m.get("disableTlsVerify")) {
             if *b {
                 o.tls_insecure = true;
             }
         }
-        if let Some(Value::Boolean(b)) = m.get("FollowRedirects") {
+        if let Some(Value::Boolean(b)) = m.get("FollowRedirects").or_else(|| m.get("followRedirects")) {
             o.follow_redirects = Some(if *b { 10 } else { 0 });
         }
-        if let Some(Value::Integer(n)) = m.get("MaxRedirects") {
+        if let Some(Value::Integer(n)) = m.get("MaxRedirects").or_else(|| m.get("maxRedirects")) {
             o.follow_redirects = Some((*n).max(0) as usize);
         }
     }
@@ -1309,7 +1349,7 @@ fn http_download_cached(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     let ttl_ms = match args.get(2).and_then(|v| {
         if let Value::Assoc(m) = ev.eval(v.clone()) {
-            m.get("TtlMs").cloned()
+            m.get("TtlMs").or_else(|| m.get("ttlMs")).cloned()
         } else {
             None
         }
@@ -1554,25 +1594,25 @@ fn server_opts_from(ev: &mut Evaluator, v: Option<Value>) -> ServerOpts {
         max_body_bytes: 2 * 1024 * 1024,
     };
     if let Some(Value::Assoc(m)) = v.map(|x| ev.eval(x)) {
-        if let Some(Value::Integer(p)) = m.get("Port") {
+        if let Some(Value::Integer(p)) = m.get("Port").or_else(|| m.get("port")) {
             if *p > 0 && *p <= 65535 {
                 o.port = *p as u16;
             }
         }
-        if let Some(Value::String(h)) | Some(Value::Symbol(h)) = m.get("Host") {
+        if let Some(Value::String(h)) | Some(Value::Symbol(h)) = m.get("Host").or_else(|| m.get("host")) {
             o.host = h.clone();
         }
-        if let Some(Value::Integer(ms)) = m.get("ReadTimeoutMs") {
+        if let Some(Value::Integer(ms)) = m.get("ReadTimeoutMs").or_else(|| m.get("readTimeoutMs")) {
             if *ms > 0 {
                 o.read_timeout_ms = Some(*ms as u64);
             }
         }
-        if let Some(Value::Integer(ms)) = m.get("WriteTimeoutMs") {
+        if let Some(Value::Integer(ms)) = m.get("WriteTimeoutMs").or_else(|| m.get("writeTimeoutMs")) {
             if *ms > 0 {
                 o.write_timeout_ms = Some(*ms as u64);
             }
         }
-        if let Some(Value::Integer(n)) = m.get("MaxBodyBytes") {
+        if let Some(Value::Integer(n)) = m.get("MaxBodyBytes").or_else(|| m.get("maxBodyBytes")) {
             if *n > 0 {
                 o.max_body_bytes = *n as usize;
             }
@@ -2989,9 +3029,9 @@ fn auth_jwt_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let handler = args[1].clone();
     let req = ev.eval(args[2].clone());
     let secret =
-        opts.get("Secret")
+        opts.get("secret").or_else(|| opts.get("Secret"))
             .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
-    let audience = opts.get("Audience").and_then(|v| {
+    let audience = opts.get("audience").or_else(|| opts.get("Audience")).and_then(|v| {
         if let Value::String(s) = v {
             Some(s.clone())
         } else {
@@ -2999,7 +3039,7 @@ fn auth_jwt_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         }
     });
     let issuer =
-        opts.get("Issuer")
+        opts.get("issuer").or_else(|| opts.get("Issuer"))
             .and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
     // Extract Bearer
     let bearer = match &req {

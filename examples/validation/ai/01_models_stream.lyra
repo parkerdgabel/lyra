@@ -11,8 +11,7 @@ msgs := {
   <|"role"->"user", "content"->"Say hi"|>
 };
 
-Chat[m, <|"Messages"->msgs|>];
+Chat[m, <|"messages"->msgs|>];
 
 (* Embeddings mock *)
 Embed[m, <|"Text"->{"cat", "dog"}|>];
-

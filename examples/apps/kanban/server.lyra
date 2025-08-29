@@ -25,7 +25,7 @@ Route[req_] := Module[{},
   ];
   If[m=="POST" && Part[pm["/projects", path], "ok"]==True,
     body := ParseJsonBody[req];
-    name := Lookup[body, "name"];
+    name := Get[body, "name"];
     If[name==Null || name=="", Return[BadReq["name required"]]];
     Exec[conn, "INSERT INTO projects(name) VALUES ($name)", <|"name"->name|>];
     Return[JsonResp[<|"ok"->True|>]]
@@ -38,7 +38,7 @@ Route[req_] := Module[{},
     Return[JsonResp[rows]]
   ];
   If[m=="POST" && Part[pm["/columns", path], "ok"]==True,
-    body := ParseJsonBody[req]; pid := Lookup[body, "project_id"]; nm := Lookup[body, "name"]; ps := Lookup[body, "pos"];
+    body := ParseJsonBody[req]; pid := Get[body, "project_id"]; nm := Get[body, "name"]; ps := Get[body, "pos"];
     Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid, $name, $pos)", <|"pid"->pid, "name"->nm, "pos"->ps|>];
     Return[JsonResp[<|"ok"->True|>]]
   ];
@@ -50,7 +50,7 @@ Route[req_] := Module[{},
     Return[JsonResp[rows]]
   ];
   If[m=="POST" && Part[pm["/cards", path], "ok"]==True,
-    body := ParseJsonBody[req]; pid := Lookup[body, "project_id"]; cid := Lookup[body, "column_id"]; ttl := Lookup[body, "title"]; pr := Lookup[body, "prio"];
+    body := ParseJsonBody[req]; pid := Get[body, "project_id"]; cid := Get[body, "column_id"]; ttl := Get[body, "title"]; pr := Get[body, "prio"];
     Exec[conn, "INSERT INTO cards(project_id, column_id, title, prio, created_at, desc) VALUES ($pid, $cid, $title, $prio, strftime('%s','now'), '')",
       <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>];
     Return[JsonResp[<|"ok"->True|>]]
@@ -63,10 +63,10 @@ Route[req_] := Module[{},
     If[m=="PATCH",
       body := ParseJsonBody[req];
       sets := {};
-      If[Lookup[body, "title"] != Null, sets = Append[sets, StringJoin[{"title=", JsonStringify[Lookup[body, "title"]]}]]];
-      If[Lookup[body, "desc"] != Null, sets = Append[sets, StringJoin[{"desc=", JsonStringify[Lookup[body, "desc"]]}]]];
-      If[Lookup[body, "prio"] != Null, sets = Append[sets, StringJoin[{"prio=", JsonStringify[Lookup[body, "prio"]]}]]];
-      If[Lookup[body, "column_id"] != Null, sets = Append[sets, StringJoin[{"column_id=", JsonStringify[Lookup[body, "column_id"]]}]]];
+      If[Get[body, "title"] != Null, sets = Append[sets, StringJoin[{"title=", JsonStringify[Get[body, "title"]]}]]];
+      If[Get[body, "desc"] != Null, sets = Append[sets, StringJoin[{"desc=", JsonStringify[Get[body, "desc"]]}]]];
+      If[Get[body, "prio"] != Null, sets = Append[sets, StringJoin[{"prio=", JsonStringify[Get[body, "prio"]]}]]];
+      If[Get[body, "column_id"] != Null, sets = Append[sets, StringJoin[{"column_id=", JsonStringify[Get[body, "column_id"]]}]]];
       If[Length[sets] > 0, sqlu := StringJoin[{"UPDATE cards SET ", StringJoin[Riffle[sets, ", "]], " WHERE id=", cid2}]; Exec[conn, sqlu]];
       Return[JsonResp[<|"ok"->True|>]]
     ]
@@ -77,8 +77,8 @@ Route[req_] := Module[{},
     colid := Part[Part[mmcol, "params"], "id"];
     If[m=="PATCH",
       body := ParseJsonBody[req]; sets := {};
-      If[Lookup[body, "name"] != Null, sets = Append[sets, StringJoin[{"name=", JsonStringify[Lookup[body, "name"]]}]]];
-      If[Lookup[body, "pos"] != Null, sets = Append[sets, StringJoin[{"pos=", JsonStringify[Lookup[body, "pos"]]}]]];
+      If[Get[body, "name"] != Null, sets = Append[sets, StringJoin[{"name=", JsonStringify[Get[body, "name"]]}]]];
+      If[Get[body, "pos"] != Null, sets = Append[sets, StringJoin[{"pos=", JsonStringify[Get[body, "pos"]]}]]];
       If[Length[sets] > 0, Exec[conn, StringJoin[{"UPDATE columns SET ", StringJoin[Riffle[sets, ", "]], " WHERE id=", colid}]]];
       Return[JsonResp[<|"ok"->True|>]]
     ];
@@ -93,13 +93,13 @@ Route[req_] := Module[{},
       Return[JsonResp[rows]]
     ];
     If[m=="POST",
-      body := ParseJsonBody[req]; tg := Lookup[body, "tag"]; If[tg==Null || tg=="", Return[BadReq["tag required"]]];
+      body := ParseJsonBody[req]; tg := Get[body, "tag"]; If[tg==Null || tg=="", Return[BadReq["tag required"]]];
       Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid, $tag)", <|"cid"->card, "tag"->tg|>];
       Return[JsonResp[<|"ok"->True|>]]
     ]
   ];
   (* Search *)
-  mmq := Lookup[q, "q"]; If[m=="GET" && Part[pm["/search", path], "ok"]==True,
+  mmq := Get[q, "q"]; If[m=="GET" && Part[pm["/search", path], "ok"]==True,
     If[mmq==Null || mmq=="", Return[JsonResp[{ }]]];
     like := StringJoin[{"'%", mmq, "%'"}];
     sql := StringJoin[{"SELECT c.id, c.title, c.prio, c.column_id, c.project_id FROM cards c WHERE c.title LIKE ", like, " OR c.desc LIKE ", like, " OR EXISTS (SELECT 1 FROM card_tags t WHERE t.card_id=c.id AND t.tag LIKE ", like, ")"}];
@@ -121,15 +121,15 @@ Route[req_] := Module[{},
   If[m=="POST" && Part[mmimp, "ok"]==True,
     pid := Part[Part[mmimp, "params"], "id"];
     body := ParseJsonBody[req];
-    cols := Lookup[body, "columns"]; crds := Lookup[body, "cards"]; tgs := Lookup[body, "tags"]; Exec[conn, "BEGIN"];
-    If[cols != Null, Map[(c_)=> Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid,$name,$pos)", <|"pid"->pid, "name"->Lookup[c_, "name"], "pos"->Lookup[c_, "pos"]|>], cols]];
-    If[crds != Null, Map[(c_)=> Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid,$cid,$title,$desc,$prio,$created)", <|"pid"->pid, "cid"->Lookup[c_, "column_id"], "title"->Lookup[c_, "title"], "desc"->Lookup[c_, "desc"], "prio"->Lookup[c_, "prio"], "created"->Lookup[c_, "created_at"]|>], crds]];
-    If[tgs != Null, Map[(t_)=> Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid,$tag)", <|"cid"->Lookup[t_, "card_id"], "tag"->Lookup[t_, "tag"]|>], tgs]];
+    cols := Get[body, "columns"]; crds := Get[body, "cards"]; tgs := Get[body, "tags"]; Exec[conn, "BEGIN"];
+    If[cols != Null, Map[(c_)=> Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid,$name,$pos)", <|"pid"->pid, "name"->Get[c_, "name"], "pos"->Get[c_, "pos"]|>], cols]];
+    If[crds != Null, Map[(c_)=> Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid,$cid,$title,$desc,$prio,$created)", <|"pid"->pid, "cid"->Get[c_, "column_id"], "title"->Get[c_, "title"], "desc"->Get[c_, "desc"], "prio"->Get[c_, "prio"], "created"->Get[c_, "created_at"]|>], crds]];
+    If[tgs != Null, Map[(t_)=> Exec[conn, "INSERT INTO card_tags(card_id, tag) VALUES ($cid,$tag)", <|"cid"->Get[t_, "card_id"], "tag"->Get[t_, "tag"]|>], tgs]];
     Exec[conn, "COMMIT"]; Return[JsonResp[<|"ok"->True|>]]
   ];
   NotFound[]
 ];
 
-port := 8080; srv := HttpServe[Route, <|"Host"->"127.0.0.1", "Port"->port|>];
+port := 8080; srv := HttpServe[Route, <|"host"->"127.0.0.1", "port"->port|>];
 Puts[StringJoin[{"Kanban server listening on http://127.0.0.1:", JsonStringify[port]}]];
 srv

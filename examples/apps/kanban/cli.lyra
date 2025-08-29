@@ -37,7 +37,7 @@ If[cmd=="help", ShowHelp[],
         sub2 := If[Length[Rest] >= cmdIdx+1, Part[Rest, cmdIdx+1], "help"];
         If[sub2=="add", (
           If[Length[Rest] < cmdIdx+3, Puts["Usage: column add <project_id> <name> [--pos N]"],
-            pid := Part[Rest, cmdIdx+2]; nm := Part[Rest, cmdIdx+3]; pos := Lookup[Opts, "pos"];
+            pid := Part[Rest, cmdIdx+2]; nm := Part[Rest, cmdIdx+3]; pos := Get[Opts, "pos"];
             Exec[conn, "INSERT INTO columns(project_id, name, pos) VALUES ($pid, $name, $pos)", <|"pid"->pid, "name"->nm, "pos"->pos|>];
             Puts["Column added."]
           ]
@@ -52,7 +52,7 @@ If[cmd=="help", ShowHelp[],
           sub3 := If[Length[Rest] >= cmdIdx+1, Part[Rest, cmdIdx+1], "help"];
           If[sub3=="add", (
             If[Length[Rest] < cmdIdx+4, Puts["Usage: card add <project_id> <column_id> <title> [--prio N]"],
-              pid := Part[Rest, cmdIdx+2]; cid := Part[Rest, cmdIdx+3]; ttl := Part[Rest, cmdIdx+4]; pr := Lookup[Opts, "prio"];
+              pid := Part[Rest, cmdIdx+2]; cid := Part[Rest, cmdIdx+3]; ttl := Part[Rest, cmdIdx+4]; pr := Get[Opts, "prio"];
               Exec[conn, "INSERT INTO cards(project_id, column_id, title, desc, prio, created_at) VALUES ($pid, $cid, $title, '', $prio, strftime('%s','now'))",
                 <|"pid"->pid, "cid"->cid, "title"->ttl, "prio"->pr|>]; Puts["Card added."]
             ]

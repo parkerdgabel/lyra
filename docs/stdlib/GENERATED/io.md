@@ -75,7 +75,7 @@
 - Summary: Encode and write audio to path (WAV)
 - Tags: audio, io
 - Examples:
-  - `AudioSave[<|Path->"in.wav"|>, "out.wav", <|Format->"wav"|>]`
+  - `AudioSave[<|path->"in.wav"|>, "out.wav", <|format->"wav"|>]`
 
 ## `Basename`
 

@@ -102,6 +102,10 @@ pub mod vector;
 pub mod visual;
 #[cfg(feature = "workflow")]
 pub mod workflow;
+#[cfg(feature = "notebook")]
+pub mod notebook;
+// Helper utilities for rich display (data URLs)
+pub mod display;
 
 // Conditional registration helper used by filtered registrars
 pub fn register_if(
@@ -190,6 +194,8 @@ pub fn register_all(ev: &mut Evaluator) {
     image::register_image(ev);
     #[cfg(feature = "visual")]
     visual::register_visual(ev);
+    #[cfg(feature = "notebook")]
+    notebook::register_notebook(ev);
     #[cfg(feature = "audio")]
     audio::register_audio(ev);
     #[cfg(feature = "media")]

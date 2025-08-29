@@ -35,6 +35,24 @@ fn postfix_prefix_and_infix_evaluate() {
 }
 
 #[test]
+fn postfix_right_apply_with_operator_form() {
+    // Strict right-apply: {1,2,3} // Map[#-1&] => Map[#-1&][{1,2,3}] => {0,1,2}
+    assert_eq!(eval_one("{1,2,3} // Map[# - 1 &]"), "{0, 1, 2}");
+}
+
+#[test]
+fn pipeline_chaining_evaluates_correctly() {
+    // Deterministic chain without randomness: Reverse then Total
+    assert_eq!(eval_one("Range[5] |> Reverse |> Total"), "15");
+    // Partition after Shuffle is non-deterministic in contents; just assert shape
+    let out = eval_one("Range[100] |> Shuffle |> Partition[10] // Length");
+    assert_eq!(out, "10");
+    // Mixed with postfix then pipeline: Reverse via // then Partition
+    let out2 = eval_one("Range[100] // Reverse |> Partition[10] // Length");
+    assert_eq!(out2, "10");
+}
+
+#[test]
 fn replacefirst_with_named_pattern() {
     assert_eq!(eval_one("ReplaceFirst[{1,2,3}, x_Integer -> 9]"), "{9, 2, 3}");
 }

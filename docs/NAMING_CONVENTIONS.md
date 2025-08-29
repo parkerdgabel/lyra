@@ -34,10 +34,10 @@ Generic Verbs (canonical)
 
 Options (common keys)
 
-- Concurrency: `MaxThreads`.
-- Time: `TimeoutMs` (per-call), `TimeBudgetMs` (scope-wide/deadline).
-- HTTP: `Method`, `Headers`, `Body`, `Query`, `FollowRedirects`, `Auth`, etc.
-- Graphs & collections: `Nodes`, `Edges`, `Priority`, `KeyFn`, etc.
+- Concurrency: prefer lowerCamelCase options alongside legacy forms: `maxThreads`, `timeBudgetMs`.
+- Time: `timeoutMs` (per-call), `timeBudgetMs` (scope-wide/deadline).
+- HTTP: `method`, `headers`, `body`, `query`, `followRedirects`, `auth`, etc. (legacy TitleCase still accepted).
+- Graphs & collections: `nodes`, `edges`, `priority`, `keyFn`, etc.
 
 Module Guidelines and Examples
 
@@ -90,12 +90,13 @@ HTTP / Net
 
 - Generic: `HttpRequest[opts]` as canonical (wrappers like `HttpGet` are sugar only).
 - Streaming: `HttpStream[opts]`, then `Read[stream]`, `Close[stream]`.
-- Servers: `HttpServer[opts, handler]`, `Stop[server]`, `Addr[server]`.
+- Servers: `HttpServe[handler, opts]` (canonical). Use `HttpServeRoutes` for route tables. Legacy `HttpServer` is removed.
 - Responses: `Respond["Text"|"Json"|"Bytes"|"Html"|"File"|"Redirect"|"NoContent", value, opts]`.
 
 Strings
 
 - Prefer generic `Length`, `Join`, `Split`, `Replace` with dispatch. Keep specialized forms only where semantics differ.
+- `Split` is the canonical splitter; legacy `StringSplit` is not registered.
 - Regex: keep one canonical name per operation (`RegexMatch`, `RegexFind`, `RegexFindAll`, `RegexReplace`).
 
 Predicates
@@ -106,7 +107,7 @@ Migration Notes
 
 - Old names are removed rather than aliased. Update code and tests to the canonical names.
 - Prefer generic verbs + dispatch to remove type prefixes in function names.
-- Keep option keys consistent across modules (`TimeoutMs`, `TimeBudgetMs`, `MaxThreads`).
+- Options support both TitleCase and lowerCamelCase during migration; prefer lowerCamelCase for new code (e.g., `timeoutMs`, `maxThreads`).
 - Generic Verbs
 
 These verbs are canonical and dispatched by the type of their first argument. They let you write one mental model across modules and data structures.
@@ -120,7 +121,7 @@ These verbs are canonical and dispatched by the type of their first argument. Th
 - Remove[target, value?]:
   - Sets/Bags: Remove[setOrBag, value]
   - Queues/Stacks/PriorityQueues: Remove[handle] (dequeue/pop)
-  - Filesystem paths: Remove["/tmp/file.txt", <|Recursive->True|>]
+  - Filesystem paths: Remove["/tmp/file.txt", <|recursive->True|>]
 
 - Add[target, value]:
   - Bags: Add[Bag[], "x"]
@@ -141,7 +142,7 @@ These verbs are canonical and dispatched by the type of their first argument. Th
   - VectorStore: Count[VectorStore["sqlite:///path.db"]]
 
 - Search[target, query, opts?]:
-  - VectorStore: Search[VectorStore[<|Name->"vs"|>], {0.1,0.2,0.3}]
+  - VectorStore: Search[VectorStore[<|name->"vs"|>], {0.1,0.2,0.3}]
   - Text Index: Search[Index["/tmp/idx.sqlite"], "hello"] or TextSearch for convenience
 
 Examples
@@ -155,5 +156,4 @@ Examples
 
 - Archives
   - Zip["/tmp/bundle.zip", {"/tmp/a.txt", "/tmp/dir"}]
-  - Tar["/tmp/bundle.tar.gz", {"/tmp/data"}, <|"Gzip"->True|>]
-
+  - Tar["/tmp/bundle.tar.gz", {"/tmp/data"}, <|gzip->True|>]

@@ -12,11 +12,14 @@ pub struct ParseErrorDetailed {
 pub struct Parser {
     src: Vec<char>,
     pos: usize,
+    // Controls whether `parse_call_or_atom` is allowed to consume pipeline (`|>`) operators.
+    // We disable this when parsing the RHS of a pipeline to keep it tight (only head or head[args]).
+    allow_pipeline_in_call: bool,
 }
 
 impl Parser {
     pub fn from_source(source: &str) -> Self {
-        Self { src: source.chars().collect(), pos: 0 }
+        Self { src: source.chars().collect(), pos: 0, allow_pipeline_in_call: true }
     }
 
     fn peekc(&self) -> Option<char> {
@@ -293,6 +296,10 @@ impl Parser {
             self.skip_ws();
             match self.peekc() {
                 Some('+') => {
+                    // Disallow ambiguous '++' token (not an operator in Lyra)
+                    if self.pos + 1 < self.src.len() && self.src[self.pos + 1] == '+' {
+                        return Err(LyraError::Parse("unexpected '++'".into()));
+                    }
                     self.nextc();
                     let rhs = self.parse_multiplicative()?;
                     lhs = Value::expr(Value::Symbol("Plus".into()), vec![lhs, rhs]);
@@ -455,11 +462,31 @@ impl Parser {
                 continue;
             }
             // Postfix function application: expr // f  ==> f[expr]
+            // Strict right-apply: always treat RHS as a function-valued expression.
+            // Unlike pipeline (|>), do NOT splice the LHS into existing RHS args.
             if self.starts_with("//") {
                 self.pos += 2;
                 self.skip_ws();
                 // parse RHS as call or symbol
+                // Tight parse for RHS: do not allow it to absorb subsequent pipelines
+                let prev = self.allow_pipeline_in_call;
+                self.allow_pipeline_in_call = false;
                 let rhs = self.parse_call_or_atom()?;
+                self.allow_pipeline_in_call = prev;
+                // Always build f_expr[base], even if rhs is already a call (Map[#]& etc.).
+                let call = Value::expr(rhs, vec![base]);
+                base = call;
+                continue;
+            }
+            // Pipelines at postfix level (ensure chaining with // et al.): a |> f[args] or a |> f
+            if self.starts_with("|>") {
+                self.pos += 2;
+                self.skip_ws();
+                // parse RHS as a tight head (symbol or call), not absorbing further pipelines
+                let prev = self.allow_pipeline_in_call;
+                self.allow_pipeline_in_call = false;
+                let rhs = self.parse_call_or_atom()?; // tight: f[...] or symbol
+                self.allow_pipeline_in_call = prev;
                 let call = match rhs {
                     Value::Expr { head, mut args } => {
                         args.insert(0, base);
@@ -615,11 +642,8 @@ impl Parser {
                     }
                 }
                 if args.is_empty() {
-                    // Property access → Lookup[base, "method"]
-                    base = Value::expr(
-                        Value::Symbol("Lookup".into()),
-                        vec![base, Value::String(method)],
-                    );
+                    // Property access → Get[base, "method"]
+                    base = Value::expr(Value::Symbol("Get".into()), vec![base, Value::String(method)]);
                 } else {
                     let mut all_args = Vec::with_capacity(1 + args.len());
                     all_args.push(base);
@@ -676,11 +700,14 @@ impl Parser {
                 continue;
             }
             // pipelines: a |> f[args] or a |> f
-            if self.starts_with("|>") {
+            if self.allow_pipeline_in_call && self.starts_with("|>") {
                 self.pos += 2;
                 self.skip_ws();
-                // parse RHS as call or symbol
-                let rhs = self.parse_call_or_atom()?; // recursive use to get f[...] or symbol
+                // parse RHS as a tight head (symbol or call), not absorbing further pipelines
+                let prev = self.allow_pipeline_in_call;
+                self.allow_pipeline_in_call = false;
+                let rhs = self.parse_call_or_atom()?; // tight: f[...] or symbol
+                self.allow_pipeline_in_call = prev;
                 let call = match rhs {
                     Value::Expr { head, mut args } => {
                         args.insert(0, base);
@@ -1039,6 +1066,29 @@ impl Parser {
                     }
                 }
                 '{' => {
+                    // If we see doubled/tripled braces inside a string, treat them as literal text
+                    // so Mustache-like templates ({{name}} or {{{name}}}) are preserved for TemplateRender.
+                    if let Some(n1) = self.peekc() {
+                        if n1 == '{' {
+                            // consume second '{'
+                            self.nextc();
+                            // check for triple '{{{'
+                            if let Some(n2) = self.peekc() {
+                                if n2 == '{' {
+                                    // consume third '{'
+                                    self.nextc();
+                                    literal.push('{');
+                                    literal.push('{');
+                                    literal.push('{');
+                                    continue;
+                                }
+                            }
+                            // just doubled '{{'
+                            literal.push('{');
+                            literal.push('{');
+                            continue;
+                        }
+                    }
                     // flush literal so far
                     if !literal.is_empty() {
                         parts.push(Value::String(std::mem::take(&mut literal)));
