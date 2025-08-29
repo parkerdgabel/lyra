@@ -1,5 +1,4 @@
 use crate::attrs::Attributes;
-use crate::concurrency::pool::ThreadLimiter; // not used directly but keeps module grouping consistent
 use crate::eval::{Evaluator, NativeFn};
 use lyra_core::value::Value;
 use std::collections::{HashMap, VecDeque};
@@ -193,4 +192,3 @@ fn try_receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Some(id) = cid { if let Some(ch) = get_channel(id) { return ch.recv(ev.cancel_token.clone(), Some(Instant::now())).unwrap_or(Value::Symbol("Null".into())); } }
     Value::Symbol("Null".into())
 }
-

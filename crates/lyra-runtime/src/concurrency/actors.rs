@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::sync::{
     atomic::{AtomicI64, Ordering},
-    Arc, Mutex,
+    Mutex,
 };
 
 #[derive(Clone)]
@@ -130,4 +130,3 @@ fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
     Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args }
 }
-
