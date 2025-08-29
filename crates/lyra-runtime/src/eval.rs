@@ -820,6 +820,8 @@ pub fn register_core(ev: &mut Evaluator) {
 pub fn register_concurrency(ev: &mut Evaluator) {
     crate::concurrency::futures::register_futures(ev);
     crate::concurrency::channels::register_channels(ev);
+    crate::concurrency::actors::register_actors(ev);
+    crate::concurrency::scope::register_scopes(ev);
     ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
     ev.register("ParallelTable", parallel_table as NativeFn, Attributes::HOLD_ALL);
     ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
@@ -853,6 +855,7 @@ pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
             ev.register(name, f, attrs);
         }
     };
+    // Scope/Actors registrars invoked above when requested
     reg("ParallelMap", parallel_map as NativeFn, Attributes::empty());
     reg("ParallelTable", parallel_table as NativeFn, Attributes::HOLD_ALL);
     reg("MapAsync", map_async as NativeFn, Attributes::empty());
