@@ -828,16 +828,7 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("Gather", gather as NativeFn, Attributes::empty());
     ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
     ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
-    ev.register("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
-    ev.register("EndScope", end_scope_fn as NativeFn, Attributes::empty());
-    ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
-    ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
+    // moved to module registrars
 }
 
 // Filtered registration variant for tree-shaken builds.
@@ -862,17 +853,7 @@ pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     reg("Gather", gather as NativeFn, Attributes::empty());
     reg("BusyWait", busy_wait as NativeFn, Attributes::empty());
     reg("Fail", fail_fn as NativeFn, Attributes::empty());
-    reg("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("InScope", in_scope_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
-    reg("EndScope", end_scope_fn as NativeFn, Attributes::empty());
-    reg("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
-    // channel builtins registered above if requested
-    reg("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
+    // moved to module registrars
 }
 
 pub fn register_explain(ev: &mut Evaluator) { crate::core::schema_explain::register_explain(ev); }
@@ -1685,189 +1666,6 @@ fn gather_rec(ev: &mut Evaluator, v: Value) -> Vec<Value> {
     }
 }
 
-// removed: test echo helpers moved to stdlib/testing
-
-fn schema_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("Schema".into())), args };
-    }
-    let v = ev.eval(args[0].clone());
-    schema_of(&v)
-}
-
-// Scope[<|MaxThreads->n, TimeBudgetMs->ms|>, body]
-fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("Scope".into())), args };
-    }
-    let opts = ev.eval(args[0].clone());
-    let body = args[1].clone();
-    // New evaluator inheriting env; establish a scope token
-    let mut ev2 = Evaluator::with_env(ev.env.clone());
-    ev2.cancel_token = Some(Arc::new(AtomicBool::new(false)));
-    if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
-            if *n > 0 {
-                ev2.thread_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
-            }
-        }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
-            if *ms > 0 {
-                ev2.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
-            }
-        }
-    }
-    if ev.trace_enabled {
-        let data = Value::Assoc(
-            vec![
-                (
-                    "maxThreads".to_string(),
-                    Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max_permits() as i64).unwrap_or(-1)),
-                ),
-                ("hasDeadline".to_string(), Value::Boolean(ev2.deadline.is_some())),
-            ]
-            .into_iter()
-            .collect(),
-        );
-        ev.trace_steps.push(Value::Assoc(
-            vec![
-                ("action".to_string(), Value::String("ScopeApply".into())),
-                ("head".to_string(), Value::Symbol("Scope".into())),
-                ("data".to_string(), data),
-            ]
-            .into_iter()
-            .collect(),
-        ));
-    }
-    ev2.eval(body)
-}
-
-// StartScope[opts] -> ScopeId[id]
-fn start_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args };
-    }
-    let opts = ev.eval(args[0].clone());
-    let id = next_scope_id();
-    let mut ctx =
-        ScopeCtx { cancel: Arc::new(AtomicBool::new(false)), limiter: None, deadline: None };
-    if let Value::Assoc(m) = opts {
-        if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
-            if *n > 0 {
-                ctx.limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
-            }
-        }
-        if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
-            if *ms > 0 {
-                ctx.deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
-            }
-        }
-    }
-    scope_reg().lock().unwrap().insert(id, ctx);
-    Value::Expr { head: Box::new(Value::Symbol("ScopeId".into())), args: vec![Value::Integer(id)] }
-}
-
-// InScope[ScopeId[id], body] -- runs body in current evaluator under the scope budgets
-fn in_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("InScope".into())), args };
-    }
-    let sid_val = ev.eval(args[0].clone());
-    let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = sid {
-        if let Some(ctx) = scope_reg().lock().unwrap().get(&id).cloned() {
-            // Save and apply
-            let old_tok = ev.cancel_token.clone();
-            let old_lim = ev.thread_limiter.clone();
-            let old_dead = ev.deadline;
-            ev.cancel_token = Some(ctx.cancel.clone());
-            ev.thread_limiter = ctx.limiter.clone();
-            ev.deadline = ctx.deadline;
-            let out = ev.eval(args[1].clone());
-            // Restore
-            ev.cancel_token = old_tok;
-            ev.thread_limiter = old_lim;
-            ev.deadline = old_dead;
-            return out;
-        }
-    }
-    Value::Assoc(
-        vec![
-            ("message".to_string(), Value::String("InScope: invalid scope id".into())),
-            ("tag".to_string(), Value::String("InScope::invscope".into())),
-        ]
-        .into_iter()
-        .collect(),
-    )
-}
-
-// CancelScope[ScopeId[id]] -> True/False
-fn cancel_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("CancelScope".into())), args };
-    }
-    let sid_val = ev.eval(args[0].clone());
-    let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = sid {
-        if let Some(ctx) = scope_reg().lock().unwrap().get(&id) {
-            ctx.cancel.store(true, Ordering::Relaxed);
-            return Value::Boolean(true);
-        }
-    }
-    Value::Boolean(false)
-}
-
-// EndScope[ScopeId[id]] -> True/False (removes from registry)
-fn end_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("EndScope".into())), args };
-    }
-    let sid_val = ev.eval(args[0].clone());
-    let sid = match &sid_val {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="ScopeId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = sid {
-        return Value::Boolean(scope_reg().lock().unwrap().remove(&id).is_some());
-    }
-    Value::Boolean(false)
-}
-
-fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("Explain".into())), args };
-    }
-    let expr = args[0].clone();
-    // Evaluate under tracing using same env
-    let env_snapshot = ev.env.clone();
-    let mut ev2 = Evaluator::with_env(env_snapshot);
-    ev2.trace_enabled = true;
-    let _ = ev2.eval(expr);
-    let steps = Value::List(ev2.trace_steps);
-    Value::Assoc(
-        vec![
-            ("steps".to_string(), steps),
-            ("algorithm".to_string(), Value::String("stub".into())),
-            ("provider".to_string(), Value::String("cpu".into())),
-            ("estCost".to_string(), Value::Assoc(Default::default())),
-        ]
-        .into_iter()
-        .collect(),
-    )
-}
-
 fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Value>) -> Value {
     if let Some(ps) = params {
         // Replace symbols matching params with args[i]
@@ -1880,16 +1678,9 @@ fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Val
                         v.clone()
                     }
                 }
-                Value::List(items) => {
-                    Value::List(items.iter().map(|x| subst(x, names, args)).collect())
-                }
-                Value::Assoc(m) => Value::Assoc(
-                    m.iter().map(|(k, v)| (k.clone(), subst(v, names, args))).collect(),
-                ),
-                Value::Expr { head, args: a } => Value::Expr {
-                    head: Box::new(subst(head, names, args)),
-                    args: a.iter().map(|x| subst(x, names, args)).collect(),
-                },
+                Value::List(items) => Value::List(items.iter().map(|x| subst(x, names, args)).collect()),
+                Value::Assoc(m) => Value::Assoc(m.iter().map(|(k, v)| (k.clone(), subst(v, names, args))).collect()),
+                Value::Expr { head, args: a } => Value::Expr { head: Box::new(subst(head, names, args)), args: a.iter().map(|x| subst(x, names, args)).collect() },
                 other => other.clone(),
             }
         }
@@ -1899,17 +1690,10 @@ fn apply_pure_function(body: Value, params: Option<&Vec<String>>, args: &Vec<Val
     fn subst_slot(v: &Value, args: &Vec<Value>) -> Value {
         match v {
             Value::Slot(None) => args.get(0).cloned().unwrap_or(Value::Symbol("Null".into())),
-            Value::Slot(Some(n)) => {
-                args.get(n.saturating_sub(1)).cloned().unwrap_or(Value::Symbol("Null".into()))
-            }
+            Value::Slot(Some(n)) => args.get(n.saturating_sub(1)).cloned().unwrap_or(Value::Symbol("Null".into())),
             Value::List(items) => Value::List(items.iter().map(|x| subst_slot(x, args)).collect()),
-            Value::Assoc(m) => {
-                Value::Assoc(m.iter().map(|(k, v)| (k.clone(), subst_slot(v, args))).collect())
-            }
-            Value::Expr { head, args: a } => Value::Expr {
-                head: Box::new(subst_slot(head, args)),
-                args: a.iter().map(|x| subst_slot(x, args)).collect(),
-            },
+            Value::Assoc(m) => Value::Assoc(m.iter().map(|(k, v)| (k.clone(), subst_slot(v, args))).collect()),
+            Value::Expr { head, args: a } => Value::Expr { head: Box::new(subst_slot(head, args)), args: a.iter().map(|x| subst_slot(x, args)).collect() },
             other => other.clone(),
         }
     }
