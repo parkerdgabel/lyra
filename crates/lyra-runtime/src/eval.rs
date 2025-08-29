@@ -875,154 +875,71 @@ pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     reg("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
-pub fn register_explain(ev: &mut Evaluator) {
-    ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
-}
+pub fn register_explain(ev: &mut Evaluator) { crate::core::schema_explain::register_explain(ev); }
 
-pub fn register_schema(ev: &mut Evaluator) {
-    ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
-}
+pub fn register_schema(ev: &mut Evaluator) { crate::core::schema_explain::register_schema(ev); }
 
 // Introspection: list current builtin functions with their attributes
 pub fn register_introspection(ev: &mut Evaluator) {
     fn describe_builtins_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-        if !args.is_empty() {
-            return Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args };
-        }
+        if !args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("DescribeBuiltins".into())), args }; }
         let mut out: Vec<Value> = Vec::new();
-        // builtins is private; this function is inside this module and can access it
-        // Snapshot names and attributes; DescribeBuiltins should not depend on ToolsDescribe to avoid recursion
-        let snapshot: Vec<(String, Attributes)> =
-            ev.builtins.iter().map(|(name, (_f, attrs))| (name.clone(), *attrs)).collect();
+        let snapshot: Vec<(String, Attributes)> = ev.builtins.iter().map(|(name, (_f, attrs))| (name.clone(), *attrs)).collect();
         for (name, attrs) in snapshot.into_iter() {
             let mut attr_list: Vec<Value> = Vec::new();
-            if attrs.contains(Attributes::LISTABLE) {
-                attr_list.push(Value::String("LISTABLE".into()));
-            }
-            if attrs.contains(Attributes::FLAT) {
-                attr_list.push(Value::String("FLAT".into()));
-            }
-            if attrs.contains(Attributes::ORDERLESS) {
-                attr_list.push(Value::String("ORDERLESS".into()));
-            }
-            if attrs.contains(Attributes::HOLD_ALL) {
-                attr_list.push(Value::String("HOLD_ALL".into()));
-            }
-            if attrs.contains(Attributes::HOLD_FIRST) {
-                attr_list.push(Value::String("HOLD_FIRST".into()));
-            }
-            if attrs.contains(Attributes::HOLD_REST) {
-                attr_list.push(Value::String("HOLD_REST".into()));
-            }
-            if attrs.contains(Attributes::ONE_IDENTITY) {
-                attr_list.push(Value::String("ONE_IDENTITY".into()));
-            }
-            let (summary, params): (String, Vec<String>) =
-                ev.get_doc(&name).unwrap_or((String::new(), Vec::new()));
-            let card = Value::Assoc(
-                vec![
-                    ("id".to_string(), Value::String(name.clone())),
-                    ("name".to_string(), Value::String(name.clone())),
-                    ("summary".to_string(), Value::String(summary)),
-                    ("tags".to_string(), Value::List(vec![])),
-                    (
-                        "params".to_string(),
-                        Value::List(params.into_iter().map(Value::String).collect()),
-                    ),
-                    ("attributes".to_string(), Value::List(attr_list)),
-                    ("examples".to_string(), Value::List(match ev.get_doc_full(&name) {
-                        Some(ent) => ent
-                            .examples
-                            .into_iter()
-                            .map(Value::String)
-                            .collect::<Vec<_>>(),
-                        None => vec![],
-                    })),
-                ]
-                .into_iter()
-                .collect(),
-            );
+            if attrs.contains(Attributes::LISTABLE) { attr_list.push(Value::String("LISTABLE".into())); }
+            if attrs.contains(Attributes::FLAT) { attr_list.push(Value::String("FLAT".into())); }
+            if attrs.contains(Attributes::ORDERLESS) { attr_list.push(Value::String("ORDERLESS".into())); }
+            if attrs.contains(Attributes::HOLD_ALL) { attr_list.push(Value::String("HOLD_ALL".into())); }
+            if attrs.contains(Attributes::HOLD_FIRST) { attr_list.push(Value::String("HOLD_FIRST".into())); }
+            if attrs.contains(Attributes::HOLD_REST) { attr_list.push(Value::String("HOLD_REST".into())); }
+            if attrs.contains(Attributes::ONE_IDENTITY) { attr_list.push(Value::String("ONE_IDENTITY".into())); }
+            let (summary, params): (String, Vec<String>) = ev.get_doc(&name).unwrap_or((String::new(), Vec::new()));
+            let card = Value::Assoc(vec![
+                ("id".to_string(), Value::String(name.clone())),
+                ("name".to_string(), Value::String(name.clone())),
+                ("summary".to_string(), Value::String(summary)),
+                ("tags".to_string(), Value::List(vec![])),
+                ("params".to_string(), Value::List(params.into_iter().map(Value::String).collect())),
+                ("attributes".to_string(), Value::List(attr_list)),
+                ("examples".to_string(), Value::List(match ev.get_doc_full(&name) { Some(ent) => ent.examples.into_iter().map(Value::String).collect::<Vec<_>>(), None => vec![] })),
+            ].into_iter().collect());
             out.push(card);
         }
         Value::List(out)
     }
     ev.register("DescribeBuiltins", describe_builtins_fn as NativeFn, Attributes::empty());
 
-    // Documentation[name?] -> <|"name","summary","params","attributes","examples"|> or list for all
     fn documentation_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-        // 0 args: return docs for all builtins we know about
-        if args.is_empty() {
-            let head = Value::Symbol("DescribeBuiltins".to_string());
-            let expr = Value::Expr { head: Box::new(head), args: vec![] };
-            return ev.eval(expr);
-        }
-        // 1 arg: lookup specific symbol by name
+        if args.is_empty() { let head = Value::Symbol("DescribeBuiltins".to_string()); let expr = Value::Expr { head: Box::new(head), args: vec![] }; return ev.eval(expr); }
         if args.len() == 1 {
-            let name = match &args[0] {
-                Value::String(s) | Value::Symbol(s) => s.clone(),
-                other => match ev.eval(other.clone()) {
-                    Value::String(s) | Value::Symbol(s) => s,
-                    _ => String::new(),
-                },
-            };
-            // Build using DescribeBuiltins to include attributes, but override with our docs if present
+            let name = match &args[0] { Value::String(s) | Value::Symbol(s) => s.clone(), other => match ev.eval(other.clone()) { Value::String(s) | Value::Symbol(s) => s, _ => String::new(), }, };
             let head = Value::Symbol("DescribeBuiltins".to_string());
             let desc = ev.eval(Value::Expr { head: Box::new(head), args: vec![] });
             if let Value::List(items) = desc {
                 for it in items {
                     if let Value::Assoc(mut m) = it {
-                        if let Some(Value::String(n)) = m.get("name").cloned() {
-                            if n == name {
-                                if let Some((sum, params)) = ev.get_doc(&n) {
-                                    m.insert("summary".into(), Value::String(sum));
-                                    m.insert(
-                                        "params".into(),
-                                        Value::List(
-                                            params.into_iter().map(Value::String).collect(),
-                                        ),
-                                    );
-                                    if let Some(ent) = ev.get_doc_full(&n) {
-                                        m.insert(
-                                            "examples".into(),
-                                            Value::List(
-                                                ent.examples
-                                                    .into_iter()
-                                                    .map(Value::String)
-                                                    .collect(),
-                                            ),
-                                        );
-                                    }
-                                }
-                                return Value::Assoc(m);
+                        if let Some(Value::String(n)) = m.get("name").cloned() { if n == name {
+                            if let Some((sum, params)) = ev.get_doc(&n) {
+                                m.insert("summary".into(), Value::String(sum));
+                                m.insert("params".into(), Value::List(params.into_iter().map(Value::String).collect()));
+                                if let Some(ent) = ev.get_doc_full(&n) { m.insert("examples".into(), Value::List(ent.examples.into_iter().map(Value::String).collect())); }
                             }
-                        }
+                            return Value::Assoc(m);
+                        }}
                     }
                 }
             }
-            // If not found, but we have docs, synthesize a minimal card
             if let Some((sum, params)) = ev.get_doc(&name) {
-                let examples = ev
-                    .get_doc_full(&name)
-                    .map(|e| e.examples)
-                    .unwrap_or_default();
-                return Value::Assoc(
-                    vec![
-                        ("id".to_string(), Value::String(name.clone())),
-                        ("name".to_string(), Value::String(name.clone())),
-                        ("summary".to_string(), Value::String(sum)),
-                        (
-                            "params".to_string(),
-                            Value::List(params.into_iter().map(Value::String).collect()),
-                        ),
-                        ("attributes".to_string(), Value::List(vec![])),
-                        (
-                            "examples".to_string(),
-                            Value::List(examples.into_iter().map(Value::String).collect()),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                );
+                let examples = ev.get_doc_full(&name).map(|e| e.examples).unwrap_or_default();
+                return Value::Assoc(vec![
+                    ("id".to_string(), Value::String(name.clone())),
+                    ("name".to_string(), Value::String(name.clone())),
+                    ("summary".to_string(), Value::String(sum)),
+                    ("params".to_string(), Value::List(params.into_iter().map(Value::String).collect())),
+                    ("attributes".to_string(), Value::List(vec![])),
+                    ("examples".to_string(), Value::List(examples.into_iter().map(Value::String).collect())),
+                ].into_iter().collect());
             }
             return Value::Assoc(std::collections::HashMap::new());
         }
