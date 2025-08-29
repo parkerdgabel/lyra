@@ -15,7 +15,9 @@ use rustyline::Movement;
 use rustyline::{error::ReadlineError, Context, Editor, Helper};
 use rustyline::{Event, EventHandler, ExternalPrinter};
 use rustyline::{KeyCode, KeyEvent, Modifiers};
-use std::fs;
+// std::fs used in helpers
+mod helpers;
+use helpers::{caret_line, collect_pkg_exports, load_env_json, save_env_json, spawn_pager};
 use terminal_size::{terminal_size, Height, Width};
 
 #[cfg(feature = "reedline")]
@@ -471,22 +473,7 @@ fn line_text(src: &str, line: usize) -> Option<(usize, String)> {
     None
 }
 
-fn caret_line(text: &str, col: usize) -> String {
-    let mut out = String::new();
-    let mut c = 1usize;
-    for ch in text.chars() {
-        if c >= col {
-            break;
-        }
-        match ch {
-            '\t' => out.push('\t'),
-            _ => out.push(' '),
-        }
-        c += 1;
-    }
-    out.push('^');
-    out
-}
+// moved to helpers::caret_line
 
 #[derive(Clone, Debug)]
 struct BuiltinEntry {
@@ -3909,47 +3896,7 @@ fn render_profile_summary(steps: &Vec<Value>) {
     println!("{} {} | {} {}", "Profile actions:".bold(), ta, "heads:".bold(), th);
 }
 
-#[allow(dead_code)]
-fn explain_steps_to_string(steps: &Vec<Value>) -> String {
-    let mut out = String::new();
-    for s in steps {
-        if let Value::Assoc(sm) = s {
-            let action = match sm.get("action") {
-                Some(Value::String(x)) => x.as_str(),
-                _ => "",
-            };
-            let head = match sm.get("head") {
-                Some(Value::Symbol(x)) => x.as_str(),
-                _ => "",
-            };
-            let extra = if let Some(Value::Assoc(data)) = sm.get("data") {
-                if let Some(v) = data.get("count") {
-                    format!(" count={}", format_value_color(v, None, AssocMode::Auto))
-                } else if let Some(v) = data.get("finalOrder") {
-                    format!(
-                        " finalOrder={}",
-                        format_value_color(
-                            v,
-                            Some(TruncateCfg { max_list: 6, max_assoc: 6, max_string: 80 }),
-                            AssocMode::Auto
-                        )
-                    )
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-            out.push_str(&format!(
-                "  {} {}{}\n",
-                action.to_string().blue(),
-                head.yellow(),
-                extra.dimmed()
-            ));
-        }
-    }
-    out
-}
+// removed unused helper explain_steps_to_string()
 
 #[derive(Clone, Copy)]
 enum AssocMode {
@@ -3970,71 +3917,13 @@ struct ReplConfig {
     print_mode: PrintMode,
 }
 
-fn spawn_pager(text: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
-    let mut parts = pager.split_whitespace();
-    let cmd = parts.next().unwrap_or("less");
-    let args: Vec<&str> = parts.collect();
-    let mut child = Command::new(cmd).args(&args).stdin(Stdio::piped()).spawn()?;
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(text.as_bytes());
-    }
-    let _ = child.wait();
-    Ok(())
-}
+// moved to helpers::spawn_pager
 
-fn save_env_json(ev: &mut Evaluator, path: &str) -> anyhow::Result<()> {
-    use std::collections::HashMap;
-    let mut map: HashMap<String, Value> = HashMap::new();
-    for name in ev.env_keys() {
-        let val = ev.eval(Value::Symbol(name.clone()));
-        map.insert(name, val);
-    }
-    let s = serde_json::to_string_pretty(&Value::Assoc(map))?;
-    fs::write(path, s)?;
-    Ok(())
-}
+// moved to helpers::save_env_json
 
-fn load_env_json(ev: &mut Evaluator, path: &str) -> anyhow::Result<()> {
-    let s = fs::read_to_string(path)?;
-    let v: Value = serde_json::from_str(&s)?;
-    if let Value::Assoc(m) = v {
-        for (k, val) in m.into_iter() {
-            // Set[k, val]
-            let _ = ev.eval(Value::Expr {
-                head: Box::new(Value::Symbol("Set".into())),
-                args: vec![Value::Symbol(k), val],
-            });
-        }
-    }
-    Ok(())
-}
+// moved to helpers::load_env_json
 
-fn collect_pkg_exports(ev: &mut Evaluator) -> std::collections::HashMap<String, Vec<String>> {
-    use std::collections::HashMap;
-    let mut out: HashMap<String, Vec<String>> = HashMap::new();
-    let loaded = ev
-        .eval(Value::Expr { head: Box::new(Value::Symbol("LoadedPackages".into())), args: vec![] });
-    if let Value::Assoc(m) = loaded {
-        for name in m.keys() {
-            let q = Value::Expr {
-                head: Box::new(Value::Symbol("PackageExports".into())),
-                args: vec![Value::String(name.clone())],
-            };
-            let ex = ev.eval(q);
-            if let Value::List(vs) = ex {
-                let syms: Vec<String> = vs
-                    .into_iter()
-                    .filter_map(|v| if let Value::String(s) = v { Some(s) } else { None })
-                    .collect();
-                out.insert(name.clone(), syms);
-            }
-        }
-    }
-    out
-}
+// moved to helpers::collect_pkg_exports
 
 fn edit_and_eval(ev: &mut Evaluator, path: &str) -> anyhow::Result<()> {
     use std::process::Command;

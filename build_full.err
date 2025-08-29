@@ -1,0 +1,594 @@
+   Compiling lyra-stdlib v0.1.0 (/Users/parkergabel/Development/rust/lyra/crates/lyra-stdlib)
+warning: unnecessary parentheses around function argument
+    --> crates/lyra-stdlib/src/math.rs:1800:60
+     |
+1800 |                 Value::Integer(i) => quantile_single(vals, (i as f64)),
+     |                                                            ^        ^
+     |
+     = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+     |
+1800 -                 Value::Integer(i) => quantile_single(vals, (i as f64)),
+1800 +                 Value::Integer(i) => quantile_single(vals, i as f64),
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:1585:28
+     |
+1585 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+1585 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+1585 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1595:41
+     |
+1595 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+1595 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1595 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1595:64
+     |
+1595 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+1595 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1595 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1609:41
+     |
+1609 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+1609 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1609 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1609:64
+     |
+1609 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+1609 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1609 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:1621:28
+     |
+1621 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+1621 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+1621 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1630:41
+     |
+1630 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+1630 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1630 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1630:64
+     |
+1630 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+1630 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1630 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1645:41
+     |
+1645 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+1645 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1645 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:1645:64
+     |
+1645 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+1645 -                                 let h = (h0 as usize); let w = (w0 as usize);
+1645 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:1655:28
+     |
+1655 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+1655 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+1655 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2247:28
+     |
+2247 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2247 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2247 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2254:41
+     |
+2254 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2254 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2254 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2254:64
+     |
+2254 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2254 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2254 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2265:41
+     |
+2265 | ...                   let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2265 -                                 let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+2265 +                                 let h = h0 as usize; let w = (w0 as usize); let cin = cin0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2265:64
+     |
+2265 | ...                   let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2265 -                                 let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+2265 +                                 let h = (h0 as usize); let w = w0 as usize; let cin = cin0 as usize;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2276:28
+     |
+2276 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2276 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2276 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2284:41
+     |
+2284 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2284 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2284 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2284:64
+     |
+2284 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2284 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2284 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2296:41
+     |
+2296 | ...                   let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2296 -                                 let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+2296 +                                 let h = h0 as usize; let w = (w0 as usize); let cin = cin0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2296:64
+     |
+2296 | ...                   let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2296 -                                 let h = (h0 as usize); let w = (w0 as usize); let cin = cin0 as usize;
+2296 +                                 let h = (h0 as usize); let w = w0 as usize; let cin = cin0 as usize;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2306:28
+     |
+2306 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2306 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2306 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2315:41
+     |
+2315 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2315 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2315 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2315:64
+     |
+2315 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2315 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2315 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2328:41
+     |
+2328 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                               ^           ^
+     |
+help: remove these parentheses
+     |
+2328 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2328 +                                 let h = h0 as usize; let w = (w0 as usize);
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2328:64
+     |
+2328 | ...                   let h = (h0 as usize); let w = (w0 as usize);
+     |                                                      ^           ^
+     |
+help: remove these parentheses
+     |
+2328 -                                 let h = (h0 as usize); let w = (w0 as usize);
+2328 +                                 let h = (h0 as usize); let w = w0 as usize;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2337:28
+     |
+2337 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2337 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2337 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2349:28
+     |
+2349 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2349 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2349 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2356:28
+     |
+2356 |                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+     |                            ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2356 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) {
+2356 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() {
+     |
+
+warning: unnecessary parentheses around assigned value
+    --> crates/lyra-stdlib/src/nn.rs:2386:84
+     |
+2386 | ...                   let mut ms = 0.0; for v in &x_vec { ms += v*v; } ms /= (n.max(1) as f64);
+     |                                                                              ^               ^
+     |
+help: remove these parentheses
+     |
+2386 -                             let mut ms = 0.0; for v in &x_vec { ms += v*v; } ms /= (n.max(1) as f64);
+2386 +                             let mut ms = 0.0; for v in &x_vec { ms += v*v; } ms /= n.max(1) as f64;
+     |
+
+warning: unnecessary parentheses around `if` condition
+    --> crates/lyra-stdlib/src/nn.rs:2466:28
+     |
+2466 | ...   if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) { if let Some((cin0,h...
+     |          ^                                                                                                        ^
+     |
+help: remove these parentheses
+     |
+2466 -                         if (params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none()) { if let Some((cin0,h0,w0)) = curr_chw { params.insert("InputChannels".into(), Value::Integer(cin0 as i64)); params.insert("Height".into(), Value::Integer(h0 as i64)); params.insert("Width".into(), Value::Integer(w0 as i64)); } }
+2466 +                         if params.get("InputChannels").is_none() || params.get("Height").is_none() || params.get("Width").is_none() { if let Some((cin0,h0,w0)) = curr_chw { params.insert("InputChannels".into(), Value::Integer(cin0 as i64)); params.insert("Height".into(), Value::Integer(h0 as i64)); params.insert("Width".into(), Value::Integer(w0 as i64)); } }
+     |
+
+error[E0277]: the trait bound `&str: Into<str>` is not satisfied
+    --> crates/lyra-stdlib/src/nn.rs:2425:71
+     |
+2425 | ...                   "geglu" => { apply_activation(&"Gelu".into(), &mut glin); },
+     |                                                             ^^^^ the trait `std::convert::From<&str>` is not implemented for `str`
+     |
+     = help: the following other types implement trait `std::convert::From<T>`:
+               `&str` implements `std::convert::From<&icu_locale_core::extensions::private::other::Subtag>`
+               `&str` implements `std::convert::From<&icu_locale_core::extensions::transform::key::Key>`
+               `&str` implements `std::convert::From<&icu_locale_core::extensions::unicode::attribute::Attribute>`
+               `&str` implements `std::convert::From<&icu_locale_core::extensions::unicode::key::Key>`
+               `&str` implements `std::convert::From<&icu_locale_core::extensions::unicode::subdivision::SubdivisionSuffix>`
+               `&str` implements `std::convert::From<&icu_locale_core::subtags::Subtag>`
+               `&str` implements `std::convert::From<&icu_locale_core::subtags::language::Language>`
+               `&str` implements `std::convert::From<&icu_locale_core::subtags::region::Region>`
+             and 15 others
+     = note: required for `&str` to implement `Into<str>`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:252:16
+    |
+252 | fn build_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:397:15
+    |
+397 | fn push_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |               ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:421:15
+    |
+421 | fn save_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |               ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:445:15
+    |
+445 | fn load_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |               ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:468:16
+    |
+468 | fn list_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:491:18
+    |
+491 | fn inspect_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:514:17
+    |
+514 | fn remove_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                 ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:542:17
+    |
+542 | fn prune_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                 ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:566:18
+    |
+566 | fn search_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:597:18
+    |
+597 | fn image_history(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:623:27
+    |
+623 | fn inspect_registry_image(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                           ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `ev`
+   --> crates/lyra-stdlib/src/containers.rs:655:18
+    |
+655 | fn export_images(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_ev`
+
+warning: unused variable: `rt_id`
+   --> crates/lyra-stdlib/src/containers.rs:747:18
+    |
+747 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_rt_id`
+
+warning: unused variable: `cid`
+   --> crates/lyra-stdlib/src/containers.rs:747:25
+    |
+747 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_cid`
+
+warning: unused variable: `rt_id`
+   --> crates/lyra-stdlib/src/containers.rs:767:18
+    |
+767 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_rt_id`
+
+warning: unused variable: `cid`
+   --> crates/lyra-stdlib/src/containers.rs:767:25
+    |
+767 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_cid`
+
+warning: unused variable: `rt_id`
+   --> crates/lyra-stdlib/src/containers.rs:842:18
+    |
+842 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_rt_id`
+
+warning: unused variable: `cid`
+   --> crates/lyra-stdlib/src/containers.rs:842:25
+    |
+842 |     if let Some((rt_id, cid)) = get_container(&args[1]) {
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_cid`
+
+warning: unused variable: `rt_id`
+   --> crates/lyra-stdlib/src/containers.rs:862:17
+    |
+862 |     if let Some(rt_id) = get_runtime(&args[0]) {
+    |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_rt_id`
+
+warning: value assigned to `frames` is never read
+   --> crates/lyra-stdlib/src/frame.rs:459:13
+    |
+459 |     let mut frames: Vec<Value> = Vec::new();
+    |             ^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: variable `rounding` is assigned to, but never used
+   --> crates/lyra-stdlib/src/io.rs:347:13
+    |
+347 |     let mut rounding: Option<f32> = None;
+    |             ^^^^^^^^
+    |
+    = note: consider using `_rounding` instead
+
+warning: variable `font_size` is assigned to, but never used
+   --> crates/lyra-stdlib/src/io.rs:348:13
+    |
+348 |     let mut font_size: Option<f32> = None;
+    |             ^^^^^^^^^
+    |
+    = note: consider using `_font_size` instead
+
+warning: variable `spacing_scale` is assigned to, but never used
+   --> crates/lyra-stdlib/src/io.rs:350:13
+    |
+350 |     let mut spacing_scale: Option<f32> = None;
+    |             ^^^^^^^^^^^^^
+    |
+    = note: consider using `_spacing_scale` instead
+
+warning: value assigned to `rounding` is never read
+   --> crates/lyra-stdlib/src/io.rs:356:66
+    |
+356 |             if let Some(Value::Integer(n)) = m.get("Rounding") { rounding = Some(*n as f32); }
+    |                                                                  ^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `font_size` is never read
+   --> crates/lyra-stdlib/src/io.rs:357:66
+    |
+357 |             if let Some(Value::Integer(n)) = m.get("FontSize") { font_size = Some(*n as f32); }
+    |                                                                  ^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `spacing_scale` is never read
+   --> crates/lyra-stdlib/src/io.rs:359:70
+    |
+359 |             if let Some(Value::Integer(n)) = m.get("SpacingScale") { spacing_scale = Some(*n as f32); }
+    |                                                                      ^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `should_trim` is never read
+    --> crates/lyra-stdlib/src/string.rs:2470:21
+     |
+2470 |             let mut should_trim = false;
+     |                     ^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: unused variable: `opts`
+   --> crates/lyra-stdlib/src/text.rs:233:5
+    |
+233 |     opts: &std::collections::HashMap<String, Value>,
+    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_opts`
+
+For more information about this error, try `rustc --explain E0277`.
+warning: `lyra-stdlib` (lib) generated 60 warnings
+error: could not compile `lyra-stdlib` (lib) due to 1 previous error; 60 warnings emitted

@@ -1,5 +1,4 @@
 pub mod error;
-pub mod numeric;
 pub mod pretty;
 pub mod schema;
 pub mod value;

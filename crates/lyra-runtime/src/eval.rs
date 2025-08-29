@@ -3,19 +3,17 @@ use lyra_core::schema::schema_of;
 use lyra_core::value::Value;
 use lyra_rewrite::defs::{DefKind, DefinitionStore};
 use lyra_rewrite::rule::{Rule, RuleSet};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::Receiver;
 use std::sync::OnceLock;
 use std::sync::{
     atomic::{AtomicBool, AtomicI64, Ordering},
-    Arc, Condvar, Mutex,
+    Arc, Mutex,
 };
-use std::thread;
+// thread usage moved to concurrency::pool
 use std::time::{Duration, Instant};
 
-type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
+pub(crate) type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 #[derive(Clone)]
 struct ScopeCtx {
@@ -35,183 +33,14 @@ fn next_scope_id() -> i64 {
     a.fetch_add(1, Ordering::Relaxed)
 }
 
-// Simple global thread pool for parallel primitives
-struct ThreadPool {
-    tx: Sender<Box<dyn FnOnce() + Send + 'static>>,
-}
-static POOL: OnceLock<ThreadPool> = OnceLock::new();
+use crate::concurrency::pool::{spawn_task, ThreadLimiter};
 
-fn thread_pool() -> &'static ThreadPool {
-    POOL.get_or_init(|| {
-        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce() + Send + 'static>>();
-        let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-        let shared_rx = Arc::new(Mutex::new(rx));
-        for _ in 0..workers {
-            let rx_cl = shared_rx.clone();
-            thread::spawn(move || loop {
-                let job_opt = {
-                    let lock = rx_cl.lock().unwrap();
-                    lock.recv()
-                };
-                match job_opt {
-                    Ok(job) => job(),
-                    Err(_) => break,
-                }
-            });
-        }
-        ThreadPool { tx }
-    })
-}
+use crate::trace::{trace_drain_steps, trace_push_step};
+// channels moved to concurrency::channels
 
-fn spawn_task<F>(f: F) -> Receiver<Value>
-where
-    F: FnOnce() -> Value + Send + 'static,
-{
-    let (tx, rx) = mpsc::channel::<Value>();
-    let job = Box::new(move || {
-        let _ = tx.send(f());
-    }) as Box<dyn FnOnce() + Send + 'static>;
-    let _ = thread_pool().tx.send(job);
-    rx
-}
+// moved to concurrency::futures::TaskInfo
 
-// Thread-local Explain capture for matcher predicate/condition evaluation
-thread_local! {
-    static TRACE_BUF: RefCell<Vec<Value>> = RefCell::new(Vec::new());
-}
-
-fn trace_push_step(step: Value) {
-    TRACE_BUF.with(|b| b.borrow_mut().push(step));
-}
-fn trace_drain_steps() -> Vec<Value> {
-    TRACE_BUF.with(|b| std::mem::take(&mut *b.borrow_mut()))
-}
-
-// Bounded channels
-struct ChannelQueue {
-    cap: usize,
-    inner: Mutex<ChannelInner>,
-    not_full: Condvar,
-    not_empty: Condvar,
-}
-
-struct ChannelInner {
-    q: VecDeque<Value>,
-    closed: bool,
-}
-
-impl ChannelQueue {
-    fn new(cap: usize) -> Self {
-        Self {
-            cap,
-            inner: Mutex::new(ChannelInner { q: VecDeque::new(), closed: false }),
-            not_full: Condvar::new(),
-            not_empty: Condvar::new(),
-        }
-    }
-    fn send(&self, v: Value, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> bool {
-        let mut guard = self.inner.lock().unwrap();
-        loop {
-            if guard.closed {
-                return false;
-            }
-            if guard.q.len() < self.cap {
-                guard.q.push_back(v);
-                self.not_empty.notify_one();
-                return true;
-            }
-            if let Some(tok) = &cancel {
-                if tok.load(Ordering::Relaxed) {
-                    return false;
-                }
-            }
-            if let Some(dl) = deadline {
-                if Instant::now() > dl {
-                    return false;
-                }
-            }
-            let (g, _timeout) = if let Some(_dl) = deadline {
-                self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap()
-            } else {
-                self.not_full.wait_timeout(guard, Duration::from_millis(5)).unwrap()
-            };
-            guard = g;
-        }
-    }
-    fn recv(&self, cancel: Option<Arc<AtomicBool>>, deadline: Option<Instant>) -> Option<Value> {
-        let mut guard = self.inner.lock().unwrap();
-        loop {
-            if let Some(v) = guard.q.pop_front() {
-                self.not_full.notify_one();
-                return Some(v);
-            }
-            if guard.closed {
-                return None;
-            }
-            if let Some(tok) = &cancel {
-                if tok.load(Ordering::Relaxed) {
-                    return None;
-                }
-            }
-            if let Some(dl) = deadline {
-                if Instant::now() > dl {
-                    return None;
-                }
-            }
-            let (g, _timeout) =
-                self.not_empty.wait_timeout(guard, Duration::from_millis(5)).unwrap();
-            guard = g;
-        }
-    }
-    fn close(&self) {
-        let mut guard = self.inner.lock().unwrap();
-        guard.closed = true;
-        self.not_full.notify_all();
-        self.not_empty.notify_all();
-    }
-}
-
-static CH_REG: OnceLock<Mutex<HashMap<i64, Arc<ChannelQueue>>>> = OnceLock::new();
-static NEXT_CH_ID: OnceLock<AtomicI64> = OnceLock::new();
-fn ch_reg() -> &'static Mutex<HashMap<i64, Arc<ChannelQueue>>> {
-    CH_REG.get_or_init(|| Mutex::new(HashMap::new()))
-}
-fn next_ch_id() -> i64 {
-    let a = NEXT_CH_ID.get_or_init(|| AtomicI64::new(1));
-    a.fetch_add(1, Ordering::Relaxed)
-}
-
-struct TaskInfo {
-    rx: Receiver<Value>,
-    cancel: Arc<AtomicBool>,
-}
-
-#[derive(Debug)]
-struct ThreadLimiter {
-    max: usize,
-    in_use: Mutex<usize>,
-    cv: Condvar,
-}
-
-impl ThreadLimiter {
-    fn new(max: usize) -> Self {
-        Self { max, in_use: Mutex::new(0), cv: Condvar::new() }
-    }
-    fn acquire(&self) {
-        let mut guard = self.in_use.lock().unwrap();
-        while *guard >= self.max {
-            guard = self.cv.wait(guard).unwrap();
-        }
-        *guard += 1;
-    }
-    fn release(&self) {
-        let mut guard = self.in_use.lock().unwrap();
-        if *guard > 0 {
-            *guard -= 1;
-        }
-        self.cv.notify_one();
-    }
-}
+// ThreadLimiter moved to concurrency::pool
 
 #[derive(Clone, Debug)]
 pub struct DocEntry {
@@ -224,12 +53,12 @@ pub struct Evaluator {
     builtins: HashMap<String, (NativeFn, Attributes)>,
     // Documentation registry: function name -> summary, params, examples
     docs: HashMap<String, DocEntry>,
-    env: HashMap<String, Value>,
-    tasks: HashMap<i64, TaskInfo>, // minimal future registry
-    next_task_id: i64,
-    cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
-    thread_limiter: Option<Arc<ThreadLimiter>>, // scope-wide thread budget
-    deadline: Option<Instant>,             // scope-wide deadline
+    pub(crate) env: HashMap<String, Value>,
+    pub(crate) tasks: HashMap<i64, crate::concurrency::futures::TaskInfo>, // minimal future registry
+    pub(crate) next_task_id: i64,
+    pub(crate) cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
+    pub(crate) thread_limiter: Option<Arc<ThreadLimiter>>, // scope-wide thread budget
+    pub(crate) deadline: Option<Instant>,             // scope-wide deadline
     trace_enabled: bool,
     trace_steps: Vec<Value>,
     defs: DefinitionStore,
@@ -331,7 +160,7 @@ impl Evaluator {
         self.current_span = span;
     }
 
-    fn make_error(&self, message: &str, tag: &str) -> Value {
+    pub(crate) fn make_error(&self, message: &str, tag: &str) -> Value {
         let mut m = std::collections::HashMap::new();
         m.insert("error".to_string(), Value::Boolean(true));
         m.insert("message".to_string(), Value::String(message.into()));
@@ -989,14 +818,13 @@ pub fn register_core(ev: &mut Evaluator) {
 }
 
 pub fn register_concurrency(ev: &mut Evaluator) {
-    ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("Await", await_fn as NativeFn, Attributes::empty());
+    crate::concurrency::futures::register_futures(ev);
+    crate::concurrency::channels::register_channels(ev);
     ev.register("ParallelMap", parallel_map as NativeFn, Attributes::empty());
     ev.register("ParallelTable", parallel_table as NativeFn, Attributes::HOLD_ALL);
     ev.register("MapAsync", map_async as NativeFn, Attributes::empty());
     ev.register("Gather", gather as NativeFn, Attributes::empty());
     ev.register("BusyWait", busy_wait as NativeFn, Attributes::empty());
-    ev.register("Cancel", cancel_fn as NativeFn, Attributes::empty());
     ev.register("Fail", fail_fn as NativeFn, Attributes::empty());
     ev.register("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1004,12 +832,6 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
     ev.register("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
-    ev.register("BoundedChannel", bounded_channel_fn as NativeFn, Attributes::empty());
-    ev.register("Send", send_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("Receive", receive_fn as NativeFn, Attributes::empty());
-    ev.register("CloseChannel", close_channel_fn as NativeFn, Attributes::empty());
-    ev.register("TrySend", try_send_fn as NativeFn, Attributes::HOLD_ALL);
-    ev.register("TryReceive", try_receive_fn as NativeFn, Attributes::empty());
     ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1019,19 +841,23 @@ pub fn register_concurrency(ev: &mut Evaluator) {
 // Filtered registration variant for tree-shaken builds.
 // Only registers symbols that satisfy the provided predicate.
 pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
+    // Register Futures first if any of them are requested, to avoid borrow issues
+    if pred("Future") || pred("Await") || pred("Cancel") {
+        crate::concurrency::futures::register_futures(ev);
+    }
+    if pred("BoundedChannel") || pred("Send") || pred("Receive") || pred("CloseChannel") || pred("TrySend") || pred("TryReceive") {
+        crate::concurrency::channels::register_channels(ev);
+    }
     let mut reg = |name: &str, f: NativeFn, attrs: Attributes| {
         if pred(name) {
             ev.register(name, f, attrs);
         }
     };
-    reg("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("Await", await_fn as NativeFn, Attributes::empty());
     reg("ParallelMap", parallel_map as NativeFn, Attributes::empty());
     reg("ParallelTable", parallel_table as NativeFn, Attributes::HOLD_ALL);
     reg("MapAsync", map_async as NativeFn, Attributes::empty());
     reg("Gather", gather as NativeFn, Attributes::empty());
     reg("BusyWait", busy_wait as NativeFn, Attributes::empty());
-    reg("Cancel", cancel_fn as NativeFn, Attributes::empty());
     reg("Fail", fail_fn as NativeFn, Attributes::empty());
     reg("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
     reg("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1039,12 +865,7 @@ pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     reg("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
     reg("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     reg("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
-    reg("BoundedChannel", bounded_channel_fn as NativeFn, Attributes::empty());
-    reg("Send", send_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("Receive", receive_fn as NativeFn, Attributes::empty());
-    reg("CloseChannel", close_channel_fn as NativeFn, Attributes::empty());
-    reg("TrySend", try_send_fn as NativeFn, Attributes::HOLD_ALL);
-    reg("TryReceive", try_receive_fn as NativeFn, Attributes::empty());
+    // channel builtins registered above if requested
     reg("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
     reg("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
     reg("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
@@ -1284,115 +1105,7 @@ fn splice_sequences(args: Vec<Value>) -> Vec<Value> {
 
 // removed unused compat helpers: plus, map
 
-fn future_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("Future".into())), args };
-    }
-    let expr = args[0].clone();
-    let mut opt_limiter: Option<Arc<ThreadLimiter>> = None;
-    let mut opt_deadline: Option<Instant> = None;
-    if args.len() >= 2 {
-        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(n)) = m.get("MaxThreads").or_else(|| m.get("maxThreads")) {
-                if *n > 0 {
-                    opt_limiter = Some(Arc::new(ThreadLimiter::new(*n as usize)));
-                }
-            }
-            if let Some(Value::Integer(ms)) = m.get("TimeBudgetMs").or_else(|| m.get("timeBudgetMs")) {
-                if *ms > 0 {
-                    opt_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
-                }
-            }
-        }
-    }
-    let env_snapshot = ev.env.clone();
-    let id = ev.next_task_id;
-    ev.next_task_id += 1;
-    let token = ev.cancel_token.clone().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-    let token_for_task = token.clone();
-    let limiter = opt_limiter.or_else(|| ev.thread_limiter.clone());
-    let deadline = opt_deadline.or(ev.deadline);
-    let rx = spawn_task(move || {
-        if let Some(l) = limiter.as_ref() {
-            l.acquire();
-        }
-        let mut ev2 = Evaluator::with_env_and_token(env_snapshot, token_for_task);
-        ev2.thread_limiter = limiter;
-        ev2.deadline = deadline;
-        let out = ev2.eval(expr);
-        if let Some(l) = ev2.thread_limiter.as_ref() {
-            l.release();
-        }
-        out
-    });
-    ev.tasks.insert(id, TaskInfo { rx, cancel: token });
-    Value::Expr { head: Box::new(Value::Symbol("FutureId".into())), args: vec![Value::Integer(id)] }
-}
-
-fn await_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("Await".into())), args };
-    }
-    let id_opt = match &args[0] {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
-            if let Some(Value::Integer(i)) = args.get(0) {
-                Some(*i)
-            } else {
-                None
-            }
-        }
-        Value::Integer(i) => Some(*i),
-        other => match ev.eval(other.clone()) {
-            Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="FutureId") => {
-                if let Some(Value::Integer(i)) = args.get(0) {
-                    Some(*i)
-                } else {
-                    None
-                }
-            }
-            Value::Integer(i) => Some(i),
-            _ => None,
-        },
-    };
-    if let Some(id) = id_opt {
-        if let Some(task) = ev.tasks.remove(&id) {
-            return task.rx.recv().unwrap_or(Value::Symbol("Null".into()));
-        }
-    }
-    ev.make_error("Await: invalid or unknown future", "Await::invfuture")
-}
-
-fn cancel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("Cancel".into())), args };
-    }
-    // Allow Cancel[FSWatch] to route to stdlib's CancelWatch
-    if let Value::Assoc(m) = ev.eval(args[0].clone()) {
-        if let Some(Value::String(t)) = m.get("__type") {
-            if t == "FSWatch" {
-                return ev.eval(Value::Expr { head: Box::new(Value::Symbol("CancelWatch".into())), args: vec![Value::Assoc(m)] });
-            }
-        }
-    }
-    // Accept FutureId[...] or integer id
-    let id_opt = match &args[0] {
-        Value::Expr { head, args } if matches!(&**head, Value::Symbol(s) if s=="FutureId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        Value::Integer(i) => Some(*i),
-        other => match ev.eval(other.clone()) {
-            Value::Integer(i) => Some(i),
-            _ => None,
-        },
-    };
-    if let Some(id) = id_opt {
-        if let Some(task) = ev.tasks.get(&id) {
-            task.cancel.store(true, Ordering::Relaxed);
-            return Value::Boolean(true);
-        }
-    }
-    Value::Boolean(false)
-}
+// moved to concurrency::futures::{future_fn, await_fn, cancel_fn}
 
 fn cancelled_failure() -> Value {
     // no access to self here; embed minimal shape
@@ -1454,7 +1167,7 @@ fn parallel_map(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         ("items".to_string(), Value::Integer(items.len() as i64)),
                         (
                             "maxThreads".to_string(),
-                            Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                            Value::Integer(limiter.as_ref().map(|l| l.max_permits() as i64).unwrap_or(-1)),
                         ),
                         ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
                     ]
@@ -1625,7 +1338,7 @@ fn parallel_table(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 ("items".to_string(), Value::Integer(values.len() as i64)),
                 (
                     "maxThreads".to_string(),
-                    Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                    Value::Integer(limiter.as_ref().map(|l| l.max_permits() as i64).unwrap_or(-1)),
                 ),
                 ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
             ]
@@ -1788,7 +1501,7 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                         ("items".to_string(), Value::Integer(items.len() as i64)),
                         (
                             "maxThreads".to_string(),
-                            Value::Integer(limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                            Value::Integer(limiter.as_ref().map(|l| l.max_permits() as i64).unwrap_or(-1)),
                         ),
                         ("hasDeadline".to_string(), Value::Boolean(deadline.is_some())),
                     ]
@@ -1842,200 +1555,7 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-// Channels
-fn bounded_channel_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    let cap = match args.get(0) {
-        Some(Value::Integer(n)) if *n > 0 => *n as usize,
-        _ => 16,
-    };
-    let id = next_ch_id();
-    ch_reg().lock().unwrap().insert(id, Arc::new(ChannelQueue::new(cap)));
-    Value::Expr {
-        head: Box::new(Value::Symbol("ChannelId".into())),
-        args: vec![Value::Integer(id)],
-    }
-}
-
-fn send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("Send".into())), args };
-    }
-    let chv = ev.eval(args[0].clone());
-    let val = ev.eval(args[1].clone());
-    let mut call_deadline: Option<Instant> = None;
-    if args.len() >= 3 {
-        if let Value::Assoc(m) = ev.eval(args[2].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs").or_else(|| m.get("timeoutMs")) {
-                if *ms > 0 {
-                    call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
-                }
-            }
-        }
-    }
-    let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = cid {
-        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-            if ev.trace_enabled {
-                let data = Value::Assoc(
-                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
-                );
-                ev.trace_steps.push(Value::Assoc(
-                    vec![
-                        ("action".to_string(), Value::String("ChannelSend".into())),
-                        ("head".to_string(), Value::Symbol("Send".into())),
-                        ("data".to_string(), data),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ));
-            }
-            let ok = ch.send(val, ev.cancel_token.clone(), call_deadline.or(ev.deadline));
-            return Value::Boolean(ok);
-        }
-    }
-    Value::Boolean(false)
-}
-
-fn receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() {
-        return Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args };
-    }
-    let chv = ev.eval(args[0].clone());
-    let mut call_deadline: Option<Instant> = None;
-    if args.len() >= 2 {
-        if let Value::Assoc(m) = ev.eval(args[1].clone()) {
-            if let Some(Value::Integer(ms)) = m.get("TimeoutMs").or_else(|| m.get("timeoutMs")) {
-                if *ms > 0 {
-                    call_deadline = Some(Instant::now() + Duration::from_millis(*ms as u64));
-                }
-            }
-        }
-    }
-    let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = cid {
-        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-            if ev.trace_enabled {
-                let data = Value::Assoc(
-                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
-                );
-                ev.trace_steps.push(Value::Assoc(
-                    vec![
-                        ("action".to_string(), Value::String("ChannelReceive".into())),
-                        ("head".to_string(), Value::Symbol("Receive".into())),
-                        ("data".to_string(), data),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ));
-            }
-            return ch
-                .recv(ev.cancel_token.clone(), call_deadline.or(ev.deadline))
-                .unwrap_or(Value::Symbol("Null".into()));
-        }
-    }
-    Value::Symbol("Null".into())
-}
-
-fn close_channel_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("CloseChannel".into())), args };
-    }
-    let chv = ev.eval(args[0].clone());
-    let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = cid {
-        if let Some(ch) = ch_reg().lock().unwrap().get(&id) {
-            ch.close();
-            return Value::Boolean(true);
-        }
-    }
-    Value::Boolean(false)
-}
-
-// Non-blocking channel operations
-fn try_send_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("TrySend".into())), args };
-    }
-    let chv = ev.eval(args[0].clone());
-    let val = ev.eval(args[1].clone());
-    let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = cid {
-        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-            if ev.trace_enabled {
-                let data = Value::Assoc(
-                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
-                );
-                ev.trace_steps.push(Value::Assoc(
-                    vec![
-                        ("action".to_string(), Value::String("ChannelSend".into())),
-                        ("head".to_string(), Value::Symbol("TrySend".into())),
-                        ("data".to_string(), data),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ));
-            }
-            let ok = ch.send(val, ev.cancel_token.clone(), Some(Instant::now()));
-            return Value::Boolean(ok);
-        }
-    }
-    Value::Boolean(false)
-}
-
-fn try_receive_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 1 {
-        return Value::Expr { head: Box::new(Value::Symbol("TryReceive".into())), args };
-    }
-    let chv = ev.eval(args[0].clone());
-    let cid = match chv {
-        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ChannelId") => {
-            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
-        }
-        _ => None,
-    };
-    if let Some(id) = cid {
-        if let Some(ch) = ch_reg().lock().unwrap().get(&id).cloned() {
-            if ev.trace_enabled {
-                let data = Value::Assoc(
-                    vec![("channelId".to_string(), Value::Integer(id))].into_iter().collect(),
-                );
-                ev.trace_steps.push(Value::Assoc(
-                    vec![
-                        ("action".to_string(), Value::String("ChannelReceive".into())),
-                        ("head".to_string(), Value::Symbol("TryReceive".into())),
-                        ("data".to_string(), data),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ));
-            }
-            return ch
-                .recv(ev.cancel_token.clone(), Some(Instant::now()))
-                .unwrap_or(Value::Symbol("Null".into()));
-        }
-    }
-    Value::Symbol("Null".into())
-}
+// Channels moved to concurrency::channels
 
 // Minimal actor
 #[derive(Clone)]
@@ -2059,9 +1579,8 @@ fn actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let handler = args[0].clone();
     // Create a channel and spawn worker reading messages and applying handler
     let cap = 64usize;
-    let chan_id = next_ch_id();
-    let chan = Arc::new(ChannelQueue::new(cap));
-    ch_reg().lock().unwrap().insert(chan_id, chan.clone());
+    let chan_id = crate::concurrency::channels::new_channel(cap);
+    let chan = crate::concurrency::channels::get_channel(chan_id).unwrap();
     let token = ev.cancel_token.clone();
     let env_snapshot = ev.env.clone();
     let limiter = ev.thread_limiter.clone();
@@ -2113,7 +1632,7 @@ fn tell_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     if let Some(id) = aid {
         if let Some(info) = act_reg().lock().unwrap().get(&id).cloned() {
-            if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id).cloned() {
+            if let Some(ch) = crate::concurrency::channels::get_channel(info.chan_id) {
                 let ok = ch.send(msg, ev.cancel_token.clone(), ev.deadline);
                 return Value::Boolean(ok);
             }
@@ -2135,7 +1654,7 @@ fn stop_actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     if let Some(id) = aid {
         if let Some(info) = act_reg().lock().unwrap().remove(&id) {
-            if let Some(ch) = ch_reg().lock().unwrap().get(&info.chan_id) {
+            if let Some(ch) = crate::concurrency::channels::get_channel(info.chan_id) {
                 ch.close();
             }
             return Value::Boolean(true);
@@ -2164,8 +1683,7 @@ fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     };
     if let Some(id) = aid {
         // Create a reply channel (cap=1)
-        let ch_id = next_ch_id();
-        ch_reg().lock().unwrap().insert(ch_id, Arc::new(ChannelQueue::new(1)));
+        let ch_id = crate::concurrency::channels::new_channel(1);
         // Build message: <|"msg"->msg, "replyTo"->ChannelId[ch_id]|>
         let reply = Value::Expr {
             head: Box::new(Value::Symbol("ChannelId".into())),
@@ -2193,7 +1711,7 @@ fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         } else {
             Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply] }
         };
-        return future_fn(ev, vec![recv_expr]);
+                    return crate::concurrency::futures::future_fn(ev, vec![recv_expr]);
     }
     Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args }
 }
@@ -2225,7 +1743,7 @@ fn map_async_rec(ev: &mut Evaluator, f: Value, v: Value, opts: Option<Value>) ->
             .collect(),
         other => {
             let call = Value::Expr { head: Box::new(f), args: vec![other] };
-            vec![future_fn(ev, vec![call])]
+            vec![crate::concurrency::futures::future_fn(ev, vec![call])]
         }
     }
 }
@@ -2243,7 +1761,7 @@ fn gather_rec(ev: &mut Evaluator, v: Value) -> Vec<Value> {
                 }
             })
             .collect(),
-        other => vec![await_fn(ev, vec![other])],
+        other => vec![crate::concurrency::futures::await_fn(ev, vec![other])],
     }
 }
 
@@ -2284,7 +1802,7 @@ fn scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             vec![
                 (
                     "maxThreads".to_string(),
-                    Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max as i64).unwrap_or(-1)),
+                    Value::Integer(ev2.thread_limiter.as_ref().map(|l| l.max_permits() as i64).unwrap_or(-1)),
                 ),
                 ("hasDeadline".to_string(), Value::Boolean(ev2.deadline.is_some())),
             ]
