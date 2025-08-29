@@ -59,8 +59,8 @@ pub struct Evaluator {
     pub(crate) cancel_token: Option<Arc<AtomicBool>>, // cooperative cancellation
     pub(crate) thread_limiter: Option<Arc<ThreadLimiter>>, // scope-wide thread budget
     pub(crate) deadline: Option<Instant>,             // scope-wide deadline
-    trace_enabled: bool,
-    trace_steps: Vec<Value>,
+    pub(crate) trace_enabled: bool,
+    pub(crate) trace_steps: Vec<Value>,
     defs: DefinitionStore,
     current_span: Option<(usize, usize)>,
 }
@@ -832,7 +832,10 @@ pub fn register_concurrency(ev: &mut Evaluator) {
     ev.register("CancelScope", cancel_scope_fn as NativeFn, Attributes::empty());
     ev.register("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
-    crate::concurrency::actors::register_actors(ev);
+    ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
+    ev.register("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
 // Filtered registration variant for tree-shaken builds.
@@ -863,9 +866,10 @@ pub fn register_concurrency_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> 
     reg("EndScope", end_scope_fn as NativeFn, Attributes::empty());
     reg("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
     // channel builtins registered above if requested
-    if pred("Actor") || pred("Tell") || pred("Ask") || pred("StopActor") {
-        crate::concurrency::actors::register_actors(ev);
-    }
+    reg("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("Ask", ask_fn as NativeFn, Attributes::HOLD_ALL);
+    reg("StopActor", stop_actor_fn as NativeFn, Attributes::empty());
 }
 
 pub fn register_explain(ev: &mut Evaluator) {
@@ -1553,7 +1557,164 @@ fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 // Channels moved to concurrency::channels
 
-// Actors moved to concurrency::actors
+// Minimal actor
+#[derive(Clone)]
+struct ActorInfo {
+    chan_id: i64,
+}
+static ACT_REG: OnceLock<Mutex<HashMap<i64, ActorInfo>>> = OnceLock::new();
+static NEXT_ACT_ID: OnceLock<AtomicI64> = OnceLock::new();
+fn act_reg() -> &'static Mutex<HashMap<i64, ActorInfo>> {
+    ACT_REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn next_act_id() -> i64 {
+    let a = NEXT_ACT_ID.get_or_init(|| AtomicI64::new(1));
+    a.fetch_add(1, Ordering::Relaxed)
+}
+
+fn actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("Actor".into())), args };
+    }
+    let handler = args[0].clone();
+    // Create a channel and spawn worker reading messages and applying handler
+    let cap = 64usize;
+    let chan_id = crate::concurrency::channels::new_channel(cap);
+    let chan = crate::concurrency::channels::get_channel(chan_id).unwrap();
+    let token = ev.cancel_token.clone();
+    let env_snapshot = ev.env.clone();
+    let limiter = ev.thread_limiter.clone();
+    let deadline = ev.deadline;
+    // Spawn a worker loop in pool
+    let _ = spawn_task(move || {
+        loop {
+            let msg_opt = chan.recv(token.clone(), deadline);
+            match msg_opt {
+                Some(msg) => {
+                    if let Some(l) = limiter.as_ref() {
+                        l.acquire();
+                    }
+                    // Evaluate handler[msg] in a fresh evaluator
+                    let mut ev2 = if let Some(tok) = token.clone() {
+                        Evaluator::with_env_and_token(env_snapshot.clone(), tok)
+                    } else {
+                        Evaluator::with_env(env_snapshot.clone())
+                    };
+                    ev2.thread_limiter = limiter.clone();
+                    ev2.deadline = deadline;
+                    let call = Value::Expr { head: Box::new(handler.clone()), args: vec![msg] };
+                    let _ = ev2.eval(call);
+                    if let Some(l) = limiter.as_ref() {
+                        l.release();
+                    }
+                }
+                None => break,
+            }
+        }
+        Value::Symbol("Done".into())
+    });
+    let aid = next_act_id();
+    act_reg().lock().unwrap().insert(aid, ActorInfo { chan_id });
+    Value::Expr { head: Box::new(Value::Symbol("ActorId".into())), args: vec![Value::Integer(aid)] }
+}
+
+fn tell_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Tell".into())), args };
+    }
+    let actv = ev.eval(args[0].clone());
+    let msg = args[1].clone();
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
+        _ => None,
+    };
+    if let Some(id) = aid {
+        if let Some(info) = act_reg().lock().unwrap().get(&id).cloned() {
+            if let Some(ch) = crate::concurrency::channels::get_channel(info.chan_id) {
+                let ok = ch.send(msg, ev.cancel_token.clone(), ev.deadline);
+                return Value::Boolean(ok);
+            }
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn stop_actor_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 {
+        return Value::Expr { head: Box::new(Value::Symbol("StopActor".into())), args };
+    }
+    let actv = ev.eval(args[0].clone());
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
+        _ => None,
+    };
+    if let Some(id) = aid {
+        if let Some(info) = act_reg().lock().unwrap().remove(&id) {
+            if let Some(ch) = crate::concurrency::channels::get_channel(info.chan_id) {
+                ch.close();
+            }
+            return Value::Boolean(true);
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn ask_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 {
+        return Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args };
+    }
+    // Extract actor id
+    let actv = ev.eval(args[0].clone());
+    let msg = args[1].clone();
+    // Optional opts (e.g., <|TimeoutMs->t|>)
+    let mut recv_opts: Option<Value> = None;
+    if args.len() >= 3 {
+        recv_opts = Some(ev.eval(args[2].clone()));
+    }
+    let aid = match actv {
+        Value::Expr { head, args } if matches!(&*head, Value::Symbol(s) if s=="ActorId") => {
+            args.get(0).and_then(|v| if let Value::Integer(i) = v { Some(*i) } else { None })
+        }
+        _ => None,
+    };
+    if let Some(id) = aid {
+        // Create a reply channel (cap=1)
+        let ch_id = crate::concurrency::channels::new_channel(1);
+        // Build message: <|"msg"->msg, "replyTo"->ChannelId[ch_id]|>
+        let reply = Value::Expr {
+            head: Box::new(Value::Symbol("ChannelId".into())),
+            args: vec![Value::Integer(ch_id)],
+        };
+        let m = Value::Assoc(
+            vec![("msg".to_string(), msg), ("replyTo".to_string(), reply.clone())]
+                .into_iter()
+                .collect(),
+        );
+        // Send to actor
+        let _ = tell_fn(
+            ev,
+            vec![
+                Value::Expr {
+                    head: Box::new(Value::Symbol("ActorId".into())),
+                    args: vec![Value::Integer(id)],
+                },
+                m,
+            ],
+        );
+        // Return a Future awaiting Receive[reply, opts?]
+        let recv_expr = if let Some(o) = recv_opts {
+            Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply, o] }
+        } else {
+            Value::Expr { head: Box::new(Value::Symbol("Receive".into())), args: vec![reply] }
+        };
+                    return crate::concurrency::futures::future_fn(ev, vec![recv_expr]);
+    }
+    Value::Expr { head: Box::new(Value::Symbol("Ask".into())), args }
+}
 
 // legacy logic helpers removed (EvenQ/OddQ now in stdlib)
 
