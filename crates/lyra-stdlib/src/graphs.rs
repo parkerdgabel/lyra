@@ -2151,6 +2151,8 @@ fn max_flow(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Real(flow)
 }
 
+/// Register graph algorithms and utilities: construction, traversals,
+/// shortest paths, centrality, connectivity, layout, and formats.
 pub fn register_graphs(ev: &mut Evaluator) {
     ev.register("Graph", graph_create as NativeFn, Attributes::empty());
     ev.register("DropGraph", drop_graph as NativeFn, Attributes::empty());
@@ -2309,6 +2311,7 @@ pub fn register_graphs(ev: &mut Evaluator) {
     }
 }
 
+/// Conditionally register graph algorithms/utilities based on `pred`.
 pub fn register_graphs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Graph", graph_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "DropGraph", drop_graph as NativeFn, Attributes::empty());

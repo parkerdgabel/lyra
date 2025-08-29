@@ -17,6 +17,8 @@ use crate::{schema_bool, schema_str};
 #[cfg(feature = "tools")]
 use std::collections::HashMap;
 
+/// Register cryptography helpers: random, hash, AEAD, signatures, HMAC/HKDF,
+/// password hashing, JWT, and UUIDs.
 pub fn register_crypto(ev: &mut Evaluator) {
     // Randomness
     ev.register("RandomBytes", random_bytes as NativeFn, Attributes::empty());
@@ -66,6 +68,7 @@ pub fn register_crypto(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register cryptography helpers based on `pred`.
 pub fn register_crypto_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "RandomBytes", random_bytes as NativeFn, Attributes::empty());
     register_if(ev, pred, "RandomHex", random_hex as NativeFn, Attributes::empty());

@@ -4,8 +4,7 @@ use lyra_core::value::Value;
 use lyra_notebook_core as nb;
 use lyra_parser::Parser;
 use lyra_runtime::Evaluator;
-use parking_lot::Mutex;
-use std::sync::Arc;
+// removed unused imports
 use std::time::Instant;
 use uuid::Uuid;
 use serde_json as sj;
@@ -174,16 +173,15 @@ impl Session {
         // Start temporary scope
         let call = Value::Expr { head: Box::new(Value::Symbol("StartScope".into())), args: vec![opts] };
         let res = self.ev.eval(call);
-        let mut out = Value::Symbol("Null".into());
         if let Value::Expr { head, args } = res {
             if matches!(*head, Value::Symbol(ref s) if s=="ScopeId") {
                 if let Some(Value::Integer(id)) = args.get(0) {
                     // Switch to temporary scope, eval, then end and restore
                     self.scope_id = Some(*id);
-                    out = self.eval_in_scope(expr);
+                    let val = self.eval_in_scope(expr);
                     let _ = self.end_scope();
                     self.scope_id = prev;
-                    return out;
+                    return val;
                 }
             }
         }

@@ -74,6 +74,8 @@ fn error_assoc(msg: &str) -> Value {
     Value::Assoc(HashMap::from([(String::from("Error"), Value::String(msg.into()))]))
 }
 
+/// Register neural network builders: layers, graphs/chains, initialization,
+/// training/inference, properties/summary, and common layer constructors.
 pub fn register_nn(ev: &mut Evaluator) {
     ev.register("NetChain", net_chain as NativeFn, Attributes::empty());
     ev.register("NetGraph", net_graph as NativeFn, Attributes::empty());
@@ -1536,7 +1538,7 @@ fn net_train(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // Canonical alias: Fit delegates to NetTrain for now
-fn fit(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn fit(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Fit[net, data, opts?] -> NetTrain[...]
     Value::Expr { head: Box::new(Value::Symbol("NetTrain".into())), args }
 }
@@ -1556,8 +1558,6 @@ fn net_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let _opts =
         if args.len() >= 3 { ev.eval(args[2].clone()) } else { Value::Assoc(HashMap::new()) };
     // Accept lists and tensors; infer 2D shape when possible
-    let mut curr_chw: Option<(usize, usize, usize)> = infer_chw(&x_in);
-    let mut curr_sd: Option<(usize, usize)> = infer_seqdim(&x_in);
     let mut x_vec: Vec<f64> = match &x_in {
         Value::PackedArray { shape: _shape, data } => data.clone(),
         _ => match to_vec_f64(&x_in) {
@@ -1729,7 +1729,7 @@ fn net_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                     }
                     "Residual" => {
                         // Run inner layers and add skip connection when lengths match
-                        let skip = x_vec.clone(); let mut y = x_vec.clone(); let mut inner_chw = curr_chw;
+                        let skip = x_vec.clone(); let mut y = x_vec.clone(); let inner_chw = curr_chw;
                         if let Some(Value::List(layers)) = params.get("Layers") {
                             for lay in layers {
                                 if let Value::Assoc(m2) = lay {
@@ -1850,8 +1850,8 @@ fn net_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                                 ("b".into(), params.get("b2").cloned().unwrap()),
                             ]);
                             let mut y2 = apply_conv2d(&p2, &y1).unwrap_or_else(|| y1.clone());
-                            let mut skip = x_vec.clone(); let mut skip_c = cin; let mut skip_h = h; let mut skip_w = w;
-                            if skip_c != cout || skip_h != p2_h || skip_w != p2_w {
+                            let mut skip = x_vec.clone();
+                            if cin != cout || h != p2_h || w != p2_w {
                                 if !params.contains_key("WP") {
                                     let mut oc_list: Vec<Value> = Vec::with_capacity(cout);
                                     for _ in 0..cout { let mut ic_list: Vec<Value> = Vec::with_capacity(cin); for _ in 0..cin { ic_list.push(Value::List(vec![Value::List(vec![Value::Real(lcg(&mut seed))])])); } oc_list.push(Value::List(ic_list)); }
@@ -1868,7 +1868,7 @@ fn net_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                                     ("b".into(), params.get("bP").cloned().unwrap()),
                                 ]);
                                 skip = apply_conv2d(&proj, &x_vec).unwrap_or_else(|| x_vec.clone());
-                                skip_c = cout; skip_h = p2_h; skip_w = p2_w;
+                                // projected skip now matches (cout, p2_h, p2_w)
                             }
                             if y2.len() == skip.len() { for i in 0..y2.len() { y2[i] += skip[i]; } }
                             apply_activation(&act, &mut y2);
@@ -2068,7 +2068,7 @@ fn net_apply(ev: &mut Evaluator, args: Vec<Value>) -> Value {
                             for s in 0..seq { for j in 0..dim { let mut acc=0.0; for k0 in 0..dim { acc += att_out[s*dim + k0] * wo[k0*dim + j]; } y[s*dim + j] = acc + bo[j]; }}
                             // Residual + LN
                             for i in 0..(seq*dim) { y[i] += x0[i]; }
-                            let mut ln_params = HashMap::from([
+                            let ln_params = HashMap::from([
                                 ("InputChannels".into(), Value::Integer(dim as i64)),
                                 ("Height".into(), Value::Integer(seq as i64)),
                                 ("Width".into(), Value::Integer(1)),
@@ -3253,14 +3253,14 @@ fn transformer_encoder_decoder(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // TransformerEncoderDecoder[<|EncLayers->Ne, DecLayers->Nd, SeqLen->L, ModelDim->D, NumHeads->H, HiddenDim->M, Activation->..., Causal->True, Mask->..., MemoryMask->...|>]
     // Returns an assoc: <| Encoder -> TransformerEncoderStack[...], Decoder -> TransformerDecoderStack[...] |> (Memory is left to caller)
     let (pos, opts) = parse_opts(ev, &args);
-    let mut params: HashMap<String, Value> = match pos.get(0).map(|v| ev.eval(v.clone())) { Some(Value::Assoc(m)) => m, _ => opts };
+    let params: HashMap<String, Value> = match pos.get(0).map(|v| ev.eval(v.clone())) { Some(Value::Assoc(m)) => m, _ => opts };
     let enc_layers = params.get("EncLayers").or_else(|| params.get("EncoderLayers")).or_else(|| params.get("Layers")).and_then(|v| as_i64(v)).unwrap_or(2).max(1) as usize;
     let dec_layers = params.get("DecLayers").or_else(|| params.get("DecoderLayers")).or_else(|| params.get("Layers")).and_then(|v| as_i64(v)).unwrap_or(2).max(1) as usize;
     // Shared core params
     let mut shared = params.clone();
     shared.remove("EncLayers"); shared.remove("EncoderLayers"); shared.remove("DecLayers"); shared.remove("DecoderLayers"); shared.remove("Layers");
     // Build encoder stack
-    let mut enc_params = shared.clone();
+        let mut enc_params = shared.clone();
     enc_params.insert("Layers".into(), Value::Integer(enc_layers as i64));
     let encoder = transformer_encoder_stack(ev, vec![Value::Assoc(enc_params)]);
     // Build decoder stack (with causal/masks if provided). Memory is not set here.
@@ -3516,6 +3516,7 @@ fn layernorm_layer(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     layer_spec("LayerNorm", params)
 }
 
+/// Conditionally register neural network builders based on `pred`.
 pub fn register_nn_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "NetChain", net_chain as NativeFn, Attributes::empty());
     register_if(ev, pred, "NetGraph", net_graph as NativeFn, Attributes::empty());

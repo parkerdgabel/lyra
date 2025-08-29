@@ -8,6 +8,8 @@ use std::time::Instant;
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
 // --- Registration
+/// Register testing DSL: assertions, fixtures, cases/suites, runner/reporters,
+/// and echo helpers used by runtime smoke tests.
 pub fn register_testing(ev: &mut Evaluator) {
     // Assertions
     ev.register("Assert", assert_fn as NativeFn, Attributes::empty());
@@ -42,6 +44,7 @@ pub fn register_testing(ev: &mut Evaluator) {
     );
 }
 
+/// Conditionally register testing DSL based on `pred`.
 pub fn register_testing_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Assert", assert_fn as NativeFn, Attributes::empty());
     register_if(ev, pred, "AssertEqual", assert_equal_fn as NativeFn, Attributes::empty());

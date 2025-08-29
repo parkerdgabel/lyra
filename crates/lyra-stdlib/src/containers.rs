@@ -1,3 +1,6 @@
+#![allow(unused_variables)]
+// This module exposes many stubs/adapters that do not use all parameters.
+
 use crate::register_if;
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;

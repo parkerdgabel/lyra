@@ -108,6 +108,7 @@ pub mod notebook;
 pub mod display;
 
 // Conditional registration helper used by filtered registrars
+/// Conditionally register a builtin if `filter(name)` returns true.
 pub fn register_if(
     ev: &mut Evaluator,
     filter: &dyn Fn(&str) -> bool,
@@ -120,6 +121,8 @@ pub fn register_if(
     }
 }
 
+/// Register the full standard library (modules gated by crate features),
+/// plus runtime core, introspection, dispatchers, and seeded docs.
 pub fn register_all(ev: &mut Evaluator) {
     // Core forms from the runtime (assignment, replacement, threading)
     #[cfg(feature = "core")]
@@ -178,10 +181,11 @@ pub fn register_all(ev: &mut Evaluator) {
     git::register_git(ev);
     #[cfg(feature = "fs")]
     fs::register_fs(ev);
-    #[cfg(feature = "dataset")]
-    dataset::register_dataset(ev);
+    // Register Frame before Dataset so Dataset's shared names (GroupBy, etc.) override stubs
     #[cfg(feature = "frame")]
     frame::register_frame(ev);
+    #[cfg(feature = "dataset")]
+    dataset::register_dataset(ev);
     #[cfg(feature = "db")]
     db::register_db(ev);
     #[cfg(feature = "containers")]
@@ -235,6 +239,7 @@ pub fn register_all(ev: &mut Evaluator) {
     docs::register_internal_docs(ev);
 }
 
+/// Register selected module groups by name (e.g., "string", "math").
 pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
     for g in groups {
         match *g {
@@ -434,6 +439,8 @@ pub fn register_with(ev: &mut Evaluator, groups: &[&str]) {
 }
 
 // Register only selected symbol names across modules. Always includes core + introspection.
+/// Register only the named symbols across modules, preserving shared-name
+/// overrides (e.g., Dataset over Frame) and always including core + introspection.
 pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&str>) {
     #[cfg(feature = "core")]
     lyra_runtime::eval::register_core(ev);
@@ -490,10 +497,11 @@ pub fn register_selected(ev: &mut Evaluator, names: &std::collections::HashSet<&
     crate::git::register_git_filtered(ev, &predicate);
     #[cfg(feature = "fs")]
     crate::fs::register_fs_filtered(ev, &predicate);
-    #[cfg(feature = "dataset")]
-    crate::dataset::register_dataset_filtered(ev, &predicate);
+    // Ensure Dataset overrides Frame for shared names in filtered registration
     #[cfg(feature = "frame")]
     crate::frame::register_frame_filtered(ev, &predicate);
+    #[cfg(feature = "dataset")]
+    crate::dataset::register_dataset_filtered(ev, &predicate);
     #[cfg(feature = "db")]
     crate::db::register_db_filtered(ev, &predicate);
     #[cfg(feature = "containers")]

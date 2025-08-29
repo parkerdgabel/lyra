@@ -11,6 +11,7 @@ use rusqlite::{params, Connection};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register text indexing and search utilities for files and content.
 pub fn register_text_index(ev: &mut Evaluator) {
     ev.register("Index", index_create as NativeFn, Attributes::empty());
     ev.register("IndexAdd", index_add as NativeFn, Attributes::empty());
@@ -26,6 +27,7 @@ pub fn register_text_index(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register text index/search functions based on `pred`.
 pub fn register_text_index_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Index", index_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "IndexAdd", index_add as NativeFn, Attributes::empty());

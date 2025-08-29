@@ -13,6 +13,8 @@ use regex::Regex;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register text processing: find/count/search, line splitting, replace,
+/// globbing-backed file search, and encoding detection.
 pub fn register_text(ev: &mut Evaluator) {
     ev.register("TextFind", text_find as NativeFn, Attributes::empty());
     ev.register("TextCount", text_count as NativeFn, Attributes::empty());
@@ -23,6 +25,7 @@ pub fn register_text(ev: &mut Evaluator) {
     ev.register("TextSearch", text_search as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register text functions based on `pred`.
 pub fn register_text_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "TextFind", text_find as NativeFn, Attributes::empty());
     register_if(ev, pred, "TextCount", text_count as NativeFn, Attributes::empty());
@@ -228,6 +231,7 @@ pub(crate) fn parse_input(ev: &mut Evaluator, v: Value) -> Result<InputKind, Str
     }
 }
 
+#[cfg_attr(not(feature = "text_glob"), allow(unused_variables))]
 fn resolve_glob_paths(
     patterns: &[String],
     opts: &std::collections::HashMap<String, Value>,

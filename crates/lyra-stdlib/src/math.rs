@@ -1,3 +1,5 @@
+// (moved to top of file)
+
 use crate::register_if;
 #[cfg(feature = "tools")]
 use crate::tool_spec;
@@ -11,6 +13,8 @@ use rug::Float;
 #[cfg(feature = "tools")]
 use std::collections::HashMap;
 
+/// Register core math: arithmetic, statistics, trig, number theory,
+/// combinatorics, random, and numeric utilities.
 pub fn register_math(ev: &mut Evaluator) {
     ev.register(
         "Plus",
@@ -187,6 +191,7 @@ pub fn register_math(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register math functions based on `pred`.
 pub fn register_math_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(
         ev,
@@ -673,7 +678,7 @@ fn random_variate_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 fn normal_sample(ev: &mut Evaluator, mu: f64, sigma: f64) -> f64 {
     // Box-Muller
-    let mut u1 = rng_uniform01(ev); let mut u2 = rng_uniform01(ev);
+    let mut u1 = rng_uniform01(ev); let u2 = rng_uniform01(ev);
     // Avoid log(0)
     if u1 <= 1e-12 { u1 = 1e-12; }
     let r = (-2.0 * u1.ln()).sqrt();
@@ -819,8 +824,8 @@ fn gamma_sample(ev: &mut Evaluator, k: f64, theta: f64) -> f64 {
     let d = a - 1.0 / 3.0;
     let c = (1.0 / (9.0 * d)).sqrt();
     loop {
-        let mut x: f64;
-        let mut v: f64;
+        let x: f64;
+        let v: f64;
         // Standard normal via Box-Muller
         let z = {
             let u1 = rng_uniform01(ev).max(1e-12);

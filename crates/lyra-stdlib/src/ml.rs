@@ -74,6 +74,9 @@ fn get_model_id(v: &Value) -> Option<i64> {
     None
 }
 
+/// Register ML primitives: estimator/classifier/regressor/clusterer specs,
+/// train/infer APIs, preprocessing, dimensionality reduction, CV/tuning, and
+/// function-object helpers (apply/property).
 pub fn register_ml(ev: &mut Evaluator) {
     // Canonical ML heads (untrained specs)
     ev.register("Estimator", estimator as NativeFn, Attributes::empty());
@@ -1543,6 +1546,7 @@ fn ml_tune(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::assoc(vec![("model", best_model), ("report", Value::List(report))])
 }
 
+/// Conditionally register ML primitives based on `pred`.
 pub fn register_ml_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Classify", classify as NativeFn, Attributes::empty());
     register_if(ev, pred, "Predict", predict as NativeFn, Attributes::empty());

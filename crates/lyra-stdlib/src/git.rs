@@ -61,6 +61,8 @@ fn run_git(git_args: &[&str], cwd: Option<String>, input: Option<&str>) -> (i32,
     }
 }
 
+/// Register git helpers: status/diff/log, branch/switch, remote ops,
+/// and higher-level workflows (ensure repo, smart commit, feature branch).
 pub fn register_git(ev: &mut Evaluator) {
     ev.register("GitVersion", git_version as NativeFn, Attributes::empty());
     ev.register("GitRoot", git_root as NativeFn, Attributes::empty());
@@ -115,6 +117,7 @@ pub fn register_git(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register git helpers based on `pred`.
 pub fn register_git_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "GitVersion", git_version as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "GitRoot", git_root as NativeFn, Attributes::empty());

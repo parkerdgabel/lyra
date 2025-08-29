@@ -24,6 +24,8 @@ fn failure(tag: &str, msg: &str) -> Value {
     )
 }
 
+/// Register filesystem utilities: mkdir/rm/copy/move, symlinks, glob,
+/// temp files/dirs, read/write bytes, and directory watch + cancel.
 pub fn register_fs(ev: &mut Evaluator) {
     ev.register("MakeDirectory", mkdir as NativeFn, Attributes::empty());
     ev.register("Remove", remove as NativeFn, Attributes::empty());
@@ -87,6 +89,7 @@ pub fn register_fs(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register filesystem functions based on `pred`.
 pub fn register_fs_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "MakeDirectory", mkdir as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "Remove", remove as NativeFn, Attributes::empty());
@@ -1013,13 +1016,13 @@ fn gunzip_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 
 // Tier1: generic Compress/Decompress stubs with Method option (Zstd/Brotli/Lz4)
-fn compress_generic(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn compress_generic(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Compress[input, <|Method->"Zstd", Level->3, Out->path?|>]
     // Stub: leave unevaluated until backends wired
     Value::Expr { head: Box::new(Value::Symbol("Compress".into())), args }
 }
 
-fn decompress_generic(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn decompress_generic(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Decompress[input, <|Method->"Zstd"|>]
     Value::Expr { head: Box::new(Value::Symbol("Decompress".into())), args }
 }

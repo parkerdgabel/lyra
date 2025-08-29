@@ -11,6 +11,8 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register list processing: Length, Map/Filter/Find, Partition/Flatten,
+/// Transpose, Position/Take/Drop/… and related helpers.
 pub fn register_list(ev: &mut Evaluator) {
     ev.register("Length", length as NativeFn, Attributes::empty());
     ev.register("Range", range as NativeFn, Attributes::empty());
@@ -65,7 +67,12 @@ pub fn register_list(ev: &mut Evaluator) {
     ev.register("Scan", scan_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("MapIndexed", map_indexed_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Slice", slice_list_fn as NativeFn, Attributes::empty());
-    // Internal: conversion helpers for tensor backend
+    // Tensor conversion helpers (public and internal aliases)
+    // Public names used by tests and user code
+    ev.register("PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
+    ev.register("PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
+    ev.register("PackedShape", packed_shape as NativeFn, Attributes::empty());
+    // Internal aliases used by cross-module dispatchers
     ev.register("__PackedArray", packed_array as NativeFn, Attributes::HOLD_ALL);
     ev.register("__PackedToList", packed_to_list as NativeFn, Attributes::HOLD_ALL);
     ev.register("__PackedShape", packed_shape as NativeFn, Attributes::empty());
@@ -178,6 +185,7 @@ pub fn register_list(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register list functions based on `pred`.
 pub fn register_list_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Length", length as NativeFn, Attributes::empty());
     register_if(ev, pred, "Range", range as NativeFn, Attributes::empty());

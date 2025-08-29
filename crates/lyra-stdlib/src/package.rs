@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register package/module system helpers: Using/WithPackage, module scopes,
+/// exports, module path, info/version, and package dev/PM stubs.
 pub fn register_package(ev: &mut Evaluator) {
     ev.register("Using", using_fn as NativeFn, Attributes::HOLD_FIRST);
     ev.register("Unuse", unuse_fn as NativeFn, Attributes::empty());
@@ -52,6 +54,7 @@ pub fn register_package(ev: &mut Evaluator) {
     ev.register("PackageVerify", package_verify_fn as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register package helpers based on `pred`.
 pub fn register_package_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Using", using_fn as NativeFn, Attributes::HOLD_FIRST);
     register_if(ev, pred, "Unuse", unuse_fn as NativeFn, Attributes::empty());

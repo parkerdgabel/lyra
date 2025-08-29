@@ -837,6 +837,8 @@ fn pq_peek(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
 }
 // Legacy PQSize/PQEmptyQ removed; use Length/EmptyQ
 
+/// Register collection types (Set, Queue, Deque, Bag, Counter) and
+/// operations for creation, mutation, and conversion.
 pub fn register_collections(ev: &mut Evaluator) {
     // Set
     ev.register("HashSet", set_create as NativeFn, Attributes::empty());
@@ -882,6 +884,7 @@ pub fn register_collections(ev: &mut Evaluator) {
     // Legacy size/empty functions removed in favor of Length/EmptyQ
 }
 
+/// Conditionally register collection types and operations based on `pred`.
 pub fn register_collections_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "HashSet", set_create as NativeFn, Attributes::empty());
     register_if(ev, pred, "SetFromList", set_from_list as NativeFn, Attributes::empty());

@@ -10,12 +10,14 @@ use fuzzy_matcher::FuzzyMatcher;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register fuzzy text matching and scoring helpers.
 pub fn register_text_fuzzy(ev: &mut Evaluator) {
     ev.register("FuzzyFindInText", fuzzy_find_in_text as NativeFn, Attributes::empty());
     ev.register("FuzzyFindInList", fuzzy_find_in_list as NativeFn, Attributes::empty());
     ev.register("FuzzyFindInFiles", fuzzy_find_in_files as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register fuzzy text functions based on `pred`.
 pub fn register_text_fuzzy_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "FuzzyFindInText", fuzzy_find_in_text as NativeFn, Attributes::empty());
     register_if(ev, pred, "FuzzyFindInList", fuzzy_find_in_list as NativeFn, Attributes::empty());

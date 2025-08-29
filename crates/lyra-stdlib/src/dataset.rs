@@ -2470,6 +2470,8 @@ fn distinct_on(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     distinct_on(ev, vec![ds, Value::List(keys.into_iter().map(Value::String).collect()), opts])
 }
 
+/// Register dataset APIs: construction from frames/tables, selection,
+/// transforms, joins, group/aggregate, ordering/limit, and IO.
 pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
     ev.register("Collect", collect_ds as NativeFn, Attributes::empty());
@@ -2655,6 +2657,7 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register dataset APIs based on `pred`.
 pub fn register_dataset_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "DatasetFromRows", dataset_from_rows as NativeFn, Attributes::empty());
     register_if(ev, pred, "Collect", collect_ds as NativeFn, Attributes::empty());

@@ -121,6 +121,8 @@ macro_rules! schema_arr {
     };
 }
 
+/// Register tool discovery/invocation APIs: register/unregister, list/cards,
+/// describe/search/resolve, invoke/dry-run, and capability/cache helpers.
 pub fn register_tools(ev: &mut Evaluator) {
     ev.register("ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     ev.register("ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());
@@ -1496,6 +1498,7 @@ fn idempotency_key(_ev: &mut Evaluator, _args: Vec<Value>) -> Value {
     Value::String(format!("idemp-{}", next_idemp()))
 }
 
+/// Conditionally register tool APIs based on `pred`.
 pub fn register_tools_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "ToolsRegister", tools_register as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ToolsUnregister", tools_unregister as NativeFn, Attributes::empty());

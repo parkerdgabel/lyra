@@ -4,10 +4,12 @@ use lyra_runtime::Evaluator;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register policy scoping: temporarily set tool capabilities while running.
 pub fn register_policy(ev: &mut Evaluator) {
     ev.register("WithPolicy", with_policy as NativeFn, Attributes::HOLD_ALL);
 }
 
+/// Conditionally register policy scoping based on `pred`.
 pub fn register_policy_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "WithPolicy", with_policy as NativeFn, Attributes::HOLD_ALL);
 }

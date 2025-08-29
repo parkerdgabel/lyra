@@ -76,6 +76,7 @@ fn logger() -> &'static Mutex<LoggerConf> {
 
 thread_local! { static LOG_CONTEXT: std::cell::RefCell<Vec<HashMap<String, Value>>> = std::cell::RefCell::new(Vec::new()); }
 
+/// Register logging helpers: configure backends and emit structured logs.
 pub fn register_logging(ev: &mut Evaluator) {
     ev.register("Logger", logger_fn as NativeFn, Attributes::empty());
     ev.register("Write", write_fn as NativeFn, Attributes::empty());
@@ -84,6 +85,7 @@ pub fn register_logging(ev: &mut Evaluator) {
     ev.register("Info", info_fn as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register logging helpers based on `pred`.
 pub fn register_logging_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "Logger", logger_fn as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "Write", write_fn as NativeFn, Attributes::empty());

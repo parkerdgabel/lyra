@@ -31,7 +31,7 @@ pub fn open_notebook(path: &str) -> Result<kernel::OpenResponse> {
     let _ = fs::create_dir_all(&cache_dir);
     settings.cache_dir = Some(cache_dir.to_string_lossy().to_string());
     settings.enable_cache = true;
-    let mut sess = kernel::Session::new(nb, settings);
+    let sess = kernel::Session::new(nb, settings);
     let sid = sess.id();
     let nb_copy = sess.notebook().clone();
     SESSION_REG.lock().insert(sid, sess);
@@ -48,7 +48,7 @@ pub fn new_notebook(title: Option<&str>) -> Result<kernel::OpenResponse> {
     // In GUI, prefer rich display by default
     lyra_stdlib::display::set_prefer_display(true);
     let settings = kernel::SessionSettings::default();
-    let mut sess = kernel::Session::new(nb, settings);
+    let sess = kernel::Session::new(nb, settings);
     let sid = sess.id();
     let nb_copy = sess.notebook().clone();
     SESSION_REG.lock().insert(sid, sess);
@@ -188,7 +188,7 @@ pub fn cache_info(session_id: Uuid) -> CacheInfo {
     let map = SESSION_REG.lock();
     if let Some(sess) = map.get(&session_id) {
         let (bytes, files) = sess.cache_disk_size_bytes();
-        CacheInfo { enabled: true && sess.notebook().version.len() >= 0 && sess as *const _ != std::ptr::null(), disk_bytes: bytes, files }
+        CacheInfo { enabled: true, disk_bytes: bytes, files }
     } else { CacheInfo { enabled: false, disk_bytes: 0, files: 0 } }
 }
 
@@ -353,7 +353,7 @@ fn find_defs(text: &str, name: &str) -> Vec<(usize, usize)> {
     let mut out = vec![];
     // Simple variable definition: Name :=
     let re_var = regex::Regex::new(&format!(r"(?m)\b{}\b\s*: =?", regex::escape(name)).replace(" ", "")).unwrap();
-    for m in re_var.find(text) {
+    if let Some(m) = re_var.find(text) {
         if code.get(m.start()).copied().unwrap_or(true) { out.push((m.start(), m.start()+name.len())); }
     }
     // Function head definition: Name[ ... ] :=
@@ -680,7 +680,7 @@ pub struct TableQuery {
 }
 
 #[derive(Debug)]
-struct TableEntry { value: Value, created_at: Instant, rows_cache: Option<Vec<Value>> }
+struct TableEntry { value: Value, #[allow(dead_code)] created_at: Instant, rows_cache: Option<Vec<Value>> }
 
 lazy_static! {
     static ref TABLE_REG: Mutex<HashMap<Uuid, HashMap<String, TableEntry>>> = Mutex::new(HashMap::new());
@@ -718,7 +718,7 @@ pub fn table_schema(session_id: Uuid, handle: String, timeout_ms: Option<u64>) -
 
 pub fn table_query(session_id: Uuid, handle: String, q: TableQuery, timeout_ms: Option<u64>) -> Result<TableQueryResp> {
     // Ensure rows are materialized if needed (Frame)
-    let mut items: Vec<Value> = collect_rows_if_needed(session_id, handle.clone(), timeout_ms)?;
+    let items: Vec<Value> = collect_rows_if_needed(session_id, handle.clone(), timeout_ms)?;
     // Apply basic search/filters/sort, then paginate
     let off = q.offset.unwrap_or(0) as usize;
     let lim = q.limit.unwrap_or(100) as usize;
@@ -1092,7 +1092,7 @@ fn value_to_string(v: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Integer(i) => i.to_string(),
         Value::Real(f) => {
-            let mut s = f.to_string();
+            let s = f.to_string();
             if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
         }
         Value::Boolean(b) => b.to_string(),

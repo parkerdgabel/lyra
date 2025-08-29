@@ -1,3 +1,22 @@
+//! Channels — bounded MPSC queues with backpressure and deadlines.
+//!
+//! - Responsibility: per-channel FIFO messaging across tasks/actors.
+//! - Types: `BoundedChannel[cap] -> ChannelId[id]` (default `cap=16`).
+//! - API: `Send[id, val, opts]`, `Receive[id, opts]`, `TrySend`, `TryReceive`, `CloseChannel`.
+//! - Backpressure: `Send` blocks when full; `TimeoutMs` or evaluator deadline/cancel breaks waits.
+//! - Close: `CloseChannel` wakes waiters; further sends fail; receives drain until empty then yield `Null`.
+//! - See also: `concurrency::actors` (mailboxes), `concurrency::futures`, `concurrency::scope`.
+//!
+//! Example
+//! -------
+//! ```rust,ignore
+//! // Create a bounded channel and exchange a value with timeout.
+//! let ch = ev.eval(sym!(BoundedChannel)[int!(8)]); // ChannelId[...]
+//! let ok = ev.eval(sym!(Send)[ch.clone(), str!("ping"), assoc!{ "TimeoutMs" => 50 }]);
+//! let val = ev.eval(sym!(Receive)[ch.clone(), assoc!{ "TimeoutMs" => 50 }]);
+//! let _ = ev.eval(sym!(CloseChannel)[ch]);
+//! ```
+
 use crate::attrs::Attributes;
 use crate::eval::{Evaluator, NativeFn};
 use lyra_core::value::Value;
@@ -9,6 +28,8 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+/// Bounded FIFO queue backing a channel. Blocks senders when full and
+/// receivers when empty, respecting optional deadlines and cancellation.
 pub(crate) struct ChannelQueue {
     cap: usize,
     inner: Mutex<ChannelInner>,
@@ -86,16 +107,20 @@ fn next_ch_id() -> i64 {
     a.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Create a new bounded channel with capacity `cap`, returning its id.
 pub(crate) fn new_channel(cap: usize) -> i64 {
     let id = next_ch_id();
     ch_reg().lock().unwrap().insert(id, Arc::new(ChannelQueue::new(cap)));
     id
 }
 
+/// Look up a channel by id, returning a shared handle if it exists.
 pub(crate) fn get_channel(id: i64) -> Option<Arc<ChannelQueue>> {
     ch_reg().lock().unwrap().get(&id).cloned()
 }
 
+/// Register channel primitives into the evaluator: `BoundedChannel`,
+/// `Send`/`TrySend`, `Receive`/`TryReceive`, and `CloseChannel`.
 pub(crate) fn register_channels(ev: &mut Evaluator) {
     ev.register("BoundedChannel", bounded_channel_fn as NativeFn, Attributes::empty());
     ev.register("Send", send_fn as NativeFn, Attributes::HOLD_ALL);

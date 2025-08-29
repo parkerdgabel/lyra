@@ -1635,9 +1635,9 @@ fn sortby_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let f = args[0].clone();
     let subj = ev.eval(args[1].clone());
     match subj {
-        Value::Assoc(_) => Value::expr(Value::symbol("__AssocSortBy"), vec![f, subj]),
-        Value::List(_) => Value::expr(Value::symbol("__ListSortBy"), vec![f, subj]),
-        other => Value::expr(Value::symbol("SortBy"), vec![f, other]),
+        Value::Assoc(_) => ev.eval(Value::expr(Value::symbol("__AssocSortBy"), vec![f, subj])),
+        Value::List(_) => ev.eval(Value::expr(Value::symbol("__ListSortBy"), vec![f, subj])),
+        other => ev.eval(Value::expr(Value::symbol("SortBy"), vec![f, other])),
     }
 }
 

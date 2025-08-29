@@ -23,6 +23,8 @@ fn failure(tag: &str, msg: &str) -> Value {
     )
 }
 
+/// Register process execution helpers: run/which/popen/pipe, read/write/kill,
+/// and process info utilities.
 pub fn register_process(ev: &mut Evaluator) {
     ev.register("Run", run as NativeFn, Attributes::empty());
     ev.register("Which", which as NativeFn, Attributes::empty());
@@ -102,6 +104,7 @@ pub fn register_process(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register process helpers based on `pred`.
 pub fn register_process_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "Run", run as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "Which", which as NativeFn, Attributes::empty());

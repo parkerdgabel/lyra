@@ -14,6 +14,8 @@ use crate::tools::add_specs;
 #[cfg(feature = "tools")]
 use std::collections::HashMap;
 
+/// Register media operations built on ffmpeg: probe, transcode, thumbnail,
+/// concat, pipeline, extract audio, and mux.
 pub fn register_media(ev: &mut Evaluator) {
     ev.register("MediaProbe", media_probe as NativeFn, Attributes::empty());
     ev.register("MediaTranscode", media_transcode as NativeFn, Attributes::empty());

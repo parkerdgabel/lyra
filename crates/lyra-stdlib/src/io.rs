@@ -287,6 +287,7 @@ static UI_THEME_OPTS: OnceLock<Mutex<UiThemeOpts>> = OnceLock::new();
 #[derive(Clone, Default)]
 struct TermTheme { accent: Option<String>, compact: bool, palette: TermPalette }
 #[derive(Clone, Default)]
+#[allow(dead_code)]
 struct TermPalette { primary: Option<String>, success: Option<String>, warning: Option<String>, error: Option<String>, info: Option<String>, background: Option<String>, text: Option<String> }
 static UI_TERM_THEME: OnceLock<Mutex<TermTheme>> = OnceLock::new();
 
@@ -344,19 +345,19 @@ fn set_ui_theme(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     *ui_theme_name().lock().unwrap() = mode;
     // Parse optional options
     let mut accent: Option<String> = None;
-    let mut rounding: Option<f32> = None;
-    let mut font_size: Option<f32> = None;
+    let mut _rounding: Option<f32> = None;
+    let mut _font_size: Option<f32> = None;
     let mut compact: bool = false;
-    let mut spacing_scale: Option<f32> = None;
+    let mut _spacing_scale: Option<f32> = None;
     // Palette
     let mut pal = UiPalette::default();
     if args.len() == 2 {
         if let Value::Assoc(m) = ev.eval(args[1].clone()) {
             if let Some(Value::String(s)) | Some(Value::Symbol(s)) = m.get("AccentColor") { accent = Some(s.clone()); }
-            if let Some(Value::Integer(n)) = m.get("Rounding") { rounding = Some(*n as f32); }
-            if let Some(Value::Integer(n)) = m.get("FontSize") { font_size = Some(*n as f32); }
+            if let Some(Value::Integer(n)) = m.get("Rounding") { _rounding = Some(*n as f32); }
+            if let Some(Value::Integer(n)) = m.get("FontSize") { _font_size = Some(*n as f32); }
             if let Some(Value::Boolean(b)) = m.get("Compact") { compact = *b; }
-            if let Some(Value::Integer(n)) = m.get("SpacingScale") { spacing_scale = Some(*n as f32); }
+            if let Some(Value::Integer(n)) = m.get("SpacingScale") { _spacing_scale = Some(*n as f32); }
             if let Some(Value::Assoc(pm)) = m.get("Palette") {
                 let get = |k: &str| pm.get(k).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
                 pal.primary = get("Primary"); pal.success = get("Success"); pal.warning = get("Warning"); pal.error = get("Error"); pal.info = get("Info"); pal.background = get("Background"); pal.surface = get("Surface"); pal.text = get("Text");
@@ -369,10 +370,10 @@ fn set_ui_theme(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     {
         let mut o = ui_theme_opts().lock().unwrap();
         o.accent = accent.clone();
-        o.rounding = rounding;
-        o.font_size = font_size;
+        o.rounding = _rounding;
+        o.font_size = _font_size;
         o.compact = compact;
-        o.spacing_scale = spacing_scale;
+        o.spacing_scale = _spacing_scale;
         o.palette = pal.clone();
     }
     {
@@ -999,6 +1000,8 @@ impl eframe::App for TextApp {
     }
 }
 
+/// Register file/FS/path/env IO, CLI/UI prompts, progress/spinner, and
+/// JSON/YAML/TOML/CSV encode/decode utilities.
 pub fn register_io(ev: &mut Evaluator) {
     ev.register("ReadFile", read_file as NativeFn, Attributes::empty());
     ev.register("WriteFile", write_file as NativeFn, Attributes::empty());
@@ -1137,6 +1140,7 @@ pub fn register_io(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register IO functions based on `pred`.
 pub fn register_io_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "ReadFile", read_file as NativeFn, Attributes::empty());
     register_if(ev, pred, "WriteFile", write_file as NativeFn, Attributes::empty());

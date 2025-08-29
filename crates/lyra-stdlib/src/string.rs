@@ -8,8 +8,12 @@ use lyra_parser::Parser;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 
+/// Register core string utilities: split/join, trim, case changes,
+/// predicates, replace, format/interpolate, and URL/HTML helpers.
 pub fn register_string(ev: &mut Evaluator) {
-    // Length is provided generically; remove legacy StringLength
+    // Maintain StringLength for compatibility (aliases generic Length on strings)
+    ev.register("StringLength", string_length as NativeFn, Attributes::LISTABLE);
+    // Core string helpers
     ev.register("ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
     ev.register("ToLower", to_lower as NativeFn, Attributes::LISTABLE);
     ev.register("StringJoin", string_join as NativeFn, Attributes::empty());
@@ -21,8 +25,9 @@ pub fn register_string(ev: &mut Evaluator) {
     ev.register("StringTrimSuffix", string_trim_suffix as NativeFn, Attributes::LISTABLE);
     ev.register("StringTrimChars", string_trim_chars as NativeFn, Attributes::LISTABLE);
     ev.register("StringContains", string_contains as NativeFn, Attributes::empty());
-    // Canonical Split
+    // Canonical Split and legacy alias
     ev.register("Split", string_split as NativeFn, Attributes::empty());
+    ev.register("StringSplit", string_split as NativeFn, Attributes::empty());
     ev.register("SplitLines", split_lines as NativeFn, Attributes::LISTABLE);
     ev.register("JoinLines", join_lines as NativeFn, Attributes::empty());
     ev.register("StartsWith", starts_with as NativeFn, Attributes::LISTABLE);
@@ -140,6 +145,7 @@ pub fn register_string(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register string utilities based on `pred`.
 pub fn register_string_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "ToUpper", to_upper as NativeFn, Attributes::LISTABLE);
     register_if(ev, pred, "ToLower", to_lower as NativeFn, Attributes::LISTABLE);

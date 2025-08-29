@@ -23,6 +23,8 @@ fn failure(tag: &str, msg: &str) -> Value {
     )
 }
 
+/// Register time utilities: clocks, DateTime/Duration parse/format/arith,
+/// start/end of units, timezone convert, and scheduling (every/cron).
 pub fn register_time(ev: &mut Evaluator) {
     ev.register("NowMs", now_ms as NativeFn, Attributes::empty());
     ev.register("MonotonicNow", monotonic_now as NativeFn, Attributes::empty());
@@ -62,6 +64,7 @@ pub fn register_time(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register time utilities based on `pred`.
 pub fn register_time_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "NowMs", now_ms as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "MonotonicNow", monotonic_now as NativeFn, Attributes::empty());

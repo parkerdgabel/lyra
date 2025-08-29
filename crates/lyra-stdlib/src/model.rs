@@ -16,6 +16,7 @@ fn str_of(v: &Value) -> Option<String> {
     }
 }
 
+/// Register model interface: model specs, list models, chat/complete, embed.
 pub fn register_model(ev: &mut Evaluator) {
     ev.register("Model", model as NativeFn, Attributes::empty());
     ev.register("ModelsList", models_list as NativeFn, Attributes::empty());
@@ -24,6 +25,7 @@ pub fn register_model(ev: &mut Evaluator) {
     ev.register("Embed", embed as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register model interface based on `pred`.
 pub fn register_model_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "Model", model as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "ModelsList", models_list as NativeFn, Attributes::empty());

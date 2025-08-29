@@ -1,3 +1,6 @@
+#![allow(non_snake_case)]
+// Allow capitalized matrix variable names (U, S, V, L, R, etc.) used in linear algebra.
+
 use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
@@ -459,8 +462,8 @@ fn read_vector(ev: &mut Evaluator, v: Value) -> Option<Vec<f64>> {
     match ev.eval(v) {
         Value::PackedArray { shape, data } => {
             match shape.as_slice() {
-                [n] => Some(data),
-                [n, 1] => Some(data),
+                [_] => Some(data),
+                [_, 1] => Some(data),
                 _ => None,
             }
         }
@@ -752,7 +755,7 @@ fn eigen(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if !symmetric {
         // General (non-symmetric) case: QR iterations for eigenvalues, then inverse iteration for eigenvectors (best-effort, real only)
         let n = n;
-        let orig = pack(vec![n, n], a.clone());
+        let _orig = pack(vec![n, n], a.clone());
         let mut Ak = a.clone();
         let mut Qacc = vec![0.0; n*n]; for i in 0..n { Qacc[i*n + i] = 1.0; }
         let max_iter = 200usize;
@@ -791,7 +794,7 @@ fn eigen(ev: &mut Evaluator, args: Vec<Value>) -> Value {
             let mut v = vec![0.0; n];
             for i in 0..n { v[i] = if i==idx% n { 1.0 } else { 0.1 }; }
             let mut vv = pack(vec![n], v.clone());
-            let mut mat = pack(vec![n, n], shifted.clone());
+            let mat = pack(vec![n, n], shifted.clone());
             // Perform a few inverse iterations
             let iters = 8;
             let mut ok = true;
@@ -2131,6 +2134,8 @@ fn nd_permute_dims(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 
 use crate::register_if;
 
+/// Register NDArray/PackedArray utilities: creation, shape/type, index/slice,
+/// linear algebra, and numeric transforms.
 pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("NDArray", ndarray as NativeFn, Attributes::HOLD_ALL);
     ev.register("NDShape", nd_shape as NativeFn, Attributes::empty());
@@ -2195,6 +2200,7 @@ pub fn register_ndarray(ev: &mut Evaluator) {
     ev.register("Reshape", reshape_generic as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register ndarray functions based on `pred`.
 pub fn register_ndarray_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "NDArray", ndarray as NativeFn, Attributes::HOLD_ALL);
     register_if(ev, pred, "NDShape", nd_shape as NativeFn, Attributes::empty());

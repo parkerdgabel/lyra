@@ -12,6 +12,8 @@ use crate::tool_spec;
 #[cfg(feature = "tools")]
 use crate::tools::add_specs;
 
+/// Register visualization helpers: basic charts, rendering options,
+/// and data-to-visual mappings.
 pub fn register_visual(ev: &mut Evaluator) {
     ev.register("Chart", chart as NativeFn, Attributes::empty());
     ev.register("LinePlot", line_plot as NativeFn, Attributes::empty());
@@ -31,6 +33,7 @@ pub fn register_visual(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register visualization helpers based on `pred`.
 pub fn register_visual_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "Chart", chart as NativeFn, Attributes::empty());
     crate::register_if(ev, pred, "LinePlot", line_plot as NativeFn, Attributes::empty());

@@ -11,12 +11,14 @@ fn sess() -> &'static Mutex<HashMap<String, Vec<Value>>> {
     SESS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Register simple session memory: Remember/Recall items and clear sessions.
 pub fn register_memory(ev: &mut Evaluator) {
     ev.register("Remember", remember as NativeFn, Attributes::LISTABLE);
     ev.register("Recall", recall as NativeFn, Attributes::empty());
     ev.register("SessionClear", session_clear as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register memory helpers based on `pred`.
 pub fn register_memory_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "Remember", remember as NativeFn, Attributes::LISTABLE);
     super::register_if(ev, pred, "Recall", recall as NativeFn, Attributes::empty());

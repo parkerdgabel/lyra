@@ -1,3 +1,28 @@
+//! Scope — structured concurrency and parallel evaluation knobs.
+//!
+//! - Responsibility: propagate cancellation, thread limits, and deadlines to nested work.
+//! - API: `Scope[opts, body]`, `StartScope[opts] -> ScopeId[id]`, `InScope[id, expr]`, `CancelScope[id]`, `EndScope[id]`.
+//! - Parallelism: `ParallelEvaluate[list, opts]` maps elements across the pool respecting limits/deadlines.
+//! - Cancellation: on `CancelScope`, children observe the flag and may stop cooperatively.
+//! - Composition: `InScope` temporarily installs scope settings for a single evaluation.
+//! - See also: `concurrency::futures`, `concurrency::pool`.
+//!
+//! Example
+//! -------
+//! ```rust,ignore
+//! // Apply a time budget and thread cap to a block.
+//! let out = ev.eval(sym!(Scope)[
+//!   assoc!{ "MaxThreads" => 4, "TimeBudgetMs" => 250 },
+//!   sym!(ParallelEvaluate)[list![a(), b(), c()]]
+//! ]);
+//!
+//! // Long-lived scope using StartScope / InScope.
+//! let sid = ev.eval(sym!(StartScope)[assoc!{ "MaxThreads" => 2 }]);
+//! let r1 = ev.eval(sym!(InScope)[sid.clone(), heavy()]);
+//! let _ = ev.eval(sym!(CancelScope)[sid.clone()]);
+//! let _ = ev.eval(sym!(EndScope)[sid]);
+//! ```
+
 use crate::attrs::Attributes;
 use crate::concurrency::pool::{spawn_task, ThreadLimiter};
 use crate::eval::{Evaluator, NativeFn};
@@ -29,6 +54,8 @@ fn next_scope_id() -> i64 {
     a.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Register scope and structured-concurrency primitives: `Scope`,
+/// `StartScope`, `InScope`, `CancelScope`, `EndScope`, and `ParallelEvaluate`.
 pub(crate) fn register_scopes(ev: &mut Evaluator) {
     ev.register("Scope", scope_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("StartScope", start_scope_fn as NativeFn, Attributes::HOLD_ALL);
@@ -38,6 +65,9 @@ pub(crate) fn register_scopes(ev: &mut Evaluator) {
     ev.register("ParallelEvaluate", parallel_evaluate as NativeFn, Attributes::HOLD_ALL);
 }
 
+/// Evaluate each element of a list in parallel, honoring the evaluator's
+/// cancellation token, optional thread limiter, and deadline; returns a list
+/// of results in the same order as inputs.
 fn parallel_evaluate(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ParallelEvaluate".into())), args }; }
     let target = args[0].clone();
@@ -176,4 +206,3 @@ fn end_scope_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if let Some(id) = sid { return Value::Boolean(scope_reg().lock().unwrap().remove(&id).is_some()); }
     Value::Boolean(false)
 }
-

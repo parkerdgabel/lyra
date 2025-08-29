@@ -1,11 +1,26 @@
+//! Rewrite semantics and rewrite-oriented helpers.
+//!
+//! This module contains behavior driven by Lyra’s rule system and matcher:
+//! - Try/Apply SubValues, UpValues, DownValues, OwnValues during evaluation.
+//! - Replace/ReplaceAll/ReplaceRepeated/ReplaceFirst wired through the
+//!   rewrite engine with condition/predicate evaluation and tracing hooks.
+//! - Thread (map elementwise) for listable heads in rewrite contexts.
+//! - Canonical ordering key (`value_order`) used by orderless sorting and
+//!   other stable comparisons.
+//!
+//! Mechanics that are not rewrite semantics per se (Sequence splicing,
+//! Hold*, Flat, Orderless) live in `core::call` and are orchestrated by the
+//! evaluator prior to calling native implementations.
+
 use crate::attrs::Attributes;
 use crate::eval::Evaluator;
 use crate::trace::{trace_drain_steps, trace_push_step};
 use lyra_core::value::Value;
 
-// Canonical order key used for ORDERLESS sorting
+/// Canonical order key used for stable comparisons and ORDERLESS sorting.
 pub(crate) fn value_order_key(v: &Value) -> String { value_order(v) }
 
+/// Produce a stable string key that defines total order across all `Value` kinds.
 pub(crate) fn value_order(v: &Value) -> String {
     match v {
         Value::Integer(n) => format!("0:{n:020}"),
@@ -42,77 +57,322 @@ pub(crate) fn value_order(v: &Value) -> String {
 }
 
 // Supports Orderless argument canonicalization in eval
-pub(crate) fn splice_sequences(args: Vec<Value>) -> Vec<Value> {
-    let mut out: Vec<Value> = Vec::new();
-    for a in args.into_iter() {
-        if let Value::Expr { head, args } = &a {
-            if matches!(&**head, Value::Symbol(s) if s=="Sequence") {
-                out.extend(args.clone());
-                continue;
+// moved to core::call::splice_sequences
+
+// listable_thread moved to core::call::listable_thread (deleted here)
+
+// flat/orderless/hold helpers moved to core::call
+
+// --- Eval-time rewrite helpers extracted from eval.rs ---
+
+/// Try `SubValues` for compound heads, e.g., `(g[...])[args]`.
+/// Returns `Some(result)` if a rule applies; otherwise `None`.
+pub(crate) fn try_subvalues(ev: &mut Evaluator, head_eval: &Value, args: &[Value]) -> Option<Value> {
+    if let Value::Expr { head: inner_head, .. } = head_eval {
+        if let Value::Symbol(sub_sym) = &**inner_head {
+            if let Some(rs) = ev.rules(lyra_rewrite::defs::DefKind::Sub, sub_sym) {
+                if !rs.is_empty() {
+                    let rules: Vec<(Value, Value)> =
+                        rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+                    let expr0 = Value::Expr { head: Box::new(head_eval.clone()), args: args.to_vec() };
+                    // Build closures for conditions/pattern tests
+                    let env_snapshot = ev.env.clone();
+                    let pred = |pred: &Value, arg: &Value| {
+                        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                        let res = matches!(ev2.eval(call), Value::Boolean(true));
+                        let data = Value::Assoc(
+                            vec![
+                                ("pred".to_string(), pred.clone()),
+                                ("arg".to_string(), arg.clone()),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        );
+                        trace_push_step(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
+                        res
+                    };
+                    let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                        let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+                        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                        let data = Value::Assoc(
+                            vec![
+                                ("expr".to_string(), cond_sub),
+                                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                                ("result".to_string(), Value::Boolean(res)),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        );
+                        trace_push_step(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                                ("head".to_string(), Value::Symbol("Condition".into())),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
+                        res
+                    };
+                    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+                    let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
+                    if out != expr0 {
+                        if ev.trace_enabled {
+                            for (lhs, rhs) in &rules {
+                                if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
+                                    let data = Value::Assoc(
+                                        vec![("lhs".to_string(), lhs.clone()), ("rhs".to_string(), rhs.clone())]
+                                            .into_iter()
+                                            .collect(),
+                                    );
+                                    ev.trace_steps.push(Value::Assoc(
+                                        vec![
+                                            ("action".to_string(), Value::String("RuleMatch".into())),
+                                            ("head".to_string(), Value::Symbol("SubValues".into())),
+                                            ("data".to_string(), data),
+                                        ]
+                                        .into_iter()
+                                        .collect(),
+                                    ));
+                                    break;
+                                }
+                            }
+                            ev.trace_steps.extend(trace_drain_steps());
+                        }
+                        return Some(ev.eval(out));
+                    }
+                }
             }
         }
-        out.push(a);
     }
-    out
+    None
 }
 
-// Listable helper used by eval when a builtin has LISTABLE
-pub(crate) fn listable_thread(ev: &mut Evaluator, f: crate::eval::NativeFn, args: Vec<Value>) -> Value {
-    let mut target_len: Option<usize> = None;
-    let mut saw_list = false;
-    let mut arg_lens: Vec<i64> = Vec::with_capacity(args.len());
-    for a in &args {
-        if let Value::List(v) = a {
-            saw_list = true;
-            let l = v.len();
-            arg_lens.push(l as i64);
-            if l > 1 {
-                match target_len {
-                    None => target_len = Some(l),
-                    Some(t) if t == l => {}
-                    Some(_) => {
-                        let mut m = std::collections::HashMap::new();
-                        m.insert("message".into(), Value::String("Failure".into()));
-                        m.insert("tag".into(), Value::String("Listable::lengthMismatch".into()));
-                        m.insert("argLens".into(), Value::List(arg_lens.iter().map(|n| Value::Integer(*n)).collect()));
-                        return Value::Assoc(m);
-                    }
+/// Try one step of `UpValues` for `f[args]`, scanning top-level args for
+/// symbols that carry `UpValues`. Returns early on first applicable rule.
+pub(crate) fn try_upvalues(ev: &mut Evaluator, fname: &str, args: &[Value]) -> Option<Value> {
+    let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.into())), args: args.to_vec() };
+    let mut up_rules: Vec<(Value, Value)> = Vec::new();
+    for a in args {
+        let sym_opt = match a {
+            Value::Symbol(s) => Some(s.clone()),
+            Value::Expr { head, .. } => match &**head { Value::Symbol(s) => Some(s.clone()), _ => None },
+            _ => None,
+        };
+        if let Some(sym) = sym_opt {
+            if let Some(rs) = ev.rules(lyra_rewrite::defs::DefKind::Up, &sym) {
+                for r in rs.iter() {
+                    up_rules.push((r.lhs.clone(), r.rhs.clone()));
                 }
             }
-        } else {
-            arg_lens.push(0);
         }
     }
-    if !saw_list {
-        let evald: Vec<Value> = args.into_iter().map(|x| ev.eval(x)).collect();
-        return f(ev, evald);
+    if up_rules.is_empty() { return None; }
+    let env_snapshot = ev.env.clone();
+    let pred = |pred: &Value, arg: &Value| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+        let res = matches!(ev2.eval(call), Value::Boolean(true));
+        let data = Value::Assoc(
+            vec![("pred".to_string(), pred.clone()), ("arg".to_string(), arg.clone()), ("result".to_string(), Value::Boolean(res))]
+                .into_iter()
+                .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("PatternTest".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+        res
+    };
+    let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+        let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+        let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+        let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+        let data = Value::Assoc(
+            vec![
+                ("expr".to_string(), cond_sub),
+                ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                ("result".to_string(), Value::Boolean(res)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        trace_push_step(Value::Assoc(
+            vec![
+                ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                ("head".to_string(), Value::Symbol("Condition".into())),
+                ("data".to_string(), data),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+        res
+    };
+    let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+    for (lhs, rhs) in &up_rules {
+        if let Some(b) = lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0) {
+            if ev.trace_enabled {
+                let data = Value::Assoc(
+                    vec![("lhs".to_string(), lhs.clone()), ("rhs".to_string(), rhs.clone())]
+                        .into_iter()
+                        .collect(),
+                );
+                ev.trace_steps.push(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("RuleMatch".into())),
+                        ("head".to_string(), Value::Symbol("UpValues".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+            }
+            let out = lyra_rewrite::matcher::substitute_named(rhs, &b);
+            if ev.trace_enabled { ev.trace_steps.extend(trace_drain_steps()); }
+            return Some(ev.eval(out));
+        }
     }
-    let len = target_len.unwrap_or(1);
-    let mut out = Vec::with_capacity(len);
-    for i in 0..len {
-        let mut elem_args = Vec::with_capacity(args.len());
-        for a in &args {
-            match a {
-                Value::List(vs) => {
-                    let l = vs.len();
-                    if l == 0 {
-                        elem_args.push(Value::List(vec![]));
-                    } else if l == 1 {
-                        elem_args.push(vs[0].clone());
-                    } else {
-                        elem_args.push(vs[i].clone());
+    None
+}
+
+/// Try one step of `DownValues` for `f[args]` using indexed rewrite.
+pub(crate) fn try_downvalues(ev: &mut Evaluator, fname: &str, args: &[Value]) -> Option<Value> {
+    if let Some(rs) = ev.rules(lyra_rewrite::defs::DefKind::Down, fname) {
+        if !rs.is_empty() {
+            let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+            let expr0 = Value::Expr { head: Box::new(Value::Symbol(fname.into())), args: args.to_vec() };
+            let env_snapshot = ev.env.clone();
+            let pred = |pred: &Value, arg: &Value| {
+                let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                let call = Value::Expr { head: Box::new(pred.clone()), args: vec![arg.clone()] };
+                let res = matches!(ev2.eval(call), Value::Boolean(true));
+                let data = Value::Assoc(
+                    vec![("pred".to_string(), pred.clone()), ("arg".to_string(), arg.clone()), ("result".to_string(), Value::Boolean(res))]
+                        .into_iter()
+                        .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("PatternTest".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+                res
+            };
+            let cond = |cond: &Value, binds: &lyra_rewrite::matcher::Bindings| {
+                let mut ev2 = Evaluator::with_env(env_snapshot.clone());
+                let cond_sub = lyra_rewrite::matcher::substitute_named(cond, binds);
+                let res = matches!(ev2.eval(cond_sub.clone()), Value::Boolean(true));
+                let data = Value::Assoc(
+                    vec![
+                        ("expr".to_string(), cond_sub),
+                        ("bindsCount".to_string(), Value::Integer(binds.len() as i64)),
+                        ("result".to_string(), Value::Boolean(res)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                );
+                trace_push_step(Value::Assoc(
+                    vec![
+                        ("action".to_string(), Value::String("ConditionEvaluated".into())),
+                        ("head".to_string(), Value::Symbol("Condition".into())),
+                        ("data".to_string(), data),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ));
+                res
+            };
+            let ctx = lyra_rewrite::matcher::MatcherCtx { eval_pred: Some(&pred), eval_cond: Some(&cond) };
+            let out = lyra_rewrite::engine::rewrite_once_indexed_with_ctx(&ctx, expr0.clone(), &rules);
+            if out != expr0 {
+                if ev.trace_enabled {
+                    for (lhs, rhs) in &rules {
+                        if lyra_rewrite::matcher::match_rule_with(&ctx, lhs, &expr0).is_some() {
+                            let data = Value::Assoc(
+                                vec![("lhs".to_string(), lhs.clone()), ("rhs".to_string(), rhs.clone())]
+                                    .into_iter()
+                                    .collect(),
+                            );
+                            ev.trace_steps.push(Value::Assoc(
+                                vec![
+                                    ("action".to_string(), Value::String("RuleMatch".into())),
+                                    ("head".to_string(), Value::Symbol("DownValues".into())),
+                                    ("data".to_string(), data),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            ));
+                            break;
+                        }
                     }
+                    ev.trace_steps.extend(trace_drain_steps());
                 }
-                other => elem_args.push(other.clone()),
+                return Some(ev.eval(out));
             }
         }
-        let evald: Vec<Value> = elem_args.into_iter().map(|x| ev.eval(x)).collect();
-        out.push(f(ev, evald));
     }
-    Value::List(out)
+    None
+}
+
+/// Try `OwnValues` for a resolved symbol; returns bound value if matched.
+pub(crate) fn try_ownvalues(ev: &mut Evaluator, sym: &str) -> Option<Value> {
+    if let Some(rs) = ev.rules(lyra_rewrite::defs::DefKind::Own, sym) {
+        if !rs.is_empty() {
+            let rules: Vec<(Value, Value)> = rs.iter().map(|r| (r.lhs.clone(), r.rhs.clone())).collect();
+            let expr0 = Value::Symbol(sym.into());
+            for (lhs, rhs) in &rules {
+                if lyra_rewrite::matcher::match_rule(lhs, &expr0).is_some() {
+                    if ev.trace_enabled {
+                        let data = Value::Assoc(
+                            vec![("lhs".to_string(), lhs.clone()), ("rhs".to_string(), rhs.clone())]
+                                .into_iter()
+                                .collect(),
+                        );
+                        ev.trace_steps.push(Value::Assoc(
+                            vec![
+                                ("action".to_string(), Value::String("RuleMatch".into())),
+                                ("head".to_string(), Value::Symbol("OwnValues".into())),
+                                ("data".to_string(), data),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        ));
+                    }
+                    let out = lyra_rewrite::matcher::substitute_named(
+                        rhs,
+                        &lyra_rewrite::matcher::Bindings::new(),
+                    );
+                    return Some(ev.eval(out));
+                }
+            }
+        }
+    }
+    None
 }
 
 // Collect {Rule[...]...} without evaluating patterns
+/// Normalize rule specifications (single rule or list of rules) into
+/// a vector of `(lhs, rhs)` pairs, evaluating any rule containers.
 pub(crate) fn collect_rules(ev: &mut Evaluator, rules_v: Value) -> Vec<(Value, Value)> {
     fn extract(v: Value) -> Vec<(Value, Value)> {
         let mut out = Vec::new();
@@ -514,6 +774,8 @@ fn replace_first(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ev.eval(out)
 }
 
+/// Register rewrite primitives into the evaluator: `Replace`, `ReplaceAll`,
+/// `ReplaceRepeated`, `ReplaceFirst`, and `Thread`.
 pub fn register_rewrite(ev: &mut Evaluator) {
     ev.register("Replace", replace as crate::eval::NativeFn, Attributes::HOLD_ALL);
     ev.register("ReplaceAll", replace_all_fn as crate::eval::NativeFn, Attributes::HOLD_ALL);

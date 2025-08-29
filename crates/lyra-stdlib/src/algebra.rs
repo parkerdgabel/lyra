@@ -3,6 +3,8 @@ use lyra_core::value::Value;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 
+/// Register algebra utilities: polynomials, matrices, linear algebra ops,
+/// simplification, and symbolic helpers (where applicable).
 pub fn register_algebra(ev: &mut Evaluator) {
     ev.register("Simplify", simplify as NativeFn, Attributes::empty());
     ev.register("Expand", expand as NativeFn, Attributes::empty());
@@ -1295,6 +1297,7 @@ fn is_perfect_square_i64(n: i64) -> Option<i64> {
     }
 }
 
+/// Conditionally register algebra utilities based on `pred`.
 pub fn register_algebra_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Simplify", simplify as NativeFn, Attributes::empty());
     register_if(ev, pred, "Expand", expand as NativeFn, Attributes::empty());

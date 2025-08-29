@@ -1,3 +1,26 @@
+//! Actors — single-threaded handlers with FIFO mailboxes.
+//!
+//! - Responsibility: isolate stateful logic behind message-passing.
+//! - Model: each actor processes messages one-at-a-time from a bounded channel.
+//! - API: `Actor[handler] -> ActorId[id]`, `Tell[id, msg]`, `Ask[id, msg, opts]`, `StopActor[id]`.
+//! - Ordering: per-actor FIFO; cross-actor ordering unspecified.
+//! - Backpressure: `Tell` obeys mailbox capacity and deadlines/cancellation.
+//! - Ask/Reply: `Ask` creates a one-shot reply channel and returns a `Future` of `Receive`.
+//! - Shutdown: `StopActor` closes the mailbox; in-flight messages are not processed after close.
+//! - See also: `concurrency::channels`, `concurrency::futures`.
+//!
+//! Example
+//! -------
+//! ```rust,ignore
+//! // Start an actor whose handler echoes messages.
+//! let echo = ev.eval(sym!(Actor)[sym!(Function)[|m| m]]);
+//! let _ = ev.eval(sym!(Tell)[echo.clone(), str!("hi")]);
+//! // Ask returns a Future; Await to get the reply.
+//! let fut = ev.eval(sym!(Ask)[echo.clone(), str!("ping")]);
+//! let reply = ev.eval(sym!(Await)[fut]);
+//! let _ = ev.eval(sym!(StopActor)[echo]);
+//! ```
+
 use crate::concurrency::channels;
 use crate::concurrency::futures;
 use crate::concurrency::pool::spawn_task;
@@ -27,6 +50,8 @@ fn next_act_id() -> i64 {
     a.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Register actor primitives into the evaluator: `Actor`, `Tell`, `Ask`,
+/// and `StopActor` for mailbox-driven, single-threaded handlers.
 pub(crate) fn register_actors(ev: &mut Evaluator) {
     ev.register("Actor", actor_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Tell", tell_fn as NativeFn, Attributes::HOLD_ALL);

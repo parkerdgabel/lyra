@@ -15,6 +15,8 @@ use crate::tools::add_specs;
 #[cfg(feature = "tools")]
 use std::collections::HashMap;
 
+/// Register basic image operations: info, create canvas, encode/decode,
+/// resize/crop/pad/convert/thumbnail/transform, and save.
 pub fn register_image(ev: &mut Evaluator) {
     ev.register("ImageInfo", image_info as NativeFn, Attributes::empty());
     ev.register("ImageCanvas", image_canvas as NativeFn, Attributes::empty());
@@ -44,6 +46,7 @@ pub fn register_image(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register image operations based on `pred`.
 pub fn register_image_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "ImageInfo", image_info as NativeFn, Attributes::empty());
     register_if(ev, pred, "ImageCanvas", image_canvas as NativeFn, Attributes::empty());

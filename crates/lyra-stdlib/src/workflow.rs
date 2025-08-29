@@ -5,10 +5,12 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register minimal sequential workflows via `Workflow[{...}]`.
 pub fn register_workflow(ev: &mut Evaluator) {
     ev.register("Workflow", workflow as NativeFn, Attributes::HOLD_ALL);
 }
 
+/// Conditionally register workflow helpers based on `pred`.
 pub fn register_workflow_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "Workflow", workflow as NativeFn, Attributes::HOLD_ALL);
 }

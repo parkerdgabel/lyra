@@ -10,6 +10,8 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register functional combinators: currying, composition, apply/partial,
+/// higher-order mapping and control helpers.
 pub fn register_functional(ev: &mut Evaluator) {
     ev.register("Apply", apply_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Compose", compose_fn as NativeFn, Attributes::HOLD_ALL);
@@ -63,6 +65,7 @@ pub fn register_functional(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register functional combinators based on `pred`.
 pub fn register_functional_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     crate::register_if(ev, pred, "Apply", apply_fn as NativeFn, Attributes::HOLD_ALL);
     crate::register_if(ev, pred, "Compose", compose_fn as NativeFn, Attributes::HOLD_ALL);

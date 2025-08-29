@@ -10,6 +10,8 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register association helpers: construct/update/merge, keys/values,
+/// map/filter operations, and structural utilities.
 pub fn register_assoc(ev: &mut Evaluator) {
     ev.register("Keys", keys as NativeFn, Attributes::empty());
     ev.register("Values", values as NativeFn, Attributes::empty());
@@ -66,6 +68,7 @@ pub fn register_assoc(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register association helpers based on `pred`.
 pub fn register_assoc_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Keys", keys as NativeFn, Attributes::empty());
     register_if(ev, pred, "Values", values as NativeFn, Attributes::empty());

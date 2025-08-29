@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
-// Simple global thread pool for parallel primitives
+/// Simple global thread pool for parallel primitives and background tasks.
 struct ThreadPool {
     tx: Sender<Box<dyn FnOnce() + Send + 'static>>,
 }
@@ -33,6 +33,8 @@ fn thread_pool() -> &'static ThreadPool {
     })
 }
 
+/// Enqueue a task to run on the global pool and receive its `Value` result.
+/// The returned `Receiver` yields a single message with the task's output.
 pub(crate) fn spawn_task<F>(f: F) -> Receiver<Value>
 where
     F: FnOnce() -> Value + Send + 'static,
@@ -46,6 +48,8 @@ where
 }
 
 #[derive(Debug)]
+/// Cooperative limiter for concurrent work; blocks `acquire` when at capacity
+/// and wakes a waiter on `release`. Used to bound parallel evaluation.
 pub(crate) struct ThreadLimiter {
     max: usize,
     in_use: Mutex<usize>,
@@ -53,9 +57,11 @@ pub(crate) struct ThreadLimiter {
 }
 
 impl ThreadLimiter {
+    /// Create a limiter permitting at most `max` concurrent acquisitions.
     pub(crate) fn new(max: usize) -> Self {
         Self { max, in_use: Mutex::new(0), cv: Condvar::new() }
     }
+    /// Acquire one permit, blocking the caller while no permits are available.
     pub(crate) fn acquire(&self) {
         let mut guard = self.in_use.lock().unwrap();
         while *guard >= self.max {
@@ -63,6 +69,7 @@ impl ThreadLimiter {
         }
         *guard += 1;
     }
+    /// Release a permit and wake a single blocked waiter, if any.
     pub(crate) fn release(&self) {
         let mut guard = self.in_use.lock().unwrap();
         if *guard > 0 {
@@ -70,5 +77,6 @@ impl ThreadLimiter {
         }
         self.cv.notify_one();
     }
+    /// Maximum number of concurrent acquisitions permitted by this limiter.
     pub(crate) fn max_permits(&self) -> usize { self.max }
 }

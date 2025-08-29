@@ -3,10 +3,12 @@ use crate::eval::{Evaluator, NativeFn};
 use lyra_core::schema::schema_of;
 use lyra_core::value::Value;
 
+/// Register `Schema` for structural/type shape inspection of values.
 pub fn register_schema(ev: &mut Evaluator) {
     ev.register("Schema", schema_fn as NativeFn, Attributes::empty());
 }
 
+/// Register `Explain` to produce evaluation traces for expressions.
 pub fn register_explain(ev: &mut Evaluator) {
     ev.register("Explain", explain_fn as NativeFn, Attributes::HOLD_ALL);
 }
@@ -34,4 +36,3 @@ fn explain_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ("estCost".to_string(), Value::Assoc(Default::default())),
     ].into_iter().collect())
 }
-

@@ -19,6 +19,7 @@ fn mx() -> &'static Mutex<Mx> {
     MX.get_or_init(|| Mutex::new(Mx::default()))
 }
 
+/// Register metrics/cost tracking helpers: aggregate, add, read, reset.
 pub fn register_metrics(ev: &mut Evaluator) {
     ev.register("Metrics", metrics as NativeFn, Attributes::empty());
     ev.register("CostAdd", cost_add as NativeFn, Attributes::empty());
@@ -26,6 +27,7 @@ pub fn register_metrics(ev: &mut Evaluator) {
     ev.register("MetricsReset", metrics_reset as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register metrics helpers based on `pred`.
 pub fn register_metrics_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "Metrics", metrics as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "CostAdd", cost_add as NativeFn, Attributes::empty());

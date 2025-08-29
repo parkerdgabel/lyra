@@ -307,6 +307,8 @@ fn describe_frame(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     ]))
 }
 
+/// Register frame APIs for in-memory tabular data: construction, selection,
+/// transformation, joins/grouping/aggregation, and display helpers.
 pub fn register_frame(ev: &mut Evaluator) {
     ev.register("FrameFromRows", frame_from_rows as NativeFn, Attributes::empty());
     ev.register("FrameCollect", collect_frame as NativeFn, Attributes::empty());
@@ -349,6 +351,7 @@ pub fn register_frame(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register frame APIs based on `pred`.
 pub fn register_frame_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "FrameFromRows", frame_from_rows as NativeFn, Attributes::empty());
     register_if(ev, pred, "FrameCollect", collect_frame as NativeFn, Attributes::empty());
@@ -474,16 +477,12 @@ fn frame_join(ev: &mut Evaluator, args: Vec<Value>) -> Value {
 fn frame_union(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     // Accept either a list of frames or variadic frames
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("FrameUnion".into())), args }; }
-    let mut frames: Vec<Value> = Vec::new();
-    if args.len() == 1 {
+    let frames: Vec<Value> = if args.len() == 1 {
         let a0 = ev.eval(args[0].clone());
-        match a0 {
-            Value::List(vs) => frames = vs,
-            other => frames = vec![other],
-        }
+        match a0 { Value::List(vs) => vs, other => vec![other] }
     } else {
-        frames = args.into_iter().map(|a| ev.eval(a)).collect();
-    }
+        args.into_iter().map(|a| ev.eval(a)).collect()
+    };
     let ids: Vec<i64> = frames.into_iter().filter_map(|v| get_frame(&v)).collect();
     if ids.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("FrameUnion".into())), args: vec![] }; }
     let reg = frame_reg().lock().unwrap();

@@ -1,3 +1,23 @@
+//! Futures — lightweight task spawn/await/cancel for the evaluator.
+//!
+//! - Responsibility: run work asynchronously with inherited evaluator context.
+//! - API: `Future[expr, opts]`, `Await[id]`, `Cancel[id]`.
+//! - Context: tasks inherit cancel token, thread limiter, and deadline.
+//! - Cancellation: cooperative via a shared flag; `Cancel` requests stop.
+//! - Ordering: none between tasks; each task completes independently.
+//! - See also: `concurrency::pool`, `concurrency::scope`, `concurrency::actors`.
+//!
+//! Example
+//! -------
+//! ```rust,ignore
+//! // Spawn and await a computation with a time budget.
+//! // Future returns `FutureId[id]`; `Await` yields the result or Null if the task failed.
+//! let fid = ev.eval(sym!(Future)[heavy_work(), assoc!{ "TimeBudgetMs" => 250 }]);
+//! let out = ev.eval(sym!(Await)[fid]);
+//! // Cancel a still-running task by id (or `FutureId[...]`).
+//! let _ = ev.eval(sym!(Cancel)[fid]);
+//! ```
+
 use crate::concurrency::pool::{spawn_task, ThreadLimiter};
 use crate::eval::Evaluator;
 use crate::eval::NativeFn; // use same type alias from eval
@@ -10,11 +30,16 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+/// Internal record for a spawned task, including its output receiver and
+/// cooperative cancellation flag shared with the task.
 pub(crate) struct TaskInfo {
     pub(crate) rx: Receiver<Value>,
     pub(crate) cancel: Arc<AtomicBool>,
 }
 
+/// Register future primitives into the evaluator: `Future`, `Await`, `Cancel`.
+/// These enable async evaluation of expressions with cooperative cancellation
+/// and optional limits/deadlines inherited from the current scope.
 pub(crate) fn register_futures(ev: &mut Evaluator) {
     ev.register("Future", future_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("Await", await_fn as NativeFn, Attributes::empty());

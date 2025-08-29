@@ -1249,6 +1249,8 @@ fn explain_sql(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::String("ExplainSQL not yet implemented".into())
 }
 
+/// Register database helpers: connect/disconnect/ping, list/register tables,
+/// SQL query/execute, cursors/fetch/close, transactions, and info accessors.
 pub fn register_db(ev: &mut Evaluator) {
     ev.register("Connect", connect as NativeFn, Attributes::empty());
     ev.register("Disconnect", disconnect as NativeFn, Attributes::empty());
@@ -1310,6 +1312,8 @@ pub fn register_db(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register database helpers based on `pred` (preserves
+/// Dataset-over-Frame overrides for shared names).
 pub fn register_db_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "Connect", connect as NativeFn, Attributes::empty());
     register_if(ev, pred, "Disconnect", disconnect as NativeFn, Attributes::empty());

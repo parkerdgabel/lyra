@@ -337,7 +337,7 @@ fn collect_semantic_issues(v: &Value, path: &str, out: &mut Vec<Value>) {
         }
         Assoc(m) => {
             // Option key casing: prefer lowerCamelCase for known keys
-            let mut key_map: HashMap<&str, &str> = HashMap::from([
+            let key_map: HashMap<&str, &str> = HashMap::from([
                 ("TimeoutMs", "timeoutMs"),
                 ("MaxThreads", "maxThreads"),
                 ("TimeBudgetMs", "timeBudgetMs"),

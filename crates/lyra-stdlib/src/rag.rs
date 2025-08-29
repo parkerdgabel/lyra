@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register RAG helpers: chunking, indexing, retrieval, context assembly,
+/// answering, hybrid search, and citation utilities.
 pub fn register_rag(ev: &mut Evaluator) {
     ev.register("RAGChunk", rag_chunk as NativeFn, Attributes::empty());
     ev.register("RAGIndex", rag_index as NativeFn, Attributes::empty());
@@ -16,6 +18,7 @@ pub fn register_rag(ev: &mut Evaluator) {
     ev.register("Citations", citations as NativeFn, Attributes::empty());
 }
 
+/// Conditionally register RAG helpers based on `pred`.
 pub fn register_rag_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "RAGChunk", rag_chunk as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "RAGIndex", rag_index as NativeFn, Attributes::empty());

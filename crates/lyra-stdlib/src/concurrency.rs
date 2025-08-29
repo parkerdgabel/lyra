@@ -8,6 +8,8 @@ use lyra_runtime::Evaluator;
 #[cfg(feature = "tools")]
 use std::collections::HashMap;
 
+/// Register concurrency facade that wires runtime futures/channels/actors/scopes
+/// into the stdlib and seeds tool specifications.
 pub fn register_concurrency(ev: &mut Evaluator) {
     lyra_runtime::eval::register_concurrency(ev);
     #[cfg(feature = "tools")]

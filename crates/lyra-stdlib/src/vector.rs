@@ -28,6 +28,8 @@ fn stores() -> &'static Mutex<HashMap<String, Store>> {
     STORES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Register vector store APIs: create/open, upsert, search, delete, count,
+/// and reset operations for simple embedding workflows.
 pub fn register_vector(ev: &mut Evaluator) {
     ev.register("VectorStore", vector_store as NativeFn, Attributes::empty());
     ev.register("VectorUpsert", vector_upsert as NativeFn, Attributes::LISTABLE);
@@ -95,6 +97,7 @@ pub fn register_vector(ev: &mut Evaluator) {
     }
 }
 
+/// Conditionally register vector store operations based on `pred`.
 pub fn register_vector_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     super::register_if(ev, pred, "VectorStore", vector_store as NativeFn, Attributes::empty());
     super::register_if(ev, pred, "VectorUpsert", vector_upsert as NativeFn, Attributes::LISTABLE);

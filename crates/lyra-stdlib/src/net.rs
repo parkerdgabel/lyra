@@ -10,6 +10,8 @@ use serde_json as sj;
 
 type NativeFn = fn(&mut Evaluator, Vec<Value>) -> Value;
 
+/// Register HTTP client/server utilities: Http* verbs, streaming/download,
+/// server/router/cors/auth helpers, and response builders.
 pub fn register_net(ev: &mut Evaluator) {
     ev.register("HttpGet", http_get as NativeFn, Attributes::empty());
     ev.register("HttpPost", http_post as NativeFn, Attributes::empty());
@@ -80,6 +82,7 @@ pub fn register_net(ev: &mut Evaluator) {
     ]);
 }
 
+/// Conditionally register HTTP client/server utilities based on `pred`.
 pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "HttpGet", http_get as NativeFn, Attributes::empty());
     register_if(ev, pred, "HttpPost", http_post as NativeFn, Attributes::empty());
@@ -138,6 +141,7 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "HttpServeTls", http_serve_tls as NativeFn, Attributes::HOLD_ALL);
 }
 
+#[allow(dead_code)]
 fn http_server(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("HttpServer".into())), args }; }
     let a0 = ev.eval(args[0].clone());
