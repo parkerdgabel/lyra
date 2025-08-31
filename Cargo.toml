@@ -10,10 +10,6 @@ members = [
   "crates/lyra-mcp",
   "crates/lyra-lsp",
   "crates/lyra-docgen",
-  "crates/lyra-notebook-core",
-  "crates/lyra-notebook-kernel",
-  "crates/lyra-notebook-gui",
-  "crates/lyra-notebook-app",
 ]
 
 resolver = "2"

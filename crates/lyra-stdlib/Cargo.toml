@@ -9,7 +9,6 @@ lyra-runtime = { path = "../lyra-runtime" }
 lyra-core = { path = "../lyra-core" }
 lyra-parser = { path = "../lyra-parser" }
 lyra-rewrite = { path = "../lyra-rewrite" }
-lyra-notebook-core = { path = "../lyra-notebook-core", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { version = "0.9" }
@@ -66,7 +65,7 @@ default = [
   "tools", "io", "dataset", "db", "containers", "graphs", "crypto", "image", "visual", "audio", "media", "text",
   "collections", "ndarray", "ml", "nn", "functional", "package", "time", "logging", "process", "fs", "frame",
   "time_cron", "fs_watch", "fs_archive", "module", "project", "git",
-  "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https", "dev", "notebook"
+  "model", "trace", "metrics", "memory", "policy", "workflow", "vector", "rag", "db_sqlite", "net_https", "dev"
 ]
 module = []
 project = []
@@ -133,7 +132,6 @@ crypto_jose = []
 crypto_hpke = []
 image = ["dep:image"]
 visual = ["image"]
-notebook = ["dep:lyra-notebook-core"]
 ui_egui = ["dep:eframe", "dep:egui"]
 image_avif = []
 image_heif = []
