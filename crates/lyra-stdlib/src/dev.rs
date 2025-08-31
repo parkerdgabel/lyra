@@ -750,8 +750,13 @@ pub fn register_dev(ev: &mut Evaluator) {
     ev.register("LintLyraText", lint_text as NativeFn, Attributes::empty());
     ev.register("LintLyraFile", lint_file as NativeFn, Attributes::empty());
     ev.register("LintLyra", lint_any as NativeFn, Attributes::empty());
+    // Existing helpers
     ev.register("ConfigLoad", config_load as NativeFn, Attributes::empty());
     ev.register("SecretsGet", secrets_get as NativeFn, Attributes::empty());
+    // Aliases and naming-consistent wrappers
+    ev.register("GetSecret", secrets_get as NativeFn, Attributes::empty());
+    ev.register("LoadConfig", load_config as NativeFn, Attributes::empty());
+    ev.register("Env", env_read as NativeFn, Attributes::empty());
     ev.register("VersionBump", version_bump as NativeFn, Attributes::empty());
     ev.register("ChangelogGenerate", changelog_generate as NativeFn, Attributes::empty());
     ev.register("ReleaseTag", release_tag as NativeFn, Attributes::empty());
@@ -766,7 +771,85 @@ pub fn register_dev_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "LintLyra", lint_any as NativeFn, Attributes::empty());
     register_if(ev, pred, "ConfigLoad", config_load as NativeFn, Attributes::empty());
     register_if(ev, pred, "SecretsGet", secrets_get as NativeFn, Attributes::empty());
+    register_if(ev, pred, "GetSecret", secrets_get as NativeFn, Attributes::empty());
+    register_if(ev, pred, "LoadConfig", load_config as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Env", env_read as NativeFn, Attributes::empty());
     register_if(ev, pred, "VersionBump", version_bump as NativeFn, Attributes::empty());
     register_if(ev, pred, "ChangelogGenerate", changelog_generate as NativeFn, Attributes::empty());
     register_if(ev, pred, "ReleaseTag", release_tag as NativeFn, Attributes::empty());
+}
+
+// ---- Naming-consistent wrappers ----
+// LoadConfig[<| files->{...}, envPrefix->"APP_", overrides-><|...|> |>]
+fn load_config(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    use std::collections::HashMap as Map;
+    let opts = match args.as_slice() {
+        [v] => match ev.eval(v.clone()) { Value::Assoc(m) => m, _ => Map::new() },
+        _ => Map::new(),
+    };
+    let mut out: Map<String, Value> = Map::new();
+    // files: merge JSON/YAML/TOML maps
+    if let Some(Value::List(paths)) = opts.get("files") {
+        for p in paths {
+            if let Value::String(path) | Value::Symbol(path) = p {
+                if let Ok(s) = std::fs::read_to_string(path) {
+                    let v = if path.ends_with(".json") {
+                        serde_json::from_str::<serde_json::Value>(&s).ok().map(json_to_value)
+                    } else if path.ends_with(".yaml") || path.ends_with(".yml") {
+                        serde_yaml::from_str::<serde_json::Value>(&s).ok().map(json_to_value)
+                    } else if path.ends_with(".toml") {
+                        toml::from_str::<toml::Value>(&s).ok().map(toml_to_value)
+                    } else { None };
+                    if let Some(Value::Assoc(m)) = v { for (k,vv) in m { out.insert(k, vv); } }
+                }
+            }
+        }
+    }
+    // envPrefix: include any process env vars starting with prefix (no stripping)
+    if let Some(Value::String(prefix)) | Some(Value::Symbol(prefix)) = opts.get("envPrefix") {
+        for (k, v) in std::env::vars() {
+            if k.starts_with(prefix) {
+                out.insert(k, Value::String(v));
+            }
+        }
+    }
+    // overrides
+    if let Some(Value::Assoc(ovr)) = opts.get("overrides") {
+        for (k, v) in ovr { out.insert(k.clone(), v.clone()); }
+    }
+    Value::Assoc(out)
+}
+
+// Env[<| keys->{"A","B"}, required->{"A"}, defaults-><|B->"x"|> |>]
+fn env_read(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    use std::collections::HashMap as Map;
+    let opts = match args.as_slice() { [v] => match ev.eval(v.clone()) { Value::Assoc(m) => m, _ => Map::new() }, _ => Map::new() };
+    let mut keys: Vec<String> = Vec::new();
+    if let Some(Value::List(vs)) = opts.get("keys") {
+        for v in vs { if let Value::String(s) | Value::Symbol(s) = v { keys.push(s.clone()); } }
+    }
+    let mut required: Vec<String> = Vec::new();
+    if let Some(Value::List(vs)) = opts.get("required") {
+        for v in vs { if let Value::String(s) | Value::Symbol(s) = v { required.push(s.clone()); } }
+    }
+    let defaults: Map<String, Value> = match opts.get("defaults") { Some(Value::Assoc(m)) => m.clone(), _ => Map::new() };
+    let mut out: Map<String, Value> = Map::new();
+    for k in keys.iter() {
+        match std::env::var(k) {
+            Ok(val) => { out.insert(k.clone(), Value::String(val)); },
+            Err(_) => {
+                if let Some(d) = defaults.get(k) { out.insert(k.clone(), d.clone()); } else {
+                    // keep Null to signal missing unless required triggers failure later
+                    out.insert(k.clone(), Value::Symbol("Null".into()));
+                }
+            }
+        }
+    }
+    // Enforce required
+    for rk in required.iter() {
+        if !out.contains_key(rk) || matches!(out.get(rk), Some(Value::Symbol(s)) if s=="Null") {
+            return failure("Env::required", &format!("missing required env {}", rk));
+        }
+    }
+    Value::Assoc(out)
 }

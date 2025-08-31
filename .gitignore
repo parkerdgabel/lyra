@@ -20,6 +20,10 @@ Cargo.lock
 *.swo
 *~
 
+# Node artifacts
+node_modules/
+**/node_modules/
+
 # OS generated files
 .DS_Store
 .DS_Store?

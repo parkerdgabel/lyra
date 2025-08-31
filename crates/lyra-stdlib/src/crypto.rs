@@ -46,6 +46,8 @@ pub fn register_crypto(ev: &mut Evaluator) {
     // UUIDs
     ev.register("UuidV4", uuid_v4 as NativeFn, Attributes::empty());
     ev.register("UuidV7", uuid_v7 as NativeFn, Attributes::empty());
+    // TLS/SSL helpers (self-signed cert)
+    ev.register("TlsSelfSigned", tls_self_signed as NativeFn, Attributes::empty());
 
     #[cfg(feature = "tools")]
     add_specs(vec![
@@ -88,6 +90,7 @@ pub fn register_crypto_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool)
     register_if(ev, pred, "JwtVerify", jwt_verify as NativeFn, Attributes::empty());
     register_if(ev, pred, "UuidV4", uuid_v4 as NativeFn, Attributes::empty());
     register_if(ev, pred, "UuidV7", uuid_v7 as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TlsSelfSigned", tls_self_signed as NativeFn, Attributes::empty());
 }
 
 fn failure(tag: &str, msg: &str) -> Value {
@@ -175,6 +178,60 @@ fn decode_bytes(s: &str, enc: &str) -> Result<Vec<u8>, String> {
         "base64url" | "base64" | "b64" => base64url_decode(s),
         _ => base64url_decode(s),
     }
+}
+
+// TLS/SSL: generate self-signed certificate + private key (PEM)
+fn tls_self_signed(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    use std::collections::HashMap as Map;
+    let opts: Map<String, Value> = match args.as_slice() { [v] => match ev.eval(v.clone()) { Value::Assoc(m) => m, _ => Map::new() }, _ => Map::new() };
+    // hosts: Subject Alternative Names
+    let mut hosts: Vec<String> = Vec::new();
+    if let Some(Value::List(vs)) = opts.get("hosts") { for v in vs { if let Value::String(s)|Value::Symbol(s)=v { hosts.push(s.clone()); } } }
+    if hosts.is_empty() { hosts.push("localhost".into()); }
+    // subject fields
+    let subj_map: Map<String, String> = match opts.get("subject") { Some(Value::Assoc(m)) => m.iter().filter_map(|(k,v)| match v { Value::String(s)|Value::Symbol(s)=>Some((k.clone(), s.clone())), _=>None }).collect(), _ => Map::new() };
+    let algorithm = opts.get("algorithm").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| "ecdsaP256".into());
+    let validity_days = match opts.get("validityDays") { Some(Value::Integer(n)) if *n>0 => *n as i64, _ => 365 };
+    let is_ca = matches!(opts.get("isCa"), Some(Value::Boolean(true)));
+    // Build params
+    let mut params = rcgen::CertificateParams::new(hosts.clone());
+    // Subject DN
+    {
+        use rcgen::DnType;
+        let dn = &mut params.distinguished_name;
+        if let Some(v) = subj_map.get("C") { dn.push(DnType::CountryName, v.clone()); }
+        if let Some(v) = subj_map.get("ST") { dn.push(DnType::StateOrProvinceName, v.clone()); }
+        if let Some(v) = subj_map.get("L") { dn.push(DnType::LocalityName, v.clone()); }
+        if let Some(v) = subj_map.get("O") { dn.push(DnType::OrganizationName, v.clone()); }
+        if let Some(v) = subj_map.get("OU") { dn.push(DnType::OrganizationalUnitName, v.clone()); }
+        if let Some(v) = subj_map.get("CN") { dn.push(DnType::CommonName, v.clone()); }
+    }
+    // Extended key usages: serverAuth by default
+    params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
+    // Validity window
+    let now = time::OffsetDateTime::now_utc();
+    params.not_before = now - time::Duration::days(1);
+    params.not_after = now + time::Duration::days(validity_days as i64);
+    // Basic constraints
+    params.is_ca = if is_ca { rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained) } else { rcgen::IsCa::NoCa };
+    // Algorithm
+    params.alg = match algorithm.as_str() {
+        "ecdsaP256" => &rcgen::PKCS_ECDSA_P256_SHA256,
+        "ecdsaP384" => &rcgen::PKCS_ECDSA_P384_SHA384,
+        "rsa2048" | "rsa" => &rcgen::PKCS_RSA_SHA256,
+        // Fallback to ECDSA P-256
+        _ => &rcgen::PKCS_ECDSA_P256_SHA256,
+    };
+    // Generate cert and key
+    let cert = match rcgen::Certificate::from_params(params) { Ok(c) => c, Err(e) => return failure("Crypto::tls", &format!("params: {}", e)) };
+    let cert_pem = match cert.serialize_pem() { Ok(s) => s, Err(e) => return failure("Crypto::tls", &format!("cert: {}", e)) };
+    let key_pem = cert.serialize_private_key_pem();
+    Value::Assoc(Map::from([
+        ("algorithm".into(), Value::String(algorithm)),
+        ("certPem".into(), Value::String(cert_pem)),
+        ("privateKeyPem".into(), Value::String(key_pem)),
+        ("hosts".into(), Value::List(hosts.into_iter().map(Value::String).collect())),
+    ]))
 }
 
 fn read_key_material(

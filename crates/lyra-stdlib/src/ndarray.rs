@@ -1440,9 +1440,7 @@ fn forward_subst_lower(n: usize, l: &[f64], b: &mut [f64]) {
     }
 }
 
-fn back_subst_upper(n: usize, u: &[f64], b: &mut [f64]) {
-    for ii in 0..n { let i = n-1-ii; let mut s=b[i]; for j in (i+1)..n { s -= u[i*n + j]*b[j]; } b[i] = s / u[i*n + i]; }
-}
+// (removed unused back_subst_upper)
 
 fn lu_decomp(ev: &mut Evaluator, v: Value) -> Option<(usize, Vec<f64>, Vec<usize>)> {
     let (n, m, mut a) = read_matrix(ev, v)?; if n != m { return None; }

@@ -105,6 +105,11 @@ pub fn register_math(ev: &mut Evaluator) {
     ev.register("SeedRandom", seed_random_fn as NativeFn, Attributes::empty());
     ev.register("RandomInteger", random_integer_fn as NativeFn, Attributes::HOLD_ALL);
     ev.register("RandomReal", random_real_fn as NativeFn, Attributes::HOLD_ALL);
+    // Stats helpers
+    ev.register("DescriptiveStats", descriptive_stats_fn as NativeFn, Attributes::empty());
+    ev.register("Quantiles", quantiles_fn as NativeFn, Attributes::empty());
+    ev.register("RollingStats", rolling_stats_fn as NativeFn, Attributes::empty());
+    ev.register("RandomSample", random_sample_fn as NativeFn, Attributes::HOLD_ALL);
 
     // Tier1: Distributions and probability functions (stubs)
     ev.register("Normal", dist_normal as NativeFn, Attributes::empty());
@@ -806,13 +811,6 @@ fn lower_incomplete_gamma_regularized(a: f64, x: f64) -> f64 {
     }
 }
 
-fn gamma_pdf(k: f64, theta: f64, x: f64) -> f64 {
-    if x < 0.0 { return 0.0; }
-    let a = k;
-    let t = theta;
-    let log_pdf = (a - 1.0) * x.ln() - (x / t) - a * t.ln() - ln_gamma(a);
-    log_pdf.exp()
-}
 
 fn gamma_sample(ev: &mut Evaluator, k: f64, theta: f64) -> f64 {
     let a = k;
@@ -2395,6 +2393,99 @@ fn kurtosis_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Real((m4/n) / ((m2/n).powi(2)))
 }
 
+// ----- DescriptiveStats -----
+fn descriptive_stats_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Accept: list or variadic numbers
+    let vals: Vec<f64> = match args.as_slice() {
+        [v] => match collect_f64_list(ev, v.clone()) { Some(vs) => vs, None => vec![] },
+        _ => args.into_iter().filter_map(|a| to_f64_scalar(&ev.eval(a))).collect(),
+    };
+    if vals.is_empty() { return Value::Assoc(std::collections::HashMap::new()); }
+    let n = vals.len() as f64;
+    let mut s = 0.0; let mut s2 = 0.0; let mut mn = f64::INFINITY; let mut mx = f64::NEG_INFINITY;
+    for &x in &vals { s += x; s2 += x*x; if x<mn {mn=x}; if x>mx {mx=x}; }
+    let mean = s / n;
+    let var = (s2 / n) - mean*mean;
+    let mut sorted = vals.clone(); sorted.sort_by(|a,b| a.partial_cmp(b).unwrap());
+    let median = if sorted.len()%2==1 { sorted[sorted.len()/2] } else { (sorted[sorted.len()/2-1] + sorted[sorted.len()/2]) / 2.0 };
+    let p25 = quantile_single(sorted.clone(), 0.25);
+    let p75 = quantile_single(sorted.clone(), 0.75);
+    let mut out = std::collections::HashMap::new();
+    out.insert("count".into(), Value::Integer(vals.len() as i64));
+    out.insert("sum".into(), Value::Real(s));
+    out.insert("mean".into(), Value::Real(mean));
+    out.insert("variance".into(), Value::Real(var.max(0.0)));
+    out.insert("stddev".into(), Value::Real(var.max(0.0).sqrt()));
+    out.insert("min".into(), Value::Real(mn));
+    out.insert("max".into(), Value::Real(mx));
+    out.insert("median".into(), Value::Real(median));
+    // flatten Quantile results
+    if let Value::Real(q1) = p25 { out.insert("p25".into(), Value::Real(q1)); }
+    if let Value::Real(q3) = p75 { out.insert("p75".into(), Value::Real(q3)); }
+    Value::Assoc(out)
+}
+
+// ----- Quantiles (plural wrapper) -----
+fn quantiles_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    match args.as_slice() {
+        [v] => {
+            // convenience: return common percentiles
+            let q0 = quantile_fn(ev, vec![v.clone(), Value::Real(0.0)]);
+            let q25 = quantile_fn(ev, vec![v.clone(), Value::Real(0.25)]);
+            let q50 = quantile_fn(ev, vec![v.clone(), Value::Real(0.5)]);
+            let q75 = quantile_fn(ev, vec![v.clone(), Value::Real(0.75)]);
+            let q100 = quantile_fn(ev, vec![v.clone(), Value::Real(1.0)]);
+            Value::Assoc(std::collections::HashMap::from([
+                ("p0".into(), q0),
+                ("p25".into(), q25),
+                ("p50".into(), q50),
+                ("p75".into(), q75),
+                ("p100".into(), q100),
+            ]))
+        }
+        [v, qs] => quantile_fn(ev, vec![v.clone(), qs.clone()]),
+        _ => Value::Expr { head: Box::new(Value::Symbol("Quantiles".into())), args },
+    }
+}
+
+// ----- RollingStats -----
+fn rolling_stats_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("RollingStats".into())), args }; }
+    let vals = match collect_f64_list(ev, args[0].clone()) { Some(v) => v, None => vec![] };
+    let w = match ev.eval(args[1].clone()) { Value::Integer(n) if n>0 => n as usize, _ => 0 };
+    if w == 0 || vals.len() < w { return Value::List(vec![]); }
+    let mut out: Vec<Value> = Vec::new();
+    for i in 0..=vals.len()-w {
+        let win = &vals[i..i+w];
+        let n = w as f64;
+        let sum: f64 = win.iter().sum();
+        let mean = sum / n;
+        let var = win.iter().map(|x| { let d=x-mean; d*d }).sum::<f64>()/n;
+        let mut mn = f64::INFINITY; let mut mx = f64::NEG_INFINITY;
+        for &x in win { if x<mn {mn=x}; if x>mx {mx=x}; }
+        out.push(Value::Assoc(std::collections::HashMap::from([
+            ("sum".into(), Value::Real(sum)),
+            ("mean".into(), Value::Real(mean)),
+            ("variance".into(), Value::Real(var)),
+            ("stddev".into(), Value::Real(var.sqrt())),
+            ("min".into(), Value::Real(mn)),
+            ("max".into(), Value::Real(mx)),
+        ])));
+    }
+    Value::List(out)
+}
+
+// ----- RandomSample (wrapper around list::Sample) -----
+fn random_sample_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    // Forms: RandomSample[list, k, opts? <|seed->i64|>]
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("RandomSample".into())), args }; }
+    if let Some(Value::Assoc(m)) = args.get(2).map(|v| ev.eval(v.clone())) {
+        if let Some(Value::Integer(seed)) = m.get("seed") { let _ = seed_random_fn(ev, vec![Value::Integer(*seed)]); }
+    }
+    // Delegate to Sample
+    ev.eval(Value::expr(Value::Symbol("Sample".into()), vec![args[0].clone(), args[1].clone()]))
+}
+
 
 fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
     if a == 0 {
@@ -2532,20 +2623,7 @@ fn gcd_i128(mut a: i128, mut b: i128) -> i128 {
 
 // ----- Combinatorics -----
 
-fn value_list_to_vec(lst: &Value) -> Option<Vec<Value>> {
-    match lst {
-        Value::List(xs) => Some(xs.clone()),
-        _ => None,
-    }
-}
-
-fn range_list(n: i64) -> Value {
-    let mut out = Vec::with_capacity(n as usize);
-    for i in 1..=n {
-        out.push(Value::Integer(i));
-    }
-    Value::List(out)
-}
+// (removed unused helpers value_list_to_vec and range_list)
 
 fn combinations_indices(n: usize, k: usize) -> Vec<Vec<usize>> {
     let mut res: Vec<Vec<usize>> = Vec::new();
@@ -2809,14 +2887,14 @@ fn chinese_remainder_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
             for i in 0..moduli.len() {
                 let mi = moduli[i];
                 let ai = residues[i].rem_euclid(mi);
-                let Mi = m_prod / mi;
+                let m_i = m_prod / mi;
                 // compute inverse of Mi mod mi
                 let (g, inv, _) = {
-                    let a = (Mi % mi) as i64; let b = mi as i64; gcd_ext_i64(a, b)
+                    let a = (m_i % mi) as i64; let b = mi as i64; gcd_ext_i64(a, b)
                 };
                 if g != 1 { return Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] }; }
-                let invMi = (inv.rem_euclid(mi as i64)) as i128;
-                x = (x + ai * Mi * invMi).rem_euclid(m_prod);
+                let inv_mi = (inv.rem_euclid(mi as i64)) as i128;
+                x = (x + ai * m_i * inv_mi).rem_euclid(m_prod);
             }
             if x <= i64::MAX as i128 && x >= i64::MIN as i128 { Value::Integer(x as i64) } else { Value::Expr { head: Box::new(Value::Symbol("ChineseRemainder".into())), args: vec![Value::List(rs.clone()), Value::List(ms.clone())] } }
         }

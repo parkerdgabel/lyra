@@ -91,10 +91,8 @@ OPTIONS:
 fn find_project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut p = Some(start);
     while let Some(cur) = p {
-        let cand = cur.join("lyra.project");
-        if std::path::Path::new(&cand).exists() {
-            return Some(cur.to_path_buf());
-        }
+        let cand1 = cur.join("project.lyra");
+        if std::path::Path::new(&cand1).exists() { return Some(cur.to_path_buf()); }
         p = cur.parent();
     }
     None

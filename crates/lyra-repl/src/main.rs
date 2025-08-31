@@ -2401,6 +2401,7 @@ fn main() -> Result<()> {
     let mut record_path: Option<std::path::PathBuf> = None;
     let mut in_counter: usize = 1;
     let mut watches: Vec<(String, String)> = Vec::new();
+    let mut proj_watches: Vec<(String, Value)> = Vec::new();
     let mut out_buf: Vec<Value> = Vec::new();
     let mut out_counter: usize = 0;
     loop {
@@ -2487,6 +2488,159 @@ fn main() -> Result<()> {
                 // :env -> list variable names
                 if trimmed == ":env" {
                     render_env(&ev);
+                    continue;
+                }
+                // :project info|load [--profile name]
+                if let Some(rest) = trimmed.strip_prefix(":project") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    let mut profile: Option<String> = None;
+                    let mut sub: Option<&str> = None;
+                    for p in parts.iter() {
+                        if *p == "info" || *p == "load" { sub = Some(p); }
+                        if *p == "--profile" { /* handled next token */ }
+                    }
+                    // parse profile flag
+                    let mut i = 0usize; let tokens: Vec<&str> = parts.clone();
+                    while i < tokens.len() { if tokens[i] == "--profile" { if i+1 < tokens.len() { profile = Some(tokens[i+1].to_string()); } break; } i+=1; }
+                    let subc = sub.unwrap_or(&"info");
+                    match subc {
+                        "load" => {
+                            let args = if let Some(p) = profile { vec![Value::Assoc(std::iter::IntoIterator::into_iter([(String::from("Profile"), Value::String(p))]).collect())] } else { vec![] };
+                            let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectLoad".into())), args });
+                            println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                        }
+                        _ => {
+                            let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectInfo".into())), args: vec![] });
+                            println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                        }
+                    }
+                    continue;
+                }
+                // :scripts [filter]
+                if let Some(rest) = trimmed.strip_prefix(":scripts") {
+                    let filter = rest.trim();
+                    let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectScripts".into())), args: vec![] });
+                    match out {
+                        Value::Assoc(m) => {
+                            let mut names: Vec<&String> = m.keys().collect(); names.sort();
+                            for n in names { if filter.is_empty() || n.to_lowercase().contains(&filter.to_lowercase()) { if let Some(Value::Assoc(sm)) = m.get(n) { let kind = match sm.get("Kind") { Some(Value::String(s)) => s.as_str(), _ => "Lyra" }; let extra = match kind { "Shell" => sm.get("Cmd").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default(), _ => sm.get("Entry").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default(), }; println!("{} {} {}", n, format!("[{}]", kind).dimmed(), extra.dimmed()); } } }
+                        }
+                        _ => println!("{}", "(no scripts)".dimmed()),
+                    }
+                    continue;
+                }
+                // :run Name [args...]
+                if let Some(rest) = trimmed.strip_prefix(":run ") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.is_empty() { println!("Usage: :run <name> [args..]"); continue; }
+                    let name = parts[0];
+                    let arg_vals: Vec<Value> = parts[1..].iter().map(|s| Value::String((*s).to_string())).collect();
+                    let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectRun".into())), args: vec![Value::String(name.into()), Value::List(arg_vals)] });
+                    println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    continue;
+                }
+                // :graph
+                if trimmed == ":graph" {
+                    let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectGraph".into())), args: vec![] });
+                    println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    continue;
+                }
+                // :mounts
+                if trimmed == ":mounts" {
+                    let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsMounts".into())), args: vec![] });
+                    println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    continue;
+                }
+                // :mount name target [--ro]
+                if let Some(rest) = trimmed.strip_prefix(":mount ") {
+                    let mut parts = rest.split_whitespace();
+                    if let (Some(name), Some(target)) = (parts.next(), parts.next()) {
+                        let ro = parts.any(|p| p == "--ro");
+                        let opts = if ro { Value::Assoc(std::iter::IntoIterator::into_iter([(String::from("readOnly"), Value::Boolean(true))]).collect()) } else { Value::Assoc(std::collections::HashMap::new()) };
+                        let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsMount".into())), args: vec![Value::String(name.into()), Value::String(target.into()), opts] });
+                        println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    } else {
+                        println!("Usage: :mount <name> <target> [--ro]");
+                    }
+                    continue;
+                }
+                // :umount name
+                if let Some(rest) = trimmed.strip_prefix(":umount ") {
+                    let name = rest.trim();
+                    if !name.is_empty() {
+                        let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsUnmount".into())), args: vec![Value::String(name.into())] });
+                        println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    } else {
+                        println!("Usage: :umount <name>");
+                    }
+                    continue;
+                }
+                // :ls path [--recursive|-R] [--dotfiles]
+                if let Some(rest) = trimmed.strip_prefix(":ls ") {
+                    let tokens: Vec<&str> = rest.split_whitespace().collect();
+                    if tokens.is_empty() { println!("Usage: :ls <path> [--recursive|-R] [--dotfiles]"); continue; }
+                    let mut recursive = false;
+                    let mut dotfiles = false;
+                    let mut path: Option<String> = None;
+                    for t in tokens.iter() {
+                        match *t {
+                            "--recursive" | "-R" => recursive = true,
+                            "--dotfiles" => dotfiles = true,
+                            _ => if path.is_none() { path = Some(t.to_string()); }
+                        }
+                    }
+                    if let Some(p) = path {
+                        let opts = Value::Assoc(std::iter::IntoIterator::into_iter([
+                            (String::from("recursive"), Value::Boolean(recursive)),
+                            (String::from("dotfiles"), Value::Boolean(dotfiles)),
+                        ]).collect());
+                        let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsList".into())), args: vec![Value::String(p), opts] });
+                        println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    } else {
+                        println!("Usage: :ls <path> [--recursive|-R] [--dotfiles]");
+                    }
+                    continue;
+                }
+                // :cat path
+                if let Some(rest) = trimmed.strip_prefix(":cat ") {
+                    let path = rest.trim();
+                    if !path.is_empty() {
+                        let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsRead".into())), args: vec![Value::String(path.into())] });
+                        println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    } else {
+                        println!("Usage: :cat <path>");
+                    }
+                    continue;
+                }
+                // :cp src dst
+                if let Some(rest) = trimmed.strip_prefix(":cp ") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() == 2 { let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsCopy".into())), args: vec![Value::String(parts[0].into()), Value::String(parts[1].into())] }); println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto)); } else { println!("Usage: :cp <src> <dst>"); }
+                    continue;
+                }
+                // :mv src dst
+                if let Some(rest) = trimmed.strip_prefix(":mv ") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() == 2 { let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsMove".into())), args: vec![Value::String(parts[0].into()), Value::String(parts[1].into())] }); println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto)); } else { println!("Usage: :mv <src> <dst>"); }
+                    continue;
+                }
+                // :rm path
+                if let Some(rest) = trimmed.strip_prefix(":rm ") {
+                    let path = rest.trim();
+                    if !path.is_empty() { let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsDelete".into())), args: vec![Value::String(path.into())] }); println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto)); } else { println!("Usage: :rm <path>"); }
+                    continue;
+                }
+                // :glob base pattern
+                if let Some(rest) = trimmed.strip_prefix(":glob ") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let base = parts[0].to_string();
+                        let pattern = parts[1].to_string();
+                        let out = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsGlob".into())), args: vec![Value::String(base), Value::String(pattern)] });
+                        println!("{}", format_value_color(&out, Some(recommended_truncation_for_width(term_width_cols())), AssocMode::Auto));
+                    } else {
+                        println!("Usage: :glob <base> <pattern>");
+                    }
                     continue;
                 }
                 // :funcs [filter] -> list builtins
@@ -2605,16 +2759,16 @@ fn main() -> Result<()> {
                     }
                     continue;
                 }
-                // :watch add|rm name expr
+                // :watch add|rm|list (expr), :watch run <script> [--profile name], :watch stop <script>
                 if let Some(rest) = trimmed.strip_prefix(":watch ") {
                     let parts: Vec<&str> = rest.splitn(3, ' ').collect();
-                    if parts.len() >= 2 {
+                    if parts.len() >= 1 {
                         match parts[0] {
                             "add" if parts.len() == 3 => {
                                 watches.push((parts[1].to_string(), parts[2].to_string()));
                                 println!("Added watch {}", parts[1]);
                             }
-                            "rm" => {
+                            "rm" if parts.len() >= 2 => {
                                 let name = parts[1];
                                 let before = watches.len();
                                 watches.retain(|(n, _)| n != name);
@@ -2624,16 +2778,48 @@ fn main() -> Result<()> {
                                 }
                             }
                             "list" => {
-                                for (n, e) in &watches {
-                                    println!("{}: {}", n, e);
-                                }
-                                if watches.is_empty() {
-                                    println!("{}", "(no watches)".dimmed());
-                                }
+                                for (n, e) in &watches { println!("expr {} => {}", n, e); }
+                                if watches.is_empty() { println!("{}", "(no expr watches)".dimmed()); }
+                                if proj_watches.is_empty() { println!("{}", "(no project watches)".dimmed()); }
+                                for (n, _t) in &proj_watches { println!("proj {}", n); }
                             }
-                            _ => println!(
-                                "Usage: :watch add <name> <expr> | :watch rm <name> | :watch list"
-                            ),
+                            "run" if parts.len() >= 2 => {
+                                // :watch run <script> [--profile name]
+                                let name = parts[1];
+                                // parse rest of line beyond first two tokens
+                                let more = if rest.starts_with("run ") { &rest[4 + name.len()..] } else { "" };
+                                let mut profile: Option<String> = None;
+                                for tok in more.split_whitespace() {
+                                    // simple flag parse
+                                    if tok == "--profile" { /* handled with next */ }
+                                }
+                                let toks: Vec<&str> = more.split_whitespace().collect();
+                                let mut i = 0usize;
+                                while i < toks.len() {
+                                    if toks[i] == "--profile" && i + 1 < toks.len() { profile = Some(toks[i + 1].to_string()); i += 1; }
+                                    i += 1;
+                                }
+                                let args = if let Some(p) = profile {
+                                    vec![Value::String(name.into()), Value::Assoc(std::iter::IntoIterator::into_iter([(String::from("Profile"), Value::String(p))]).collect())]
+                                } else {
+                                    vec![Value::String(name.into())]
+                                };
+                                let tok = ev.eval(Value::Expr { head: Box::new(Value::Symbol("ProjectWatch".into())), args });
+                                proj_watches.push((name.into(), tok));
+                                println!("Started project watch for {}", name);
+                            }
+                            "stop" if parts.len() >= 2 => {
+                                let name = parts[1];
+                                let mut i = 0usize; let mut found = false;
+                                while i < proj_watches.len() { if proj_watches[i].0 == name {
+                                    let tok = proj_watches.remove(i).1;
+                                    let cancel_arg = match &tok { Value::Assoc(m) => m.get("token").cloned().unwrap_or(tok.clone()), _ => tok.clone() };
+                                    let _ = ev.eval(Value::Expr { head: Box::new(Value::Symbol("CancelWatch".into())), args: vec![cancel_arg] });
+                                    println!("Stopped project watch {}", name);
+                                    found = true; break; } i += 1; }
+                                if !found { println!("{}", "(no such project watch)".dimmed()); }
+                            }
+                            _ => println!("Usage: :watch add <name> <expr> | :watch rm <name> | :watch list | :watch run <script> [--profile name] | :watch stop <script>"),
                         }
                         continue;
                     }
@@ -2927,6 +3113,19 @@ fn print_repl_help() {
         "OutList[[n]]        — retrieve nth output; % is last",
         ":history [N|/substr] — show history",
         ":using name [--all|--import a,b] [--except x,y]",
+        ":project info|load [--profile name]",
+        ":scripts [filter]    — list project scripts",
+        ":run Name [args..]   — run a project script",
+        ":graph               — project dependency graph",
+        ":mounts              — list VFS mounts",
+        ":mount n target [--ro] — mount name to target",
+        ":umount name         — unmount a VFS mount",
+        ":ls path [--recursive|-R] [--dotfiles]",
+        ":cat path            — print file/URL via VFS",
+        ":cp src dst          — VFS copy",
+        ":mv src dst          — VFS move",
+        ":rm path             — VFS delete",
+        ":glob base pattern   — VFS glob under base",
     ];
     println!("{}", "Lyra REPL commands".bright_green().bold());
     for l in lines {

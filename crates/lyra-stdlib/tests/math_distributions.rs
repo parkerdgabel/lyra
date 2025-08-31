@@ -3,8 +3,10 @@ use lyra_runtime::Evaluator;
 use lyra_core::value::Value;
 
 fn eval_str(ev: &mut Evaluator, s: &str) -> Value {
-    let parsed = lyra_parser::Parser::from_source(s).parse_value().unwrap();
-    ev.eval(parsed)
+    let mut p = lyra_parser::Parser::from_source(s);
+    let mut exprs = p.parse_all().unwrap();
+    let expr = exprs.remove(0);
+    ev.eval(expr)
 }
 
 fn as_f64(v: &Value) -> f64 { match v { Value::Real(x) => *x, Value::Integer(n) => *n as f64, _ => f64::NAN } }

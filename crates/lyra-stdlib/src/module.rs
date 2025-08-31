@@ -46,10 +46,8 @@ fn ev_env_get(_ev: &Evaluator, _key: &str) -> Option<Value> {
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut p = Some(start);
     while let Some(cur) = p {
-        let cand = cur.join("lyra.project");
-        if cand.exists() {
-            return Some(cur.to_path_buf());
-        }
+        let c1 = cur.join("project.lyra");
+        if c1.exists() { return Some(cur.to_path_buf()); }
         p = cur.parent();
     }
     None

@@ -348,45 +348,7 @@ fn sort_by(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-fn assoc_get(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    match args.as_slice() {
-        [a, k] => match ev.eval(a.clone()) {
-            Value::Assoc(m) => m
-                .get(&match k {
-                    Value::String(s) | Value::Symbol(s) => s.clone(),
-                    other => lyra_core::pretty::format_value(&ev.eval(other.clone())),
-                })
-                .cloned()
-                .unwrap_or(Value::Symbol("Null".into())),
-            other => other,
-        },
-        [a, k, default] => match ev.eval(a.clone()) {
-            Value::Assoc(m) => m
-                .get(&match k {
-                    Value::String(s) | Value::Symbol(s) => s.clone(),
-                    other => lyra_core::pretty::format_value(&ev.eval(other.clone())),
-                })
-                .cloned()
-                .unwrap_or(ev.eval(default.clone())),
-            other => other,
-        },
-        _ => Value::Expr { head: Box::new(Value::Symbol("Get".into())), args },
-    }
-}
-
-fn assoc_contains_key_q(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 { return Value::Expr { head: Box::new(Value::Symbol("ContainsKeyQ".into())), args }; }
-    match ev.eval(args[0].clone()) {
-        Value::Assoc(m) => {
-            let k = match &args[1] {
-                Value::String(s) | Value::Symbol(s) => s.clone(),
-                other => lyra_core::pretty::format_value(&ev.eval(other.clone())),
-            };
-            Value::Boolean(m.contains_key(&k))
-        }
-        other => other,
-    }
-}
+// (removed unused assoc_get and assoc_contains_key_q helpers)
 
 fn assoc_set(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 3 { return Value::Expr { head: Box::new(Value::Symbol("__AssocSet".into())), args }; }

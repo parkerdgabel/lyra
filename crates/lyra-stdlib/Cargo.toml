@@ -25,10 +25,17 @@ aho-corasick = { version = "1", optional = true }
 ignore = { version = "0.4", optional = true }
 chardetng = { version = "0.1", optional = true }
 encoding_rs = { version = "0.8", optional = true }
+ssh2 = { version = "0.9", optional = true }
+whoami = { version = "1", optional = true }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+rand_core = { version = "0.6", optional = true }
+ssh-key = { version = "0.6", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+time = { version = "0.3" }
 cron = { version = "0.12", optional = true }
 notify = { version = "5", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking","json","multipart","rustls-tls"], optional = true }
+percent-encoding = { version = "2", optional = true }
 rustls = { version = "0.21", default-features = false, features = ["tls12"], optional = true }
 rustls-pemfile = { version = "1", optional = true }
 bollard = { version = "0.16", optional = true }
@@ -41,9 +48,8 @@ bytes = { version = "1", optional = true }
 blake3 = { version = "1", optional = true }
 rand = { version = "0.8", optional = true }
 pathdiff = "0.2"
+rcgen = { version = "0.12", optional = true }
 chacha20poly1305 = { version = "0.10", features = ["std"], optional = true }
-ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
-rand_core = { version = "0.6", optional = true }
 subtle = { version = "2", optional = true }
 sha2 = { version = "0.10", optional = true }
 hmac = { version = "0.12", optional = true }
@@ -94,6 +100,8 @@ logging = []
 process = []
 git = []
 fs = []
+vfs = []
+vfs_s3 = ["vfs", "net_https", "dep:sha2", "dep:hmac", "dep:percent-encoding"]
 fs_archive = ["dep:zip","dep:tar","dep:flate2"]
 time_cron = ["dep:cron", "time"]
 fs_watch = ["dep:notify", "fs"]
@@ -110,7 +118,9 @@ containers_containerd = []
 containers_k8s = []
 graphs = []
 graphs_petgraph = []
-crypto = ["dep:blake3","dep:sha2","dep:hmac","dep:hkdf","dep:argon2","dep:rand","dep:chacha20poly1305","dep:ed25519-dalek","dep:rand_core","dep:subtle","dep:uuid"]
+crypto = ["dep:blake3","dep:sha2","dep:hmac","dep:hkdf","dep:argon2","dep:rand","dep:chacha20poly1305","dep:ed25519-dalek","dep:rand_core","dep:subtle","dep:uuid","dep:rcgen"]
+ssh = ["dep:ssh2","dep:whoami","dep:ed25519-dalek","dep:rand_core"]
+ssh_openssh = ["ssh", "dep:ssh-key"]
 crypto_sha2 = ["dep:sha2"]
 crypto_aes = []
 crypto_chacha = ["dep:chacha20poly1305"]
@@ -163,3 +173,6 @@ duckdb = { version = "0.10", optional = true, default-features = false, features
 [dependencies.rug]
 optional = true
 version = "1"
+
+[dev-dependencies]
+tempfile = "3"

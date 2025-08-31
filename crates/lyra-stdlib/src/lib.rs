@@ -48,6 +48,8 @@ pub mod graphs;
 pub mod image;
 #[cfg(feature = "io")]
 pub mod io;
+// VFS abstraction (file/http and cloud providers)
+pub mod vfs;
 #[cfg(feature = "list")]
 pub mod list;
 #[cfg(feature = "logging")]
@@ -70,6 +72,8 @@ pub mod ndarray;
 pub mod net;
 #[cfg(feature = "nn")]
 pub mod nn;
+#[cfg(feature = "ssh")]
+pub mod ssh;
 #[cfg(feature = "package")]
 pub mod package;
 #[cfg(feature = "policy")]
@@ -151,6 +155,8 @@ pub fn register_all(ev: &mut Evaluator) {
     explain::register_explain(ev);
     #[cfg(feature = "io")]
     io::register_io(ev);
+    // VFS does not require extra features for basic file provider; http ops delegated when net is enabled
+    vfs::register_vfs(ev);
     #[cfg(feature = "model")]
     model::register_model(ev);
     #[cfg(feature = "trace")]
@@ -161,6 +167,8 @@ pub fn register_all(ev: &mut Evaluator) {
     memory::register_memory(ev);
     #[cfg(feature = "policy")]
     policy::register_policy(ev);
+    #[cfg(feature = "ssh")]
+    ssh::register_ssh(ev);
     #[cfg(feature = "dev")]
     dev::register_dev(ev);
     #[cfg(feature = "workflow")]
@@ -181,6 +189,9 @@ pub fn register_all(ev: &mut Evaluator) {
     git::register_git(ev);
     #[cfg(feature = "fs")]
     fs::register_fs(ev);
+    // Register ndarray before dataset so dataset's Window/Collect override
+    #[cfg(feature = "ndarray")]
+    ndarray::register_ndarray(ev);
     // Register Frame before Dataset so Dataset's shared names (GroupBy, etc.) override stubs
     #[cfg(feature = "frame")]
     frame::register_frame(ev);
@@ -212,8 +223,6 @@ pub fn register_all(ev: &mut Evaluator) {
     text_index::register_text_index(ev);
     #[cfg(feature = "collections")]
     collections::register_collections(ev);
-    #[cfg(feature = "ndarray")]
-    ndarray::register_ndarray(ev);
     #[cfg(feature = "ml")]
     ml::register_ml(ev);
     #[cfg(feature = "nn")]

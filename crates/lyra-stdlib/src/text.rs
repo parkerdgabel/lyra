@@ -6,6 +6,7 @@ use chardetng::EncodingDetector;
 #[cfg(feature = "text_glob")]
 use ignore::{overrides::OverrideBuilder, WalkBuilder};
 use lyra_core::value::Value;
+use std::collections::HashMap;
 use lyra_runtime::attrs::Attributes;
 use lyra_runtime::Evaluator;
 use regex::Regex;
@@ -23,6 +24,20 @@ pub fn register_text(ev: &mut Evaluator) {
     ev.register("TextReplace", text_replace as NativeFn, Attributes::empty());
     ev.register("TextDetectEncoding", text_detect_encoding as NativeFn, Attributes::empty());
     ev.register("TextSearch", text_search as NativeFn, Attributes::empty());
+    // NLP primitives
+    ev.register("Tokenize", tokenize as NativeFn, Attributes::empty());
+    ev.register("SentenceSplit", sentence_split as NativeFn, Attributes::empty());
+    ev.register("NormalizeText", normalize_text as NativeFn, Attributes::empty());
+    ev.register("Stopwords", stopwords as NativeFn, Attributes::empty());
+    ev.register("RemoveStopwords", remove_stopwords as NativeFn, Attributes::empty());
+    ev.register("Stem", stem as NativeFn, Attributes::empty());
+    ev.register("Ngrams", ngrams as NativeFn, Attributes::empty());
+    ev.register("TokenStats", token_stats as NativeFn, Attributes::empty());
+    ev.register("BuildVocab", build_vocab as NativeFn, Attributes::empty());
+    ev.register("BagOfWords", bag_of_words as NativeFn, Attributes::empty());
+    ev.register("TfIdf", tfidf as NativeFn, Attributes::empty());
+    ev.register("ChunkText", chunk_text as NativeFn, Attributes::empty());
+    ev.register("Lemmatize", lemmatize as NativeFn, Attributes::empty());
 }
 
 /// Conditionally register text functions based on `pred`.
@@ -46,6 +61,20 @@ pub fn register_text_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
         Attributes::empty(),
     );
     register_if(ev, pred, "TextSearch", text_search as NativeFn, Attributes::empty());
+    // NLP primitives
+    register_if(ev, pred, "Tokenize", tokenize as NativeFn, Attributes::empty());
+    register_if(ev, pred, "SentenceSplit", sentence_split as NativeFn, Attributes::empty());
+    register_if(ev, pred, "NormalizeText", normalize_text as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Stopwords", stopwords as NativeFn, Attributes::empty());
+    register_if(ev, pred, "RemoveStopwords", remove_stopwords as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Stem", stem as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Ngrams", ngrams as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TokenStats", token_stats as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BuildVocab", build_vocab as NativeFn, Attributes::empty());
+    register_if(ev, pred, "BagOfWords", bag_of_words as NativeFn, Attributes::empty());
+    register_if(ev, pred, "TfIdf", tfidf as NativeFn, Attributes::empty());
+    register_if(ev, pred, "ChunkText", chunk_text as NativeFn, Attributes::empty());
+    register_if(ev, pred, "Lemmatize", lemmatize as NativeFn, Attributes::empty());
 }
 
 fn ok_summary(files: usize, files_with: usize, total: usize, dur_ms: u128) -> Value {
@@ -284,6 +313,290 @@ fn resolve_glob_paths(
     {
         patterns.iter().cloned().collect()
     }
+}
+
+// ---------------- NLP: Tokenize, Normalize, Stopwords, Ngrams ----------------
+
+fn to_string(ev: &mut Evaluator, v: Value) -> String { match ev.eval(v) { Value::String(s) | Value::Symbol(s) => s, other => lyra_core::pretty::format_value(&other) } }
+
+fn normalize_opts_map(ev: &mut Evaluator, v: Option<Value>) -> std::collections::HashMap<String, Value> {
+    v.map(|x| ev.eval(x)).and_then(|vv| if let Value::Assoc(m)=vv { Some(m) } else { None }).unwrap_or_default()
+}
+
+fn simple_word_tokens(s: &str, preserve_case: bool, strip_punct: bool, keep_numbers: bool) -> Vec<(String, usize, usize)> {
+    let mut out: Vec<(String, usize, usize)> = Vec::new();
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        while i < chars.len() {
+            let c = chars[i];
+            let is_alnum = c.is_alphanumeric();
+            if is_alnum || (!strip_punct && (c=='\'' || c=='_')) { break; }
+            i+=1;
+        }
+        if i>=chars.len() { break; }
+        let start = i;
+        while i < chars.len() {
+            let c = chars[i];
+            if c.is_alphanumeric() || (!strip_punct && (c=='\'' || c=='_')) { i+=1; } else { break; }
+        }
+        let end = i;
+        if end>start {
+            let mut t: String = chars[start..end].iter().collect();
+            if !preserve_case { t = t.to_lowercase(); }
+            if !keep_numbers && t.chars().all(|c| c.is_ascii_digit()) { continue; }
+            out.push((t, start, end));
+        }
+    }
+    out
+}
+
+fn tokenize(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Tokenize".into())), args }; }
+    let text = to_string(ev, args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let mode = opts.get("mode").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).unwrap_or_else(|| "word".into());
+    let preserve_case = matches!(opts.get("preserveCase"), Some(Value::Boolean(true)));
+    let strip_punct = !matches!(opts.get("stripPunct"), Some(Value::Boolean(false)));
+    let keep_numbers = !matches!(opts.get("keepNumbers"), Some(Value::Boolean(false)));
+    let return_kind = opts.get("return").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).unwrap_or_else(|| "tokens".into());
+    let mut out: Vec<(String, usize, usize)> = match mode.as_str() {
+        "char" => text.char_indices().map(|(i,c)| (c.to_string(), i, i+1)).collect(),
+        _ => simple_word_tokens(&text, preserve_case, strip_punct, keep_numbers),
+    };
+    match return_kind.as_str() {
+        "spans" => Value::List(out.into_iter().map(|(t,s,e)| Value::Assoc(HashMap::from([(String::from("text"), Value::String(t)), (String::from("start"), Value::Integer(s as i64)), (String::from("end"), Value::Integer(e as i64))]))).collect()),
+        "assoc" => Value::Assoc(HashMap::from([(String::from("tokens"), Value::List(out.into_iter().map(|(t,_,_)| Value::String(t)).collect()))])),
+        _ => Value::List(out.into_iter().map(|(t,_,_)| Value::String(t)).collect()),
+    }
+}
+
+fn sentence_split(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("SentenceSplit".into())), args }; }
+    let text = to_string(ev, args[0].clone());
+    let _opts = normalize_opts_map(ev, args.get(1).cloned());
+    // Simple heuristic: split on ., !, ? followed by space/newline; preserve punctuation
+    let mut out: Vec<String> = Vec::new();
+    let mut buf = String::new();
+    for ch in text.chars() {
+        buf.push(ch);
+        if matches!(ch, '.'|'!'|'?') { out.push(buf.trim().to_string()); buf.clear(); }
+        else if ch=='\n' && !buf.trim().is_empty() { out.push(buf.trim().to_string()); buf.clear(); }
+    }
+    if !buf.trim().is_empty() { out.push(buf.trim().to_string()); }
+    Value::List(out.into_iter().map(Value::String).collect())
+}
+
+fn normalize_text(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("NormalizeText".into())), args }; }
+    let mut s = to_string(ev, args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    if let Some(Value::String(mode))|Some(Value::Symbol(mode)) = opts.get("case") { match mode.as_str() { "lower" => s = s.to_lowercase(), "upper" => s = s.to_uppercase(), _ => {} } }
+    if matches!(opts.get("whitespace"), Some(Value::String(ws)) if ws=="collapse") {
+        let mut out = String::new(); let mut last_space = false;
+        for ch in s.chars() { if ch.is_whitespace() { if !last_space { out.push(' '); last_space=true; } } else { out.push(ch); last_space=false; } }
+        s = out.trim().to_string();
+    }
+    if matches!(opts.get("punctuation"), Some(Value::String(p)) if p=="remove") {
+        s = s.chars().filter(|c| !c.is_ascii_punctuation()).collect();
+    }
+    if matches!(opts.get("digits"), Some(Value::String(d)) if d=="remove") {
+        s = s.chars().filter(|c| !c.is_ascii_digit()).collect();
+    }
+    Value::String(s)
+}
+
+fn stopwords(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let lang = match args.get(0) { Some(Value::String(s))|Some(Value::Symbol(s)) => s.to_ascii_lowercase(), _ => String::from("en") };
+    // Minimal built-in stopword lists for common languages
+    const EN: &[&str] = &[
+        "a","an","the","and","or","but","if","then","else","when","at","by","for","in","of","on","to","up","with","as","is","it","its","be","are","was","were","this","that","these","those","from","has","have","had","he","she","they","them","his","her","their","we","you","your","i","me","my","our","ours"
+    ];
+    const ES: &[&str] = &[
+        "un","una","unos","unas","el","la","los","las","y","o","pero","si","entonces","sino","cuando","en","de","del","al","por","para","con","como","es","ser","son","fue","fueron","esto","esa","ese","estos","esas","desde","ha","han","tiene","tienen","él","ella","ellos","ellas","su","sus","nosotros","vosotros","usted","ustedes","yo","mi","mis","nuestro","nuestra","nuestros","nuestras"
+    ];
+    const FR: &[&str] = &[
+        "un","une","des","le","la","les","et","ou","mais","si","alors","sinon","quand","à","au","aux","de","du","des","pour","par","avec","comme","est","être","sont","était","étaient","ceci","cela","ces","depuis","a","ont","il","elle","ils","elles","son","sa","ses","nous","vous","je","moi","mon","mes","notre","nos"
+    ];
+    const DE: &[&str] = &[
+        "ein","eine","einer","eines","der","die","das","und","oder","aber","wenn","dann","sonst","wann","bei","von","für","mit","als","ist","sein","sind","war","waren","dies","das","diese","diese","seit","hat","haben","er","sie","sie","ihr","ihre","wir","ihr","Sie","ich","mich","mein","meine","unser","unsere"
+    ];
+    const IT: &[&str] = &[
+        "un","una","uno","dei","degli","del","della","lo","la","il","e","o","ma","se","allora","altrimenti","quando","a","di","da","per","con","come","è","essere","sono","era","erano","questo","quello","questi","quelle","da","ha","hanno","lui","lei","essi","esse","suo","sua","suoi","noi","voi","io","me","mio","mia","nostro","nostri"
+    ];
+    const PT: &[&str] = &[
+        "um","uma","uns","umas","o","a","os","as","e","ou","mas","se","então","senão","quando","em","de","do","da","dos","das","por","para","com","como","é","ser","são","foi","foram","isto","isso","estes","essas","desde","tem","têm","ele","ela","eles","elas","seu","sua","seus","nós","vós","você","vocês","eu","meu","minha","nossos","nossas"
+    ];
+    const NL: &[&str] = &[
+        "een","de","het","en","of","maar","als","dan","anders","wanneer","bij","van","voor","met","als","is","zijn","waren","dit","dat","deze","die","sinds","heeft","hebben","hij","zij","ze","hun","wij","jullie","u","ik","mij","mijn","onze"
+    ];
+    let list_slice: &[&str] = match lang.as_str() {
+        "en" => EN,
+        "es" => ES,
+        "fr" => FR,
+        "de" => DE,
+        "it" => IT,
+        "pt" => PT,
+        "nl" => NL,
+        _ => EN,
+    };
+    let list: Vec<Value> = list_slice.iter().map(|s| Value::String((*s).into())).collect();
+    Value::List(list)
+}
+
+fn remove_stopwords(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("RemoveStopwords".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let lang = opts.get("language").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.as_str()) } else { None }).unwrap_or("en");
+    let sw: std::collections::HashSet<String> = match opts.get("stopwords") {
+        Some(Value::List(vs)) => vs.iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).collect(),
+        _ => {
+            let l = stopwords(ev, vec![Value::String(lang.into())]);
+            if let Value::List(vs) = l { vs.into_iter().filter_map(|v| if let Value::String(s)=v { Some(s) } else { None }).collect() } else { std::collections::HashSet::new() }
+        }
+    };
+    let toks: Vec<String> = match input {
+        Value::List(vs) => vs.into_iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).collect(),
+        Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(),
+        other => vec![lyra_core::pretty::format_value(&other)],
+    };
+    let out: Vec<Value> = toks.into_iter().filter(|t| !sw.contains(&t.to_ascii_lowercase())).map(Value::String).collect();
+    Value::List(out)
+}
+
+fn ngrams(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Ngrams".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let n = opts.get("n").and_then(|v| if let Value::Integer(i)=v { Some((*i).max(1) as usize) } else { None }).unwrap_or(2);
+    let sep = opts.get("join").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).unwrap_or_else(|| " ".into());
+    let toks: Vec<String> = match input { Value::List(vs) => vs.into_iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(&other)] };
+    if toks.len() < n { return Value::List(vec![]); }
+    let mut out: Vec<Value> = Vec::new();
+    for i in 0..=(toks.len()-n) {
+        let gram = toks[i..i+n].join(&sep);
+        out.push(Value::String(gram));
+    }
+    Value::List(out)
+}
+
+fn token_stats(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("TokenStats".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let k = opts.get("k").and_then(|v| if let Value::Integer(i)=v { Some((*i).max(1) as usize) } else { None }).unwrap_or(10);
+    let toks: Vec<String> = match input { Value::List(vs) => vs.into_iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(&other)] };
+    let total = toks.len();
+    let mut map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for t in toks { *map.entry(t).or_insert(0) += 1; }
+    let mut items: Vec<(String, i64)> = map.into_iter().collect();
+    items.sort_by(|a,b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let top_list: Vec<Value> = items.into_iter().take(k).map(|(term,count)| Value::Assoc(HashMap::from([(String::from("term"), Value::String(term)), (String::from("count"), Value::Integer(count)), (String::from("proportion"), Value::Real((count as f64)/ (total as f64 + 1e-12)))]))).collect();
+    Value::Assoc(HashMap::from([(String::from("total"), Value::Integer(total as i64)), (String::from("unique"), Value::Integer(top_list.len() as i64)), (String::from("top"), Value::List(top_list))]))
+}
+
+fn build_vocab(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("BuildVocab".into())), args }; }
+    let docs = match ev.eval(args[0].clone()) { Value::List(vs) => vs, other => vec![other] };
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let min_count = opts.get("minCount").and_then(|v| if let Value::Integer(i)=v { Some((*i).max(1) as i64) } else { None }).unwrap_or(1);
+    let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for d in docs {
+        let toks: Vec<String> = match d { Value::List(vs) => vs.into_iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(&other)] };
+        for t in toks { *counts.entry(t).or_insert(0) += 1; }
+    }
+    let mut terms: Vec<String> = counts.into_iter().filter(|(_t,c)| *c >= min_count).map(|(t,_c)| t).collect();
+    terms.sort();
+    let vocab: std::collections::HashMap<String, Value> = terms.iter().enumerate().map(|(i,t)| (t.clone(), Value::Integer(i as i64))).collect();
+    Value::Assoc(HashMap::from([(String::from("vocab"), Value::Assoc(vocab)), (String::from("size"), Value::Integer(terms.len() as i64))]))
+}
+
+fn bag_of_words(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("BagOfWords".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let toks: Vec<String> = match input { Value::List(vs) => vs.into_iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(&other)] };
+    if let Some(Value::Assoc(vmap)) = opts.get("vocab") {
+        // produce dense vector
+        let size = vmap.len();
+        let mut vec: Vec<f64> = vec![0.0; size];
+        for t in toks { if let Some(Value::Integer(ix)) = vmap.get(&t) { let i = (*ix).max(0) as usize; if i < size { vec[i] += 1.0; } } }
+        return Value::PackedArray { shape: vec![size], data: vec };
+    }
+    // produce assoc term->count
+    let mut map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for t in toks { *map.entry(t).or_insert(0) += 1; }
+    Value::Assoc(map.into_iter().map(|(k,v)| (k, Value::Integer(v))).collect())
+}
+
+fn tfidf(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("TfIdf".into())), args }; }
+    let docs_v = ev.eval(args[0].clone());
+    let docs = match docs_v { Value::List(vs) => vs, other => vec![other] };
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let vocab_val = build_vocab(ev, vec![Value::List(docs.clone()), Value::Assoc(opts.clone())]);
+    let (vocab, size) = if let Value::Assoc(m) = vocab_val { (m.get("vocab").cloned().unwrap_or(Value::Assoc(HashMap::new())), m.get("size").cloned().unwrap_or(Value::Integer(0))) } else { (Value::Assoc(HashMap::new()), Value::Integer(0)) };
+    let vocab_map = if let Value::Assoc(m) = vocab.clone() { m } else { HashMap::new() };
+    let vsize = if let Value::Integer(n) = size { n.max(0) as usize } else { 0 };
+    // df per term
+    let mut df: Vec<i64> = vec![0; vsize];
+    let mut rows: Vec<Vec<f64>> = Vec::new();
+    for d in docs.iter() {
+        let toks: std::collections::HashSet<String> = match d { Value::List(vs) => vs.iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(other)].into_iter().collect() };
+        let mut row: Vec<f64> = vec![0.0; vsize];
+        for t in toks.iter() {
+            if let Some(Value::Integer(ix)) = vocab_map.get(t) { let i = (*ix).max(0) as usize; if i< vsize { df[i] += 1; } }
+        }
+        // term frequencies for this doc
+        let toks_all: Vec<String> = match d { Value::List(vs) => vs.iter().filter_map(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.clone()) } else { None }).collect(), Value::String(s) => simple_word_tokens(&s, false, true, true).into_iter().map(|(t,_,_)| t).collect(), other => vec![lyra_core::pretty::format_value(other)] };
+        for t in toks_all { if let Some(Value::Integer(ix)) = vocab_map.get(&t) { let i = (*ix).max(0) as usize; if i < vsize { row[i] += 1.0; } } }
+        rows.push(row);
+    }
+    let n_docs = docs.len().max(1) as f64;
+    let idf: Vec<f64> = df.into_iter().map(|d| { let dfv = d as f64; if dfv>0.0 { (n_docs / dfv).ln() + 1.0 } else { 0.0 } }).collect();
+    // tf-idf rows with l2 norm if requested
+    let norm_l2 = !matches!(opts.get("norm"), Some(Value::String(s)) if s.eq_ignore_ascii_case("none"));
+    let mut tfidf_rows: Vec<Value> = Vec::new();
+    for mut row in rows.into_iter() {
+        for i in 0..vsize { row[i] *= idf[i]; }
+        if norm_l2 {
+            let ss: f64 = row.iter().map(|x| x*x).sum();
+            let denom = ss.sqrt();
+            if denom > 0.0 { for i in 0..vsize { row[i] /= denom; } }
+        }
+        tfidf_rows.push(Value::PackedArray { shape: vec![vsize], data: row });
+    }
+    Value::Assoc(HashMap::from([
+        (String::from("vocab"), vocab),
+        (String::from("idf"), Value::PackedArray { shape: vec![vsize], data: idf }),
+        (String::from("matrix"), Value::List(tfidf_rows)),
+    ]))
+}
+
+fn chunk_text(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ChunkText".into())), args }; }
+    let text = to_string(ev, args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let chunk_size = opts.get("chunkSize").and_then(|v| if let Value::Integer(i)=v { Some((*i).max(1) as usize) } else { None }).unwrap_or(1000);
+    let chunk_overlap = opts.get("chunkOverlap").and_then(|v| if let Value::Integer(i)=v { Some((*i).max(0) as usize) } else { None }).unwrap_or(200);
+    // naive recursive character strategy: break on double newline, then single, fallback to sliding window
+    let mut chunks: Vec<(usize,usize)> = Vec::new();
+    let mut start = 0usize;
+    let bytes = text.as_bytes();
+    while start < bytes.len() {
+        let end_limit = (start + chunk_size).min(bytes.len());
+        let slice = &text[start..end_limit];
+        let mut cut = slice.rfind("\n\n").map(|i| i+start+2)
+            .or_else(|| slice.rfind('\n').map(|i| i+start+1))
+            .unwrap_or(end_limit);
+        if cut <= start { cut = end_limit; }
+        chunks.push((start, cut));
+        if cut>=bytes.len() { break; }
+        start = cut.saturating_sub(chunk_overlap);
+    }
+    let out: Vec<Value> = chunks.into_iter().map(|(s,e)| Value::Assoc(HashMap::from([(String::from("text"), Value::String(text[s..e].to_string())), (String::from("start"), Value::Integer(s as i64)), (String::from("end"), Value::Integer(e as i64))]))).collect();
+    Value::List(out)
 }
 
 fn is_probably_binary(bytes: &[u8]) -> bool {
@@ -1242,4 +1555,139 @@ fn text_search(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         .into_iter()
         .collect(),
     )
+}
+
+
+// ---------------- Stemming (Porter-like for English; pass-through otherwise) ----------------
+
+fn is_vowel(chars: &[char], i: usize) -> bool {
+    let c = chars[i].to_ascii_lowercase();
+    if "aeiou".contains(c) { return true; }
+    if c == 'y' {
+        if i == 0 { return false; }
+        return !is_vowel(chars, i-1);
+    }
+    false
+}
+
+fn has_vowel(chars: &[char], end: usize) -> bool {
+    for i in 0..end { if is_vowel(chars, i) { return true; } }
+    false
+}
+
+fn ends_with(s: &str, suf: &str) -> bool { s.len() >= suf.len() && s[s.len()-suf.len()..].eq_ignore_ascii_case(suf) }
+
+fn porter_en_stem(token: &str) -> String {
+    let mut s = token.to_ascii_lowercase();
+    if s.len() <= 2 { return s; }
+    let mut chars: Vec<char> = s.chars().collect();
+    // Step 1a
+    if ends_with(&s, "sses") { s.truncate(s.len()-2); return s; } // sses -> ss
+    if ends_with(&s, "ies") { s.truncate(s.len()-3); s.push('i'); return s; }
+    if ends_with(&s, "ss") { return s; }
+    if ends_with(&s, "s") { s.truncate(s.len()-1); }
+    // Step 1b
+    chars = s.chars().collect();
+    if ends_with(&s, "eed") {
+        s.truncate(s.len()-1); // eed -> ee (approx; ignoring m>0)
+    } else if ends_with(&s, "ed") {
+        let stem = &chars[..chars.len()-2];
+        if has_vowel(stem, stem.len()) { s.truncate(s.len()-2); }
+    } else if ends_with(&s, "ing") {
+        let stem = &chars[..chars.len()-3];
+        if has_vowel(stem, stem.len()) { s.truncate(s.len()-3); }
+    }
+    // After removing ed/ing: adjust endings
+    if ends_with(&s, "at") { s.push('e'); } // at -> ate
+    else if ends_with(&s, "bl") { s.push('e'); } // bl -> ble
+    else if ends_with(&s, "iz") { s.push('e'); } // iz -> ize
+    else {
+        // remove double consonant (bb, dd, ff, gg, mm, nn, pp, rr, tt)
+        let cs: Vec<char> = s.chars().collect();
+        if cs.len() >= 2 {
+            let a = cs[cs.len()-1]; let b = cs[cs.len()-2];
+            if a==b && "bdfgmnprt".contains(a) { s.truncate(s.len()-1); }
+        }
+        // NOTE: Skip cvc + 'e' insertion to avoid over-stemming like 'running' -> 'rune'.
+    }
+    // Step 1c: y->i if vowel in stem
+    if s.ends_with('y') {
+        let cs: Vec<char> = s.chars().collect();
+        if has_vowel(&cs, cs.len()-1) { s.pop(); s.push('i'); }
+    }
+    s
+}
+
+fn stem(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Stem".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = if args.len()>1 { ev.eval(args[1].clone()) } else { Value::Assoc(HashMap::new()) };
+    let (lang, algorithm) = if let Value::Assoc(m) = opts {
+        let lang = m.get("language").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).unwrap_or_else(|| "en".into());
+        let algorithm = m.get("algorithm").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).unwrap_or_else(|| "porter".into());
+        (lang, algorithm)
+    } else { (String::from("en"), String::from("porter")) };
+    let stem_token = |t: &str| -> String {
+        match lang.as_str() {
+            "en" => match algorithm.as_str() { _ => porter_en_stem(t) },
+            _ => t.to_string(),
+        }
+    };
+    match input {
+        Value::List(vs) => Value::List(vs.into_iter().map(|v| match v { Value::String(s)|Value::Symbol(s)=> Value::String(stem_token(&s)), other => other }).collect()),
+        Value::String(s) => {
+            let toks = simple_word_tokens(&s, false, true, true);
+            Value::List(toks.into_iter().map(|(t,_,_)| Value::String(stem_token(&t))).collect())
+        }
+        other => Value::List(vec![other]),
+    }
+}
+
+// ---------------- Lemmatization (rule-based English) ----------------
+
+fn lemmatize_en(token: &str) -> String {
+    let mut s = token.to_ascii_lowercase();
+    if s.len() <= 2 { return s; }
+    // Exceptions (irregulars)
+    let mut exceptions: HashMap<&str,&str> = HashMap::new();
+    for (a,b) in [
+        ("went","go"),("gone","go"),("ran","run"),("eaten","eat"),("ate","eat"),("done","do"),("did","do"),("saw","see"),
+        ("was","be"),("were","be"),("is","be"),("are","be"),("am","be"),("been","be"),("being","be"),
+        ("had","have"),("has","have"),("bought","buy"),("brought","bring"),("better","good"),("best","good"),
+    ] { exceptions.insert(a,b); }
+    if let Some(&base) = exceptions.get(s.as_str()) { return base.to_string(); }
+    // Adverbs -> adjective
+    if s.ends_with("ly") && s.len()>4 { s.truncate(s.len()-2); return s; }
+    // Past participles / past tense
+    if s.ends_with("ied") && s.len()>4 { s.truncate(s.len()-3); s.push('y'); return s; }
+    if s.ends_with("ed") && s.len()>3 { s.truncate(s.len()-2); return s; }
+    // Gerund
+    if s.ends_with("ing") && s.len()>4 {
+        s.truncate(s.len()-3);
+        // Collapse doubled consonant: running -> run
+        let cs: Vec<char> = s.chars().collect();
+        if cs.len()>=2 { let a=cs[cs.len()-1]; let b=cs[cs.len()-2]; if a==b && "bdfgmnprt".contains(a) { s.truncate(s.len()-1); } }
+        return s;
+    }
+    // Plurals
+    if s.ends_with("ies") && s.len()>4 { s.truncate(s.len()-3); s.push('y'); return s; }
+    if s.ends_with("es") && s.len()>3 { s.truncate(s.len()-2); return s; }
+    if s.ends_with('s') && !s.ends_with("ss") { s.truncate(s.len()-1); return s; }
+    s
+}
+
+fn lemmatize(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Lemmatize".into())), args }; }
+    let input = ev.eval(args[0].clone());
+    let opts = normalize_opts_map(ev, args.get(1).cloned());
+    let lang = opts.get("language").and_then(|v| if let Value::String(s)|Value::Symbol(s)=v { Some(s.to_ascii_lowercase()) } else { None }).unwrap_or_else(|| "en".into());
+    let lemmatize_token = |t: &str| -> String { match lang.as_str() { "en" => lemmatize_en(t), _ => t.to_string() } };
+    match input {
+        Value::List(vs) => Value::List(vs.into_iter().map(|v| match v { Value::String(s)|Value::Symbol(s)=> Value::String(lemmatize_token(&s)), other => other }).collect()),
+        Value::String(s) => {
+            let toks = simple_word_tokens(&s, false, true, true);
+            Value::List(toks.into_iter().map(|(t,_,_)| Value::String(lemmatize_token(&t))).collect())
+        }
+        other => Value::List(vec![other]),
+    }
 }

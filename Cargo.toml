@@ -15,6 +15,7 @@ members = [
   "crates/lyra-notebook-gui",
   "crates/lyra-notebook-app",
 ]
+
 resolver = "2"
 
 [workspace.package]

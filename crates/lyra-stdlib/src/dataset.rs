@@ -79,6 +79,12 @@ enum Plan {
         input: Box<Plan>,
         n: i64,
     },
+    // Window functions (initial scaffold)
+    Window {
+        input: Box<Plan>,
+        spec: HashMap<String, Value>,
+        defs: HashMap<String, Value>, // outCol -> window expr (RowNumber[], Rank[], Lead[col,...], etc.)
+    },
 }
 
 #[derive(Clone)]
@@ -292,6 +298,96 @@ fn fold_sql(plan: &Plan, mut acc: SqlBuild) -> SqlBuild {
         Plan::Tail { input, .. } => {
             acc = fold_sql(input, acc);
             acc.client_side.push("Tail".into());
+            acc
+        }
+        Plan::Window { input, spec, defs } => {
+            acc = fold_sql(input, acc);
+            // Build OVER clause
+            let mut over = String::new();
+            if let Some(Value::List(parts)) = spec.get("PartitionBy") {
+                let cols: Vec<String> = parts.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(ident(s)), _=>None }).collect();
+                if !cols.is_empty() { over.push_str(&format!(" PARTITION BY {}", cols.join(", "))); }
+            }
+            if let Some(ob) = spec.get("orderBy").or_else(|| spec.get("OrderBy")) {
+                // Accept list of strings or assoc name->"asc|desc"
+                let mut items: Vec<String> = Vec::new();
+                match ob {
+                    Value::List(vs) => {
+                        for v in vs {
+                            match v {
+                                Value::String(s) | Value::Symbol(s) => items.push(format!("{} ASC", ident(s))),
+                                Value::Assoc(m) => {
+                                    for (k, vv) in m.iter() {
+                                        let dir = match vv { Value::String(s)|Value::Symbol(s) if s.eq_ignore_ascii_case("desc")=>"DESC", _=>"ASC" };
+                                        items.push(format!("{} {}", ident(k), dir));
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if !items.is_empty() { over.push_str(&format!(" ORDER BY {}", items.join(", "))); }
+            }
+            // Frame clause (ROWS BETWEEN ...)
+            if let Some(Value::Assoc(m)) = spec.get("rowsBetween").or_else(|| spec.get("RowsBetween")) {
+                let s = m.get("start").and_then(|v| if let Value::Integer(n)=v { Some(*n) } else { None }).unwrap_or(0);
+                let e = m.get("end").and_then(|v| if let Value::Integer(n)=v { Some(*n) } else { None }).unwrap_or(0);
+                let frame = format!(
+                    " ROWS BETWEEN {} AND {}",
+                    if s < 0 { format!("{} PRECEDING", -s) } else if s == 0 { "CURRENT ROW".into() } else { format!("{} FOLLOWING", s) },
+                    if e < 0 { format!("{} PRECEDING", -e) } else if e == 0 { "CURRENT ROW".into() } else { format!("{} FOLLOWING", e) }
+                );
+                over.push_str(&frame);
+            }
+            let mut sels: Vec<(String, Option<String>)> = acc.select.take().unwrap_or_default();
+            if sels.is_empty() { sels.push(("*".into(), None)); }
+            for (alias, expr) in defs.iter() {
+                if let Value::Expr { head, args } = expr {
+                    if let Value::Symbol(fname) = &**head {
+                        let sql = match fname.as_str() {
+                            "RowNumber" => Some(format!("ROW_NUMBER() OVER ({})", over.trim())),
+                            "Rank" => Some(format!("RANK() OVER ({})", over.trim())),
+                            "DenseRank" => Some(format!("DENSE_RANK() OVER ({})", over.trim())),
+                            "Lead" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                let off = args.get(1).and_then(lit_to_sql).unwrap_or_else(|| "1".into());
+                                let def = args.get(2).and_then(lit_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("LEAD({}, {}, {}) OVER ({})", col, off, def, over.trim()))
+                            }
+                            "Lag" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                let off = args.get(1).and_then(lit_to_sql).unwrap_or_else(|| "1".into());
+                                let def = args.get(2).and_then(lit_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("LAG({}, {}, {}) OVER ({})", col, off, def, over.trim()))
+                            }
+                            "MovingAvg" | "Avg" | "Mean" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("AVG({}) OVER ({})", col, over.trim()))
+                            }
+                            "MovingSum" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("SUM({}) OVER ({})", col, over.trim()))
+                            }
+                            "MovingMin" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("MIN({}) OVER ({})", col, over.trim()))
+                            }
+                            "MovingMax" => {
+                                let col = args.get(0).and_then(col_expr_to_sql).unwrap_or_else(|| "NULL".into());
+                                Some(format!("MAX({}) OVER ({})", col, over.trim()))
+                            }
+                            _ => None,
+                        };
+                        if let Some(sexpr) = sql { sels.push((sexpr, Some(alias.clone()))); continue; }
+                    }
+                }
+                acc.client_side.push(format!("Window({})", alias));
+            }
+            if acc.client_side.iter().any(|s| s.starts_with("Window(")) { return acc; }
+            acc.select = Some(sels);
+            acc.pushed.push("Window".into());
             acc
         }
         Plan::WithColumns { input, .. } => {
@@ -835,6 +931,146 @@ fn eval_plan(ev: &mut Evaluator, p: &Plan) -> Vec<Value> {
                 rows.split_off(rows.len() - k)
             }
         }
+        Plan::Window { input, spec, defs } => {
+            let rows = eval_plan(ev, input);
+            // Parse spec: partitionBy, orderBy, rowsBetween
+            let part_keys: Vec<String> = match spec.get("partitionBy") {
+                Some(Value::List(vs)) => vs.iter().filter_map(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).collect(),
+                _ => Vec::new(),
+            };
+            let order_by: Vec<(String, bool)> = match spec.get("orderBy") {
+                Some(Value::List(vs)) => {
+                    let mut out: Vec<(String,bool)> = Vec::new();
+                    for v in vs { match v { Value::String(s)|Value::Symbol(s)=>out.push((s.clone(), true)), Value::Assoc(m)=>{ for (k,vv) in m { let asc = !matches!(vv, Value::String(ss) if ss.eq_ignore_ascii_case("desc")) && !matches!(vv, Value::Symbol(ss) if ss.eq_ignore_ascii_case("desc")); out.push((k.clone(), asc)); }}, _=>{} } }
+                    out
+                }
+                Some(Value::Assoc(m)) => m.iter().map(|(k,v)| (k.clone(), !matches!(v, Value::String(ss) if ss.eq_ignore_ascii_case("desc")) && !matches!(v, Value::Symbol(ss) if ss.eq_ignore_ascii_case("desc")))).collect(),
+                _ => Vec::new(),
+            };
+            let (rows_start, rows_end): (Option<i64>, Option<i64>) = match spec.get("rowsBetween") {
+                Some(Value::Assoc(m)) => {
+                    let s = m.get("start").and_then(|v| if let Value::Integer(n)=v { Some(*n) } else { None });
+                    let e = m.get("end").and_then(|v| if let Value::Integer(n)=v { Some(*n) } else { None });
+                    (s,e)
+                }
+                _ => (None,None),
+            };
+            use std::collections::HashMap as Map;
+            // Group by partition keys
+            let mut groups: Map<String, Vec<HashMap<String, Value>>> = Map::new();
+            let mut rows_assoc: Vec<HashMap<String, Value>> = Vec::new();
+            for r in rows.into_iter() { if let Value::Assoc(m) = r { rows_assoc.push(m); } }
+            let part_key_of = |m: &Map<String, Value>| -> String {
+                if part_keys.is_empty() { String::from("__all__") } else { part_keys.iter().map(|k| m.get(k).map(|v| lyra_core::pretty::format_value(v)).unwrap_or_default()).collect::<Vec<_>>().join("\u{1f}") }
+            };
+            for m in rows_assoc.into_iter() { let key = part_key_of(&m); groups.entry(key).or_default().push(m); }
+            // Sort each group per order_by
+            let mut out: Vec<Value> = Vec::new();
+            for (_k, mut grows) in groups.into_iter() {
+                if !order_by.is_empty() {
+                    grows.sort_by(|a,b| {
+                        for (col, asc) in &order_by {
+                            let va = a.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                            let vb = b.get(col).cloned().unwrap_or(Value::Symbol("Null".into()));
+                            let ka = lyra_runtime::eval::value_order_key(&va);
+                            let kb = lyra_runtime::eval::value_order_key(&vb);
+                            let ord = ka.cmp(&kb);
+                            if ord != std::cmp::Ordering::Equal { return if *asc { ord } else { ord.reverse() }; }
+                        }
+                        std::cmp::Ordering::Equal
+                    });
+                }
+                // Precompute value keys for rank/denseRank equality on order_by
+                let ord_key = |m: &Map<String, Value>| -> Vec<String> {
+                    order_by.iter().map(|(c,_asc)| {
+                        let v = m.get(c).cloned().unwrap_or(Value::Symbol("Null".into()));
+                        lyra_core::pretty::format_value(&v)
+                    }).collect()
+                };
+                let mut prev_key: Option<Vec<String>> = None;
+                let mut rank_val: i64 = 0;
+                let mut dense_rank: i64 = 0;
+                for i in 0..grows.len() {
+                    let mut m = grows[i].clone();
+                    for (alias, expr) in defs {
+                        match expr {
+                            Value::Expr { head, args } => {
+                                if let Value::Symbol(fname) = &**head {
+                                    match fname.as_str() {
+                                        "RowNumber" => { m.insert(alias.clone(), Value::Integer((i as i64)+1)); }
+                                        "Rank" => {
+                                            let k = ord_key(&m);
+                                            if i==0 { rank_val = 1; dense_rank = 1; }
+                                            else {
+                                                if let Some(pk) = &prev_key { if *pk != k { rank_val = (i as i64)+1; dense_rank += 1; } }
+                                            }
+                                            m.insert(alias.clone(), Value::Integer(rank_val));
+                                            prev_key = Some(k);
+                                        }
+                                        "DenseRank" => {
+                                            let k = ord_key(&m);
+                                            if i==0 { dense_rank = 1; }
+                                            else { if let Some(pk) = &prev_key { if *pk != k { dense_rank += 1; } } }
+                                            m.insert(alias.clone(), Value::Integer(dense_rank));
+                                            prev_key = Some(k);
+                                        }
+                                        "Lead" | "Lag" => {
+                                            let col = args.get(0).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), Value::Expr {..} => col_expr_to_sql(v).map(|s| s), _=>None }).unwrap_or_default();
+                                            let off = match args.get(1) { Some(Value::Integer(n)) => *n, _ => 1 };
+                                            let defv = args.get(2).cloned().unwrap_or(Value::Symbol("Null".into()));
+                                            let j: isize = if fname.as_str()=="Lead" { (i as isize) + (off as isize) } else { (i as isize) - (off as isize) };
+                                            let val = if j>=0 && (j as usize) < grows.len() { grows[j as usize].get(&col).cloned().unwrap_or(Value::Symbol("Null".into())) } else { defv };
+                                            m.insert(alias.clone(), val);
+                                        }
+                                        "MovingAvg" | "Avg" | "Mean" => {
+                                            let col = args.get(0).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
+                                            let (start, end) = (rows_start.unwrap_or(-(i as i64)), rows_end.unwrap_or(0));
+                                            let from = if start<0 { i.saturating_sub((-start) as usize) } else { i + (start as usize) };
+                                            let to = if end<0 { i.saturating_sub((-end) as usize) } else { (i + (end as usize)).min(grows.len().saturating_sub(1)) };
+                                            let mut sum = 0.0f64; let mut cnt = 0usize;
+                                            for k in from..=to { if let Some(v)=grows[k].get(&col) { match v { Value::Integer(n)=>{ sum += *n as f64; cnt+=1; }, Value::Real(f)=>{ sum += *f; cnt+=1; }, _=>{} } } }
+                                            let avg = if cnt>0 { Value::Real(sum/(cnt as f64)) } else { Value::Symbol("Null".into()) };
+                                            m.insert(alias.clone(), avg);
+                                        }
+                                        "MovingSum" => {
+                                            let col = args.get(0).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
+                                            let (start, end) = (rows_start.unwrap_or(-(i as i64)), rows_end.unwrap_or(0));
+                                            let from = if start<0 { i.saturating_sub((-start) as usize) } else { i + (start as usize) };
+                                            let to = if end<0 { i.saturating_sub((-end) as usize) } else { (i + (end as usize)).min(grows.len().saturating_sub(1)) };
+                                            let mut sum = 0.0f64;
+                                            for k in from..=to { if let Some(v)=grows[k].get(&col) { match v { Value::Integer(n)=> sum += *n as f64, Value::Real(f)=> sum += *f, _=>{} } } }
+                                            m.insert(alias.clone(), Value::Real(sum));
+                                        }
+                                        "MovingMin" => {
+                                            let col = args.get(0).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
+                                            let (start, end) = (rows_start.unwrap_or(-(i as i64)), rows_end.unwrap_or(0));
+                                            let from = if start<0 { i.saturating_sub((-start) as usize) } else { i + (start as usize) };
+                                            let to = if end<0 { i.saturating_sub((-end) as usize) } else { (i + (end as usize)).min(grows.len().saturating_sub(1)) };
+                                            let mut best: Option<f64> = None;
+                                            for k in from..=to { if let Some(v)=grows[k].get(&col) { let f = match v { Value::Integer(n)=> *n as f64, Value::Real(r)=> *r, _=> continue }; best = Some(match best { Some(b)=> b.min(f), None=> f }); } }
+                                            m.insert(alias.clone(), best.map(Value::Real).unwrap_or(Value::Symbol("Null".into())));
+                                        }
+                                        "MovingMax" => {
+                                            let col = args.get(0).and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None }).unwrap_or_default();
+                                            let (start, end) = (rows_start.unwrap_or(-(i as i64)), rows_end.unwrap_or(0));
+                                            let from = if start<0 { i.saturating_sub((-start) as usize) } else { i + (start as usize) };
+                                            let to = if end<0 { i.saturating_sub((-end) as usize) } else { (i + (end as usize)).min(grows.len().saturating_sub(1)) };
+                                            let mut best: Option<f64> = None;
+                                            for k in from..=to { if let Some(v)=grows[k].get(&col) { let f = match v { Value::Integer(n)=> *n as f64, Value::Real(r)=> *r, _=> continue }; best = Some(match best { Some(b)=> b.max(f), None=> f }); } }
+                                            m.insert(alias.clone(), best.map(Value::Real).unwrap_or(Value::Symbol("Null".into())));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    out.push(Value::Assoc(m));
+                }
+            }
+            out
+        }
     }
 }
 
@@ -1217,6 +1453,11 @@ fn explain_ds(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
                 out.push_str(&format!("{}Tail {}\n", pad, n));
                 pp(input, indent + 2, out);
             }
+            Plan::Window { input, spec, defs } => {
+                out.push_str(&format!("{}Window defs={:?}\n", pad, defs.keys().collect::<Vec<_>>()));
+                if !spec.is_empty() { out.push_str(&format!("{}  spec=...\n", pad)); }
+                pp(input, indent + 2, out);
+            }
         }
     }
     let mut s = String::new();
@@ -1326,6 +1567,7 @@ fn try_render_sql(plan: &Plan) -> Option<(i64, String)> {
             Plan::Select { input, .. }
             | Plan::SelectRename { input, .. }
             | Plan::Filter { input, .. }
+            | Plan::Window { input, .. }
             | Plan::Limit { input, .. }
             | Plan::Offset { input, .. }
             | Plan::Sort { input, .. }
@@ -2505,10 +2747,102 @@ pub fn register_dataset(ev: &mut Evaluator) {
     ev.register("ReadCSVDataset", read_csv_dataset as NativeFn, Attributes::empty());
     ev.register("ShowDataset", show_ds as NativeFn, Attributes::empty());
     ev.register("ReadJsonLinesDataset", read_jsonl_dataset as NativeFn, Attributes::empty());
+    // Parquet (baseline, eager via DuckDB when available)
+    fn read_parquet_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ReadParquetDataset".into())), args }; }
+        #[cfg(feature = "db_duckdb")]
+        let path = match ev.eval(args[0].clone()) { Value::String(s)|Value::Symbol(s)=>s, _=> return Value::Expr { head: Box::new(Value::Symbol("ReadParquetDataset".into())), args } };
+        #[cfg(not(feature = "db_duckdb"))]
+        let _path = match ev.eval(args[0].clone()) { Value::String(s)|Value::Symbol(s)=>s, _=> return Value::Expr { head: Box::new(Value::Symbol("ReadParquetDataset".into())), args } };
+        let opts = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(HashMap::new()) };
+        #[cfg(feature = "db_duckdb")]
+        let lazy = matches!(&opts, Value::Assoc(m) if matches!(m.get("lazy"), Some(Value::Boolean(true))));
+        #[cfg(not(feature = "db_duckdb"))]
+        let _lazy = matches!(&opts, Value::Assoc(m) if matches!(m.get("lazy"), Some(Value::Boolean(true))));
+        // Use DuckDB if available; support lazy (plan) and eager (rows)
+        #[cfg(feature = "db_duckdb")]
+        {
+            let conn = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Connect".into())), args: vec![Value::String("duckdb::memory:".into())] });
+            if let Value::Assoc(m) = conn { if let Some(Value::Integer(cid)) = m.get("id") {
+                let table_expr = format!("read_parquet('{}')", path.replace("'","''"));
+                if lazy {
+                    return Value::Expr { head: Box::new(Value::Symbol("__DatasetFromDbTable".into())), args: vec![Value::Integer(*cid), Value::String(table_expr)] };
+                } else {
+                    let sql = format!("SELECT * FROM {}", table_expr);
+                    let rows_v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("__SQLToRows".into())), args: vec![Value::Integer(*cid), Value::String(sql)] });
+                    return Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![rows_v] };
+                }
+            }}
+        }
+        #[cfg(not(feature = "db_duckdb"))]
+        { return Value::Assoc(HashMap::from([(String::from("message"), Value::String(String::from("Parquet read requires db_duckdb feature"))), (String::from("tag"), Value::String(String::from("Dataset::parquet")))])); }
+    }
+    ev.register("ReadParquetDataset", read_parquet_dataset as NativeFn, Attributes::empty());
+    // Naming-consistent alias returning Dataset
+    ev.register("ReadParquet", read_parquet_dataset as NativeFn, Attributes::empty());
+    fn write_parquet_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("WriteParquetDataset".into())), args }; }
+        let ds = ev.eval(args[0].clone());
+        let path = match ev.eval(args[1].clone()) { Value::String(s)|Value::Symbol(s)=>s, _=> return Value::Expr { head: Box::new(Value::Symbol("WriteParquetDataset".into())), args } };
+        // Materialize rows and call Export
+        let rows = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Collect".into())), args: vec![ds] });
+        let opts = Value::Assoc(HashMap::from([(String::from("Type"), Value::String(String::from("Parquet")))]));
+        ev.eval(Value::Expr { head: Box::new(Value::Symbol("Export".into())), args: vec![rows, Value::String(path), opts] })
+    }
+    ev.register("WriteParquetDataset", write_parquet_dataset as NativeFn, Attributes::empty());
+    // Naming-consistent alias
+    ev.register("WriteParquet", write_parquet_dataset as NativeFn, Attributes::empty());
+
+    // Arrow/Feather via DuckDB backend (when enabled)
+    fn read_arrow_dataset(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("ReadArrow".into())), args }; }
+        #[cfg(feature = "db_duckdb")]
+        let path = match ev.eval(args[0].clone()) { Value::String(s)|Value::Symbol(s)=>s, _=> return Value::Expr { head: Box::new(Value::Symbol("ReadArrow".into())), args } };
+        #[cfg(not(feature = "db_duckdb"))]
+        let _path = match ev.eval(args[0].clone()) { Value::String(s)|Value::Symbol(s)=>s, _=> return Value::Expr { head: Box::new(Value::Symbol("ReadArrow".into())), args } };
+        let opts = if args.len()>=2 { ev.eval(args[1].clone()) } else { Value::Assoc(HashMap::new()) };
+        #[cfg(feature = "db_duckdb")]
+        let lazy = matches!(&opts, Value::Assoc(m) if matches!(m.get("lazy"), Some(Value::Boolean(true))));
+        #[cfg(not(feature = "db_duckdb"))]
+        let _lazy = matches!(&opts, Value::Assoc(m) if matches!(m.get("lazy"), Some(Value::Boolean(true))));
+        #[cfg(feature = "db_duckdb")]
+        {
+            let conn = ev.eval(Value::Expr { head: Box::new(Value::Symbol("Connect".into())), args: vec![Value::String("duckdb::memory:".into())] });
+            if let Value::Assoc(m) = conn { if let Some(Value::Integer(cid)) = m.get("id") {
+                // Choose table function based on extension
+                let lower = path.to_ascii_lowercase();
+                let func = if lower.ends_with(".feather") { "read_feather" } else { "read_feather" };
+                let table_expr = format!("{}('{}')", func, path.replace("'","''"));
+                if lazy {
+                    return Value::Expr { head: Box::new(Value::Symbol("__DatasetFromDbTable".into())), args: vec![Value::Integer(*cid), Value::String(table_expr)] };
+                } else {
+                    let sql = format!("SELECT * FROM {}", table_expr);
+                    let rows_v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("__SQLToRows".into())), args: vec![Value::Integer(*cid), Value::String(sql)] });
+                    return Value::Expr { head: Box::new(Value::Symbol("DatasetFromRows".into())), args: vec![rows_v] };
+                }
+            }}
+        }
+        #[cfg(not(feature = "db_duckdb"))]
+        { return Value::Assoc(HashMap::from([(String::from("message"), Value::String(String::from("Arrow/Feather read requires db_duckdb feature"))), (String::from("tag"), Value::String(String::from("Dataset::arrow")))])); }
+    }
+    ev.register("ReadArrow", read_arrow_dataset as NativeFn, Attributes::empty());
     // Internal: used by db module to create a dataset referencing a DB table
     ev.register("__DatasetFromDbTable", dataset_from_db_table as NativeFn, Attributes::empty());
     ev.register("GroupBy", group_by as NativeFn, Attributes::empty());
     ev.register("Agg", agg as NativeFn, Attributes::empty());
+    // Window[ds, spec, defs]
+    fn window_ds(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+        if args.len() != 3 { return Value::Expr { head: Box::new(Value::Symbol("Window".into())), args }; }
+        let id = match get_ds(&ev.eval(args[0].clone())) { Some(id) => id, None => return Value::Expr { head: Box::new(Value::Symbol("Window".into())), args } };
+        let spec = match ev.eval(args[1].clone()) { Value::Assoc(m) => m, _ => HashMap::new() };
+        let defs = match ev.eval(args[2].clone()) { Value::Assoc(m) => m, _ => HashMap::new() };
+        let mut reg = ds_reg().lock().unwrap();
+        let st = match reg.get(&id) { Some(s) => s.clone(), None => return Value::Expr { head: Box::new(Value::Symbol("Window".into())), args } };
+        let new_id = next_ds_id();
+        reg.insert(new_id, DatasetState { plan: Plan::Window { input: Box::new(st.plan), spec, defs } });
+        ds_handle(new_id)
+    }
+    ev.register("Window", window_ds as NativeFn, Attributes::HOLD_ALL);
     // Public Join with dispatch: dataset+dataset -> join_ds; otherwise -> __ListJoin
     fn join_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("Join".into())), args } }

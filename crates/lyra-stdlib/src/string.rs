@@ -2527,7 +2527,13 @@ fn html_render_block(
             let standalone = |t: &str| t.starts_with('!') || t.starts_with('>') || t.starts_with('#') || t.starts_with('^') || t.starts_with('/') || t.starts_with("block") || t.starts_with("yield");
             let mut did_output = false;
             let mut should_trim = false;
-            if tag.starts_with('!') { should_trim = whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && standalone(tag)); if should_trim { trim_standalone(&mut out, &chars, &mut i); } continue; }
+            let _ = should_trim; // avoid unused-assignment lint prior to first use
+            if tag.starts_with('!') {
+                if whitespace_mode == "trim-tags" || (whitespace_mode == "smart" && standalone(tag)) {
+                    trim_standalone(&mut out, &chars, &mut i);
+                }
+                continue;
+            }
             // Partials with optional props: {{> name}} or {{> name propsPath}}
             if tag.starts_with('>') {
                 let body = tag[1..].trim();

@@ -1029,6 +1029,8 @@ pub fn register_io(ev: &mut Evaluator) {
     ev.register("GetEnv", get_env as NativeFn, Attributes::empty());
     ev.register("SetEnv", set_env as NativeFn, Attributes::empty());
     ev.register("DotenvLoad", dotenv_load as NativeFn, Attributes::empty());
+    // Naming-consistent alias with opts mapping
+    ev.register("LoadDotenv", load_dotenv as NativeFn, Attributes::empty());
     ev.register("ConfigFind", config_find as NativeFn, Attributes::empty());
     ev.register("XdgDirs", xdg_dirs as NativeFn, Attributes::empty());
     ev.register("EnvExpand", env_expand as NativeFn, Attributes::empty());
@@ -1064,6 +1066,12 @@ pub fn register_io(ev: &mut Evaluator) {
     ev.register("ReadCSV", read_csv as NativeFn, Attributes::empty());
     ev.register("RenderCSV", render_csv as NativeFn, Attributes::empty());
     ev.register("WriteCSV", write_csv as NativeFn, Attributes::empty());
+    // Naming-consistent aliases
+    ev.register("ReadCsv", read_csv as NativeFn, Attributes::empty());
+    ev.register("WriteCsv", write_csv as NativeFn, Attributes::empty());
+    // JSON file IO convenience
+    ev.register("ReadJson", read_json_file as NativeFn, Attributes::empty());
+    ev.register("WriteJson", write_json_file as NativeFn, Attributes::empty());
     // Aliases for CSV
     ev.register("CsvRead", parse_csv as NativeFn, Attributes::empty());
     ev.register("CsvWrite", render_csv as NativeFn, Attributes::empty());
@@ -1202,23 +1210,18 @@ pub fn register_io_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "BytesLength", bytes_length as NativeFn, Attributes::empty());
 }
 
-fn read_file(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn read_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("ReadFile".into())), args };
     }
     let path = match &args[0] {
         Value::String(s) | Value::Symbol(s) => s.clone(),
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("ReadFile".into())),
-                args: vec![other.clone()],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("ReadFile".into())), args: vec![other.clone()] };
         }
     };
-    match std::fs::read_to_string(&path) {
-        Ok(s) => Value::String(s),
-        Err(e) => failure("IO::read", &format!("ReadFile: {}", e)),
-    }
+    // Delegate to VFS to support mounts and schemes (file/http/s3)
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsRead".into())), args: vec![Value::String(path)] })
 }
 
 fn write_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -1228,21 +1231,16 @@ fn write_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     let path = match &args[0] {
         Value::String(s) | Value::Symbol(s) => s.clone(),
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("WriteFile".into())),
-                args: vec![other.clone(), args[1].clone()],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("WriteFile".into())), args: vec![other.clone(), args[1].clone()] };
         }
     };
     let content_v = ev.eval(args[1].clone());
-    let content = match &content_v {
-        Value::String(s) => s.clone(),
-        _ => lyra_core::pretty::format_value(&content_v),
-    };
-    match std::fs::write(&path, content) {
-        Ok(_) => Value::Boolean(true),
-        Err(e) => failure("IO::write", &format!("WriteFile: {}", e)),
-    }
+    // Delegate to VFS (as text by default)
+    let opts = Value::Assoc(std::iter::IntoIterator::into_iter([
+        (String::from("as"), Value::String(String::from("text"))),
+        (String::from("overwrite"), Value::Boolean(true)),
+    ]).collect());
+    ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsWrite".into())), args: vec![Value::String(path), content_v, opts] })
 }
 
 // Puts[value] -> prints to stdout with newline
@@ -1908,65 +1906,85 @@ fn file_exists_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     Value::Boolean(std::path::Path::new(&path).exists())
 }
 
-fn list_directory(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn list_directory(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("ListDirectory".into())), args };
     }
     let path = match &args[0] {
         Value::String(s) | Value::Symbol(s) => s.clone(),
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("ListDirectory".into())),
-                args: vec![other.clone()],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("ListDirectory".into())), args: vec![other.clone()] };
         }
     };
-    let mut out: Vec<Value> = Vec::new();
-    match std::fs::read_dir(&path) {
-        Ok(read_dir) => {
-            for entry in read_dir.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    out.push(Value::String(name.to_string()));
+    let v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsList".into())), args: vec![Value::String(path.clone())] });
+    // For local file paths (no explicit scheme), return names only to preserve legacy behavior
+    let looks_local = !path.contains("://") && !path.starts_with("vfs://");
+    match (v, looks_local) {
+        (Value::List(items), true) => {
+            let mut out: Vec<Value> = Vec::new();
+            for it in items {
+                if let Value::String(p) = it {
+                    let name = std::path::Path::new(&p).file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                    if !name.is_empty() { out.push(Value::String(name)); }
                 }
             }
             Value::List(out)
         }
-        Err(e) => failure("IO::list", &format!("ListDirectory: {}", e)),
+        (other, _) => other,
     }
 }
 
-fn stat_fn(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
+fn stat_fn(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.len() != 1 {
         return Value::Expr { head: Box::new(Value::Symbol("Stat".into())), args };
     }
     let path = match &args[0] {
         Value::String(s) | Value::Symbol(s) => s.clone(),
         other => {
-            return Value::Expr {
-                head: Box::new(Value::Symbol("Stat".into())),
-                args: vec![other.clone()],
-            }
+            return Value::Expr { head: Box::new(Value::Symbol("Stat".into())), args: vec![other.clone()] };
         }
     };
-    match std::fs::metadata(&path) {
-        Ok(meta) => {
-            let is_dir = meta.is_dir();
-            let is_file = meta.is_file();
-            let size = meta.len() as i64;
-            let modified = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let mut m: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
-            m.insert("isDir".into(), Value::Boolean(is_dir));
-            m.insert("isFile".into(), Value::Boolean(is_file));
-            m.insert("size".into(), Value::Integer(size));
-            m.insert("modified".into(), Value::Integer(modified));
-            Value::Assoc(m)
+    if !path.contains("://") && !path.starts_with("vfs://") {
+        // Legacy local-only behavior
+        match std::fs::metadata(&path) {
+            Ok(meta) => {
+                let is_dir = meta.is_dir();
+                let is_file = meta.is_file();
+                let size = meta.len() as i64;
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let mut m: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+                m.insert("isDir".into(), Value::Boolean(is_dir));
+                m.insert("isFile".into(), Value::Boolean(is_file));
+                m.insert("size".into(), Value::Integer(size));
+                m.insert("modified".into(), Value::Integer(modified));
+                return Value::Assoc(m);
+            }
+            Err(e) => return failure("IO::stat", &format!("Stat: {}", e)),
         }
-        Err(e) => failure("IO::stat", &format!("Stat: {}", e)),
+    }
+    // VFS-backed stat for mounts/schemes; map metadata to legacy keys where possible
+    let v = ev.eval(Value::Expr { head: Box::new(Value::Symbol("VfsStat".into())), args: vec![Value::String(path)] });
+    if let Value::Assoc(m) = v {
+        let mut out: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+        // type: "dir"|"file"|"unknown"
+        let is_dir = matches!(m.get("type"), Some(Value::String(s)) if s=="dir");
+        let is_file = matches!(m.get("type"), Some(Value::String(s)) if s=="file");
+        out.insert("isDir".into(), Value::Boolean(is_dir));
+        out.insert("isFile".into(), Value::Boolean(is_file));
+        if let Some(vs) = m.get("size") { out.insert("size".into(), vs.clone()); }
+        // mtime in ms -> modified in seconds
+        if let Some(Value::Integer(ms)) = m.get("mtime") { out.insert("modified".into(), Value::Integer((*ms / 1000).max(0))); }
+        // pass through contentType/etag if present
+        if let Some(ct) = m.get("contentType") { out.insert("contentType".into(), ct.clone()); }
+        if let Some(et) = m.get("etag") { out.insert("etag".into(), et.clone()); }
+        Value::Assoc(out)
+    } else {
+        v
     }
 }
 
@@ -2178,6 +2196,26 @@ fn dotenv_load(ev: &mut Evaluator, args: Vec<Value>) -> Value {
         ("path".into(), Value::String(path)),
         ("loaded".into(), Value::Integer(count)),
     ]))
+}
+
+// LoadDotenv[<| path->".env", override->true |>] — wrapper around DotenvLoad
+fn load_dotenv(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    let (path_opt, override_vars) = match args.as_slice() {
+        [Value::Assoc(m)] => {
+            let p = m.get("path").and_then(|v| match v { Value::String(s)|Value::Symbol(s)=>Some(s.clone()), _=>None });
+            let ov = matches!(m.get("override"), Some(Value::Boolean(true)));
+            (p, ov)
+        }
+        [v] => {
+            // Back-compat: allow single string path
+            let s = to_string_arg(ev, v.clone());
+            (Some(s), false)
+        }
+        _ => (None, false),
+    };
+    let path_val = path_opt.map(Value::String);
+    let override_opts = if override_vars { Value::Assoc(std::collections::HashMap::from([(String::from("Override"), Value::Boolean(true))])) } else { Value::Assoc(std::collections::HashMap::new()) };
+    dotenv_load(ev, match path_val { Some(p) => vec![p, override_opts], None => vec![] })
 }
 
 fn config_find(ev: &mut Evaluator, args: Vec<Value>) -> Value {
@@ -3530,5 +3568,42 @@ fn render_csv_string(data: &Value, opts: &CsvOpts) -> Result<String, String> {
             }
         }
         _ => Err("RenderCSV: expected list".into()),
+    }
+}
+
+// -------- JSON file IO convenience --------
+fn read_json_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() != 1 { return Value::Expr { head: Box::new(Value::Symbol("ReadJson".into())), args }; }
+    let path = to_string_arg(ev, args[0].clone());
+    match std::fs::read_to_string(&path) {
+        Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
+            Ok(j) => json_to_value(&j),
+            Err(e) => failure("IO::json", &format!("ReadJson: {}", e)),
+        },
+        Err(e) => failure("IO::fs", &format!("ReadJson: {}", e)),
+    }
+}
+
+fn write_json_file(ev: &mut Evaluator, args: Vec<Value>) -> Value {
+    if args.len() < 2 { return Value::Expr { head: Box::new(Value::Symbol("WriteJson".into())), args }; }
+    let path = to_string_arg(ev, args[0].clone());
+    let value = ev.eval(args[1].clone());
+    let pretty = matches!(args.get(2).map(|v| ev.eval(v.clone())), Some(Value::Assoc(m)) if m.get("pretty")==Some(&Value::Boolean(true)));
+    let sort_keys = matches!(args.get(2).map(|v| ev.eval(v.clone())), Some(Value::Assoc(m)) if m.get("sortKeys")==Some(&Value::Boolean(true)));
+    // Reuse ToJson with opts
+    let mut buf = Vec::new();
+    if pretty {
+        let mut ser = Serializer::with_formatter(&mut buf, PrettyFormatter::with_indent(b"  "));
+        if serde_json::to_value(value_to_json_opts(&value, sort_keys)).unwrap().serialize(&mut ser).is_err() {
+            return failure("IO::json", "WriteJson: serialization error");
+        }
+    } else {
+        if sj::to_writer(&mut buf, &value_to_json_opts(&value, sort_keys)).is_err() {
+            return failure("IO::json", "WriteJson: serialization error");
+        }
+    }
+    match std::fs::write(&path, String::from_utf8_lossy(&buf).to_string()) {
+        Ok(_) => Value::Boolean(true),
+        Err(e) => failure("IO::fs", &format!("WriteJson: {}", e)),
     }
 }

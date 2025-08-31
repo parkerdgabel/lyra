@@ -848,6 +848,16 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("SearchImages", "Search registry images", &["query", "opts?"]);
     ev.set_doc("InspectRegistryImage", "Inspect remote registry image", &["ref", "opts?"]);
     ev.set_doc("ExportImages", "Export images to an archive", &["refs", "path"]);
+    // SSH (feature ssh)
+    ev.set_doc("SshConnect", "Open SSH connection (password/key/agent).", &["opts?"]);
+    ev.set_doc("SshDisconnect", "Close SSH session.", &["session"]);
+    ev.set_doc("SshSessionInfo", "Describe SSH session.", &["session"]);
+    ev.set_doc("SshExec", "Execute a remote command; returns code/stdout/stderr.", &["session", "command", "opts?"]);
+    ev.set_doc("SshUpload", "Upload a local file to remote path (SCP).", &["session","sourcePath","destPath","opts?"]);
+    ev.set_doc("SshDownload", "Download remote file (SCP).", &["session","path","opts?"]);
+    ev.set_doc("SshHostKey", "Return server host key and SHA256 fingerprint.", &["session"]);
+    ev.set_doc("SshCopyId", "Append a public key to ~/.ssh/authorized_keys.", &["session","publicKeyOpenSsh","opts?"]);
+    ev.set_doc("SshKeyGen", "Generate SSH keypair: ed25519 (default) and rsa (with ssh_openssh).", &["opts?"]);
 
     ev.set_doc("Container", "Create a container", &["image", "opts?"]);
     ev.set_doc("StartContainer", "Start a container", &["id"]);
@@ -983,6 +993,16 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc_examples("FromJson", &["FromJson[\"{\\\"a\\\":1}\"]  ==> <|\"a\"->1|>"]);
     ev.set_doc_examples("ParseCSV", &["ParseCSV[\"a,b\\n1,2\\n\"]  ==> {{\"a\",\"b\"},{\"1\",\"2\"}}"]);
     ev.set_doc_examples("RenderCSV", &["RenderCSV[{{\"a\",\"b\"},{1,2}}]  ==> \"a,b\\n1,2\\n\""]);
+    // File IO convenience docs
+    ev.set_doc("ReadJson", "Read JSON file and parse.", &["path"]);
+    ev.set_doc("WriteJson", "Write value to JSON file (opts: pretty, sortKeys).", &["path","value","opts?"]);
+    ev.set_doc("ReadCsv", "Read CSV file into rows/assocs.", &["path","opts?"]);
+    ev.set_doc("WriteCsv", "Write rows/assocs to CSV file.", &["path","rows","opts?"]);
+    ev.set_doc("ReadParquet", "Read Parquet file(s) into a Dataset (requires DuckDB).", &["path","opts?"]);
+    ev.set_doc("WriteParquet", "Write Dataset to Parquet (requires DuckDB).", &["dataset","path","opts?"]);
+    ev.set_doc("ReadArrow", "Read Arrow/Feather file(s) into a Dataset (requires DuckDB).", &["path","opts?"]);
+    ev.set_doc_examples("ReadJson", &["WriteJson[\"/tmp/z.json\", <|a->1|>]; ReadJson[\"/tmp/z.json\"]  ==> <|a->1|>"]);
+    ev.set_doc_examples("ReadCsv", &["ReadCsv[\"/tmp/people.csv\"]  ==> {<|name->\"a\"|>, ...}"]);
 
     // IO docs (terminal formatting and primitives)
     ev.set_doc("Puts", "Write string to file (overwrite)", &["content", "path"]);
@@ -1335,6 +1355,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("Percentile", "Percentile(s) of numeric data using R-7 interpolation.", &["data", "p|list"]);
     ev.set_doc("Mode", "Most frequent element (ties broken by first appearance).", &["data"]);
     ev.set_doc("Correlation", "Pearson correlation of two numeric lists (population moments).", &["a", "b"]);
+    ev.set_doc("DescriptiveStats", "Summary stats: count, sum, mean, stddev, min/max, quartiles.", &["list"]);
+    ev.set_doc("Quantiles", "Convenience wrapper for Quantile: return percentiles or by list.", &["list","qs?"]);
+    ev.set_doc("RollingStats", "Rolling window stats over list (sum/mean/stddev/min/max).", &["list","window"]);
+    ev.set_doc("RandomSample", "Sample k distinct elements (opts: seed).", &["list","k","opts?"]);
     ev.set_doc("Covariance", "Covariance of two numeric lists (population).", &["a", "b"]);
     ev.set_doc("Skewness", "Skewness (third standardized moment).", &["data"]);
     ev.set_doc("Kurtosis", "Kurtosis (fourth standardized moment).", &["data"]);
@@ -1471,9 +1495,11 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("HtmlEscape", "Escape string for HTML", &["s"]);
     ev.set_doc("HtmlUnescape", "Unescape HTML-escaped string", &["s"]);
     ev.set_doc("DotenvLoad", "Load .env variables into process env.", &["path?", "opts?"]);
+    ev.set_doc("LoadDotenv", "Load .env with options (path, override).", &["opts?"]);
     ev.set_doc("ConfigFind", "Search upwards for config files (e.g., .env, lyra.toml).", &["names?", "startDir?"]);
     ev.set_doc("EnvExpand", "Expand $VAR or %VAR% style environment variables in text.", &["text", "opts?"]);
     ev.set_doc_examples("DotenvLoad", &["DotenvLoad[]  ==> <|\"path\"->\".../.env\", \"loaded\"->n|>"]);
+    ev.set_doc_examples("LoadDotenv", &["LoadDotenv[<|path->\".env\", override->True|>]  ==> <|path->..., loaded->n|>"]);
     ev.set_doc_examples(
         "ConfigFind",
         &[
@@ -1595,11 +1621,60 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         "TextSearch",
         &["TextSearch[\"hello\", \"hell\"]  ==> <|\"engine\"->\"fuzzy\", ...|>"]);
 
+    // NLP primitives
+    ev.set_doc("Tokenize", "Split text into tokens (word/char/regex)", &["input","opts?"]);
+    ev.set_doc_examples("Tokenize", &[
+        "Tokenize[\"The quick brown fox.\"]  ==> {\"the\",\"quick\",\"brown\",\"fox\"}",
+    ]);
+    ev.set_doc("SentenceSplit", "Split text into sentences (heuristic)", &["text","opts?"]);
+    ev.set_doc_examples("SentenceSplit", &[
+        "SentenceSplit[\"One. Two!\"]  ==> {\"One.\",\"Two!\"}",
+    ]);
+    ev.set_doc("NormalizeText", "Normalize casing, punctuation, whitespace", &["text","opts?"]);
+    ev.set_doc_examples("NormalizeText", &[
+        "NormalizeText[\"A  B\", <|\"whitespace\"->\"collapse\"|>]  ==> \"A B\"",
+    ]);
+    ev.set_doc("Stopwords", "Return stopword list for a language", &["language"]);
+    ev.set_doc("RemoveStopwords", "Remove stopwords from tokens or text", &["input","opts?"]);
+    ev.set_doc_examples("RemoveStopwords", &[
+        "RemoveStopwords[{\"the\",\"fox\"}, <|\"language\"->\"en\"|>]  ==> {\"fox\"}",
+    ]);
+    ev.set_doc("Ngrams", "Generate n-grams from tokens or text", &["input","opts?"]);
+    ev.set_doc_examples("Ngrams", &[
+        "Ngrams[{\"a\",\"b\",\"c\"}, <|\"n\"->2|>]  ==> {\"a b\",\"b c\"}",
+    ]);
+    ev.set_doc("TokenStats", "Token counts and top terms", &["input","opts?"]);
+    ev.set_doc("BuildVocab", "Build vocabulary mapping term->index", &["docs","opts?"]);
+    ev.set_doc("BagOfWords", "Bag-of-words vector or assoc of term counts", &["input","opts?"]);
+    ev.set_doc("TfIdf", "TF-IDF features for documents", &["docs","opts?"]);
+    ev.set_doc_examples("TfIdf", &[
+        "TfIdf[{\"one two two\", \"two three\"}]  ==> <|\"vocab\"->..., \"idf\"->..., \"matrix\"->...|>",
+    ]);
+    ev.set_doc("ChunkText", "Split large text into overlapping chunks", &["text","opts?"]);
+
+
+    ev.set_doc("Stem", "Stem tokens or text (Porter for English)", &["input","opts?"]);
+
+    ev.set_doc("Lemmatize", "Lemmatize tokens or text (rule-based English)", &["input","opts?"]);
+    ev.set_doc_examples("Lemmatize", &[
+        "Lemmatize[\"powerfully\"]  ==> {\"powerful\"}",
+        "Lemmatize[{\"running\",\"studies\",\"cars\"}]  ==> {\"run\",\"study\",\"car\"}",
+    ]);
+
+    ev.set_doc_examples("Stem", &[
+        "Stem[\"running\"]  ==> {\"run\"}",
+    ]);
+
     // UUIDs
     ev.set_doc("UuidV4", "Generate a random UUID v4 string.", &[]);
     ev.set_doc("UuidV7", "Generate a time-ordered UUID v7 string.", &[]);
     ev.set_doc_examples("UuidV4", &["UuidV4[]  ==> \"xxxxxxxx-xxxx-4xxx-...\""]);
     ev.set_doc_examples("UuidV7", &["UuidV7[]  ==> \"xxxxxxxx-xxxx-7xxx-...\""]);
+    ev.set_doc("TlsSelfSigned", "Generate self-signed TLS cert + private key (PEM).", &["opts?"]);
+    ev.set_doc_examples(
+        "TlsSelfSigned",
+        &["TlsSelfSigned[<|hosts->{\"localhost\"}, subject-><|CN->\"localhost\"|>|>]  ==> <|certPem->\"-----BEGIN CERTIFICATE-----...\"|>"]
+    );
 
     // List accessors and ops
     ev.set_doc("First", "First element of a list (or Null).", &["list"]);
@@ -1800,7 +1875,10 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
     ev.set_doc("LintLyraFile", "Lint a Lyra source file; returns diagnostics.", &["path"]);
     ev.set_doc("LintLyra", "Lint Lyra from text or file path.", &["x"]);
     ev.set_doc("ConfigLoad", "Load project config and environment.", &["opts?"]);
+    ev.set_doc("LoadConfig", "Load and merge config (files, envPrefix, overrides).", &["opts?"]);
+    ev.set_doc("Env", "Read environment variables (keys, required, defaults).", &["opts?"]);
     ev.set_doc("SecretsGet", "Get secret by key from provider (Env or File).", &["key", "provider"]);
+    ev.set_doc("GetSecret", "Get secret by key from provider (Env or File).", &["key", "provider"]);
     ev.set_doc("VersionBump", "Bump semver in files: major/minor/patch.", &["level", "paths"]);
     ev.set_doc("ChangelogGenerate", "Generate CHANGELOG entries from git log.", &["range?"]);
     ev.set_doc("ReleaseTag", "Create annotated git tag (and optionally push).", &["version", "opts?"]);
@@ -1888,6 +1966,29 @@ pub fn register_docs_extra(ev: &mut Evaluator) {
         &[
             "Workflow[{Print[\"a\"], Print[\"b\"]}]  ==> {Null, Null}",
             "Workflow[{<|\"name\"->\"echo\", \"run\"->Run[\"echo\", {\"hi\"}]|>}]  ==> {...}",
+        ],
+    );
+    ev.set_doc("Task", "Define a task: <|name, run, dependsOn, when?, timeoutMs?, retries?|>", &["spec"]);
+    ev.set_doc_examples(
+        "Task",
+        &[
+            "Task[<|\"name\"->\"build\", \"run\"->\"build\"|>]  ==> <|name->..., run->..., dependsOn->{ }|>",
+        ],
+    );
+    ev.set_doc("RunTasks", "Run tasks with deps; opts: maxConcurrency, onError, stream, hooks, onEvent", &["tasks","opts?"]);
+    ev.set_doc_examples(
+        "RunTasks",
+        &[
+            "b=Task[<|\"name\"->\"build\",\"run\"->\"build\"|>]; t=Task[<|\"name\"->\"test\",\"run\"->\"test\",\"dependsOn\"->{\"build\"}|>]; RunTasks[{b,t}, <|\"maxConcurrency\"->2|>]  ==> <|results->..., status->...|>",
+            "RunTasks[{Task[<|\"name\"->\"a\",\"run\"->1|>]} , <|\"beforeAll\"->Set[x,1], \"afterAll\"->Set[y,1]|>]  ==> <|...|>",
+            "RunTasks[{Task[<|\"name\"->\"a\",\"run\"->1|>]} , <|\"onEvent\"->(e)=>Print[e]|>]  ==> <|...|>",
+        ],
+    );
+    ev.set_doc("ExplainTasks", "Explain task DAG: nodes, edges, topological order", &["tasks"]);
+    ev.set_doc_examples(
+        "ExplainTasks",
+        &[
+            "ExplainTasks[{Task[<|\"name\"->\"a\",\"run\"->1|>], Task[<|\"name\"->\"b\",\"run\"->2,\"dependsOn\"->{\"a\"}|>]}]  ==> <|\"order\"->{0,1}, ...|>",
         ],
     );
     // ---------------- Distributions ----------------

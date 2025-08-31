@@ -263,75 +263,7 @@ fn set_equal_q(_ev: &mut Evaluator, args: Vec<Value>) -> Value {
     }
 }
 
-// List set ops (pure, order-stable by first list)
-fn list_union(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() < 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("ListUnion".into())), args };
-    }
-    let lists: Vec<Value> = args.into_iter().map(|a| ev.eval(a)).collect();
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut out: Vec<Value> = Vec::new();
-    for v in lists {
-        if let Value::List(xs) = v {
-            for x in xs {
-                let k = key_of(&x);
-                if seen.insert(k) {
-                    out.push(x);
-                }
-            }
-        }
-    }
-    Value::List(out)
-}
-
-fn list_intersection(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("ListIntersection".into())), args };
-    }
-    let a = ev.eval(args[0].clone());
-    let b = ev.eval(args[1].clone());
-    match (a, b) {
-        (Value::List(la), Value::List(lb)) => {
-            let sb: HashSet<String> = lb.iter().map(|x| key_of(x)).collect();
-            let mut seen: HashSet<String> = HashSet::new();
-            let mut out = Vec::new();
-            for x in la {
-                let k = key_of(&x);
-                if sb.contains(&k) && seen.insert(k) {
-                    out.push(x);
-                }
-            }
-            Value::List(out)
-        }
-        (x, y) => Value::Expr {
-            head: Box::new(Value::Symbol("ListIntersection".into())),
-            args: vec![x, y],
-        },
-    }
-}
-
-fn list_difference(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.len() != 2 {
-        return Value::Expr { head: Box::new(Value::Symbol("ListDifference".into())), args };
-    }
-    let a = ev.eval(args[0].clone());
-    let b = ev.eval(args[1].clone());
-    match (a, b) {
-        (Value::List(la), Value::List(lb)) => {
-            let sb: HashSet<String> = lb.iter().map(|x| key_of(x)).collect();
-            let mut out = Vec::new();
-            for x in la {
-                if !sb.contains(&key_of(&x)) {
-                    out.push(x);
-                }
-            }
-            Value::List(out)
-        }
-        (x, y) => {
-            Value::Expr { head: Box::new(Value::Symbol("ListDifference".into())), args: vec![x, y] }
-        }
-    }
-}
+// (removed unused list set operation helpers)
 
 // -------- Multiset / Bag --------
 #[derive(Clone)]

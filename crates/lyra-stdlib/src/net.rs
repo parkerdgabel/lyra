@@ -141,24 +141,7 @@ pub fn register_net_filtered(ev: &mut Evaluator, pred: &dyn Fn(&str) -> bool) {
     register_if(ev, pred, "HttpServeTls", http_serve_tls as NativeFn, Attributes::HOLD_ALL);
 }
 
-#[allow(dead_code)]
-fn http_server(ev: &mut Evaluator, args: Vec<Value>) -> Value {
-    if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("HttpServer".into())), args }; }
-    let a0 = ev.eval(args[0].clone());
-    let a1 = args.get(1).cloned().map(|v| ev.eval(v));
-    match a0 {
-        Value::List(_) | Value::Assoc(_) => {
-            // Treat as routes
-            let mut v = vec![a0]; if let Some(o) = a1 { v.push(o); }
-            ev.eval(Value::Expr { head: Box::new(Value::Symbol("HttpServeRoutes".into())), args: v })
-        }
-        _ => {
-            // Treat as handler function
-            let mut v = vec![a0]; if let Some(o) = a1 { v.push(o); }
-            ev.eval(Value::Expr { head: Box::new(Value::Symbol("HttpServe".into())), args: v })
-        }
-    }
-}
+// (removed unused http_server helper)
 
 fn respond_dispatch(ev: &mut Evaluator, args: Vec<Value>) -> Value {
     if args.is_empty() { return Value::Expr { head: Box::new(Value::Symbol("Respond".into())), args }; }
@@ -599,12 +582,23 @@ fn build_response(
             }
         })
         .unwrap_or_default();
+    let etag_val: Option<String> = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("ETag"))
+        .and_then(|(_, v)| if let Value::String(s)|Value::Symbol(s)=v { Some(s.trim_matches('"').to_string()) } else { None });
     let want_json = match opts.as_kind {
         AsKind::Json => true,
         AsKind::Text => false,
         AsKind::Bytes => false,
         AsKind::Auto => ct.contains("application/json") || ct.contains("+json"),
     };
+    // Top-level convenience metadata
+    map.insert(
+        "contentType".into(),
+        if ct.is_empty() { Value::Symbol("Null".into()) } else { Value::String(ct.clone()) },
+    );
+    if let Some(et) = etag_val { map.insert("etag".into(), Value::String(et)); }
+
     if want_json {
         let parsed = sj::from_slice::<sj::Value>(&body)
             .map(|j| json_to_value(&j))
